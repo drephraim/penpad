@@ -3,7 +3,7 @@
 import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
-import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText } from "lucide-react"
+import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, MoreVertical } from "lucide-react"
 
 interface Project {
   id: string
@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string; projectName: string }>({ show: false, projectId: '', projectName: '' })
 
   const fetchProjects = useCallback(async () => {
     if (!user) {
@@ -66,6 +67,21 @@ export default function Dashboard() {
       router.push(`/editor?id=${newProject.id}`)
     } catch (e) {
       console.error("Error creating project:", e)
+    }
+  }
+
+  const deleteProject = async () => {
+    if (!user || !deleteModal.projectId) return
+    try {
+      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
+      const projectList: Project[] = stored ? JSON.parse(stored) : []
+      const filtered = projectList.filter(p => p.id !== deleteModal.projectId)
+      localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(filtered))
+      localStorage.removeItem(`penpad_notes_${deleteModal.projectId}`)
+      setProjects(filtered)
+      setDeleteModal({ show: false, projectId: '', projectName: '' })
+    } catch (e) {
+      console.error("Error deleting project:", e)
     }
   }
 
@@ -208,21 +224,31 @@ export default function Dashboard() {
                   key={project.id} 
                   className="project-card card card-interactive fade-in"
                   style={{ animationDelay: `${index * 50}ms` }}
-                  onClick={() => router.push(`/editor?id=${project.id}`)}
                 >
-                  <div className="project-icon">
-                    <FileText size={24} />
+                  <div className="project-menu">
+                    <button 
+                      className="btn-menu"
+                      onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, projectId: project.id, projectName: project.name }) }}
+                      title="Delete manuscript"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                  <div className="project-status">
-                    <span className="status status-success">
-                      <span className="status-dot"></span>
-                      Active
-                    </span>
-                  </div>
-                  <h3 className="project-title">{project.name}</h3>
-                  <div className="project-meta">
-                    <Clock size={14} />
-                    <span>Recently edited</span>
+                  <div onClick={() => router.push(`/editor?id=${project.id}`)}>
+                    <div className="project-icon">
+                      <FileText size={24} />
+                    </div>
+                    <div className="project-status">
+                      <span className="status status-success">
+                        <span className="status-dot"></span>
+                        Active
+                      </span>
+                    </div>
+                    <h3 className="project-title">{project.name}</h3>
+                    <div className="project-meta">
+                      <Clock size={14} />
+                      <span>Recently edited</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -250,6 +276,21 @@ export default function Dashboard() {
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={createProject}>Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteModal.show && (
+        <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, projectId: '', projectName: '' })}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Delete Manuscript</h2>
+              <p className="modal-description">Are you sure you want to delete "{deleteModal.projectName}"? This action cannot be undone.</p>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, projectId: '', projectName: '' })}>Cancel</button>
+              <button className="btn btn-danger" onClick={deleteProject}>Delete</button>
             </div>
           </div>
         </div>
@@ -530,6 +571,48 @@ export default function Dashboard() {
           gap: 0.5rem;
           color: var(--text-dim);
           font-size: 0.8rem;
+        }
+
+        .project-menu {
+          position: absolute;
+          top: 1rem;
+          right: 1rem;
+          opacity: 0;
+          transition: var(--transition);
+        }
+
+        .project-card:hover .project-menu {
+          opacity: 1;
+        }
+
+        .btn-menu {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          color: var(--text-dim);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-menu:hover {
+          background: var(--error-light);
+          border-color: var(--error);
+          color: var(--error);
+        }
+
+        .btn-danger {
+          background: var(--error);
+          color: white;
+          border: none;
+        }
+
+        .btn-danger:hover {
+          background: var(--error-hover);
         }
 
         @media (max-width: 768px) {

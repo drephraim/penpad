@@ -8,7 +8,7 @@ import {
   Eye, Edit3, Maximize2, Minimize2,
   ArrowLeft, Loader2, FileText,
   Feather, ShieldCheck, Zap,
-  X, Check, AlertCircle
+  X, Check, AlertCircle, Trash2
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import ReactMarkdown from 'react-markdown'
@@ -52,6 +52,7 @@ function EditorContent() {
   const [localIntel, setLocalIntel] = useState<LocalIntelligence | null>(null)
   const [isLearning, setIsLearning] = useState(false)
   const [highlightedPosition, setHighlightedPosition] = useState<{ start: number; end: number } | null>(null)
+  const [deleteModal, setDeleteModal] = useState<{ show: boolean; noteId: string; noteTitle: string }>({ show: false, noteId: '', noteTitle: '' })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const scrollToPosition = (start: number, end: number) => {
@@ -314,6 +315,23 @@ function EditorContent() {
     }
   }
 
+  const deleteNote = async () => {
+    if (!projectId || !deleteModal.noteId) return
+    try {
+      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+      let noteList: Note[] = stored ? JSON.parse(stored) : []
+      noteList = noteList.filter(n => n.id !== deleteModal.noteId)
+      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+      setNotes(noteList)
+      if (activeNoteId === deleteModal.noteId) {
+        setActiveNoteId(noteList.length > 0 ? noteList[0].id : null)
+      }
+      setDeleteModal({ show: false, noteId: '', noteTitle: '' })
+    } catch (e) {
+      console.error("Failed to delete note:", e)
+    }
+  }
+
   const updateActiveNote = (updates: Partial<Note>) => {
     if (!activeNoteId) return
     setNotes(prev => prev.map(n => 
@@ -510,6 +528,13 @@ function EditorContent() {
                 >
                   <FileText size={16} />
                   <span className="chapter-title">{note.title || 'Untitled'}</span>
+                  <button 
+                    className="btn-delete-chapter"
+                    onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
+                    title="Delete chapter"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               ))}
             </div>
@@ -721,6 +746,21 @@ function EditorContent() {
               </div>
             </div>
           </aside>
+        )}
+
+        {deleteModal.show && (
+          <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Delete Chapter</h2>
+                <p className="modal-description">Are you sure you want to delete "{deleteModal.noteTitle || 'Untitled'}"? This action cannot be undone.</p>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>Cancel</button>
+                <button className="btn btn-danger" onClick={deleteNote}>Delete</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -992,6 +1032,82 @@ function EditorContent() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .btn-delete-chapter {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-sm);
+          color: var(--text-dim);
+          cursor: pointer;
+          opacity: 0;
+          transition: var(--transition);
+        }
+
+        .chapter-item:hover .btn-delete-chapter {
+          opacity: 1;
+        }
+
+        .btn-delete-chapter:hover {
+          background: var(--error-light);
+          color: var(--error);
+        }
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+        }
+
+        .modal {
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-xl);
+          padding: 2rem;
+          max-width: 400px;
+          width: 90%;
+        }
+
+        .modal-header {
+          margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
+          font-family: var(--font-outfit);
+          font-size: 1.25rem;
+          font-weight: 700;
+          margin-bottom: 0.5rem;
+        }
+
+        .modal-description {
+          color: var(--text-dim);
+          font-size: 0.9rem;
+          line-height: 1.5;
+        }
+
+        .modal-actions {
+          display: flex;
+          gap: 0.75rem;
+          justify-content: flex-end;
+        }
+
+        .btn-danger {
+          background: var(--error);
+          color: white;
+          border: none;
+        }
+
+        .btn-danger:hover {
+          background: var(--error-hover);
         }
 
         .editor-main {
