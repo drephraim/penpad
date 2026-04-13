@@ -45,7 +45,7 @@ function EditorContent() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   
-  const [fontFamily, setFontFamily] = useState('var(--font-inter)')
+  const [fontFamily, setFontFamily] = useState('Georgia')
   const [fontSize, setFontSize] = useState(18)
   
   const [isLoadingNotes, setIsLoadingNotes] = useState(false)
@@ -1402,11 +1402,10 @@ function EditorContent() {
           flex: 1;
           display: flex;
           flex-direction: column;
-          padding: 3rem 4rem;
-          max-width: 1200px;
-          margin: 0 auto;
+          padding: 1.5rem 2rem;
+          max-width: 100%;
           width: 100%;
-          overflow-y: auto;
+          overflow: hidden;
         }
 
         .editor-title-input {
@@ -1414,12 +1413,12 @@ function EditorContent() {
           background: transparent;
           border: none;
           font-family: var(--font-outfit);
-          font-size: 2.5rem;
+          font-size: 1.875rem;
           font-weight: 800;
           color: var(--text-primary);
           outline: none;
           letter-spacing: -0.02em;
-          margin-bottom: 2rem;
+          margin-bottom: 1rem;
           padding: 0;
         }
 
@@ -1484,6 +1483,8 @@ function EditorContent() {
           flex: 1;
           display: flex;
           flex-direction: column;
+          overflow: hidden;
+          min-height: 0;
         }
 
         .textarea-wrapper {
@@ -1491,7 +1492,7 @@ function EditorContent() {
           flex: 1;
           display: flex;
           flex-direction: column;
-          min-height: calc(100vh - 300px);
+          overflow: hidden;
         }
 
         .editor-textarea {
@@ -1503,8 +1504,8 @@ function EditorContent() {
           line-height: 1.0;
           resize: none;
           outline: none;
-          font-family: var(--font-inter);
-          min-height: 1000px;
+          font-family: Georgia, serif;
+          min-height: 0;
           position: relative;
           z-index: 1;
         }
@@ -1538,15 +1539,18 @@ function EditorContent() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 1rem 0;
-          margin-top: 1rem;
+          padding: 0.75rem 0;
+          flex-shrink: 0;
           border-top: 1px solid var(--surface-border);
+          flex-wrap: wrap;
+          gap: 0.5rem;
         }
 
         .status-left {
           display: flex;
           align-items: center;
-          gap: 1rem;
+          gap: 0.75rem;
+          flex-wrap: wrap;
         }
 
         .word-count {
@@ -1600,7 +1604,8 @@ function EditorContent() {
         .status-right {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
+          gap: 0.5rem;
+          flex-wrap: wrap;
         }
 
         .btn-action {
