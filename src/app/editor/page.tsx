@@ -12,6 +12,7 @@ import {
   Download, Save
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
+import { MemoriesManager } from '@/lib/memories'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -21,6 +22,7 @@ interface Note {
   content: string
   createdAt: number
   updatedAt: number
+  isMemories?: boolean
 }
 
 type ViewMode = 'edit' | 'preview'
@@ -58,6 +60,8 @@ function EditorContent() {
   const [exportModal, setExportModal] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
+  const [memoriesManager] = useState(() => new MemoriesManager())
+  const [isMemoriesChapter, setIsMemoriesChapter] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -144,12 +148,52 @@ function EditorContent() {
       if (stored) {
         const parsed = JSON.parse(stored)
         const noteList = parsed.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
-        setNotes(noteList)
-        if (noteList.length > 0 && !activeNoteId) {
-          setActiveNoteId(noteList[0].id)
+        
+        const hasMemories = noteList.some(n => n.title === 'Memories')
+        
+        if (!hasMemories) {
+          const memoriesNote: Note = {
+            id: crypto.randomUUID(),
+            title: 'Memories',
+            content: memoriesManager.generateMarkdown(),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isMemories: true
+          }
+          noteList.push(memoriesNote)
+          localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+        }
+        
+        for (const note of noteList) {
+          if (note.title !== 'Memories') {
+            memoriesManager.addChapter(note.id, note.title, note.content)
+          }
+        }
+        
+        const finalList = noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
+        const memoriesIdx = finalList.findIndex(n => n.title === 'Memories')
+        if (memoriesIdx > 0) {
+          finalList.splice(memoriesIdx, 1)
+          finalList.unshift(noteList.find(n => n.title === 'Memories')!)
+        }
+        
+        setNotes(finalList)
+        if (finalList.length > 0 && !activeNoteId) {
+          setActiveNoteId(finalList[0].id)
         }
       } else {
-        setNotes([])
+        const memoriesNote: Note = {
+          id: crypto.randomUUID(),
+          title: 'Memories',
+          content: memoriesManager.generateMarkdown(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          isMemories: true
+        }
+        const noteList = [memoriesNote]
+        localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+        setNotes(noteList)
+        setActiveNoteId(memoriesNote.id)
       }
     } catch (e) {
       console.error("Fetch notes failed:", e)
@@ -157,7 +201,7 @@ function EditorContent() {
     } finally {
       setIsLoadingNotes(false)
     }
-  }, [user, projectId, activeNoteId])
+  }, [user, projectId, activeNoteId, memoriesManager])
 
   const saveNote = useCallback(async (note: Note) => {
     if (!user || !projectId) return
@@ -360,16 +404,30 @@ function EditorContent() {
         updatedAt: now,
       }
       
+      memoriesManager.addChapter(newNote.id, newNote.title, newNote.content)
+      
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      let noteList: Note[] = []
-      if (stored) {
-        noteList = JSON.parse(stored)
+      let noteList: Note[] = stored ? JSON.parse(stored) : []
+      noteList.unshift(newNote)
+      
+      const memoriesIdx = noteList.findIndex(n => n.title === 'Memories')
+      if (memoriesIdx > -1) {
+        const memoriesNote = noteList.splice(memoriesIdx, 1)[0]
+        memoriesNote.content = memoriesManager.generateMarkdown()
+        noteList.push(memoriesNote)
       }
       
-      noteList.unshift(newNote)
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
       
-      setNotes(prev => [newNote, ...prev])
+      setNotes(prev => {
+        const updated = [newNote, ...prev.filter(n => n.title !== 'Memories')]
+        const memories = prev.find(n => n.title === 'Memories')
+        if (memories) {
+          memories.content = memoriesManager.generateMarkdown()
+          updated.push(memories)
+        }
+        return updated
+      })
       setActiveNoteId(newNote.id)
       setViewMode('edit')
     } catch (e) {
@@ -380,9 +438,17 @@ function EditorContent() {
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
     try {
+      memoriesManager.removeChapter(deleteModal.noteId)
+      
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       let noteList: Note[] = stored ? JSON.parse(stored) : []
       noteList = noteList.filter(n => n.id !== deleteModal.noteId)
+      
+      const memoriesIdx = noteList.findIndex(n => n.title === 'Memories')
+      if (memoriesIdx > -1) {
+        noteList[memoriesIdx].content = memoriesManager.generateMarkdown()
+      }
+      
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
       setNotes(noteList)
       if (activeNoteId === deleteModal.noteId) {
@@ -396,10 +462,40 @@ function EditorContent() {
 
   const updateActiveNote = (updates: Partial<Note>) => {
     if (!activeNoteId) return
-    setNotes(prev => prev.map(n => 
+    const updatedNotes = notes.map(n => 
       n.id === activeNoteId ? { ...n, ...updates, updatedAt: Date.now() } : n
-    ))
+    )
+    setNotes(updatedNotes)
+    
+    const updatedNote = updatedNotes.find(n => n.id === activeNoteId)
+    if (updatedNote && updatedNote.title !== 'Memories' && !isMemoriesChapter) {
+      memoriesManager.updateChapter(updatedNote.id, updatedNote.title, updatedNote.content)
+      
+      const memoriesIdx = updatedNotes.findIndex(n => n.title === 'Memories')
+      if (memoriesIdx > -1) {
+        updatedNotes[memoriesIdx].content = memoriesManager.generateMarkdown()
+        setNotes([...updatedNotes])
+        
+        const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+        if (stored) {
+          const noteList: Note[] = JSON.parse(stored)
+          const storedMemoriesIdx = noteList.findIndex(n => n.title === 'Memories')
+          if (storedMemoriesIdx > -1) {
+            noteList[storedMemoriesIdx].content = memoriesManager.generateMarkdown()
+            localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+          }
+        }
+      }
+    }
   }
+
+  useEffect(() => {
+    if (activeNote?.title === 'Memories') {
+      setIsMemoriesChapter(true)
+    } else {
+      setIsMemoriesChapter(false)
+    }
+  }, [activeNote?.title])
 
   const executeAiAction = async (action: 'analyze' | 'summary' | 'refine' | 'ingest') => {
     if (!activeNote || !localIntel) return
@@ -631,25 +727,42 @@ function EditorContent() {
         <main className="editor-main">
           {activeNote ? (
             <div className="editor-workspace fade-in">
-              <input 
-                className="editor-title-input"
-                value={activeNote.title}
-                onChange={(e) => updateActiveNote({ title: e.target.value })}
-                placeholder="Chapter Title..."
-              />
+              <div className="editor-title-row">
+                {isMemoriesChapter && (
+                  <span className="memories-badge">
+                    <Sparkles size={12} />
+                    Auto-generated
+                  </span>
+                )}
+                <input 
+                  className={`editor-title-input ${isMemoriesChapter ? 'readonly' : ''}`}
+                  value={activeNote.title}
+                  onChange={(e) => !isMemoriesChapter && updateActiveNote({ title: e.target.value })}
+                  placeholder="Chapter Title..."
+                  readOnly={isMemoriesChapter}
+                />
+              </div>
               
               <div className="editor-content-area">
                 {viewMode === 'edit' ? (
                   <div className="textarea-wrapper">
-                    <textarea 
-                      ref={textareaRef}
-                      className="editor-textarea"
-                      value={activeNote.content}
-                      onChange={(e) => updateActiveNote({ content: e.target.value })}
-                      placeholder="Begin writing..."
-                      spellCheck={false}
-                      style={{ fontFamily, fontSize: `${fontSize}px` }}
-                    />
+                    {isMemoriesChapter ? (
+                      <div className="memories-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {activeNote.content || "_Start writing to see memories appear..."}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <textarea 
+                        ref={textareaRef}
+                        className="editor-textarea"
+                        value={activeNote.content}
+                        onChange={(e) => updateActiveNote({ content: e.target.value })}
+                        placeholder="Begin writing..."
+                        spellCheck={false}
+                        style={{ fontFamily, fontSize: `${fontSize}px` }}
+                      />
+                    )}
                     {highlightedPosition && (
                       <div 
                         className="highlight-overlay"
@@ -660,6 +773,55 @@ function EditorContent() {
                       />
                     )}
                   </div>
+                ) : (
+                  <div className="markdown-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {activeNote.content || "_Start writing to see preview..."}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+              
+              <div className="editor-status-bar">
+                <div className="status-left">
+                  <span className="word-count">
+                    <FileText size={14} />
+                    {wordCount} words
+                  </span>
+                  {isMemoriesChapter && (
+                    <span className="ai-status badge badge-info">
+                      <Sparkles size={12} />
+                      Memories updated
+                    </span>
+                  )}
+                  {localIntel && !isMemoriesChapter && (
+                    <span className="ai-status badge badge-success">
+                      <ShieldCheck size={12} />
+                      AI Active
+                    </span>
+                  )}
+                  {isLearning && !isMemoriesChapter && (
+                    <span className="learning-indicator">
+                      <Zap size={12} className="pulse" />
+                      Learning
+                    </span>
+                  )}
+                </div>
+                
+                {!isMemoriesChapter && (
+                  <div className="status-right">
+                    <button className="btn-action" onClick={() => executeAiAction('refine')}>
+                      <Sparkles size={14} />
+                      Refine
+                    </button>
+                    <button className="btn-ai-trigger" onClick={() => setShowAiPanel(true)}>
+                      <Brain size={16} />
+                      Intelligence Hub
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
                 ) : (
                   <div className="markdown-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -1243,7 +1405,6 @@ function EditorContent() {
           background: linear-gradient(90deg, var(--primary), var(--accent));
           transition: width 0.3s ease;
         }
-        }
 
         .btn-delete-chapter:hover {
           background: var(--error-light);
@@ -1336,6 +1497,74 @@ function EditorContent() {
 
         .editor-title-input::placeholder {
           color: var(--text-dim);
+        }
+
+        .editor-title-input.readonly {
+          cursor: default;
+        }
+
+        .editor-title-row {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .memories-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          background: linear-gradient(135deg, var(--primary), var(--accent));
+          border-radius: var(--radius-full);
+          font-size: 0.7rem;
+          font-weight: 700;
+          color: white;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          width: fit-content;
+        }
+
+        .memories-preview {
+          flex: 1;
+          padding: 1.5rem;
+          background: var(--surface);
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--surface-border);
+          line-height: 1.8;
+          color: var(--text-secondary);
+          min-height: 500px;
+          overflow-y: auto;
+        }
+
+        .memories-preview h1 {
+          font-family: var(--font-outfit);
+          font-size: 2rem;
+          font-weight: 800;
+          color: var(--text-primary);
+          margin-bottom: 0.5rem;
+        }
+
+        .memories-preview h2 {
+          font-family: var(--font-outfit);
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: var(--primary);
+          margin-top: 1.5rem;
+          margin-bottom: 0.75rem;
+        }
+
+        .memories-preview ul {
+          padding-left: 1.25rem;
+        }
+
+        .memories-preview li {
+          margin-bottom: 0.5rem;
+          line-height: 1.6;
+        }
+
+        .badge-info {
+          background: linear-gradient(135deg, var(--primary-light), var(--accent-light));
+          color: var(--primary);
         }
 
         .editor-content-area {
