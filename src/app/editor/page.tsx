@@ -61,7 +61,8 @@ function EditorContent() {
   const [exportProgress, setExportProgress] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
   const [memoriesManager] = useState(() => new MemoriesManager())
-  const [isMemoriesChapter, setIsMemoriesChapter] = useState(false)
+  const [isMemoryChapter, setIsMemoryChapter] = useState(false)
+  const [isCapturing, setIsCapturing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -148,52 +149,12 @@ function EditorContent() {
       if (stored) {
         const parsed = JSON.parse(stored)
         const noteList = parsed.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
-        
-        const hasMemories = noteList.some((n: Note) => n.title === 'Memories')
-        
-        if (!hasMemories) {
-          const memoriesNote: Note = {
-            id: crypto.randomUUID(),
-            title: 'Memories',
-            content: memoriesManager.generateMarkdown(),
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            isMemories: true
-          }
-          noteList.push(memoriesNote)
-          localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-        }
-        
-        for (const note of noteList) {
-          if (note.title !== 'Memories') {
-            memoriesManager.addChapter(note.id, note.title, note.content)
-          }
-        }
-        
-        const finalList = noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
-        const memoriesIdx = finalList.findIndex((n: Note) => n && n.title === 'Memories')
-        if (memoriesIdx > 0) {
-          finalList.splice(memoriesIdx, 1)
-          finalList.unshift(noteList.find((n: Note) => n.title === 'Memories')!)
-        }
-        
-        setNotes(finalList)
-        if (finalList.length > 0 && !activeNoteId) {
-          setActiveNoteId(finalList[0].id)
+        setNotes(noteList)
+        if (noteList.length > 0 && !activeNoteId) {
+          setActiveNoteId(noteList[0].id)
         }
       } else {
-        const memoriesNote: Note = {
-          id: crypto.randomUUID(),
-          title: 'Memories',
-          content: memoriesManager.generateMarkdown(),
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          isMemories: true
-        }
-        const noteList = [memoriesNote]
-        localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-        setNotes(noteList)
-        setActiveNoteId(memoriesNote.id)
+        setNotes([])
       }
     } catch (e) {
       console.error("Fetch notes failed:", e)
@@ -201,7 +162,7 @@ function EditorContent() {
     } finally {
       setIsLoadingNotes(false)
     }
-  }, [user, projectId, activeNoteId, memoriesManager])
+  }, [user, projectId, activeNoteId])
 
   const saveNote = useCallback(async (note: Note) => {
     if (!user || !projectId) return
@@ -408,24 +369,8 @@ function EditorContent() {
       const noteList: Note[] = stored ? JSON.parse(stored) : []
       noteList.unshift(newNote)
       
-      const memoriesIdx = noteList.findIndex((n: Note) => n && n.title === 'Memories')
-      if (memoriesIdx > -1) {
-        noteList[memoriesIdx].content = memoriesManager.generateMarkdown()
-      }
-      
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-      
-      setNotes(prev => {
-        if (!Array.isArray(prev)) return [newNote]
-        const filtered = prev.filter((n: Note) => n && n.title !== 'Memories')
-        const memories = prev.find((n: Note) => n && n.title === 'Memories')
-        const updated = [newNote, ...filtered]
-        if (memories) {
-          memories.content = memoriesManager.generateMarkdown()
-          updated.push(memories)
-        }
-        return updated
-      })
+      setNotes(prev => Array.isArray(prev) ? [newNote, ...prev] : [newNote])
       setActiveNoteId(newNote.id)
       setViewMode('edit')
     } catch (e) {
@@ -436,16 +381,9 @@ function EditorContent() {
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
     try {
-      memoriesManager.removeChapter(deleteModal.noteId)
-      
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
       const filtered = noteList.filter((n: Note) => n && n.id !== deleteModal.noteId)
-      
-      const memoriesIdx = filtered.findIndex((n: Note) => n.title === 'Memories')
-      if (memoriesIdx > -1) {
-        filtered[memoriesIdx].content = memoriesManager.generateMarkdown()
-      }
       
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
       setNotes(filtered)
@@ -464,34 +402,56 @@ function EditorContent() {
       n && n.id === activeNoteId ? { ...n, ...updates, updatedAt: Date.now() } : n
     )
     setNotes(updatedNotes)
+  }
+
+  const captureMemories = async () => {
+    if (!activeNote || !projectId) return
     
-    const updatedNote = updatedNotes.find((n: Note) => n && n.id === activeNoteId)
-    if (updatedNote && updatedNote.title !== 'Memories' && !isMemoriesChapter) {
-      memoriesManager.updateChapter(updatedNote.id, updatedNote.title, updatedNote.content)
+    const memoryChapter = notes.find((n: Note) => n && n.title === 'Memory')
+    if (!memoryChapter) {
+      alert('Please create a chapter named "Memory" first')
+      return
+    }
+    
+    setIsCapturing(true)
+    
+    try {
+      memoriesManager.addChapter(activeNote.id, activeNote.title, activeNote.content)
+      const extractedContent = memoriesManager.generateMarkdown()
       
-      const memoriesIdx = updatedNotes.findIndex((n: Note) => n && n.title === 'Memories')
-      if (memoriesIdx > -1) {
-        updatedNotes[memoriesIdx].content = memoriesManager.generateMarkdown()
-        setNotes([...updatedNotes])
-        
-        const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-        if (stored) {
-          const noteList: Note[] = JSON.parse(stored)
-          const storedMemoriesIdx = noteList.findIndex((n: Note) => n && n.title === 'Memories')
-          if (storedMemoriesIdx > -1) {
-            noteList[storedMemoriesIdx].content = memoriesManager.generateMarkdown()
-            localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-          }
+      const updatedContent = memoryChapter.content 
+        ? memoryChapter.content + '\n\n---\n\n' + extractedContent
+        : extractedContent
+      
+      const updatedNotes = notes.map((n: Note) => 
+        n && n.id === memoryChapter.id 
+          ? { ...n, content: updatedContent, updatedAt: Date.now() }
+          : n
+      )
+      
+      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+      if (stored) {
+        const noteList: Note[] = JSON.parse(stored)
+        const storedIdx = noteList.findIndex((n: Note) => n && n.id === memoryChapter.id)
+        if (storedIdx > -1) {
+          noteList[storedIdx] = { ...noteList[storedIdx], content: updatedContent, updatedAt: Date.now() }
+          localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
         }
       }
+      
+      setNotes(updatedNotes)
+    } catch (e) {
+      console.error("Failed to capture memories:", e)
+    } finally {
+      setIsCapturing(false)
     }
   }
 
   useEffect(() => {
-    if (activeNote?.title === 'Memories') {
-      setIsMemoriesChapter(true)
+    if (activeNote?.title === 'Memory') {
+      setIsMemoryChapter(true)
     } else {
-      setIsMemoriesChapter(false)
+      setIsMemoryChapter(false)
     }
   }, [activeNote?.title])
 
@@ -726,28 +686,22 @@ function EditorContent() {
           {activeNote ? (
             <div className="editor-workspace fade-in">
               <div className="editor-title-row">
-                {isMemoriesChapter && (
-                  <span className="memories-badge">
-                    <Sparkles size={12} />
-                    Auto-generated
-                  </span>
-                )}
                 <input 
-                  className={`editor-title-input ${isMemoriesChapter ? 'readonly' : ''}`}
+                  className={`editor-title-input ${isMemoryChapter ? 'readonly' : ''}`}
                   value={activeNote.title}
-                  onChange={(e) => !isMemoriesChapter && updateActiveNote({ title: e.target.value })}
+                  onChange={(e) => !isMemoryChapter && updateActiveNote({ title: e.target.value })}
                   placeholder="Chapter Title..."
-                  readOnly={isMemoriesChapter}
+                  readOnly={isMemoryChapter}
                 />
               </div>
               
               <div className="editor-content-area">
                 {viewMode === 'edit' ? (
                   <div className="textarea-wrapper">
-                    {isMemoriesChapter ? (
+                    {isMemoryChapter ? (
                       <div className="memories-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {activeNote.content || "_Start writing to see memories appear..."}
+                          {activeNote.content || "_Your captured memories will appear here._"}
                         </ReactMarkdown>
                       </div>
                     ) : (
@@ -786,19 +740,13 @@ function EditorContent() {
                     <FileText size={14} />
                     {wordCount} words
                   </span>
-                  {isMemoriesChapter && (
-                    <span className="ai-status badge badge-info">
-                      <Sparkles size={12} />
-                      Memories updated
-                    </span>
-                  )}
-                  {localIntel && !isMemoriesChapter && (
+                  {localIntel && !isMemoryChapter && (
                     <span className="ai-status badge badge-success">
                       <ShieldCheck size={12} />
                       AI Active
                     </span>
                   )}
-                  {isLearning && !isMemoriesChapter && (
+                  {isLearning && !isMemoryChapter && (
                     <span className="learning-indicator">
                       <Zap size={12} className="pulse" />
                       Learning
@@ -806,8 +754,20 @@ function EditorContent() {
                   )}
                 </div>
                 
-                {!isMemoriesChapter && (
+                {!isMemoryChapter && (
                   <div className="status-right">
+                    <button 
+                      className="btn-capture" 
+                      onClick={captureMemories}
+                      disabled={isCapturing}
+                    >
+                      {isCapturing ? (
+                        <Loader2 size={14} className="spin" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      {isCapturing ? 'Capturing...' : 'Capture Memories'}
+                    </button>
                     <button className="btn-action" onClick={() => executeAiAction('refine')}>
                       <Sparkles size={14} />
                       Refine
@@ -1466,21 +1426,6 @@ function EditorContent() {
           gap: 0.5rem;
         }
 
-        .memories-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 10px;
-          background: linear-gradient(135deg, var(--primary), var(--accent));
-          border-radius: var(--radius-full);
-          font-size: 0.7rem;
-          font-weight: 700;
-          color: white;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          width: fit-content;
-        }
-
         .memories-preview {
           flex: 1;
           padding: 1.5rem;
@@ -1660,6 +1605,32 @@ function EditorContent() {
         .btn-ai-trigger:hover {
           transform: translateY(-2px);
           box-shadow: 0 8px 20px -5px var(--primary-glow);
+        }
+
+        .btn-capture {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0.6rem 1.25rem;
+          background: var(--accent);
+          border: none;
+          border-radius: var(--radius-md);
+          color: white;
+          font-weight: 700;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-capture:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px -5px var(--accent);
+        }
+
+        .btn-capture:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+          transform: none;
         }
 
         .empty-editor-state {
