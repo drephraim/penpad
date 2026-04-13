@@ -149,7 +149,7 @@ function EditorContent() {
         const parsed = JSON.parse(stored)
         const noteList = parsed.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
         
-        const hasMemories = noteList.some(n => n.title === 'Memories')
+        const hasMemories = noteList.some((n: Note) => n.title === 'Memories')
         
         if (!hasMemories) {
           const memoriesNote: Note = {
@@ -171,10 +171,10 @@ function EditorContent() {
         }
         
         const finalList = noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
-        const memoriesIdx = finalList.findIndex(n => n.title === 'Memories')
+        const memoriesIdx = finalList.findIndex((n: Note) => n.title === 'Memories')
         if (memoriesIdx > 0) {
           finalList.splice(memoriesIdx, 1)
-          finalList.unshift(noteList.find(n => n.title === 'Memories')!)
+          finalList.unshift(noteList.find((n: Note) => n.title === 'Memories')!)
         }
         
         setNotes(finalList)
@@ -407,7 +407,7 @@ function EditorContent() {
       memoriesManager.addChapter(newNote.id, newNote.title, newNote.content)
       
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      let noteList: Note[] = stored ? JSON.parse(stored) : []
+      const noteList: Note[] = stored ? JSON.parse(stored) : []
       noteList.unshift(newNote)
       
       const memoriesIdx = noteList.findIndex(n => n.title === 'Memories')
@@ -820,47 +820,6 @@ function EditorContent() {
                     </button>
                   </div>
                 )}
-              </div>
-            </div>
-                ) : (
-                  <div className="markdown-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {activeNote.content || "_Start writing to see preview..._"}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </div>
-              
-              <div className="editor-status-bar">
-                <div className="status-left">
-                  <span className="word-count">
-                    <FileText size={14} />
-                    {wordCount} words
-                  </span>
-                  {localIntel && (
-                    <span className="ai-status badge badge-success">
-                      <ShieldCheck size={12} />
-                      AI Active
-                    </span>
-                  )}
-                  {isLearning && (
-                    <span className="learning-indicator">
-                      <Zap size={12} className="pulse" />
-                      Learning
-                    </span>
-                  )}
-                </div>
-                
-                <div className="status-right">
-                  <button className="btn-action" onClick={() => executeAiAction('refine')}>
-                    <Sparkles size={14} />
-                    Refine
-                  </button>
-                  <button className="btn-ai-trigger" onClick={() => setShowAiPanel(true)}>
-                    <Brain size={16} />
-                    Intelligence Hub
-                  </button>
-                </div>
               </div>
             </div>
           ) : (

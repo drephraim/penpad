@@ -94,7 +94,7 @@ export class MemoriesManager {
       }
     }
 
-    for (const [name, data] of seen) {
+    for (const [name, data] of Array.from(seen.entries())) {
       if (data.mentions >= 1) {
         this.data.characters.push({
           name,
@@ -129,7 +129,7 @@ export class MemoriesManager {
       }
     }
 
-    for (const [name, data] of seen) {
+    for (const [name, data] of Array.from(seen.entries())) {
       if (data.mentions >= 1) {
         this.data.locations.push({
           name,
@@ -196,7 +196,7 @@ export class MemoriesManager {
       }
     }
 
-    for (const [, data] of seen) {
+    for (const [, data] of Array.from(seen.entries())) {
       this.data.plotThreads.push({
         thread: data.text,
         introduced: data.chapter,
@@ -216,7 +216,7 @@ export class MemoriesManager {
 
   private getChapterForText(content: string, text: string): string {
     const chapters = Array.from(this.chapters.entries())
-    for (const [id, chapter] of chapters) {
+    for (const [, chapter] of chapters) {
       if (chapter.content.includes(text.substring(0, 30))) {
         return chapter.title
       }
