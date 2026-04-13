@@ -1539,18 +1539,16 @@ function EditorContent() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0.75rem 0;
+          padding: 0.5rem 0;
           flex-shrink: 0;
           border-top: 1px solid var(--surface-border);
-          flex-wrap: wrap;
           gap: 0.5rem;
         }
 
         .status-left {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
-          flex-wrap: wrap;
+          gap: 1rem;
         }
 
         .word-count {
@@ -1559,17 +1557,19 @@ function EditorContent() {
           gap: 6px;
           color: var(--text-dim);
           font-size: 0.85rem;
+          white-space: nowrap;
         }
 
         .word-progress {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
+          white-space: nowrap;
         }
 
         .word-progress-bar {
-          width: 120px;
-          height: 6px;
+          width: 80px;
+          height: 4px;
           background: var(--surface);
           border-radius: var(--radius-full);
           overflow: hidden;
