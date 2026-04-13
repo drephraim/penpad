@@ -3,7 +3,7 @@
 import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
-import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2 } from "lucide-react"
+import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2 } from "lucide-react"
 
 interface Project {
   id: string
@@ -20,6 +20,8 @@ export default function Dashboard() {
   const [newProjectName, setNewProjectName] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string; projectName: string }>({ show: false, projectId: '', projectName: '' })
+  const [editModal, setEditModal] = useState<{ show: boolean; projectId: string; name: string }>({ show: false, projectId: '', name: '' })
+  const [chapterCounts, setChapterCounts] = useState<Record<string, number>>({})
 
   const fetchProjects = useCallback(async () => {
     if (!user) {
@@ -34,6 +36,18 @@ export default function Dashboard() {
         const timeB = typeof b.lastUpdated === 'number' ? b.lastUpdated : 0
         return timeB - timeA
       })
+      
+      const counts: Record<string, number> = {}
+      for (const project of projectList) {
+        const notesStored = localStorage.getItem(`penpad_notes_${project.id}`)
+        if (notesStored) {
+          const notes = JSON.parse(notesStored)
+          counts[project.id] = notes.length
+        } else {
+          counts[project.id] = 0
+        }
+      }
+      setChapterCounts(counts)
       setProjects(projectList)
     } catch (e) {
       console.error("Failed to parse projects:", e)
@@ -82,6 +96,23 @@ export default function Dashboard() {
       setDeleteModal({ show: false, projectId: '', projectName: '' })
     } catch (e) {
       console.error("Error deleting project:", e)
+    }
+  }
+
+  const editProject = async () => {
+    if (!user || !editModal.projectId || !editModal.name.trim()) return
+    try {
+      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
+      const projectList: Project[] = stored ? JSON.parse(stored) : []
+      const idx = projectList.findIndex(p => p.id === editModal.projectId)
+      if (idx >= 0) {
+        projectList[idx].name = editModal.name.trim()
+        localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
+        setProjects([...projectList])
+      }
+      setEditModal({ show: false, projectId: '', name: '' })
+    } catch (e) {
+      console.error("Error editing project:", e)
     }
   }
 
@@ -228,6 +259,13 @@ export default function Dashboard() {
                   <div className="project-menu">
                     <button 
                       className="btn-menu"
+                      onClick={(e) => { e.stopPropagation(); setEditModal({ show: true, projectId: project.id, name: project.name }) }}
+                      title="Edit manuscript"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      className="btn-menu"
                       onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, projectId: project.id, projectName: project.name }) }}
                       title="Delete manuscript"
                     >
@@ -241,7 +279,7 @@ export default function Dashboard() {
                     <div className="project-status">
                       <span className="status status-success">
                         <span className="status-dot"></span>
-                        Active
+                        {chapterCounts[project.id] || 0} chapter{(chapterCounts[project.id] || 0) !== 1 ? 's' : ''}
                       </span>
                     </div>
                     <h3 className="project-title">{project.name}</h3>
@@ -291,6 +329,30 @@ export default function Dashboard() {
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, projectId: '', projectName: '' })}>Cancel</button>
               <button className="btn btn-danger" onClick={deleteProject}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editModal.show && (
+        <div className="modal-overlay" onClick={() => setEditModal({ show: false, projectId: '', name: '' })}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Manuscript</h2>
+              <p className="modal-description">Rename your manuscript</p>
+            </div>
+            <input 
+              type="text" 
+              className="input"
+              placeholder="Manuscript name"
+              value={editModal.name}
+              onChange={(e) => setEditModal({ ...editModal, name: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && editProject()}
+              autoFocus
+            />
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setEditModal({ show: false, projectId: '', name: '' })}>Cancel</button>
+              <button className="btn btn-primary" onClick={editProject}>Save</button>
             </div>
           </div>
         </div>

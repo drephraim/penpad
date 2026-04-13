@@ -46,7 +46,7 @@ function EditorContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   
   const [fontFamily, setFontFamily] = useState('var(--font-inter)')
-  const [fontSize, setFontSize] = useState(24)
+  const [fontSize, setFontSize] = useState(18)
   
   const [isLoadingNotes, setIsLoadingNotes] = useState(false)
   const [showAiPanel, setShowAiPanel] = useState(false)
@@ -489,6 +489,8 @@ function EditorContent() {
   )
 
   const wordCount = activeNote?.content ? activeNote.content.split(/\s+/).filter(Boolean).length : 0
+  const wordGoal = 1200
+  const progressPercent = Math.min(100, Math.round((wordCount / wordGoal) * 100))
 
   if (loading) return (
     <div className="loading-screen">
@@ -738,8 +740,17 @@ function EditorContent() {
                 <div className="status-left">
                   <span className="word-count">
                     <FileText size={14} />
-                    {wordCount} words
+                    {wordCount}/{wordGoal} words
                   </span>
+                  <div className="word-progress">
+                    <div className="word-progress-bar">
+                      <div 
+                        className="word-progress-fill" 
+                        style={{ width: `${progressPercent}%`, backgroundColor: progressPercent >= 100 ? 'var(--success)' : 'var(--primary)' }}
+                      ></div>
+                    </div>
+                    <span className="word-progress-text">{progressPercent}%</span>
+                  </div>
                   {localIntel && !isMemoryChapter && (
                     <span className="ai-status badge badge-success">
                       <ShieldCheck size={12} />
@@ -1489,11 +1500,11 @@ function EditorContent() {
           background: transparent;
           border: none;
           color: var(--text-secondary);
-          line-height: 2;
+          line-height: 1.0;
           resize: none;
           outline: none;
           font-family: var(--font-inter);
-          min-height: 500px;
+          min-height: 1000px;
           position: relative;
           z-index: 1;
         }
@@ -1544,6 +1555,31 @@ function EditorContent() {
           gap: 6px;
           color: var(--text-dim);
           font-size: 0.85rem;
+        }
+
+        .word-progress {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .word-progress-bar {
+          width: 120px;
+          height: 6px;
+          background: var(--surface);
+          border-radius: var(--radius-full);
+          overflow: hidden;
+        }
+
+        .word-progress-fill {
+          height: 100%;
+          transition: width 0.3s ease;
+        }
+
+        .word-progress-text {
+          font-size: 0.75rem;
+          color: var(--text-dim);
+          min-width: 35px;
         }
 
         .ai-status {
