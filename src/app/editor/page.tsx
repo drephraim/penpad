@@ -404,24 +404,21 @@ function EditorContent() {
         updatedAt: now,
       }
       
-      memoriesManager.addChapter(newNote.id, newNote.title, newNote.content)
-      
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
       noteList.unshift(newNote)
       
-      const memoriesIdx = noteList.findIndex(n => n.title === 'Memories')
+      const memoriesIdx = noteList.findIndex((n: Note) => n.title === 'Memories')
       if (memoriesIdx > -1) {
-        const memoriesNote = noteList.splice(memoriesIdx, 1)[0]
-        memoriesNote.content = memoriesManager.generateMarkdown()
-        noteList.push(memoriesNote)
+        noteList[memoriesIdx].content = memoriesManager.generateMarkdown()
       }
       
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
       
       setNotes(prev => {
-        const updated = [newNote, ...prev.filter(n => n.title !== 'Memories')]
-        const memories = prev.find(n => n.title === 'Memories')
+        const filtered = prev.filter((n: Note) => n.title !== 'Memories')
+        const memories = prev.find((n: Note) => n.title === 'Memories')
+        const updated = [newNote, ...filtered]
         if (memories) {
           memories.content = memoriesManager.generateMarkdown()
           updated.push(memories)
@@ -441,18 +438,18 @@ function EditorContent() {
       memoriesManager.removeChapter(deleteModal.noteId)
       
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      let noteList: Note[] = stored ? JSON.parse(stored) : []
-      noteList = noteList.filter(n => n.id !== deleteModal.noteId)
+      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      const filtered = noteList.filter((n: Note) => n.id !== deleteModal.noteId)
       
-      const memoriesIdx = noteList.findIndex(n => n.title === 'Memories')
+      const memoriesIdx = filtered.findIndex((n: Note) => n.title === 'Memories')
       if (memoriesIdx > -1) {
-        noteList[memoriesIdx].content = memoriesManager.generateMarkdown()
+        filtered[memoriesIdx].content = memoriesManager.generateMarkdown()
       }
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-      setNotes(noteList)
+      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
+      setNotes(filtered)
       if (activeNoteId === deleteModal.noteId) {
-        setActiveNoteId(noteList.length > 0 ? noteList[0].id : null)
+        setActiveNoteId(filtered.length > 0 ? filtered[0].id : null)
       }
       setDeleteModal({ show: false, noteId: '', noteTitle: '' })
     } catch (e) {
@@ -462,16 +459,16 @@ function EditorContent() {
 
   const updateActiveNote = (updates: Partial<Note>) => {
     if (!activeNoteId) return
-    const updatedNotes = notes.map(n => 
+    const updatedNotes = notes.map((n: Note) => 
       n.id === activeNoteId ? { ...n, ...updates, updatedAt: Date.now() } : n
     )
     setNotes(updatedNotes)
     
-    const updatedNote = updatedNotes.find(n => n.id === activeNoteId)
+    const updatedNote = updatedNotes.find((n: Note) => n.id === activeNoteId)
     if (updatedNote && updatedNote.title !== 'Memories' && !isMemoriesChapter) {
       memoriesManager.updateChapter(updatedNote.id, updatedNote.title, updatedNote.content)
       
-      const memoriesIdx = updatedNotes.findIndex(n => n.title === 'Memories')
+      const memoriesIdx = updatedNotes.findIndex((n: Note) => n.title === 'Memories')
       if (memoriesIdx > -1) {
         updatedNotes[memoriesIdx].content = memoriesManager.generateMarkdown()
         setNotes([...updatedNotes])
@@ -479,7 +476,7 @@ function EditorContent() {
         const stored = localStorage.getItem(`penpad_notes_${projectId}`)
         if (stored) {
           const noteList: Note[] = JSON.parse(stored)
-          const storedMemoriesIdx = noteList.findIndex(n => n.title === 'Memories')
+          const storedMemoriesIdx = noteList.findIndex((n: Note) => n.title === 'Memories')
           if (storedMemoriesIdx > -1) {
             noteList[storedMemoriesIdx].content = memoriesManager.generateMarkdown()
             localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))

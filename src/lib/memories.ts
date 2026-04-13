@@ -43,42 +43,59 @@ export class MemoriesManager {
   private chapters: Map<string, { title: string; content: string }> = new Map()
 
   addChapter(id: string, title: string, content: string) {
-    this.chapters.set(id, { title, content })
-    this.analyzeAll()
+    try {
+      this.chapters.set(id, { title, content })
+      this.analyzeAll()
+    } catch (e) {
+      console.error("Error adding chapter to memories:", e)
+    }
   }
 
   updateChapter(id: string, title: string, content: string) {
-    if (this.chapters.has(id)) {
-      this.chapters.set(id, { title, content })
-      this.analyzeAll()
+    try {
+      if (this.chapters.has(id)) {
+        this.chapters.set(id, { title, content })
+        this.analyzeAll()
+      }
+    } catch (e) {
+      console.error("Error updating chapter in memories:", e)
     }
   }
 
   removeChapter(id: string) {
-    this.chapters.delete(id)
-    this.analyzeAll()
+    try {
+      this.chapters.delete(id)
+      this.analyzeAll()
+    } catch (e) {
+      console.error("Error removing chapter from memories:", e)
+    }
   }
 
   private analyzeAll() {
-    this.data = {
-      characters: [],
-      locations: [],
-      timeline: [],
-      plotThreads: [],
-      customNotes: this.data.customNotes
+    try {
+      this.data = {
+        characters: [],
+        locations: [],
+        timeline: [],
+        plotThreads: [],
+        customNotes: this.data.customNotes
+      }
+
+      const allContent = Array.from(this.chapters.values())
+        .map(c => c.content)
+        .join('\n\n')
+
+      this.extractCharacters(allContent)
+      this.extractLocations(allContent)
+      this.extractTimeline(allContent)
+      this.extractPlotThreads(allContent)
+    } catch (e) {
+      console.error("Error analyzing memories:", e)
     }
-
-    const allContent = Array.from(this.chapters.values())
-      .map(c => c.content)
-      .join('\n\n')
-
-    this.extractCharacters(allContent)
-    this.extractLocations(allContent)
-    this.extractTimeline(allContent)
-    this.extractPlotThreads(allContent)
   }
 
   private extractCharacters(content: string) {
+    try {
     const capitalizedWords = content.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) || []
     const seen = new Map<string, { chapter: string; mentions: number }>()
 
@@ -105,9 +122,13 @@ export class MemoriesManager {
     }
 
     this.data.characters.sort((a, b) => b.mentions - a.mentions)
+    } catch (e) {
+      console.error("Error extracting characters:", e)
+    }
   }
 
   private extractLocations(content: string) {
+    try {
     const locationPatterns = [
       /(?:in|at|to|from|on)\s+([A-Z][a-z]+(?:\s+[A-Z]?[a-z]+)*(?:\s+(?:City|Town|Village|Forest|Mountain|River|Land|World|Sea|Ocean|Castle|Palace|Tower|House|Home|Cave|Castle))\b)/gi,
       /(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z]?[a-z]+)*\s+(?:City|Town|Village|Forest|Mountain|River|Land|World|Sea|Ocean|Castle|Palace|Tower|House|Home|Cave))\b/gi
@@ -140,9 +161,13 @@ export class MemoriesManager {
     }
 
     this.data.locations.sort((a, b) => b.mentions - a.mentions)
+    } catch (e) {
+      console.error("Error extracting locations:", e)
+    }
   }
 
   private extractTimeline(content: string) {
+    try {
     const timePatterns = [
       /((?:Day|The\s+\w+\s+day|Morning|Afternoon|Evening|Night|Midnight|Dawn|Dusk)\s+\d*[\w\s]*)/gi,
       /((?:Last|This|Next)\s+\w+)/gi,
@@ -167,9 +192,13 @@ export class MemoriesManager {
         }
       }
     }
+    } catch (e) {
+      console.error("Error extracting timeline:", e)
+    }
   }
 
   private extractPlotThreads(content: string) {
+    try {
     const threadPatterns = [
       /(?:remember|never forget|must find|need to|must return|must deliver|searching for|looking for|hunt for|hunting)/gi,
       /(?:secret|mystery|hidden|forgotten|lost|burielf|ancient|prophecy|prediction)/gi,
@@ -202,6 +231,9 @@ export class MemoriesManager {
         introduced: data.chapter,
         status: 'open'
       })
+    }
+    } catch (e) {
+      console.error("Error extracting plot threads:", e)
     }
   }
 
@@ -239,56 +271,61 @@ export class MemoriesManager {
   }
 
   generateMarkdown(): string {
-    const lines: string[] = ['# Memories\n', '_Auto-generated notes from your manuscript_\n']
+    try {
+      const lines: string[] = ['# Memories\n', '_Auto-generated notes from your manuscript_\n']
 
-    if (this.data.characters.length > 0) {
-      lines.push('## Characters\n')
-      for (const char of this.data.characters.slice(0, 20)) {
-        lines.push(`- **${char.name}**: First mentioned in *${char.firstMentioned}* (${char.mentions} mentions)`)
+      if (this.data.characters.length > 0) {
+        lines.push('## Characters\n')
+        for (const char of this.data.characters.slice(0, 20)) {
+          lines.push(`- **${char.name}**: First mentioned in *${char.firstMentioned}* (${char.mentions} mentions)`)
+        }
+        lines.push('')
       }
-      lines.push('')
-    }
 
-    if (this.data.locations.length > 0) {
-      lines.push('## Locations\n')
-      for (const loc of this.data.locations.slice(0, 15)) {
-        lines.push(`- **${loc.name}**: First appears in *${loc.firstMentioned}* (${loc.mentions} mentions)`)
+      if (this.data.locations.length > 0) {
+        lines.push('## Locations\n')
+        for (const loc of this.data.locations.slice(0, 15)) {
+          lines.push(`- **${loc.name}**: First appears in *${loc.firstMentioned}* (${loc.mentions} mentions)`)
+        }
+        lines.push('')
       }
-      lines.push('')
-    }
 
-    if (this.data.timeline.length > 0) {
-      lines.push('## Timeline\n')
-      for (const event of this.data.timeline.slice(0, 15)) {
-        lines.push(`- ${event.event} (${event.chapter})`)
+      if (this.data.timeline.length > 0) {
+        lines.push('## Timeline\n')
+        for (const event of this.data.timeline.slice(0, 15)) {
+          lines.push(`- ${event.event} (${event.chapter})`)
+        }
+        lines.push('')
       }
-      lines.push('')
-    }
 
-    if (this.data.plotThreads.length > 0) {
-      lines.push('## Plot Threads\n')
-      for (const thread of this.data.plotThreads.slice(0, 10)) {
-        lines.push(`- _${thread.thread}_ — introduced in *${thread.introduced}* [${thread.status}]`)
+      if (this.data.plotThreads.length > 0) {
+        lines.push('## Plot Threads\n')
+        for (const thread of this.data.plotThreads.slice(0, 10)) {
+          lines.push(`- _${thread.thread}_ — introduced in *${thread.introduced}* [${thread.status}]`)
+        }
+        lines.push('')
       }
-      lines.push('')
-    }
 
-    if (this.data.customNotes.length > 0) {
-      lines.push('## Custom Notes\n')
-      for (const note of this.data.customNotes) {
-        lines.push(`- ${note}`)
+      if (this.data.customNotes.length > 0) {
+        lines.push('## Custom Notes\n')
+        for (const note of this.data.customNotes) {
+          lines.push(`- ${note}`)
+        }
+        lines.push('')
       }
-      lines.push('')
+
+      if (lines.length === 2) {
+        lines.push('_No memories captured yet. Start writing to see character names, locations, and plot elements appear here._\n')
+      }
+
+      lines.push('---\n')
+      lines.push(`_Last updated: ${new Date().toLocaleDateString()}_`)
+
+      return lines.join('\n')
+    } catch (e) {
+      console.error("Error generating markdown:", e)
+      return '# Memories\n\n_Error generating memories. Please try again._'
     }
-
-    if (lines.length === 2) {
-      lines.push('_No memories captured yet. Start writing to see character names, locations, and plot elements appear here._\n')
-    }
-
-    lines.push('---\n')
-    lines.push(`_Last updated: ${new Date().toLocaleDateString()}_`)
-
-    return lines.join('\n')
   }
 
   addCustomNote(note: string) {
