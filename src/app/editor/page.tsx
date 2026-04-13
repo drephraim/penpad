@@ -8,7 +8,8 @@ import {
   Eye, Edit3, Maximize2, Minimize2,
   ArrowLeft, Loader2, FileText,
   Feather, ShieldCheck, Zap,
-  X, Check, AlertCircle, Trash2
+  X, Check, AlertCircle, Trash2,
+  Download, Save
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import ReactMarkdown from 'react-markdown'
@@ -53,7 +54,12 @@ function EditorContent() {
   const [isLearning, setIsLearning] = useState(false)
   const [highlightedPosition, setHighlightedPosition] = useState<{ start: number; end: number } | null>(null)
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; noteId: string; noteTitle: string }>({ show: false, noteId: '', noteTitle: '' })
+  const [savedChapters, setSavedChapters] = useState<Set<string>>(new Set())
+  const [exportModal, setExportModal] = useState(false)
+  const [exportProgress, setExportProgress] = useState(0)
+  const [isExporting, setIsExporting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const scrollToPosition = (start: number, end: number) => {
     const textarea = textareaRef.current
@@ -227,33 +233,69 @@ function EditorContent() {
     }
   }, [activeNote?.content, localIntel])
 
+  const sanitizeFilename = (name: string): string => {
+    return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
+  }
+
+  const saveSingleChapterToFolder = useCallback(async (note: Note, targetDir: FileSystemDirectoryHandle) => {
+    try {
+      const safeTitle = sanitizeFilename(note.title)
+      const fileHandle = await targetDir.getFileHandle(`${safeTitle}.txt`, { create: true })
+      const writable = await fileHandle.createWritable()
+      await writable.write(note.content || "")
+      await writable.close()
+      setSavedChapters(prev => new Set(prev).add(note.id))
+    } catch (e) {
+      console.error("Failed to save chapter:", e)
+    }
+  }, [])
+
   const saveCurrentChapterToFolder = useCallback(async () => {
     if (!activeNote) return
     
-    let targetDirHandle = dirHandle
-    if (!targetDirHandle) {
+    let targetDir = dirHandle
+    if (!targetDir) {
       try {
         // @ts-expect-error Types for File System API might not be fully present
-        targetDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' })
-        setDirHandle(targetDirHandle)
+        targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
+        setDirHandle(targetDir)
       } catch (e) {
         console.error("User cancelled directory picker", e)
         return
       }
     }
     
-    try {
-      let safeTitle = activeNote.title ? activeNote.title.replace(/[\\/:*?"<>|]/g, '') : 'Untitled'
-      if (!safeTitle) safeTitle = 'Untitled'
+    await saveSingleChapterToFolder(activeNote, targetDir)
+  }, [activeNote, dirHandle, saveSingleChapterToFolder])
 
-      const fileHandle = await targetDirHandle.getFileHandle(`${safeTitle}.txt`, { create: true })
-      const writable = await fileHandle.createWritable()
-      await writable.write(activeNote.content || "")
-      await writable.close()
-    } catch (e: unknown) {
-      console.error("Failed to save chapter to folder:", e)
+  const exportManuscriptToFolder = async () => {
+    if (notes.length === 0) return
+    
+    let targetDir = dirHandle
+    if (!targetDir) {
+      try {
+        // @ts-expect-error Types for File System API might not be fully present
+        targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
+        setDirHandle(targetDir)
+      } catch (e) {
+        console.error("User cancelled directory picker", e)
+        return
+      }
     }
-  }, [activeNote, dirHandle])
+    
+    setIsExporting(true)
+    setExportProgress(0)
+    
+    const sortedNotes = [...notes].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
+    
+    for (let i = 0; i < sortedNotes.length; i++) {
+      await saveSingleChapterToFolder(sortedNotes[i], targetDir)
+      setExportProgress(Math.round(((i + 1) / sortedNotes.length) * 100))
+    }
+    
+    setIsExporting(false)
+    setExportModal(false)
+  }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -268,6 +310,26 @@ function EditorContent() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [saveCurrentChapterToFolder])
+
+  useEffect(() => {
+    if (!activeNote || !dirHandle) return
+    
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+    }
+    
+    autoSaveTimerRef.current = setTimeout(async () => {
+      if (activeNote && dirHandle && activeNote.content) {
+        await saveSingleChapterToFolder(activeNote, dirHandle)
+      }
+    }, 5000)
+    
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [activeNote?.content, dirHandle, saveSingleChapterToFolder])
 
   const generateChapterTitle = (existingNotes: Note[]): string => {
     const chapterPattern = /^chapter\s*(\d+)$/i
@@ -506,6 +568,10 @@ function EditorContent() {
                 <Plus size={16} />
                 New Chapter
               </button>
+              <button className="btn-export" onClick={() => setExportModal(true)}>
+                <Download size={16} />
+                Export Manuscript
+              </button>
             </div>
             
             <div className="sidebar-search">
@@ -528,13 +594,34 @@ function EditorContent() {
                 >
                   <FileText size={16} />
                   <span className="chapter-title">{note.title || 'Untitled'}</span>
-                  <button 
-                    className="btn-delete-chapter"
-                    onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
-                    title="Delete chapter"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="chapter-actions">
+                    <button 
+                      className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
+                      onClick={async (e) => { 
+                        e.stopPropagation(); 
+                        if (dirHandle) {
+                          await saveSingleChapterToFolder(note, dirHandle)
+                        } else {
+                          try {
+                            // @ts-expect-error Types for File System API might not be fully present
+                            const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                            setDirHandle(dir)
+                            await saveSingleChapterToFolder(note, dir)
+                          } catch (err) { console.error(err) }
+                        }
+                      }}
+                      title="Save chapter"
+                    >
+                      <Save size={12} />
+                    </button>
+                    <button 
+                      className="btn-delete-chapter"
+                      onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
+                      title="Delete chapter"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -758,6 +845,35 @@ function EditorContent() {
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>Cancel</button>
                 <button className="btn btn-danger" onClick={deleteNote}>Delete</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {exportModal && (
+          <div className="modal-overlay" onClick={() => !isExporting && setExportModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Export Manuscript</h2>
+                <p className="modal-description">
+                  {isExporting 
+                    ? `Exporting chapters... ${exportProgress}%` 
+                    : `This will export all ${notes.length} chapters as text files to a folder on your computer.`}
+                </p>
+              </div>
+              {isExporting && (
+                <div className="export-progress">
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${exportProgress}%` }}></div>
+                  </div>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setExportModal(false)} disabled={isExporting}>Cancel</button>
+                <button className="btn btn-primary" onClick={exportManuscriptToFolder} disabled={isExporting}>
+                  {isExporting ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+                  {isExporting ? 'Exporting...' : 'Export'}
+                </button>
               </div>
             </div>
           </div>
@@ -1049,8 +1165,84 @@ function EditorContent() {
           transition: var(--transition);
         }
 
-        .chapter-item:hover .btn-delete-chapter {
+        .chapter-item:hover .btn-delete-chapter,
+        .chapter-item:hover .btn-save-chapter {
           opacity: 1;
+        }
+
+        .chapter-actions {
+          display: flex;
+          gap: 4px;
+          opacity: 0;
+          transition: var(--transition);
+        }
+
+        .chapter-item:hover .chapter-actions {
+          opacity: 1;
+        }
+
+        .btn-save-chapter {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-sm);
+          color: var(--text-dim);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-save-chapter:hover {
+          background: var(--success-light);
+          color: var(--success);
+        }
+
+        .btn-save-chapter.saved {
+          color: var(--success);
+        }
+
+        .btn-export {
+          width: 100%;
+          padding: 0.75rem;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          font-weight: 600;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: var(--transition);
+          color: var(--text-secondary);
+          margin-top: 0.5rem;
+        }
+
+        .btn-export:hover {
+          border-color: var(--primary);
+          color: var(--primary-hover);
+        }
+
+        .export-progress {
+          margin: 1.5rem 0;
+        }
+
+        .progress-bar {
+          height: 8px;
+          background: var(--surface);
+          border-radius: var(--radius-full);
+          overflow: hidden;
+        }
+
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, var(--primary), var(--accent));
+          transition: width 0.3s ease;
+        }
         }
 
         .btn-delete-chapter:hover {
