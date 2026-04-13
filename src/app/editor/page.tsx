@@ -337,7 +337,7 @@ function EditorContent() {
   }, [activeNote?.content, dirHandle, saveSingleChapterToFolder])
 
   const generateChapterTitle = (existingNotes: Note[]): string => {
-    const chapterPattern = /^chapter\s*(\d+)$/i
+    const chapterPattern = /^chapter\s*(\d+)/i
     let maxNumber = 0
     
     for (const note of existingNotes) {
