@@ -268,13 +268,30 @@ function EditorContent() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [saveCurrentChapterToFolder])
 
+  const generateChapterTitle = (existingNotes: Note[]): string => {
+    const chapterPattern = /^chapter\s*(\d+)$/i
+    let maxNumber = 0
+    
+    for (const note of existingNotes) {
+      const match = note.title.match(chapterPattern)
+      if (match) {
+        const num = parseInt(match[1], 10)
+        if (num > maxNumber) maxNumber = num
+      }
+    }
+    
+    const nextNumber = maxNumber + 1
+    return `Chapter ${nextNumber.toString().padStart(2, '0')}`
+  }
+
   const createNewNote = async () => {
     if (!user || !projectId) return
     try {
       const now = Date.now()
+      const newTitle = generateChapterTitle(notes)
       const newNote: Note = {
         id: crypto.randomUUID(),
-        title: "New Chapter",
+        title: newTitle,
         content: "",
         createdAt: now,
         updatedAt: now,
