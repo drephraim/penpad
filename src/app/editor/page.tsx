@@ -119,7 +119,7 @@ function EditorContent() {
     })
   }, [])
 
-  const activeNote = notes.find(n => n.id === activeNoteId)
+  const activeNote = notes.find(n => n && n.id === activeNoteId)
 
   const fetchProjectName = useCallback(async () => {
     if (!user || !projectId) return
@@ -171,7 +171,7 @@ function EditorContent() {
         }
         
         const finalList = noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
-        const memoriesIdx = finalList.findIndex((n: Note) => n.title === 'Memories')
+        const memoriesIdx = finalList.findIndex((n: Note) => n && n.title === 'Memories')
         if (memoriesIdx > 0) {
           finalList.splice(memoriesIdx, 1)
           finalList.unshift(noteList.find((n: Note) => n.title === 'Memories')!)
@@ -408,7 +408,7 @@ function EditorContent() {
       const noteList: Note[] = stored ? JSON.parse(stored) : []
       noteList.unshift(newNote)
       
-      const memoriesIdx = noteList.findIndex((n: Note) => n.title === 'Memories')
+      const memoriesIdx = noteList.findIndex((n: Note) => n && n.title === 'Memories')
       if (memoriesIdx > -1) {
         noteList[memoriesIdx].content = memoriesManager.generateMarkdown()
       }
@@ -416,8 +416,9 @@ function EditorContent() {
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
       
       setNotes(prev => {
-        const filtered = prev.filter((n: Note) => n.title !== 'Memories')
-        const memories = prev.find((n: Note) => n.title === 'Memories')
+        if (!Array.isArray(prev)) return [newNote]
+        const filtered = prev.filter((n: Note) => n && n.title !== 'Memories')
+        const memories = prev.find((n: Note) => n && n.title === 'Memories')
         const updated = [newNote, ...filtered]
         if (memories) {
           memories.content = memoriesManager.generateMarkdown()
@@ -439,7 +440,7 @@ function EditorContent() {
       
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
-      const filtered = noteList.filter((n: Note) => n.id !== deleteModal.noteId)
+      const filtered = noteList.filter((n: Note) => n && n.id !== deleteModal.noteId)
       
       const memoriesIdx = filtered.findIndex((n: Note) => n.title === 'Memories')
       if (memoriesIdx > -1) {
@@ -460,15 +461,15 @@ function EditorContent() {
   const updateActiveNote = (updates: Partial<Note>) => {
     if (!activeNoteId) return
     const updatedNotes = notes.map((n: Note) => 
-      n.id === activeNoteId ? { ...n, ...updates, updatedAt: Date.now() } : n
+      n && n.id === activeNoteId ? { ...n, ...updates, updatedAt: Date.now() } : n
     )
     setNotes(updatedNotes)
     
-    const updatedNote = updatedNotes.find((n: Note) => n.id === activeNoteId)
+    const updatedNote = updatedNotes.find((n: Note) => n && n.id === activeNoteId)
     if (updatedNote && updatedNote.title !== 'Memories' && !isMemoriesChapter) {
       memoriesManager.updateChapter(updatedNote.id, updatedNote.title, updatedNote.content)
       
-      const memoriesIdx = updatedNotes.findIndex((n: Note) => n.title === 'Memories')
+      const memoriesIdx = updatedNotes.findIndex((n: Note) => n && n.title === 'Memories')
       if (memoriesIdx > -1) {
         updatedNotes[memoriesIdx].content = memoriesManager.generateMarkdown()
         setNotes([...updatedNotes])
@@ -476,7 +477,7 @@ function EditorContent() {
         const stored = localStorage.getItem(`penpad_notes_${projectId}`)
         if (stored) {
           const noteList: Note[] = JSON.parse(stored)
-          const storedMemoriesIdx = noteList.findIndex((n: Note) => n.title === 'Memories')
+          const storedMemoriesIdx = noteList.findIndex((n: Note) => n && n.title === 'Memories')
           if (storedMemoriesIdx > -1) {
             noteList[storedMemoriesIdx].content = memoriesManager.generateMarkdown()
             localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
@@ -523,7 +524,7 @@ function EditorContent() {
     }
   }
 
-  const filteredNotes = notes.filter(n => 
+  const filteredNotes = notes.filter((n: Note) => n &&
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
