@@ -753,7 +753,7 @@ function EditorContent() {
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h2 className="modal-title">Delete Chapter</h2>
-                <p className="modal-description">Are you sure you want to delete "{deleteModal.noteTitle || 'Untitled'}"? This action cannot be undone.</p>
+                <p className="modal-description">Are you sure you want to delete &ldquo;{deleteModal.noteTitle || 'Untitled'}&rdquo;? This action cannot be undone.</p>
               </div>
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>Cancel</button>

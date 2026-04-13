@@ -3,7 +3,7 @@
 import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
-import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, MoreVertical } from "lucide-react"
+import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2 } from "lucide-react"
 
 interface Project {
   id: string
@@ -286,7 +286,7 @@ export default function Dashboard() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Delete Manuscript</h2>
-              <p className="modal-description">Are you sure you want to delete "{deleteModal.projectName}"? This action cannot be undone.</p>
+              <p className="modal-description">Are you sure you want to delete &ldquo;{deleteModal.projectName}&rdquo;? This action cannot be undone.</p>
             </div>
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, projectId: '', projectName: '' })}>Cancel</button>
