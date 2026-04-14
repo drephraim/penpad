@@ -327,7 +327,7 @@ function EditorContent() {
       if (activeNote && dirHandle && activeNote.content) {
         await saveSingleChapterToFolder(activeNote, dirHandle)
       }
-    }, 5000)
+    }, 2000)
     
     return () => {
       if (autoSaveTimerRef.current) {
