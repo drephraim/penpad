@@ -2103,8 +2103,14 @@ function EditorContent() {
         @media (max-width: 768px) {
           .editor-container {
             height: 100dvh;
+            display: flex;
+            flex-direction: column;
+          }
+          .editor-body {
+            flex: 1;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
           }
           .editor-sidebar,
           .ai-panel {
@@ -2112,9 +2118,17 @@ function EditorContent() {
           }
           .editor-workspace {
             padding: 1.5rem;
+            overflow: visible;
+            flex: none;
           }
           .header-center {
             display: none;
+          }
+          .editor-title-input {
+            font-size: 1.5rem;
+          }
+          .editor-textarea {
+            min-height: calc(100dvh - 200px);
           }
         }
       `}</style>
