@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import { MemoriesManager } from '@/lib/memories'
+import { restoreDirectoryHandleForProject, saveDirectoryHandleForProject } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -44,21 +45,13 @@ function EditorContent() {
   const [dirHandle, setDirHandle] = useState<any>(null)
 
   const saveFolderHandleToProject = useCallback(async (handle: FileSystemDirectoryHandle) => {
-    if (!user || !projectId) return
+    if (!projectId) return
     try {
-      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
-      if (stored) {
-        const projects = JSON.parse(stored)
-        const idx = projects.findIndex((p: { id: string }) => p.id === projectId)
-        if (idx >= 0) {
-          projects[idx].folderHandle = handle
-          localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
-        }
-      }
+      await saveDirectoryHandleForProject(projectId, handle)
     } catch (e) {
       console.error("Failed to save folder handle:", e)
     }
-  }, [user, projectId])
+  }, [projectId])
 
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   
@@ -139,17 +132,14 @@ function EditorContent() {
   }, [])
 
   useEffect(() => {
-    if (!user || !projectId) return
+    if (!projectId) return
     
-    const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
-    if (stored) {
-      const projects = JSON.parse(stored)
-      const project = projects.find((p: { id: string, folderHandle?: FileSystemDirectoryHandle }) => p.id === projectId)
-      if (project?.folderHandle) {
-        setDirHandle(project.folderHandle)
+    restoreDirectoryHandleForProject(projectId).then(handle => {
+      if (handle) {
+        setDirHandle(handle)
       }
-    }
-  }, [user, projectId])
+    })
+  }, [projectId])
 
   const activeNote = notes.find(n => n && n.id === activeNoteId)
 

@@ -74,21 +74,19 @@ export async function getSuppressedPatterns() {
   return all.filter(p => p.suppress).map(p => p.pattern);
 }
 
-const DIRECTORY_HANDLE_KEY = 'manuscript_directory';
-
-export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle) {
+export async function saveDirectoryHandleForProject(projectId: string, handle: FileSystemDirectoryHandle) {
   const db = await getDB();
-  await db.put('directory_handles', { key: DIRECTORY_HANDLE_KEY, ...handle });
+  await db.put('directory_handles', { key: projectId, ...handle });
 }
 
-export async function getStoredDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+export async function getDirectoryHandleForProject(projectId: string): Promise<FileSystemDirectoryHandle | null> {
   const db = await getDB();
-  const result = await db.get('directory_handles', DIRECTORY_HANDLE_KEY);
+  const result = await db.get('directory_handles', projectId);
   return result || null;
 }
 
-export async function restoreDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
-  const stored = await getStoredDirectoryHandle();
+export async function restoreDirectoryHandleForProject(projectId: string): Promise<FileSystemDirectoryHandle | null> {
+  const stored = await getDirectoryHandleForProject(projectId);
   if (!stored) return null;
   
   const permission = await stored.queryPermission({ mode: 'readwrite' });
@@ -96,9 +94,13 @@ export async function restoreDirectoryHandle(): Promise<FileSystemDirectoryHandl
     return stored;
   }
   
-  const requestPermission = await stored.requestPermission({ mode: 'readwrite' });
-  if (requestPermission === 'granted') {
-    return stored;
+  try {
+    const requestPermission = await stored.requestPermission({ mode: 'readwrite' });
+    if (requestPermission === 'granted') {
+      return stored;
+    }
+  } catch {
+    // Permission denied
   }
   
   return null;

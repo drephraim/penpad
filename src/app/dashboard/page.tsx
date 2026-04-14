@@ -4,12 +4,12 @@ import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen } from "lucide-react"
+import { saveDirectoryHandleForProject } from '@/lib/db'
 
 interface Project {
   id: string
   name: string
   lastUpdated?: number
-  folderHandle?: FileSystemDirectoryHandle
 }
 
 export default function Dashboard() {
@@ -72,14 +72,17 @@ export default function Dashboard() {
       const newProject: Project = {
         id: Date.now().toString(),
         name: newProjectName.trim(),
-        lastUpdated: Date.now(),
-        folderHandle: createFolderHandle || undefined
+        lastUpdated: Date.now()
       }
       
       const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
       const projectList: Project[] = stored ? JSON.parse(stored) : []
       projectList.unshift(newProject)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
+      
+      if (createFolderHandle) {
+        await saveDirectoryHandleForProject(newProject.id, createFolderHandle)
+      }
       
       setShowCreateModal(false)
       setNewProjectName("")
@@ -114,12 +117,14 @@ export default function Dashboard() {
       const idx = projectList.findIndex(p => p.id === editModal.projectId)
       if (idx >= 0) {
         projectList[idx].name = editModal.name.trim()
-        if (editModal.folderHandle) {
-          projectList[idx].folderHandle = editModal.folderHandle
-        }
         localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
         setProjects([...projectList])
       }
+      
+      if (editModal.folderHandle) {
+        await saveDirectoryHandleForProject(editModal.projectId, editModal.folderHandle)
+      }
+      
       setEditModal({ show: false, projectId: '', name: '', folderHandle: null })
     } catch (e) {
       console.error("Error editing project:", e)
@@ -269,7 +274,7 @@ export default function Dashboard() {
                   <div className="project-menu">
                     <button 
                       className="btn-menu"
-                      onClick={(e) => { e.stopPropagation(); setEditModal({ show: true, projectId: project.id, name: project.name, folderHandle: project.folderHandle || null }) }}
+                      onClick={(e) => { e.stopPropagation(); setEditModal({ show: true, projectId: project.id, name: project.name, folderHandle: null }) }}
                       title="Edit manuscript"
                     >
                       <Edit2 size={16} />
