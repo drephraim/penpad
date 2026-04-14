@@ -252,7 +252,7 @@ function EditorContent() {
       if (oldFilename && oldFilename !== newFilename) {
         try {
           await targetDir.removeEntry(oldFilename)
-        } catch (e) {
+        } catch {
           // File may not exist, ignore error
         }
       }
