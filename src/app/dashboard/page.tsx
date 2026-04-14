@@ -733,6 +733,11 @@ export default function Dashboard() {
         }
 
         @media (max-width: 768px) {
+          .dashboard {
+            height: 100dvh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+          }
           .sidebar {
             display: none;
           }

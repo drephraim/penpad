@@ -736,6 +736,13 @@ export default function LandingPage() {
         .auth-footer button:hover {
           color: #818cf8;
         }
+        @media (max-width: 768px) {
+          .container {
+            height: 100dvh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+        }
       `}</style>
     </div>
   )

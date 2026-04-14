@@ -2101,6 +2101,11 @@ function EditorContent() {
         }
 
         @media (max-width: 768px) {
+          .editor-container {
+            height: 100dvh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+          }
           .editor-sidebar,
           .ai-panel {
             display: none;
