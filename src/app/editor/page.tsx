@@ -9,7 +9,7 @@ import {
   ArrowLeft, Loader2, FileText,
   Feather, ShieldCheck, Zap,
   X, Check, AlertCircle, Trash2,
-  Download, Save
+  Download, Save, BookOpen
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import { MemoriesManager } from '@/lib/memories'
@@ -73,6 +73,7 @@ function EditorContent() {
   const [memoriesManager] = useState(() => new MemoriesManager())
   const [isMemoryChapter, setIsMemoryChapter] = useState(false)
   const [isCapturing, setIsCapturing] = useState(false)
+  const [showChapterDrawer, setShowChapterDrawer] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const savedFilenamesRef = useRef<Map<string, string>>(new Map())
@@ -667,10 +668,53 @@ function EditorContent() {
 
       <div className="editor-body">
         <div className="mobile-fab">
-          <button className="fab-btn" onClick={createNewNote} title="New Chapter">
+          <button className="fab-btn fab-new" onClick={createNewNote} title="New Chapter">
             <Plus size={24} />
           </button>
+          <button className="fab-btn fab-list" onClick={() => setShowChapterDrawer(true)} title="Chapters">
+            <BookOpen size={24} />
+          </button>
         </div>
+
+        {showChapterDrawer && (
+          <div className="chapter-drawer-overlay" onClick={() => setShowChapterDrawer(false)}>
+            <div className="chapter-drawer" onClick={e => e.stopPropagation()}>
+              <div className="drawer-header">
+                <h3>Chapters</h3>
+                <button onClick={() => setShowChapterDrawer(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="drawer-search">
+                <Search size={14} />
+                <input 
+                  type="text" 
+                  placeholder="Find chapter..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="drawer-chapters">
+                {filteredNotes.map(note => (
+                  <div 
+                    key={note.id}
+                    className={`chapter-item ${note.id === activeNoteId ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveNoteId(note.id)
+                      setShowChapterDrawer(false)
+                    }}
+                  >
+                    <FileText size={14} />
+                    <span className="chapter-title">{note.title || 'Untitled'}</span>
+                  </div>
+                ))}
+                {filteredNotes.length === 0 && (
+                  <div className="empty-chapters">No chapters yet</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {!isFocusMode && (
           <aside className="editor-sidebar">
             <div className="sidebar-section">
@@ -2141,6 +2185,8 @@ function EditorContent() {
           }
           .mobile-fab {
             display: flex;
+            flex-direction: column;
+            gap: 1rem;
             position: fixed;
             bottom: 2rem;
             right: 2rem;
@@ -2166,6 +2212,101 @@ function EditorContent() {
           }
           .fab-btn:active {
             transform: scale(0.95);
+          }
+          .fab-list {
+            background: var(--surface-raised);
+          }
+          .chapter-drawer-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 200;
+            display: flex;
+            align-items: flex-end;
+          }
+          .chapter-drawer {
+            background: var(--surface);
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            width: 100%;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            animation: slideUp 0.3s ease-out;
+          }
+          @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+          }
+          .drawer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--surface-border);
+          }
+          .drawer-header h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+          }
+          .drawer-header button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.5rem;
+          }
+          .drawer-search {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1.5rem;
+            border-bottom: 1px solid var(--surface-border);
+            color: var(--text-dim);
+          }
+          .drawer-search input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            outline: none;
+          }
+          .drawer-search input::placeholder {
+            color: var(--text-dim);
+          }
+          .drawer-chapters {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1.5rem;
+          }
+          .drawer-chapters .chapter-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text-secondary);
+          }
+          .drawer-chapters .chapter-item:hover {
+            background: var(--surface-hover);
+          }
+          .drawer-chapters .chapter-item.active {
+            background: var(--primary-light);
+            color: var(--primary);
+          }
+          .drawer-chapters .chapter-title {
+            font-size: 0.95rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .empty-chapters {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-dim);
           }
         }
       `}</style>
