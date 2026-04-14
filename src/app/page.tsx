@@ -86,8 +86,8 @@ export default function LandingPage() {
             <span className="logo-text">PenPad</span>
           </div>
           <div className="nav-links">
-            <button className="nav-link" onClick={() => setIsSignUp(false)}>Sign In</button>
-            <button className="nav-link-primary" onClick={() => setIsSignUp(true)}>Get Started</button>
+            <button className="nav-link" onClick={() => router.push('/signin')}>Sign In</button>
+            <button className="nav-link-primary" onClick={() => router.push('/signin')}>Get Started</button>
           </div>
         </div>
       </nav>
