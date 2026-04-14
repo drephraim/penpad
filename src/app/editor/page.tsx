@@ -168,25 +168,23 @@ function EditorContent() {
     if (!user || !projectId) return
     setIsLoadingNotes(true)
     try {
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
-      
       const cloudNotes = await fetchNotesFromCloud(projectId)
       
-      for (const cloudNote of cloudNotes) {
-        const localIdx = noteList.findIndex(n => n.id === cloudNote.id)
-        if (localIdx >= 0) {
-          const localNote = noteList[localIdx]
-          if (localNote && localNote.updatedAt && cloudNote.updatedAt > localNote.updatedAt) {
-            noteList[localIdx] = cloudNote
-          }
-        } else {
-          noteList.push(cloudNote)
-        }
-      }
+      let noteList: Note[] = []
       
       if (cloudNotes.length > 0) {
+        noteList = cloudNotes.map(n => ({
+          id: n.id,
+          title: n.title,
+          content: n.content,
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+          isMemories: n.isMemories
+        }))
         localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+      } else {
+        const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+        noteList = stored ? JSON.parse(stored) : []
       }
       
       noteList.sort((a, b) => b.updatedAt - a.updatedAt)
@@ -196,7 +194,9 @@ function EditorContent() {
       }
     } catch (e) {
       console.error("Fetch notes failed:", e)
-      setNotes([])
+      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      setNotes(noteList)
     } finally {
       setIsLoadingNotes(false)
     }
