@@ -292,6 +292,14 @@ function EditorContent() {
     if (!activeNote) return
     
     let targetDir = dirHandle
+    
+    if (!targetDir && projectId) {
+      targetDir = await restoreDirectoryHandleForProject(projectId)
+      if (targetDir) {
+        setDirHandle(targetDir)
+      }
+    }
+    
     if (!targetDir) {
       try {
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
@@ -304,12 +312,20 @@ function EditorContent() {
     }
     
     await saveSingleChapterToFolder(activeNote, targetDir)
-  }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject])
+  }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject, projectId])
 
   const exportManuscriptToFolder = async () => {
     if (notes.length === 0) return
     
     let targetDir = dirHandle
+    
+    if (!targetDir && projectId) {
+      targetDir = await restoreDirectoryHandleForProject(projectId)
+      if (targetDir) {
+        setDirHandle(targetDir)
+      }
+    }
+    
     if (!targetDir) {
       try {
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
@@ -688,8 +704,17 @@ function EditorContent() {
                       className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
                       onClick={async (e) => { 
                         e.stopPropagation(); 
-                        if (dirHandle) {
-                          await saveSingleChapterToFolder(note, dirHandle)
+                        let targetDir = dirHandle
+                        
+                        if (!targetDir && projectId) {
+                          targetDir = await restoreDirectoryHandleForProject(projectId)
+                          if (targetDir) {
+                            setDirHandle(targetDir)
+                          }
+                        }
+                        
+                        if (targetDir) {
+                          await saveSingleChapterToFolder(note, targetDir)
                         } else {
                           try {
                             const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
