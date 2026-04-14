@@ -32,17 +32,23 @@ export default function Dashboard() {
       return
     }
     try {
+      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
+      const projectList: Project[] = stored ? JSON.parse(stored) : []
       const cloudProjects = await fetchProjectsFromCloud(user.uid)
       
-      let projectList: Project[] = []
-      
-      if (cloudProjects.length > 0) {
-        projectList = cloudProjects.map(p => ({ id: p.id, name: p.name, lastUpdated: p.lastUpdated }))
-        localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
-      } else {
-        const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
-        projectList = stored ? JSON.parse(stored) : []
+      for (const cloudProject of cloudProjects) {
+        const localIdx = projectList.findIndex(p => p.id === cloudProject.id)
+        if (localIdx >= 0) {
+          const localProject = projectList[localIdx]
+          if (localProject && localProject.lastUpdated && cloudProject.lastUpdated > localProject.lastUpdated) {
+            projectList[localIdx] = { id: cloudProject.id, name: cloudProject.name, lastUpdated: cloudProject.lastUpdated }
+          }
+        } else {
+          projectList.push({ id: cloudProject.id, name: cloudProject.name, lastUpdated: cloudProject.lastUpdated })
+        }
       }
+      
+      localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
       
       projectList.sort((a, b) => {
         const timeA = typeof a.lastUpdated === 'number' ? a.lastUpdated : 0
@@ -69,10 +75,7 @@ export default function Dashboard() {
       setChapterCounts(counts)
       setProjects(projectList)
     } catch (e) {
-      console.error("Failed to fetch projects:", e)
-      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
-      const projectList: Project[] = stored ? JSON.parse(stored) : []
-      setProjects(projectList)
+      console.error("Failed to parse projects:", e)
     } finally {
       setFetchDone(true)
     }
