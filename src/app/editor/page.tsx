@@ -666,6 +666,11 @@ function EditorContent() {
       </header>
 
       <div className="editor-body">
+        <div className="mobile-fab">
+          <button className="fab-btn" onClick={createNewNote} title="New Chapter">
+            <Plus size={24} />
+          </button>
+        </div>
         {!isFocusMode && (
           <aside className="editor-sidebar">
             <div className="sidebar-section">
@@ -1197,6 +1202,10 @@ function EditorContent() {
           display: flex;
           overflow: hidden;
           position: relative;
+        }
+
+        .mobile-fab {
+          display: none;
         }
 
         .editor-sidebar {
@@ -2129,6 +2138,34 @@ function EditorContent() {
           }
           .editor-textarea {
             min-height: calc(100dvh - 200px);
+          }
+          .mobile-fab {
+            display: flex;
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 100;
+          }
+          .fab-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
+            cursor: pointer;
+            transition: var(--transition);
+          }
+          .fab-btn:hover {
+            background: var(--primary-hover);
+            transform: scale(1.05);
+          }
+          .fab-btn:active {
+            transform: scale(0.95);
           }
         }
       `}</style>
