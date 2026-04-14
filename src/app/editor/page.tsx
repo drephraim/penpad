@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import { MemoriesManager } from '@/lib/memories'
+import { restoreDirectoryHandle, saveDirectoryHandle } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -118,6 +119,14 @@ function EditorContent() {
     const intel = new LocalIntelligence()
     intel.init().then(success => {
       if (success) setLocalIntel(intel)
+    })
+  }, [])
+
+  useEffect(() => {
+    restoreDirectoryHandle().then(handle => {
+      if (handle) {
+        setDirHandle(handle)
+      }
     })
   }, [])
 
@@ -274,9 +283,9 @@ function EditorContent() {
     let targetDir = dirHandle
     if (!targetDir) {
       try {
-        // @ts-expect-error Types for File System API might not be fully present
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
         setDirHandle(targetDir)
+        await saveDirectoryHandle(targetDir)
       } catch (e) {
         console.error("User cancelled directory picker", e)
         return
@@ -292,9 +301,9 @@ function EditorContent() {
     let targetDir = dirHandle
     if (!targetDir) {
       try {
-        // @ts-expect-error Types for File System API might not be fully present
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
         setDirHandle(targetDir)
+        await saveDirectoryHandle(targetDir)
       } catch (e) {
         console.error("User cancelled directory picker", e)
         return
@@ -672,9 +681,9 @@ function EditorContent() {
                           await saveSingleChapterToFolder(note, dirHandle)
                         } else {
                           try {
-                            // @ts-expect-error Types for File System API might not be fully present
                             const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
                             setDirHandle(dir)
+                            await saveDirectoryHandle(dir)
                             await saveSingleChapterToFolder(note, dir)
                           } catch (err) { console.error(err) }
                         }

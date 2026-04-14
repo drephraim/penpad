@@ -20,10 +20,14 @@ export interface PenPadDB {
       frequencyCount: number;
     };
   };
+  'directory_handles': {
+    key: string;
+    value: FileSystemDirectoryHandle;
+  };
 }
 
 const DB_NAME = 'penpad_engine_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export async function getDB(): Promise<IDBPDatabase<PenPadDB>> {
   return openDB<PenPadDB>(DB_NAME, DB_VERSION, {
@@ -33,6 +37,9 @@ export async function getDB(): Promise<IDBPDatabase<PenPadDB>> {
       }
       if (!db.objectStoreNames.contains('learned_patterns')) {
         db.createObjectStore('learned_patterns', { keyPath: 'pattern' });
+      }
+      if (!db.objectStoreNames.contains('directory_handles')) {
+        db.createObjectStore('directory_handles', { keyPath: 'key' });
       }
     },
   });
@@ -65,4 +72,34 @@ export async function getSuppressedPatterns() {
   const db = await getDB();
   const all = await db.getAll('learned_patterns');
   return all.filter(p => p.suppress).map(p => p.pattern);
+}
+
+const DIRECTORY_HANDLE_KEY = 'manuscript_directory';
+
+export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle) {
+  const db = await getDB();
+  await db.put('directory_handles', { key: DIRECTORY_HANDLE_KEY, ...handle });
+}
+
+export async function getStoredDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await getDB();
+  const result = await db.get('directory_handles', DIRECTORY_HANDLE_KEY);
+  return result || null;
+}
+
+export async function restoreDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const stored = await getStoredDirectoryHandle();
+  if (!stored) return null;
+  
+  const permission = await stored.queryPermission({ mode: 'readwrite' });
+  if (permission === 'granted') {
+    return stored;
+  }
+  
+  const requestPermission = await stored.requestPermission({ mode: 'readwrite' });
+  if (requestPermission === 'granted') {
+    return stored;
+  }
+  
+  return null;
 }
