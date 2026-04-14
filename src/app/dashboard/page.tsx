@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen } from "lucide-react"
 import { saveDirectoryHandleForProject } from '@/lib/db'
-import { syncProjectToCloud, fetchProjectsFromCloud, deleteProjectFromCloud, fetchNotesFromCloud } from '@/lib/cloudSync'
 
 interface Project {
   id: string
@@ -34,22 +33,6 @@ export default function Dashboard() {
     try {
       const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
       const projectList: Project[] = stored ? JSON.parse(stored) : []
-      const cloudProjects = await fetchProjectsFromCloud(user.uid)
-      
-      for (const cloudProject of cloudProjects) {
-        const localIdx = projectList.findIndex(p => p.id === cloudProject.id)
-        if (localIdx >= 0) {
-          const localProject = projectList[localIdx]
-          if (localProject && localProject.lastUpdated && cloudProject.lastUpdated > localProject.lastUpdated) {
-            projectList[localIdx] = { id: cloudProject.id, name: cloudProject.name, lastUpdated: cloudProject.lastUpdated }
-          }
-        } else {
-          projectList.push({ id: cloudProject.id, name: cloudProject.name, lastUpdated: cloudProject.lastUpdated })
-        }
-      }
-      
-      localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
-      
       projectList.sort((a, b) => {
         const timeA = typeof a.lastUpdated === 'number' ? a.lastUpdated : 0
         const timeB = typeof b.lastUpdated === 'number' ? b.lastUpdated : 0
@@ -63,13 +46,7 @@ export default function Dashboard() {
           const notes = JSON.parse(notesStored)
           counts[project.id] = notes.length
         } else {
-          const cloudNotes = await fetchNotesFromCloud(project.id)
-          if (cloudNotes.length > 0) {
-            localStorage.setItem(`penpad_notes_${project.id}`, JSON.stringify(cloudNotes))
-            counts[project.id] = cloudNotes.length
-          } else {
-            counts[project.id] = 0
-          }
+          counts[project.id] = 0
         }
       }
       setChapterCounts(counts)
@@ -92,9 +69,8 @@ export default function Dashboard() {
   const createProject = async () => {
     if (!user || !newProjectName.trim()) return
     try {
-      const projectId = Date.now().toString()
       const newProject: Project = {
-        id: projectId,
+        id: Date.now().toString(),
         name: newProjectName.trim(),
         lastUpdated: Date.now()
       }
@@ -104,13 +80,6 @@ export default function Dashboard() {
       projectList.unshift(newProject)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
       
-      await syncProjectToCloud({
-        id: projectId,
-        name: newProjectName.trim(),
-        ownerId: user.uid,
-        lastUpdated: Date.now()
-      })
-      
       if (createFolderHandle) {
         await saveDirectoryHandleForProject(newProject.id, createFolderHandle)
       }
@@ -119,7 +88,7 @@ export default function Dashboard() {
       setNewProjectName("")
       setCreateFolderHandle(null)
       
-      router.push(`/editor?id=${projectId}`)
+      router.push(`/editor?id=${newProject.id}`)
     } catch (e) {
       console.error("Error creating project:", e)
     }
@@ -133,9 +102,6 @@ export default function Dashboard() {
       const filtered = projectList.filter(p => p.id !== deleteModal.projectId)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(filtered))
       localStorage.removeItem(`penpad_notes_${deleteModal.projectId}`)
-      
-      await deleteProjectFromCloud(deleteModal.projectId)
-      
       setProjects(filtered)
       setDeleteModal({ show: false, projectId: '', projectName: '' })
     } catch (e) {

@@ -14,7 +14,6 @@ import {
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import { MemoriesManager } from '@/lib/memories'
 import { restoreDirectoryHandleForProject, saveDirectoryHandleForProject } from '@/lib/db'
-import { syncNoteToCloud, fetchNotesFromCloud, syncProjectToCloud, deleteNoteFromCloud } from '@/lib/cloudSync'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -169,30 +168,15 @@ function EditorContent() {
     setIsLoadingNotes(true)
     try {
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
-      
-      const cloudNotes = await fetchNotesFromCloud(projectId)
-      
-      for (const cloudNote of cloudNotes) {
-        const localIdx = noteList.findIndex(n => n.id === cloudNote.id)
-        if (localIdx >= 0) {
-          const localNote = noteList[localIdx]
-          if (localNote && localNote.updatedAt && cloudNote.updatedAt > localNote.updatedAt) {
-            noteList[localIdx] = cloudNote
-          }
-        } else {
-          noteList.push(cloudNote)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const noteList = parsed.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
+        setNotes(noteList)
+        if (noteList.length > 0 && !activeNoteId) {
+          setActiveNoteId(noteList[0].id)
         }
-      }
-      
-      if (cloudNotes.length > 0) {
-        localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-      }
-      
-      noteList.sort((a, b) => b.updatedAt - a.updatedAt)
-      setNotes(noteList)
-      if (noteList.length > 0 && !activeNoteId) {
-        setActiveNoteId(noteList[0].id)
+      } else {
+        setNotes([])
       }
     } catch (e) {
       console.error("Fetch notes failed:", e)
@@ -224,16 +208,6 @@ function EditorContent() {
       
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
       
-      await syncNoteToCloud({
-        id: note.id,
-        projectId,
-        title: note.title,
-        content: note.content,
-        createdAt: note.createdAt,
-        updatedAt: now,
-        isMemories: note.isMemories
-      })
-      
       const storedProjects = localStorage.getItem(`penpad_projects_${user.uid}`)
       if (storedProjects) {
         const projects = JSON.parse(storedProjects)
@@ -241,13 +215,6 @@ function EditorContent() {
         if (projIdx >= 0) {
           projects[projIdx].lastUpdated = now
           localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
-          
-          await syncProjectToCloud({
-            id: projectId,
-            name: projects[projIdx].name,
-            ownerId: user.uid,
-            lastUpdated: now
-          })
         }
       }
       
@@ -507,9 +474,6 @@ function EditorContent() {
       if (activeNoteId === deleteModal.noteId) {
         setActiveNoteId(filtered.length > 0 ? filtered[0].id : null)
       }
-      
-      await deleteNoteFromCloud(deleteModal.noteId)
-      
       setDeleteModal({ show: false, noteId: '', noteTitle: '' })
     } catch (e) {
       console.error("Failed to delete note:", e)
