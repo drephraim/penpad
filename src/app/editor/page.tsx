@@ -292,12 +292,21 @@ function EditorContent() {
   const saveCurrentChapterToFolder = useCallback(async () => {
     if (!activeNote) return
     
+    if (!window.showDirectoryPicker) {
+      alert("Your browser doesn't support the File System Access API. Please use Chrome or Edge.")
+      return
+    }
+    
     let targetDir = dirHandle
     
     if (!targetDir && projectId) {
-      targetDir = await restoreDirectoryHandleForProject(projectId)
-      if (targetDir) {
-        setDirHandle(targetDir)
+      try {
+        targetDir = await restoreDirectoryHandleForProject(projectId)
+        if (targetDir) {
+          setDirHandle(targetDir)
+        }
+      } catch (e) {
+        console.error("Failed to restore directory handle:", e)
       }
     }
     
@@ -307,23 +316,37 @@ function EditorContent() {
         setDirHandle(targetDir)
         await saveFolderHandleToProject(targetDir)
       } catch (e) {
-        console.error("User cancelled directory picker", e)
+        console.error("Directory picker error:", e)
         return
       }
     }
     
-    await saveSingleChapterToFolder(activeNote, targetDir)
+    if (targetDir) {
+      await saveSingleChapterToFolder(activeNote, targetDir)
+    }
   }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject, projectId])
 
   const exportManuscriptToFolder = async () => {
-    if (notes.length === 0) return
+    if (notes.length === 0) {
+      alert("No chapters to export")
+      return
+    }
+    
+    if (!window.showDirectoryPicker) {
+      alert("Your browser doesn't support the File System Access API. Please use Chrome or Edge.")
+      return
+    }
     
     let targetDir = dirHandle
     
     if (!targetDir && projectId) {
-      targetDir = await restoreDirectoryHandleForProject(projectId)
-      if (targetDir) {
-        setDirHandle(targetDir)
+      try {
+        targetDir = await restoreDirectoryHandleForProject(projectId)
+        if (targetDir) {
+          setDirHandle(targetDir)
+        }
+      } catch (e) {
+        console.error("Failed to restore directory handle:", e)
       }
     }
     
@@ -333,23 +356,34 @@ function EditorContent() {
         setDirHandle(targetDir)
         await saveFolderHandleToProject(targetDir)
       } catch (e) {
-        console.error("User cancelled directory picker", e)
+        console.error("Directory picker error:", e)
         return
       }
     }
     
-    setIsExporting(true)
-    setExportProgress(0)
-    
-    const sortedNotes = [...notes].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
-    
-    for (let i = 0; i < sortedNotes.length; i++) {
-      await saveSingleChapterToFolder(sortedNotes[i], targetDir)
-      setExportProgress(Math.round(((i + 1) / sortedNotes.length) * 100))
+    if (!targetDir) {
+      alert("No folder selected")
+      return
     }
     
-    setIsExporting(false)
-    setExportModal(false)
+    try {
+      setIsExporting(true)
+      setExportProgress(0)
+      
+      const sortedNotes = [...notes].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
+      
+      for (let i = 0; i < sortedNotes.length; i++) {
+        await saveSingleChapterToFolder(sortedNotes[i], targetDir)
+        setExportProgress(Math.round(((i + 1) / sortedNotes.length) * 100))
+      }
+      
+      setIsExporting(false)
+      setExportModal(false)
+    } catch (e) {
+      console.error("Export failed:", e)
+      setIsExporting(false)
+      alert(`Export failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
   }
 
   useEffect(() => {

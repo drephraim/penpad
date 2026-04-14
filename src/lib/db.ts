@@ -89,18 +89,22 @@ export async function restoreDirectoryHandleForProject(projectId: string): Promi
   const stored = await getDirectoryHandleForProject(projectId);
   if (!stored) return null;
   
-  const permission = await stored.queryPermission({ mode: 'readwrite' });
-  if (permission === 'granted') {
-    return stored;
-  }
-  
   try {
-    const requestPermission = await stored.requestPermission({ mode: 'readwrite' });
-    if (requestPermission === 'granted') {
+    const permission = await stored.queryPermission({ mode: 'readwrite' });
+    if (permission === 'granted') {
       return stored;
     }
-  } catch {
-    // Permission denied
+    
+    try {
+      const requestPermission = await stored.requestPermission({ mode: 'readwrite' });
+      if (requestPermission === 'granted') {
+        return stored;
+      }
+    } catch {
+      // Permission denied
+    }
+  } catch (e) {
+    console.error("Error restoring directory handle:", e);
   }
   
   return null;
