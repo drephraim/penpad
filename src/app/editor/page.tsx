@@ -65,6 +65,7 @@ function EditorContent() {
   const [isCapturing, setIsCapturing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const savedFilenamesRef = useRef<Map<string, string>>(new Map())
 
   const scrollToPosition = (start: number, end: number) => {
     const textarea = textareaRef.current
@@ -245,10 +246,22 @@ function EditorContent() {
   const saveSingleChapterToFolder = useCallback(async (note: Note, targetDir: FileSystemDirectoryHandle) => {
     try {
       const safeTitle = sanitizeFilename(note.title)
-      const fileHandle = await targetDir.getFileHandle(`${safeTitle}.txt`, { create: true })
+      const newFilename = `${safeTitle}.txt`
+      
+      const oldFilename = savedFilenamesRef.current.get(note.id)
+      if (oldFilename && oldFilename !== newFilename) {
+        try {
+          await targetDir.removeEntry(oldFilename)
+        } catch (e) {
+          // File may not exist, ignore error
+        }
+      }
+      
+      const fileHandle = await targetDir.getFileHandle(newFilename, { create: true })
       const writable = await fileHandle.createWritable()
       await writable.write(note.content || "")
       await writable.close()
+      savedFilenamesRef.current.set(note.id, newFilename)
       setSavedChapters(prev => new Set(prev).add(note.id))
     } catch (e) {
       console.error("Failed to save chapter:", e)
