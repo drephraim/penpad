@@ -3,12 +3,13 @@
 import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
-import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2 } from "lucide-react"
+import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen } from "lucide-react"
 
 interface Project {
   id: string
   name: string
   lastUpdated?: number
+  folderHandle?: FileSystemDirectoryHandle
 }
 
 export default function Dashboard() {
@@ -18,9 +19,10 @@ export default function Dashboard() {
   const [fetchDone, setFetchDone] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
+  const [createFolderHandle, setCreateFolderHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string; projectName: string }>({ show: false, projectId: '', projectName: '' })
-  const [editModal, setEditModal] = useState<{ show: boolean; projectId: string; name: string }>({ show: false, projectId: '', name: '' })
+  const [editModal, setEditModal] = useState<{ show: boolean; projectId: string; name: string; folderHandle: FileSystemDirectoryHandle | null }>({ show: false, projectId: '', name: '', folderHandle: null })
   const [chapterCounts, setChapterCounts] = useState<Record<string, number>>({})
 
   const fetchProjects = useCallback(async () => {
@@ -70,13 +72,18 @@ export default function Dashboard() {
       const newProject: Project = {
         id: Date.now().toString(),
         name: newProjectName.trim(),
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
+        folderHandle: createFolderHandle || undefined
       }
       
       const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
       const projectList: Project[] = stored ? JSON.parse(stored) : []
       projectList.unshift(newProject)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
+      
+      setShowCreateModal(false)
+      setNewProjectName("")
+      setCreateFolderHandle(null)
       
       router.push(`/editor?id=${newProject.id}`)
     } catch (e) {
@@ -107,10 +114,13 @@ export default function Dashboard() {
       const idx = projectList.findIndex(p => p.id === editModal.projectId)
       if (idx >= 0) {
         projectList[idx].name = editModal.name.trim()
+        if (editModal.folderHandle) {
+          projectList[idx].folderHandle = editModal.folderHandle
+        }
         localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
         setProjects([...projectList])
       }
-      setEditModal({ show: false, projectId: '', name: '' })
+      setEditModal({ show: false, projectId: '', name: '', folderHandle: null })
     } catch (e) {
       console.error("Error editing project:", e)
     }
@@ -259,7 +269,7 @@ export default function Dashboard() {
                   <div className="project-menu">
                     <button 
                       className="btn-menu"
-                      onClick={(e) => { e.stopPropagation(); setEditModal({ show: true, projectId: project.id, name: project.name }) }}
+                      onClick={(e) => { e.stopPropagation(); setEditModal({ show: true, projectId: project.id, name: project.name, folderHandle: project.folderHandle || null }) }}
                       title="Edit manuscript"
                     >
                       <Edit2 size={16} />
@@ -311,8 +321,28 @@ export default function Dashboard() {
               onKeyDown={(e) => e.key === 'Enter' && createProject()}
               autoFocus
             />
+            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                className="btn btn-ghost"
+                onClick={async () => {
+                  try {
+                    const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' })
+                    setCreateFolderHandle(dirHandle)
+                  } catch {
+                    console.error("User cancelled folder selection")
+                  }
+                }}
+                style={{ fontSize: '13px' }}
+              >
+                <FolderOpen size={16} />
+                {createFolderHandle ? ' Folder Selected' : ' Select Folder (Optional)'}
+              </button>
+              {createFolderHandle && (
+                <span style={{ fontSize: '12px', color: '#888' }}>{createFolderHandle.name}</span>
+              )}
+            </div>
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setShowCreateModal(false); setCreateFolderHandle(null); }}>Cancel</button>
               <button className="btn btn-primary" onClick={createProject}>Create</button>
             </div>
           </div>
@@ -335,11 +365,11 @@ export default function Dashboard() {
       )}
 
       {editModal.show && (
-        <div className="modal-overlay" onClick={() => setEditModal({ show: false, projectId: '', name: '' })}>
+        <div className="modal-overlay" onClick={() => setEditModal({ show: false, projectId: '', name: '', folderHandle: null })}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Edit Manuscript</h2>
-              <p className="modal-description">Rename your manuscript</p>
+              <p className="modal-description">Rename your manuscript or change save location</p>
             </div>
             <input 
               type="text" 
@@ -350,8 +380,28 @@ export default function Dashboard() {
               onKeyDown={(e) => e.key === 'Enter' && editProject()}
               autoFocus
             />
+            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                className="btn btn-ghost"
+                onClick={async () => {
+                  try {
+                    const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' })
+                    setEditModal({ ...editModal, folderHandle: dirHandle })
+                  } catch {
+                    console.error("User cancelled folder selection")
+                  }
+                }}
+                style={{ fontSize: '13px' }}
+              >
+                <FolderOpen size={16} />
+                {editModal.folderHandle ? ' Change Folder' : ' Select Save Folder'}
+              </button>
+              {editModal.folderHandle && (
+                <span style={{ fontSize: '12px', color: '#888' }}>{editModal.folderHandle.name}</span>
+              )}
+            </div>
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => setEditModal({ show: false, projectId: '', name: '' })}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => setEditModal({ show: false, projectId: '', name: '', folderHandle: null })}>Cancel</button>
               <button className="btn btn-primary" onClick={editProject}>Save</button>
             </div>
           </div>

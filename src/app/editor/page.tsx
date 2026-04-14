@@ -13,7 +13,6 @@ import {
 } from "lucide-react"
 import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
 import { MemoriesManager } from '@/lib/memories'
-import { restoreDirectoryHandle, saveDirectoryHandle } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -43,6 +42,23 @@ function EditorContent() {
   const [isFocusMode, setIsFocusMode] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
+
+  const saveFolderHandleToProject = useCallback(async (handle: FileSystemDirectoryHandle) => {
+    if (!user || !projectId) return
+    try {
+      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
+      if (stored) {
+        const projects = JSON.parse(stored)
+        const idx = projects.findIndex((p: { id: string }) => p.id === projectId)
+        if (idx >= 0) {
+          projects[idx].folderHandle = handle
+          localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save folder handle:", e)
+    }
+  }, [user, projectId])
 
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   
@@ -123,12 +139,17 @@ function EditorContent() {
   }, [])
 
   useEffect(() => {
-    restoreDirectoryHandle().then(handle => {
-      if (handle) {
-        setDirHandle(handle)
+    if (!user || !projectId) return
+    
+    const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
+    if (stored) {
+      const projects = JSON.parse(stored)
+      const project = projects.find((p: { id: string, folderHandle?: FileSystemDirectoryHandle }) => p.id === projectId)
+      if (project?.folderHandle) {
+        setDirHandle(project.folderHandle)
       }
-    })
-  }, [])
+    }
+  }, [user, projectId])
 
   const activeNote = notes.find(n => n && n.id === activeNoteId)
 
@@ -285,7 +306,7 @@ function EditorContent() {
       try {
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
         setDirHandle(targetDir)
-        await saveDirectoryHandle(targetDir)
+        await saveFolderHandleToProject(targetDir)
       } catch (e) {
         console.error("User cancelled directory picker", e)
         return
@@ -293,7 +314,7 @@ function EditorContent() {
     }
     
     await saveSingleChapterToFolder(activeNote, targetDir)
-  }, [activeNote, dirHandle, saveSingleChapterToFolder])
+  }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject])
 
   const exportManuscriptToFolder = async () => {
     if (notes.length === 0) return
@@ -303,7 +324,7 @@ function EditorContent() {
       try {
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
         setDirHandle(targetDir)
-        await saveDirectoryHandle(targetDir)
+        await saveFolderHandleToProject(targetDir)
       } catch (e) {
         console.error("User cancelled directory picker", e)
         return
@@ -683,7 +704,7 @@ function EditorContent() {
                           try {
                             const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
                             setDirHandle(dir)
-                            await saveDirectoryHandle(dir)
+                            await saveFolderHandleToProject(dir)
                             await saveSingleChapterToFolder(note, dir)
                           } catch (err) { console.error(err) }
                         }
