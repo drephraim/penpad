@@ -43,6 +43,10 @@ function EditorContent() {
 
   const activeNote = notes.find(n => n && n.id === activeNoteId)
 
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set())
+  const [showMultiDeleteModal, setShowMultiDeleteModal] = useState(false)
+
   const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [isFocusMode, setIsFocusMode] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -494,6 +498,68 @@ function EditorContent() {
     }
   }
 
+  const toggleNoteSelection = (noteId: string) => {
+    setSelectedNoteIds(prev => {
+      const next = new Set(prev)
+      if (next.has(noteId)) {
+        next.delete(noteId)
+      } else {
+        next.add(noteId)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    const allFilteredIds = filteredNotes.map(n => n.id)
+    const allSelected = allFilteredIds.every(id => selectedNoteIds.has(id))
+    
+    if (allSelected) {
+      setSelectedNoteIds(prev => {
+        const next = new Set(prev)
+        allFilteredIds.forEach(id => next.delete(id))
+        return next
+      })
+    } else {
+      setSelectedNoteIds(prev => {
+        const next = new Set(prev)
+        allFilteredIds.forEach(id => next.add(id))
+        return next
+      })
+    }
+  }
+
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(prev => {
+      if (prev) {
+        setSelectedNoteIds(new Set())
+      }
+      return !prev
+    })
+  }
+
+  const deleteSelectedNotes = async () => {
+    if (!projectId || selectedNoteIds.size === 0) return
+    try {
+      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      const filtered = noteList.filter((n: Note) => n && !selectedNoteIds.has(n.id))
+      
+      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
+      setNotes(filtered)
+      
+      if (activeNoteId && selectedNoteIds.has(activeNoteId)) {
+        setActiveNoteId(filtered.length > 0 ? filtered[0].id : null)
+      }
+      
+      setSelectedNoteIds(new Set())
+      setIsSelectionMode(false)
+      setShowMultiDeleteModal(false)
+    } catch (e) {
+      console.error("Failed to delete selected notes:", e)
+    }
+  }
+
   const updateActiveNote = (updates: Partial<Note>) => {
     if (!activeNoteId) return
     const updatedNotes = notes.map((n: Note) => 
@@ -725,54 +791,102 @@ function EditorContent() {
               {isLoadingNotes && <Loader2 size={12} className="spin" />}
             </div>
 
-            <div className="chapter-list">
-              {filteredNotes.map(note => (
-                <div 
-                  key={note.id} 
-                  className={`chapter-item ${activeNoteId === note.id ? 'active' : ''}`}
-                  onClick={() => setActiveNoteId(note.id)}
-                >
-                  <FileText size={16} />
-                  <span className="chapter-title">{note.title || 'Untitled'}</span>
-                  <div className="chapter-actions">
-                    <button 
-                      className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
-                      onClick={async (e) => { 
-                        e.stopPropagation(); 
-                        let targetDir = dirHandle
-                        
-                        if (!targetDir && projectId) {
-                          targetDir = await restoreDirectoryHandleForProject(projectId)
-                          if (targetDir) {
-                            setDirHandle(targetDir)
-                          }
-                        }
-                        
-                        if (targetDir) {
-                          await saveSingleChapterToFolder(note, targetDir)
-                        } else {
-                          try {
-                            const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
-                            setDirHandle(dir)
-                            await saveFolderHandleToProject(dir)
-                            await saveSingleChapterToFolder(note, dir)
-                          } catch (err) { console.error(err) }
-                        }
-                      }}
-                      title="Save chapter"
-                    >
-                      <Save size={12} />
+            <div className={`sidebar-chapters-header ${isSelectionMode ? 'selection-active' : ''}`}>
+              {isSelectionMode ? (
+                <>
+                  <span className="selection-count">{selectedNoteIds.size} selected</span>
+                  <div className="selection-actions">
+                    <button className="btn-text-action" onClick={toggleSelectAll}>
+                      {selectedNoteIds.size === filteredNotes.length ? 'None' : 'All'}
                     </button>
                     <button 
-                      className="btn-delete-chapter"
-                      onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
-                      title="Delete chapter"
+                      className="btn-text-action danger" 
+                      disabled={selectedNoteIds.size === 0}
+                      onClick={() => setShowMultiDeleteModal(true)}
                     >
-                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                    <button className="btn-text-action" onClick={toggleSelectionMode}>
+                      Cancel
                     </button>
                   </div>
-                </div>
-              ))}
+                </>
+              ) : (
+                <>
+                  <span className="section-title">Chapters ({filteredNotes.length})</span>
+                  <button className="btn-select-mode" onClick={toggleSelectionMode}>
+                    Select
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="chapter-list">
+              {filteredNotes.map(note => {
+                const isSelected = selectedNoteIds.has(note.id);
+                return (
+                  <div 
+                    key={note.id} 
+                    className={`chapter-item ${activeNoteId === note.id ? 'active' : ''} ${isSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
+                    onClick={() => {
+                      if (isSelectionMode) {
+                        toggleNoteSelection(note.id);
+                      } else {
+                        setActiveNoteId(note.id);
+                      }
+                    }}
+                  >
+                    {isSelectionMode ? (
+                      <div className={`checkbox-custom ${isSelected ? 'checked' : ''}`}>
+                        {isSelected && <Check size={10} strokeWidth={3} />}
+                      </div>
+                    ) : (
+                      <FileText size={16} />
+                    )}
+                    <span className="chapter-title">{note.title || 'Untitled'}</span>
+                    
+                    {!isSelectionMode && (
+                      <div className="chapter-actions">
+                        <button 
+                          className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
+                          onClick={async (e) => { 
+                            e.stopPropagation(); 
+                            let targetDir = dirHandle
+                            
+                            if (!targetDir && projectId) {
+                              targetDir = await restoreDirectoryHandleForProject(projectId)
+                              if (targetDir) {
+                                setDirHandle(targetDir)
+                              }
+                            }
+                            
+                            if (targetDir) {
+                              await saveSingleChapterToFolder(note, targetDir)
+                            } else {
+                              try {
+                                const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                                setDirHandle(dir)
+                                await saveFolderHandleToProject(dir)
+                                await saveSingleChapterToFolder(note, dir)
+                              } catch (err) { console.error(err) }
+                            }
+                          }}
+                          title="Save chapter"
+                        >
+                          <Save size={12} />
+                        </button>
+                        <button 
+                          className="btn-delete-chapter"
+                          onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
+                          title="Delete chapter"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </aside>
         )}
@@ -880,6 +994,21 @@ function EditorContent() {
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>Cancel</button>
                 <button className="btn btn-danger" onClick={deleteNote}>Delete</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showMultiDeleteModal && (
+          <div className="modal-overlay" onClick={() => setShowMultiDeleteModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Delete Multiple Chapters</h2>
+                <p className="modal-description">Are you sure you want to delete the {selectedNoteIds.size} selected chapters? This action cannot be undone.</p>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowMultiDeleteModal(false)}>Cancel</button>
+                <button className="btn btn-danger" onClick={deleteSelectedNotes}>Delete All</button>
               </div>
             </div>
           </div>
@@ -1162,6 +1291,100 @@ function EditorContent() {
           gap: 4px;
         }
 
+        .sidebar-chapters-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.5rem 0.75rem;
+          margin-top: 1rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .section-title {
+          font-size: 0.8rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--text-dim);
+        }
+
+        .btn-select-mode {
+          background: transparent;
+          border: none;
+          color: var(--primary);
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: var(--transition);
+          padding: 2px 6px;
+          border-radius: var(--radius-sm);
+        }
+
+        .btn-select-mode:hover {
+          background: var(--primary-light);
+        }
+
+        .selection-count {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+
+        .selection-actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .btn-text-action {
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: var(--transition);
+          padding: 2px 6px;
+          border-radius: var(--radius-sm);
+        }
+
+        .btn-text-action:hover {
+          color: var(--text-primary);
+          background: var(--surface-hover);
+        }
+
+        .btn-text-action.danger {
+          color: var(--error);
+        }
+
+        .btn-text-action.danger:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--error-hover);
+        }
+
+        .btn-text-action:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .checkbox-custom {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 16px;
+          height: 16px;
+          border: 1.5px solid var(--text-dim);
+          border-radius: 4px;
+          transition: var(--transition);
+          flex-shrink: 0;
+        }
+
+        .checkbox-custom.checked {
+          background: var(--primary);
+          border-color: var(--primary);
+          color: white;
+        }
+
         .chapter-item {
           display: flex;
           align-items: center;
@@ -1171,6 +1394,15 @@ function EditorContent() {
           cursor: pointer;
           transition: var(--transition);
           color: var(--text-secondary);
+        }
+
+        .chapter-item.selection-mode {
+          border-left: 3px solid transparent;
+        }
+
+        .chapter-item.selection-mode.selected {
+          background: var(--surface-hover);
+          border-left-color: var(--primary);
         }
 
         .chapter-item:hover {

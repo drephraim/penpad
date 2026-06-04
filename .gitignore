@@ -49,3 +49,5 @@ Thumbs.db
 
 # Scratch folder (dev files)
 /scratch
+
+.vercel
