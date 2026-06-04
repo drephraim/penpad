@@ -1,5 +1,6 @@
 :root {
   --background: #0a0a0f;
+  --background-rgb: 10, 10, 15;
   --foreground: #f1f5f9;
 
   --primary: #6366f1;
@@ -50,6 +51,78 @@
   --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.15s ease-out;
   --transition-slow: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-midnight {
+  --background: #0a0a0f;
+  --background-rgb: 10, 10, 15;
+  --foreground: #f1f5f9;
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --primary-light: rgba(99, 102, 241, 0.12);
+  --primary-glow: rgba(99, 102, 241, 0.4);
+  --accent: #a78bfa;
+  --surface: rgba(15, 17, 23, 0.7);
+  --surface-raised: rgba(30, 41, 59, 0.5);
+  --surface-border: rgba(255, 255, 255, 0.06);
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-dim: #64748b;
+}
+
+.theme-sepia {
+  --background: #fdfaf2;
+  --background-rgb: 253, 250, 242;
+  --foreground: #433422;
+  --primary: #8c6239;
+  --primary-hover: #a1764c;
+  --primary-light: rgba(140, 98, 57, 0.12);
+  --primary-glow: rgba(140, 98, 57, 0.3);
+  --accent: #b08d5b;
+  --surface: rgba(244, 235, 208, 0.85);
+  --surface-raised: rgba(234, 222, 187, 0.7);
+  --surface-border: rgba(67, 52, 34, 0.15);
+  --surface-hover: rgba(67, 52, 34, 0.05);
+  --text-primary: #433422;
+  --text-secondary: #705d49;
+  --text-dim: #8e7b68;
+}
+
+.theme-forest {
+  --background: #0f1c16;
+  --background-rgb: 15, 28, 22;
+  --foreground: #ecf3f0;
+  --primary: #4e9a78;
+  --primary-hover: #67b08d;
+  --primary-light: rgba(78, 154, 120, 0.12);
+  --primary-glow: rgba(78, 154, 120, 0.4);
+  --accent: #87bba2;
+  --surface: rgba(23, 38, 30, 0.7);
+  --surface-raised: rgba(33, 56, 44, 0.5);
+  --surface-border: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.03);
+  --text-primary: #ecf3f0;
+  --text-secondary: #a7c1b3;
+  --text-dim: #7f9a8d;
+}
+
+.theme-obsidian {
+  --background: #000000;
+  --background-rgb: 0, 0, 0;
+  --foreground: #f1f5f9;
+  --primary: #f43f5e;
+  --primary-hover: #fb7185;
+  --primary-light: rgba(244, 63, 94, 0.12);
+  --primary-glow: rgba(244, 63, 94, 0.4);
+  --accent: #fda4af;
+  --surface: rgba(18, 18, 18, 0.8);
+  --surface-raised: rgba(30, 30, 30, 0.6);
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-dim: #94a3b8;
 }
 
 * {

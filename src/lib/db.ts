@@ -45,34 +45,7 @@ export async function getDB(): Promise<IDBPDatabase<PenPadDB>> {
   });
 }
 
-export async function saveProfile(profile: PenPadDB['stylometry']['value']) {
-  const db = await getDB();
-  await db.put('stylometry', profile);
-}
 
-export async function getProfile(id: string) {
-  const db = await getDB();
-  return db.get('stylometry', id);
-}
-
-export async function learnPattern(pattern: string, type: 'style' | 'grammar') {
-  const db = await getDB();
-  const existing = await db.get('learned_patterns', pattern);
-  const count = (existing?.frequencyCount || 0) + 1;
-  
-  await db.put('learned_patterns', {
-    pattern,
-    type,
-    suppress: count >= 3, // Auto-suppress after 3 ignores/hits
-    frequencyCount: count
-  });
-}
-
-export async function getSuppressedPatterns() {
-  const db = await getDB();
-  const all = await db.getAll('learned_patterns');
-  return all.filter(p => p.suppress).map(p => p.pattern);
-}
 
 export async function saveDirectoryHandleForProject(projectId: string, handle: FileSystemDirectoryHandle) {
   const db = await getDB();

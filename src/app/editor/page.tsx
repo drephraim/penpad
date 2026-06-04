@@ -4,15 +4,14 @@ import { useAuth } from "@/components/Providers"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useEffect, useCallback, Suspense, useRef } from "react"
 import { 
-  Plus, Search, Sparkles, 
+  Plus, Search, Type,
   Eye, Edit3, Maximize2, Minimize2,
   ArrowLeft, Loader2, FileText,
-  Feather, ShieldCheck, Zap,
+  Feather, 
   X, Check, AlertCircle, Trash2,
-  Download, Save, BookOpen
+  Download, Save, BookOpen,
+  Play, Pause, RotateCcw
 } from "lucide-react"
-import { LocalIntelligence, Suggestion } from '@/lib/algorithms'
-import { MemoriesManager } from '@/lib/memories'
 import { restoreDirectoryHandleForProject, saveDirectoryHandleForProject } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -24,6 +23,7 @@ interface Note {
   createdAt: number
   updatedAt: number
   isMemories?: boolean
+  wordGoal?: number
 }
 
 type ViewMode = 'edit' | 'preview'
@@ -38,7 +38,11 @@ function EditorContent() {
   const [notes, setNotes] = useState<Note[]>([])
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [isAiLoading, setIsAiLoading] = useState(false)
+  const [sessionTime, setSessionTime] = useState(0)
+  const [isTimerRunning, setIsTimerRunning] = useState(true)
+
+  const activeNote = notes.find(n => n && n.id === activeNoteId)
+
   const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [isFocusMode, setIsFocusMode] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,81 +60,34 @@ function EditorContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   
   const [fontFamily, setFontFamily] = useState('Georgia')
-  const [fontSize, setFontSize] = useState(18)
-  
+  const [fontSize, setFontSize] = useState(22)
   const [isLoadingNotes, setIsLoadingNotes] = useState(false)
-  const [showAiPanel, setShowAiPanel] = useState(false)
-  const [aiSuggestions, setAiSuggestions] = useState<Suggestion[]>([])
-  const [aiSummary, setAiSummary] = useState<string[]>([])
-  const [localIntel, setLocalIntel] = useState<LocalIntelligence | null>(null)
-  const [isLearning, setIsLearning] = useState(false)
-  const [highlightedPosition, setHighlightedPosition] = useState<{ start: number; end: number } | null>(null)
+  
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; noteId: string; noteTitle: string }>({ show: false, noteId: '', noteTitle: '' })
   const [savedChapters, setSavedChapters] = useState<Set<string>>(new Set())
   const [exportModal, setExportModal] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
-  const [memoriesManager] = useState(() => new MemoriesManager())
-  const [isMemoryChapter, setIsMemoryChapter] = useState(false)
-  const [isCapturing, setIsCapturing] = useState(false)
+  const [isTypewriterMode, setIsTypewriterMode] = useState(false)
+  const [theme, setTheme] = useState('midnight')
+
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme)
+    localStorage.setItem('penpad_theme', newTheme)
+  }
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('penpad_theme')
+    if (savedTheme) {
+      setTheme(savedTheme)
+    }
+  }, [])
   const [showChapterDrawer, setShowChapterDrawer] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const savedFilenamesRef = useRef<Map<string, string>>(new Map())
 
-  const scrollToPosition = (start: number, end: number) => {
-    const textarea = textareaRef.current
-    if (!textarea) return
 
-    setHighlightedPosition({ start, end })
-
-    textarea.focus()
-    textarea.setSelectionRange(start, end)
-
-    const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 24
-    const textBeforeCursor = textarea.value.substring(0, start)
-    const lines = textBeforeCursor.split('\n').length - 1
-    const scrollPosition = lines * lineHeight - textarea.clientHeight / 2
-
-    textarea.scrollTo({
-      top: Math.max(0, scrollPosition),
-      behavior: 'smooth'
-    })
-
-    setTimeout(() => setHighlightedPosition(null), 2000)
-  }
-
-  const applySuggestion = (original: string, replacement: string) => {
-    if (!activeNote) return
-    
-    if (original === replacement) {
-      setAiSuggestions(prev => prev.filter(s => s.original !== original || s.replacement !== replacement))
-      return
-    }
-
-    const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const startBoundary = /^\w/.test(original) ? '\\b' : ''
-    const endBoundary = /\w$/.test(original) ? '\\b' : ''
-    
-    const regex = new RegExp(`${startBoundary}${escapeRegExp(original)}${endBoundary}`, 'g')
-    const newContent = activeNote.content.replace(regex, replacement)
-    updateActiveNote({ content: newContent })
-    setAiSuggestions(prev => prev.filter(s => s.original !== original || s.replacement !== replacement))
-  }
-
-  const learnWord = (word: string, type: 'spelling' | 'style' = 'spelling') => {
-    if (localIntel) {
-      localIntel.learnWord(word, type)
-      setAiSuggestions(prev => prev.filter(s => s.original.toLowerCase() !== word.toLowerCase()))
-    }
-  }
-
-  useEffect(() => {
-    const intel = new LocalIntelligence()
-    intel.init().then(success => {
-      if (success) setLocalIntel(intel)
-    })
-  }, [])
 
   useEffect(() => {
     if (!projectId) return
@@ -142,7 +99,72 @@ function EditorContent() {
     })
   }, [projectId])
 
-  const activeNote = notes.find(n => n && n.id === activeNoteId)
+  const centerActiveLine = useCallback(() => {
+    if (!isTypewriterMode) return
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const textBeforeCursor = textarea.value.substring(0, start)
+    const lines = textBeforeCursor.split('\n').length - 1
+    
+    const computedStyle = window.getComputedStyle(textarea)
+    const lineHeight = parseInt(computedStyle.lineHeight) || 28
+    const paddingTop = parseInt(computedStyle.paddingTop) || 0
+    
+    const activeLineTop = lines * lineHeight + paddingTop
+    const textareaHeight = textarea.clientHeight
+    const targetScrollTop = activeLineTop - (textareaHeight / 2) + (lineHeight / 2)
+    
+    textarea.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: 'smooth'
+    })
+  }, [isTypewriterMode])
+
+  useEffect(() => {
+    if (isTypewriterMode) {
+      // Small timeout to let state/layout settle
+      const timer = setTimeout(centerActiveLine, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [isTypewriterMode, centerActiveLine, activeNoteId])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    if (isTimerRunning && activeNote) {
+      interval = setInterval(() => {
+        setSessionTime(prev => prev + 1)
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isTimerRunning, activeNote])
+
+  const formatSessionTime = (totalSeconds: number): string => {
+    const hrs = Math.floor(totalSeconds / 3600)
+    const mins = Math.floor((totalSeconds % 3600) / 60)
+    const secs = totalSeconds % 60
+    return [
+      hrs.toString().padStart(2, '0'),
+      mins.toString().padStart(2, '0'),
+      secs.toString().padStart(2, '0')
+    ].join(':')
+  }
+
+  const changeWordGoal = () => {
+    if (!activeNote) return
+    const currentGoal = activeNote.wordGoal || 1200
+    const input = prompt("Set word count goal for this chapter:", currentGoal.toString())
+    if (input === null) return
+    const newGoal = parseInt(input, 10)
+    if (!isNaN(newGoal) && newGoal > 0) {
+      updateActiveNote({ wordGoal: newGoal })
+    } else {
+      alert("Please enter a valid positive number.")
+    }
+  }
 
   const fetchProjectName = useCallback(async () => {
     if (!user || !projectId) return
@@ -249,16 +271,7 @@ function EditorContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNote?.content, activeNote?.title])
 
-  useEffect(() => {
-    if (activeNote?.content && localIntel) {
-      const timer = setTimeout(async () => {
-        setIsLearning(true)
-        await localIntel.ingest(activeNote.content)
-        setIsLearning(false)
-      }, 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [activeNote?.content, localIntel])
+
 
   const sanitizeFilename = (name: string): string => {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
@@ -418,6 +431,7 @@ function EditorContent() {
         clearTimeout(autoSaveTimerRef.current)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNote?.content, dirHandle, saveSingleChapterToFolder])
 
   const generateChapterTitle = (existingNotes: Note[]): string => {
@@ -488,92 +502,14 @@ function EditorContent() {
     setNotes(updatedNotes)
   }
 
-  const captureMemories = async () => {
-    if (!activeNote || !projectId) return
-    
-    const memoryChapter = notes.find((n: Note) => n && n.title === 'Memory')
-    if (!memoryChapter) {
-      alert('Please create a chapter named "Memory" first')
-      return
-    }
-    
-    setIsCapturing(true)
-    
-    try {
-      memoriesManager.addChapter(activeNote.id, activeNote.title, activeNote.content)
-      const extractedContent = memoriesManager.generateMarkdown()
-      
-      const updatedContent = memoryChapter.content 
-        ? memoryChapter.content + '\n\n---\n\n' + extractedContent
-        : extractedContent
-      
-      const updatedNotes = notes.map((n: Note) => 
-        n && n.id === memoryChapter.id 
-          ? { ...n, content: updatedContent, updatedAt: Date.now() }
-          : n
-      )
-      
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      if (stored) {
-        const noteList: Note[] = JSON.parse(stored)
-        const storedIdx = noteList.findIndex((n: Note) => n && n.id === memoryChapter.id)
-        if (storedIdx > -1) {
-          noteList[storedIdx] = { ...noteList[storedIdx], content: updatedContent, updatedAt: Date.now() }
-          localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-        }
-      }
-      
-      setNotes(updatedNotes)
-    } catch (e) {
-      console.error("Failed to capture memories:", e)
-    } finally {
-      setIsCapturing(false)
-    }
-  }
 
-  useEffect(() => {
-    if (activeNote?.title === 'Memory') {
-      setIsMemoryChapter(true)
-    } else {
-      setIsMemoryChapter(false)
-    }
-  }, [activeNote?.title])
-
-  const executeAiAction = async (action: 'analyze' | 'summary' | 'refine' | 'ingest') => {
-    if (!activeNote || !localIntel) return
-    
-    setIsAiLoading(true)
-    
-    await new Promise(r => setTimeout(r, 600))
-    
-    try {
-      if (action === 'analyze') {
-        const results = localIntel.analyze(activeNote.content)
-        setAiSuggestions(results)
-        setAiSummary([])
-      } else if (action === 'summary') {
-        const results = localIntel.summarize(activeNote.content)
-        setAiSummary(results)
-        setAiSuggestions([])
-      } else if (action === 'refine') {
-        const refined = localIntel.refine(activeNote.content)
-        updateActiveNote({ content: refined })
-      } else if (action === 'ingest') {
-        await localIntel.ingest(activeNote.content)
-      }
-    } catch {
-      console.error("AI action failed")
-    } finally {
-      setIsAiLoading(false)
-    }
-  }
 
   const filteredNotes = notes.filter((n: Note) => n &&
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const wordCount = activeNote?.content ? activeNote.content.split(/\s+/).filter(Boolean).length : 0
-  const wordGoal = 1200
+  const wordGoal = activeNote?.wordGoal || 1200
   const progressPercent = Math.min(100, Math.round((wordCount / wordGoal) * 100))
 
   if (loading) return (
@@ -617,7 +553,7 @@ function EditorContent() {
   )
 
   return (
-    <div className={`editor-container ${isFocusMode ? 'focus-mode' : ''}`}>
+    <div className={`editor-container theme-${theme} ${isFocusMode ? 'focus-mode' : ''}`}>
       <div className="bg-gradient-radial"></div>
       
       <header className="editor-header glass">
@@ -676,6 +612,15 @@ function EditorContent() {
               <option value={40}>40px</option>
             </select>
           </div>
+          
+          <div className="theme-selector glass-light">
+            <select value={theme} onChange={(e) => handleThemeChange(e.target.value)}>
+              <option value="midnight">Midnight Slate</option>
+              <option value="sepia">Sepia Book</option>
+              <option value="forest">Forest Moss</option>
+              <option value="obsidian">Obsidian Dark</option>
+            </select>
+          </div>
         </div>
 
         <div className="header-right">
@@ -689,6 +634,13 @@ function EditorContent() {
             )}
             <span>{syncStatus === 'saving' ? 'Saving' : 'Saved'}</span>
           </div>
+          <button 
+            className={`btn-icon ${isTypewriterMode ? 'active' : ''}`}
+            onClick={() => setIsTypewriterMode(!isTypewriterMode)}
+            title={isTypewriterMode ? "Exit typewriter mode" : "Enter typewriter mode"}
+          >
+            <Type size={18} />
+          </button>
           
           <button 
             className="btn-icon" 
@@ -830,43 +782,31 @@ function EditorContent() {
             <div className="editor-workspace fade-in">
               <div className="editor-title-row">
                 <input 
-                  className={`editor-title-input ${isMemoryChapter ? 'readonly' : ''}`}
+                  className="editor-title-input"
                   value={activeNote.title}
-                  onChange={(e) => !isMemoryChapter && updateActiveNote({ title: e.target.value })}
+                  onChange={(e) => updateActiveNote({ title: e.target.value })}
                   placeholder="Chapter Title..."
-                  readOnly={isMemoryChapter}
                 />
               </div>
               
               <div className="editor-content-area">
                 {viewMode === 'edit' ? (
-                  <div className="textarea-wrapper">
-                    {isMemoryChapter ? (
-                      <div className="memories-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {activeNote.content || "_Your captured memories will appear here._"}
-                        </ReactMarkdown>
-                      </div>
-                    ) : (
-                      <textarea 
-                        ref={textareaRef}
-                        className="editor-textarea"
-                        value={activeNote.content}
-                        onChange={(e) => updateActiveNote({ content: e.target.value })}
-                        placeholder="Begin writing..."
-                        spellCheck={false}
-                        style={{ fontFamily, fontSize: `${fontSize}px` }}
-                      />
-                    )}
-                    {highlightedPosition && (
-                      <div 
-                        className="highlight-overlay"
-                        style={{
-                          '--highlight-start': highlightedPosition.start,
-                          '--highlight-end': highlightedPosition.end,
-                        } as React.CSSProperties}
-                      />
-                    )}
+                  <div className={`textarea-wrapper ${isTypewriterMode ? 'typewriter' : ''}`}>
+                    <textarea 
+                      ref={textareaRef}
+                      className="editor-textarea"
+                      value={activeNote.content}
+                      onChange={(e) => {
+                        updateActiveNote({ content: e.target.value })
+                        if (isTypewriterMode) centerActiveLine()
+                      }}
+                      onKeyUp={() => isTypewriterMode && centerActiveLine()}
+                      onMouseUp={() => isTypewriterMode && centerActiveLine()}
+                      onFocus={() => isTypewriterMode && centerActiveLine()}
+                      placeholder="Begin writing..."
+                      spellCheck={false}
+                      style={{ fontFamily, fontSize: `${fontSize}px` }}
+                    />
                   </div>
                 ) : (
                   <div className="markdown-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
@@ -892,44 +832,32 @@ function EditorContent() {
                     </div>
                     <span className="word-progress-text">{progressPercent}%</span>
                   </div>
-                  {localIntel && !isMemoryChapter && (
-                    <span className="ai-status badge badge-success">
-                      <ShieldCheck size={12} />
-                      AI Active
-                    </span>
-                  )}
-                  {isLearning && !isMemoryChapter && (
-                    <span className="learning-indicator">
-                      <Zap size={12} className="pulse" />
-                      Learning
-                    </span>
-                  )}
                 </div>
-                
-                {!isMemoryChapter && (
-                  <div className="status-right">
-                    <button 
-                      className="btn-capture" 
-                      onClick={captureMemories}
-                      disabled={isCapturing}
-                    >
-                      {isCapturing ? (
-                        <Loader2 size={14} className="spin" />
-                      ) : (
-                        <Sparkles size={14} />
-                      )}
-                      {isCapturing ? 'Capturing...' : 'Capture Memories'}
-                    </button>
-                    <button className="btn-action" onClick={() => executeAiAction('refine')}>
-                      <Sparkles size={14} />
-                      Refine
-                    </button>
-                    <button className="btn-ai-trigger" onClick={() => setShowAiPanel(true)}>
-                      <Brain size={16} />
-                      Intelligence Hub
-                    </button>
+
+                <div className="status-right">
+                  <button className="status-goal-btn" onClick={changeWordGoal} title="Change Word Goal">
+                    🎯 Goal: {wordGoal} words
+                  </button>
+                  <div className="status-timer-container">
+                    <span className="timer-display">⏱️ {formatSessionTime(sessionTime)}</span>
+                    <div className="timer-controls">
+                      <button 
+                        className="timer-btn" 
+                        onClick={() => setIsTimerRunning(!isTimerRunning)} 
+                        title={isTimerRunning ? "Pause Timer" : "Start Timer"}
+                      >
+                        {isTimerRunning ? <Pause size={12} /> : <Play size={12} />}
+                      </button>
+                      <button 
+                        className="timer-btn" 
+                        onClick={() => setSessionTime(0)} 
+                        title="Reset Timer"
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           ) : (
@@ -941,130 +869,6 @@ function EditorContent() {
             </div>
           )}
         </main>
-
-        {showAiPanel && (
-          <aside className="ai-panel">
-            <div className="ai-panel-header">
-              <div className="ai-header-left">
-                <Sparkles size={18} className="ai-icon" />
-                <h3>Intelligence Hub</h3>
-              </div>
-              <div className="ai-header-right">
-                {localIntel ? (
-                  <span className="ai-status-badge">
-                    <ShieldCheck size={12} />
-                    Local AI
-                  </span>
-                ) : (
-                  <span className="ai-status-badge loading">
-                    <Loader2 size={12} className="spin" />
-                    Loading
-                  </span>
-                )}
-                <button className="btn-close" onClick={() => setShowAiPanel(false)}>
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-          
-            <div className="ai-panel-body">
-              <div className="ai-tools">
-                <button className="tool-btn" onClick={() => executeAiAction('summary')}>
-                  <FileText size={18} />
-                  <span>Summarize</span>
-                </button>
-                <button className="tool-btn" onClick={() => executeAiAction('analyze')}>
-                  <Search size={18} />
-                  <span>Deep Audit</span>
-                </button>
-                <button className="tool-btn" onClick={() => executeAiAction('ingest')}>
-                  <Feather size={18} />
-                  <span>Ingest Style</span>
-                </button>
-              </div>
-
-              {isAiLoading && (
-                <div className="ai-loading">
-                  <Loader2 size={20} className="spin" />
-                  <span>Analyzing text...</span>
-                </div>
-              )}
-              
-              {!isAiLoading && aiSummary.length === 0 && aiSuggestions.length === 0 && (
-                <div className="ai-empty">
-                  <Sparkles size={32} />
-                  <p>Click &ldquo;Deep Audit&rdquo; to check your writing</p>
-                  <span className="ai-hint">Checks spelling, grammar, and style</span>
-                </div>
-              )}
-
-              <div className="ai-results">
-                {aiSummary.length > 0 && (
-                  <div className="ai-card">
-                    <div className="ai-card-header">
-                      <h4>Summary</h4>
-                      <button className="clear-btn" onClick={() => setAiSummary([])}>Clear</button>
-                    </div>
-                    <ul>
-                      {aiSummary.map((s, i) => <li key={i}>{s}</li>)}
-                    </ul>
-                  </div>
-                )}
-
-                {aiSuggestions.length > 0 && (
-                  <div className="ai-card">
-                    <div className="ai-card-header">
-                      <h4>{aiSuggestions.length} Issues Found</h4>
-                      <button className="clear-btn" onClick={() => setAiSuggestions([])}>Clear</button>
-                    </div>
-                    <div className="suggestions-list">
-                      {aiSuggestions.map((s, i) => (
-                        <div 
-                          key={i} 
-                          className={`suggestion-item ${s.type}`}
-                          onClick={() => s.position && scrollToPosition(s.position.start, s.position.end)}
-                          title={s.position ? `Click to jump to line ${s.position.line}, column ${s.position.column}` : 'Go to editor to find this'}
-                        >
-                          <div className="suggestion-header">
-                            <span className={`type-badge ${s.type}`}>{s.type}</span>
-                            {s.position && <span className="location-badge">Line {s.position.line}</span>}
-                            <div className="suggestion-actions">
-                              {s.original !== s.replacement && (
-                                <button 
-                                  className="action-apply"
-                                  onClick={(e) => { e.stopPropagation(); applySuggestion(s.original, s.replacement) }}
-                                >
-                                  <Check size={12} />
-                                  Apply
-                                </button>
-                              )}
-                              <button
-                                className="action-learn"
-                                onClick={(e) => { e.stopPropagation(); learnWord(s.original, s.type as 'spelling' | 'style') }}
-                              >
-                                Learn
-                              </button>
-                            </div>
-                          </div>
-                          <div className="suggestion-content">
-                            <span className="original">{s.original}</span>
-                            {s.replacement && (
-                              <>
-                                <span className="arrow">→</span>
-                                <span className="replacement">{s.replacement}</span>
-                              </>
-                            )}
-                          </div>
-                          <p className="explanation">{s.explanation}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </aside>
-        )}
 
         {deleteModal.show && (
           <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>
@@ -1220,14 +1024,16 @@ function EditorContent() {
           color: var(--primary-hover);
         }
 
-        .font-selector {
+        .font-selector,
+        .theme-selector {
           display: flex;
           gap: 4px;
           padding: 4px;
           border-radius: var(--radius-md);
         }
 
-        .font-selector select {
+        .font-selector select,
+        .theme-selector select {
           padding: 0.4rem 0.6rem;
           border-radius: var(--radius-sm);
           background: transparent;
@@ -1239,7 +1045,8 @@ function EditorContent() {
           outline: none;
         }
 
-        .font-selector select option {
+        .font-selector select option,
+        .theme-selector select option {
           background: var(--background);
           color: var(--text-primary);
         }
@@ -1292,7 +1099,7 @@ function EditorContent() {
           flex-direction: column;
           padding: 1.25rem;
           border-right: 1px solid var(--surface-border);
-          background: rgba(10, 10, 15, 0.5);
+          background: var(--surface-raised);
           flex-shrink: 0;
         }
 
@@ -1581,43 +1388,7 @@ function EditorContent() {
           gap: 0.5rem;
         }
 
-        .memories-preview {
-          flex: 1;
-          padding: 1.5rem;
-          background: var(--surface);
-          border-radius: var(--radius-lg);
-          border: 1px solid var(--surface-border);
-          line-height: 1.8;
-          color: var(--text-secondary);
-          min-height: 500px;
-          overflow-y: auto;
-        }
 
-        .memories-preview h1 {
-          font-family: var(--font-outfit);
-          font-size: 2rem;
-          font-weight: 800;
-          color: var(--text-primary);
-          margin-bottom: 0.5rem;
-        }
-
-        .memories-preview h2 {
-          font-family: var(--font-outfit);
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: var(--primary);
-          margin-top: 1.5rem;
-          margin-bottom: 0.75rem;
-        }
-
-        .memories-preview ul {
-          padding-left: 1.25rem;
-        }
-
-        .memories-preview li {
-          margin-bottom: 0.5rem;
-          line-height: 1.6;
-        }
 
         .badge-info {
           background: linear-gradient(135deg, var(--primary-light), var(--accent-light));
@@ -1749,8 +1520,67 @@ function EditorContent() {
         .status-right {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          flex-wrap: wrap;
+          gap: 12px;
+        }
+
+        .status-goal-btn {
+          background: transparent;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          padding: 3px 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .status-goal-btn:hover {
+          border-color: var(--primary);
+          color: var(--primary);
+          background: var(--surface-hover);
+        }
+
+        .status-timer-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          padding: 3px 8px;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+        }
+
+        .timer-display {
+          font-variant-numeric: tabular-nums;
+          font-weight: 500;
+        }
+
+        .timer-controls {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          border-left: 1px solid var(--surface-border);
+          padding-left: 8px;
+        }
+
+        .timer-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-dim);
+          cursor: pointer;
+          padding: 2px;
+          border-radius: var(--radius-sm);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .timer-btn:hover {
+          color: var(--primary);
+          background: var(--surface-hover);
         }
 
         .btn-action {
@@ -1773,412 +1603,46 @@ function EditorContent() {
           color: var(--primary-hover);
         }
 
-        .btn-ai-trigger {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 0.6rem 1.25rem;
-          background: linear-gradient(135deg, var(--primary), var(--accent));
-          border: none;
-          border-radius: var(--radius-md);
-          color: white;
-          font-weight: 700;
-          font-size: 0.85rem;
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .btn-ai-trigger:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px -5px var(--primary-glow);
-        }
-
-        .btn-capture {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 0.6rem 1.25rem;
-          background: var(--accent);
-          border: none;
-          border-radius: var(--radius-md);
-          color: white;
-          font-weight: 700;
-          font-size: 0.85rem;
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .btn-capture:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px -5px var(--accent);
-        }
-
-        .btn-capture:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .empty-editor-state {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-dim);
-          gap: 1.5rem;
-        }
-
-        .empty-icon {
-          opacity: 0.2;
-        }
-
-        .ai-panel {
-          width: 380px;
-          display: flex;
-          flex-direction: column;
-          background: var(--surface);
-          border-left: 1px solid var(--surface-border);
-          flex-shrink: 0;
-        }
-
-        .ai-panel-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 1.25rem 1.5rem;
-          border-bottom: 1px solid var(--surface-border);
-        }
-
-        .ai-header-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .ai-icon {
-          color: var(--accent);
-        }
-
-        .ai-panel-header h3 {
-          font-family: var(--font-outfit);
-          font-size: 1.1rem;
-          font-weight: 700;
-        }
-
-        .ai-header-right {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-        }
-
-        .ai-status-badge {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 0.7rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: var(--success);
-          background: var(--success-light);
-          padding: 4px 8px;
-          border-radius: var(--radius-full);
-        }
-
-        .ai-status-badge.loading {
-          color: var(--text-dim);
-          background: var(--surface-hover);
-        }
-
-        .btn-close {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 32px;
-          height: 32px;
-          background: transparent;
-          border: none;
-          color: var(--text-dim);
-          cursor: pointer;
-          border-radius: var(--radius-sm);
-          transition: var(--transition);
-        }
-
-        .btn-close:hover {
-          background: var(--surface-hover);
-          color: var(--text-primary);
-        }
-
-        .ai-panel-body {
-          flex: 1;
-          overflow-y: auto;
-          padding: 1.5rem;
-        }
-
-        .ai-tools {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 0.75rem;
-          margin-bottom: 1.5rem;
-        }
-
-        .tool-btn {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-          padding: 1.25rem 1rem;
-          background: var(--surface-hover);
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-lg);
-          color: var(--text-secondary);
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .tool-btn:hover {
-          border-color: var(--primary);
-          color: var(--primary-hover);
-          transform: translateY(-2px);
-        }
-
-        .tool-btn span {
-          font-size: 0.75rem;
-          font-weight: 600;
-        }
-
-        .ai-loading {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          padding: 2rem;
-          color: var(--accent);
-          font-weight: 600;
-        }
-
-        .ai-results {
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-        }
-
-        .ai-card {
-          background: var(--surface-hover);
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-lg);
-          padding: 1.25rem;
-        }
-
-        .ai-card h4 {
-          font-size: 0.7rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          color: var(--accent);
-          margin-bottom: 1rem;
-        }
-
-        .ai-card ul {
-          padding-left: 1.25rem;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .ai-card li {
-          font-size: 0.9rem;
-          color: var(--text-secondary);
-          line-height: 1.5;
-        }
-
-        .suggestions-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .suggestion-item {
-          padding: 12px;
-          background: var(--background);
-          border-radius: var(--radius-md);
-          border-left: 3px solid var(--primary);
-        }
-
-        .suggestion-item.spelling {
-          border-left-color: var(--error);
-        }
-
-        .suggestion-item.style {
-          border-left-color: var(--primary);
-        }
-
-        .suggestion-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 8px;
-        }
-
-        .type-badge {
-          font-size: 0.65rem;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          padding: 2px 6px;
-          border-radius: var(--radius-xs);
-        }
-
-        .type-badge.spelling {
-          background: var(--error-light);
-          color: var(--error);
-        }
-
-        .type-badge.style {
+        .btn-icon.active {
           background: var(--primary-light);
-          color: var(--primary-hover);
+          color: var(--primary);
+          border-color: var(--primary);
         }
 
-        .location-badge {
-          font-size: 0.65rem;
-          color: var(--text-dim);
-          background: var(--surface-hover);
-          padding: 2px 6px;
-          border-radius: var(--radius-sm);
-          font-weight: 500;
+        .textarea-wrapper.typewriter {
+          position: relative;
         }
 
-        .suggestion-item {
-          cursor: pointer;
-          transition: var(--transition);
+        .textarea-wrapper.typewriter::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 38%;
+          background: linear-gradient(to bottom, var(--background) 25%, rgba(var(--background-rgb), 0) 100%);
+          pointer-events: none;
+          z-index: 10;
         }
 
-        .suggestion-item:hover {
-          background: var(--surface-hover);
+        .textarea-wrapper.typewriter::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 38%;
+          background: linear-gradient(to top, var(--background) 25%, rgba(var(--background-rgb), 0) 100%);
+          pointer-events: none;
+          z-index: 10;
         }
 
-        .suggestion-actions {
-          display: flex;
-          gap: 6px;
+        .textarea-wrapper.typewriter .editor-textarea {
+          scroll-padding-top: 50%;
+          scroll-padding-bottom: 50%;
         }
 
-        .action-apply {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px 8px;
-          background: var(--primary);
-          border: none;
-          border-radius: var(--radius-sm);
-          color: white;
-          font-size: 0.7rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .action-apply:hover {
-          background: var(--primary-hover);
-        }
-
-        .action-learn {
-          padding: 4px 8px;
-          background: var(--success-light);
-          border: 1px solid transparent;
-          border-radius: var(--radius-sm);
-          color: var(--success);
-          font-size: 0.7rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .action-learn:hover {
-          border-color: var(--success);
-        }
-
-        .ai-card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        }
-
-        .ai-card-header h4 {
-          margin-bottom: 0;
-        }
-
-        .clear-btn {
-          padding: 4px 10px;
-          background: var(--surface-hover);
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-sm);
-          color: var(--text-dim);
-          font-size: 0.7rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .clear-btn:hover {
-          background: var(--error-light);
-          color: var(--error);
-          border-color: var(--error);
-        }
-
-        .ai-hint {
-          font-size: 0.8rem;
-          color: var(--text-dim);
-          margin-top: 0.5rem;
-        }
-
-        .suggestion-content {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.9rem;
-          margin-bottom: 4px;
-        }
-
-        .original {
-          color: var(--text-dim);
-          text-decoration: line-through;
-        }
-
-        .arrow {
-          color: var(--text-dim);
-        }
-
-        .replacement {
-          color: var(--text-primary);
-          font-weight: 600;
-        }
-
-        .explanation {
-          font-size: 0.8rem;
-          color: var(--text-dim);
-          margin: 0;
-          line-height: 1.4;
-        }
-
-        .ai-empty {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 3rem;
-          color: var(--text-dim);
-          text-align: center;
-        }
-
-        .ai-empty p {
-          margin-top: 1rem;
-          font-size: 0.9rem;
-        }
-
-        .focus-mode .editor-sidebar,
-        .focus-mode .ai-panel {
+        .focus-mode .editor-sidebar {
           display: none;
         }
 
@@ -2199,8 +1663,7 @@ function EditorContent() {
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
           }
-          .editor-sidebar,
-          .ai-panel {
+          .editor-sidebar {
             display: none;
           }
           .editor-workspace {
@@ -2348,14 +1811,6 @@ function EditorContent() {
   )
 }
 
-function Brain(props: React.SVGProps<SVGSVGElement> & { size?: number }) {
-  return (
-    <svg width={props.size || 24} height={props.size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54"/>
-      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54"/>
-    </svg>
-  )
-}
 
 export default function EditorPage() {
   return (
