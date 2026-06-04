@@ -12,7 +12,7 @@ import {
   Download, Save, BookOpen,
   Play, Pause, RotateCcw
 } from "lucide-react"
-import { restoreDirectoryHandleForProject, saveDirectoryHandleForProject } from '@/lib/db'
+import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -61,6 +61,32 @@ function EditorContent() {
     }
   }, [projectId])
 
+  const verifyPermission = useCallback(async (handle: FileSystemDirectoryHandle): Promise<boolean> => {
+    try {
+      const opts = { mode: 'readwrite' as const }
+      if ((await handle.queryPermission(opts)) === 'granted') {
+        return true
+      }
+      if ((await handle.requestPermission(opts)) === 'granted') {
+        return true
+      }
+    } catch (e) {
+      console.error("Permission check failed:", e)
+    }
+    return false
+  }, [])
+
+  const disconnectFolder = async () => {
+    setDirHandle(null)
+    if (projectId) {
+      try {
+        await saveDirectoryHandleForProject(projectId, null)
+      } catch (e) {
+        console.error("Failed to clear directory handle:", e)
+      }
+    }
+  }
+
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   
   const [fontFamily, setFontFamily] = useState('Georgia')
@@ -96,7 +122,7 @@ function EditorContent() {
   useEffect(() => {
     if (!projectId) return
     
-    restoreDirectoryHandleForProject(projectId).then(handle => {
+    getDirectoryHandleForProject(projectId).then(handle => {
       if (handle) {
         setDirHandle(handle)
       }
@@ -318,7 +344,7 @@ function EditorContent() {
     
     if (!targetDir && projectId) {
       try {
-        targetDir = await restoreDirectoryHandleForProject(projectId)
+        targetDir = await getDirectoryHandleForProject(projectId)
         if (targetDir) {
           setDirHandle(targetDir)
         }
@@ -327,7 +353,18 @@ function EditorContent() {
       }
     }
     
-    if (!targetDir) {
+    if (targetDir) {
+      const hasPermission = await verifyPermission(targetDir)
+      if (!hasPermission) {
+        try {
+          targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
+          setDirHandle(targetDir)
+          await saveFolderHandleToProject(targetDir)
+        } catch {
+          return
+        }
+      }
+    } else {
       try {
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
         setDirHandle(targetDir)
@@ -341,7 +378,7 @@ function EditorContent() {
     if (targetDir) {
       await saveSingleChapterToFolder(activeNote, targetDir)
     }
-  }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject, projectId])
+  }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject, projectId, verifyPermission])
 
   const exportManuscriptToFolder = async () => {
     if (notes.length === 0) {
@@ -358,7 +395,7 @@ function EditorContent() {
     
     if (!targetDir && projectId) {
       try {
-        targetDir = await restoreDirectoryHandleForProject(projectId)
+        targetDir = await getDirectoryHandleForProject(projectId)
         if (targetDir) {
           setDirHandle(targetDir)
         }
@@ -367,7 +404,18 @@ function EditorContent() {
       }
     }
     
-    if (!targetDir) {
+    if (targetDir) {
+      const hasPermission = await verifyPermission(targetDir)
+      if (!hasPermission) {
+        try {
+          targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
+          setDirHandle(targetDir)
+          await saveFolderHandleToProject(targetDir)
+        } catch {
+          return
+        }
+      }
+    } else {
       try {
         targetDir = await window.showDirectoryPicker({ mode: 'readwrite' })
         setDirHandle(targetDir)
@@ -781,6 +829,14 @@ function EditorContent() {
                 <Download size={16} />
                 Export Manuscript
               </button>
+              {dirHandle && (
+                <div className="linked-folder-info">
+                  <span className="folder-name" title={dirHandle.name}>📁 {dirHandle.name}</span>
+                  <button className="btn-disconnect-folder" onClick={disconnectFolder} title="Unlink folder">
+                    Disconnect
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="sidebar-search">
@@ -857,14 +913,24 @@ function EditorContent() {
                             let targetDir = dirHandle
                             
                             if (!targetDir && projectId) {
-                              targetDir = await restoreDirectoryHandleForProject(projectId)
+                              targetDir = await getDirectoryHandleForProject(projectId)
                               if (targetDir) {
                                 setDirHandle(targetDir)
                               }
                             }
                             
                             if (targetDir) {
-                              await saveSingleChapterToFolder(note, targetDir)
+                              const hasPermission = await verifyPermission(targetDir)
+                              if (hasPermission) {
+                                await saveSingleChapterToFolder(note, targetDir)
+                              } else {
+                                try {
+                                  const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                                  setDirHandle(dir)
+                                  await saveFolderHandleToProject(dir)
+                                  await saveSingleChapterToFolder(note, dir)
+                                } catch (err) { console.error(err) }
+                              }
                             } else {
                               try {
                                 const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
@@ -1502,6 +1568,45 @@ function EditorContent() {
         .btn-export:hover {
           border-color: var(--primary);
           color: var(--primary-hover);
+        }
+
+        .linked-folder-info {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.4rem 0.6rem;
+          background: var(--surface-hover);
+          border: 1px dashed var(--surface-border);
+          border-radius: var(--radius-sm);
+          margin-top: 0.5rem;
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          gap: 6px;
+        }
+
+        .folder-name {
+          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-weight: 500;
+        }
+
+        .btn-disconnect-folder {
+          background: transparent;
+          border: none;
+          color: var(--error);
+          cursor: pointer;
+          font-size: 0.7rem;
+          font-weight: 600;
+          padding: 2px 4px;
+          border-radius: var(--radius-sm);
+          transition: var(--transition);
+        }
+
+        .btn-disconnect-folder:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--error-hover);
         }
 
         .export-progress {

@@ -47,9 +47,13 @@ export async function getDB(): Promise<IDBPDatabase<PenPadDB>> {
 
 
 
-export async function saveDirectoryHandleForProject(projectId: string, handle: FileSystemDirectoryHandle) {
+export async function saveDirectoryHandleForProject(projectId: string, handle: FileSystemDirectoryHandle | null) {
   const db = await getDB();
-  await db.put('directory_handles', { key: projectId, ...handle });
+  if (handle === null) {
+    await db.delete('directory_handles', projectId);
+  } else {
+    await db.put('directory_handles', { key: projectId, ...handle });
+  }
 }
 
 export async function getDirectoryHandleForProject(projectId: string): Promise<FileSystemDirectoryHandle | null> {
