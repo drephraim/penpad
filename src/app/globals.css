@@ -56,6 +56,7 @@
 .theme-midnight {
   --background: #0a0a0f;
   --background-rgb: 10, 10, 15;
+  --background-transparent: rgba(10, 10, 15, 0);
   --foreground: #f1f5f9;
   --primary: #6366f1;
   --primary-hover: #818cf8;
@@ -74,6 +75,7 @@
 .theme-sepia {
   --background: #fdfaf2;
   --background-rgb: 253, 250, 242;
+  --background-transparent: rgba(253, 250, 242, 0);
   --foreground: #433422;
   --primary: #8c6239;
   --primary-hover: #a1764c;
@@ -92,6 +94,7 @@
 .theme-forest {
   --background: #0f1c16;
   --background-rgb: 15, 28, 22;
+  --background-transparent: rgba(15, 28, 22, 0);
   --foreground: #ecf3f0;
   --primary: #4e9a78;
   --primary-hover: #67b08d;
@@ -110,6 +113,7 @@
 .theme-obsidian {
   --background: #000000;
   --background-rgb: 0, 0, 0;
+  --background-transparent: rgba(0, 0, 0, 0);
   --foreground: #f1f5f9;
   --primary: #f43f5e;
   --primary-hover: #fb7185;
@@ -123,6 +127,63 @@
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
   --text-dim: #94a3b8;
+}
+
+.theme-nordic {
+  --background: #0f141c;
+  --background-rgb: 15, 20, 28;
+  --background-transparent: rgba(15, 20, 28, 0);
+  --foreground: #d8dee9;
+  --primary: #88c0d0;
+  --primary-hover: #8fbcbb;
+  --primary-light: rgba(136, 192, 208, 0.12);
+  --primary-glow: rgba(136, 192, 208, 0.4);
+  --accent: #5e81ac;
+  --surface: rgba(26, 34, 46, 0.7);
+  --surface-raised: rgba(46, 57, 74, 0.5);
+  --surface-border: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.03);
+  --text-primary: #eceff4;
+  --text-secondary: #d8dee9;
+  --text-dim: #4c566a;
+}
+
+.theme-lavender {
+  --background: #180f1a;
+  --background-rgb: 24, 15, 26;
+  --background-transparent: rgba(24, 15, 26, 0);
+  --foreground: #f3ebf5;
+  --primary: #c084fc;
+  --primary-hover: #d8b4fe;
+  --primary-light: rgba(192, 132, 252, 0.12);
+  --primary-glow: rgba(192, 132, 252, 0.4);
+  --accent: #f472b6;
+  --surface: rgba(36, 20, 41, 0.7);
+  --surface-raised: rgba(56, 32, 64, 0.5);
+  --surface-border: rgba(255, 255, 255, 0.06);
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #faf5ff;
+  --text-secondary: #e9d5ff;
+  --text-dim: #a78bfa;
+}
+
+.theme-solarized-light {
+  --background: #fdf6e3;
+  --background-rgb: 253, 246, 227;
+  --background-transparent: rgba(253, 246, 227, 0);
+  --foreground: #586e75;
+  --primary: #268bd2;
+  --primary-hover: #2aa198;
+  --primary-light: rgba(38, 139, 210, 0.12);
+  --primary-glow: rgba(38, 139, 210, 0.3);
+  --accent: #859900;
+  --surface: rgba(238, 232, 213, 0.85);
+  --surface-raised: rgba(220, 211, 185, 0.7);
+  --surface-border: rgba(88, 110, 117, 0.15);
+  --surface-hover: rgba(88, 110, 117, 0.05);
+  --text-primary: #073642;
+  --text-secondary: #586e75;
+  --text-dim: #93a1a1;
 }
 
 * {

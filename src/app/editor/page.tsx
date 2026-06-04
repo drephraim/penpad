@@ -136,7 +136,7 @@ function EditorContent() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
-    if (isTimerRunning && activeNote) {
+    if (isTimerRunning && activeNoteId) {
       interval = setInterval(() => {
         setSessionTime(prev => prev + 1)
       }, 1000)
@@ -144,7 +144,7 @@ function EditorContent() {
     return () => {
       if (interval) clearInterval(interval)
     }
-  }, [isTimerRunning, activeNote])
+  }, [isTimerRunning, activeNoteId])
 
   const formatSessionTime = (totalSeconds: number): string => {
     const hrs = Math.floor(totalSeconds / 3600)
@@ -685,6 +685,9 @@ function EditorContent() {
               <option value="sepia">Sepia Book</option>
               <option value="forest">Forest Moss</option>
               <option value="obsidian">Obsidian Dark</option>
+              <option value="nordic">Nordic Frost</option>
+              <option value="lavender">Plum Lavender</option>
+              <option value="solarized-light">Solarized Light</option>
             </select>
           </div>
         </div>
@@ -1852,26 +1855,14 @@ function EditorContent() {
           left: 0;
           right: 0;
           height: 38%;
-          background: linear-gradient(to bottom, var(--background) 25%, rgba(var(--background-rgb), 0) 100%);
-          pointer-events: none;
-          z-index: 10;
-        }
-
-        .textarea-wrapper.typewriter::after {
-          content: '';
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          height: 38%;
-          background: linear-gradient(to top, var(--background) 25%, rgba(var(--background-rgb), 0) 100%);
+          background: linear-gradient(to bottom, var(--background) 25%, var(--background-transparent) 100%);
           pointer-events: none;
           z-index: 10;
         }
 
         .textarea-wrapper.typewriter .editor-textarea {
           scroll-padding-top: 50%;
-          scroll-padding-bottom: 50%;
+          scroll-padding-bottom: 0px;
         }
 
         .focus-mode .editor-sidebar {
