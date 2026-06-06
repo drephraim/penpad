@@ -17,6 +17,25 @@ export interface Note {
   wordGoal?: number
 }
 
+const timeout = <T>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      resolve(null)
+    }, ms)
+
+    promise.then(
+      (res) => {
+        clearTimeout(timer)
+        resolve(res)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
+}
+
 /**
  * Reconciles local projects with Firestore.
  * - If only local: uploads to Firestore.
@@ -29,7 +48,12 @@ export async function syncProjectsWithCloud(userId: string, localProjects: Proje
 
   try {
     const projectsCol = collection(db, "users", userId, "projects")
-    const snapshot = await getDocs(projectsCol)
+    const snapshot = await timeout(getDocs(projectsCol), 3500)
+    
+    if (!snapshot) {
+      console.warn("Firestore sync timed out for projects. Using local backup.")
+      return localProjects
+    }
     
     const cloudProjects: Project[] = []
     snapshot.forEach(docSnap => {
@@ -103,7 +127,12 @@ export async function syncChaptersWithCloud(userId: string, projectId: string, l
 
   try {
     const chaptersCol = collection(db, "users", userId, "projects", projectId, "chapters")
-    const snapshot = await getDocs(chaptersCol)
+    const snapshot = await timeout(getDocs(chaptersCol), 3500)
+
+    if (!snapshot) {
+      console.warn("Firestore sync timed out for chapters. Using local backup.")
+      return localNotes
+    }
 
     const cloudNotes: Note[] = []
     snapshot.forEach(docSnap => {
