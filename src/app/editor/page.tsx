@@ -1010,6 +1010,46 @@ function EditorContent() {
     setAutocompleteSuggestions([])
   }
 
+  const handleAddSelectionToBible = async () => {
+    const name = aiSelectionText.trim()
+    if (!name || !user || !projectId) return
+    
+    try {
+      const stored = localStorage.getItem(`penpad_bible_${projectId}`)
+      const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+      
+      const exists = entryList.some(e => e.name.toLowerCase() === name.toLowerCase())
+      if (exists) {
+        alert(`"${name}" is already saved in the Story Bible!`)
+        return
+      }
+
+      const newEntry: BibleEntry = {
+        id: crypto.randomUUID(),
+        name: name,
+        category: "character",
+        content: "Manually added by writer.",
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
+
+      entryList.unshift(newEntry)
+      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(entryList))
+      setBibleEntries(entryList)
+      
+      await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+      alert(`Successfully saved "${name}" as a character!`)
+      
+      // Clear selection text to hide button
+      setAiSelectionText("")
+      setAiSelectionStart(0)
+      setAiSelectionEnd(0)
+    } catch (e) {
+      console.error("Failed to add highlighted text to Story Bible:", e)
+      alert("Failed to save selection. Please try again.")
+    }
+  }
+
   // Handle textarea keyboard listener
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSlashMenu) {
@@ -1356,17 +1396,43 @@ function EditorContent() {
   const autoExtractAndSaveNames = useCallback(async (content: string) => {
     if (!user || !projectId || !content) return
     
-    const COMMON_TITLES = [
-      "Mr", "Mrs", "Ms", "Miss", "Dr", "Doctor", "Prof", "Professor",
-      "Sir", "Lady", "Lord", "Count", "Countess", "Duke", "Duchess", "Baron", "Baroness",
-      "King", "Queen", "Prince", "Princess", "Captain", "Major", "Colonel", "General",
-      "Lieutenant", "Officer", "Agent", "Detective", "Inspector", "Chief", "Sheriff",
-      "Constable", "Mayor", "Governor", "President", "Senator", "Chancellor", "Emperor",
-      "Uncle", "Aunt", "Father", "Mother", "Brother", "Sister", "Nurse", "Coach", "Judge",
-      "Dean", "Pastor", "Reverend", "Bishop", "Saint"
+    const MULTI_WORD_TITLES = [
+      "Pill Immortal", "Sword King", "Pill King", "Pill Master", "Pill Emperor",
+      "Sword Emperor", "Sword God", "Blade Emperor", "Sect Master", "Sect Leader",
+      "Hall Master", "Valley Master", "Daoist Master"
     ];
 
-    const COMMON_EXCLUSIONS = new Set([
+    const SINGLE_WORD_TITLES = [
+      "Mr", "Mrs", "Ms", "Miss", "Dr", "Doctor", "Prof", "Professor",
+      "Sir", "Lady", "Lord", "Count", "Countess", "Duke", "Duchess", "Baron", "Baroness",
+      "King", "Queen", "Prince", "Princess", "Uncle", "Aunt", "Father", "Mother",
+      "Brother", "Sister", "Nurse", "Coach", "Judge", "Dean", "Pastor", "Reverend",
+      "Bishop", "Saint", "Elder", "Grandmaster", "Master", "Patriarch", "Matriarch",
+      "Daoist", "Venerable", "Alchemist", "Officer", "Agent", "Detective", "Inspector",
+      "Chief", "Sheriff", "Constable", "Mayor", "Governor", "President", "Senator",
+      "Chancellor", "Emperor", "General", "Colonel", "Major", "Captain", "Lieutenant"
+    ];
+
+    const FANTASY_EXCLUSIONS = new Set([
+      // Cultivation / Fantasy nouns and states
+      "Qi", "Spiritual", "Heaven", "Heavenly", "Earth", "Earthly", "Sect", "Clan", "Pill",
+      "Elixir", "Qi Condensation", "Foundation Establishment", "Golden Core", "Nascent Soul",
+      "Dao", "Tribulation", "Beast", "Beasts", "Demon", "Demons", "Monster", "Monsters",
+      "Dragon", "Dragons", "Phoenix", "Tiger", "Tigers", "Lotus", "Sword", "Swords", "Blade",
+      "Blades", "Spear", "Aura", "Energy", "Divine", "Imperial", "Sacred", "Ancient", "Primal",
+      "Wind", "Fire", "Water", "Lightning", "Thunder", "Ice", "Frost", "Gold", "Wood", "Soil",
+      "Metal", "Yin", "Yang", "Void", "Space", "Time", "Soul", "Spirit", "Mind", "Heart",
+      "Body", "Blood", "Bone", "Essence", "Herb", "Herbs", "Medicine", "Talisman", "Array",
+      "Formation", "Manual", "Technique", "Art", "Skill", "Cultivation", "Realm", "Stage",
+      "Level", "Grade", "Rank", "Artifact", "Weapon", "Treasure", "Hall", "Pavilion", "Mountain",
+      "Peak", "Valley", "River", "Sea", "Ocean", "Lake", "Forest", "Cave", "City", "Town",
+      "Village", "Kingdom", "Empire", "Dynasty", "Continent", "World", "Star", "Sun", "Moon",
+      "Sky", "Cloud", "Rain", "Snow", "Shadow", "Light", "Darkness", "Chaos", "Order", "Law",
+      "Rule", "Will", "Intent", "Concept", "Domain", "Field", "Zone", "Palace", "Tower",
+      "Pagoda", "Temple", "Shrine", "Altar", "Tomb", "Graveyard", "Abyss", "Desert", "Plain",
+      "Swamp", "Marsh", "Island", "Dimension", "Universe", "Void",
+      
+      // Standard English Grammar Exclusions
       "The", "He", "She", "It", "We", "You", "They", "But", "And", "Then", "When", "There",
       "This", "That", "Here", "From", "Once", "What", "How", "Why", "Where", "First", "Next",
       "Last", "Some", "Many", "Most", "Each", "Every", "Both", "Either", "Neither", "While",
@@ -1381,40 +1447,58 @@ function EditorContent() {
     ]);
 
     const extracted = new Set<string>()
+    const titles = [...MULTI_WORD_TITLES, ...SINGLE_WORD_TITLES]
+    const sortedTitles = [...titles].sort((a, b) => b.length - a.length)
 
-    // Heuristic 1: Title + Name
-    const titleRegexStr = `\\b(?:${COMMON_TITLES.join('|')})\\.?\\s+[A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*\\b`
+    // Heuristic 1: Title followed by optional capitalized name
+    const titleRegexStr = `\\b(${sortedTitles.join('|')})\\b(?:\\.?\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*))?`
     const titleRegex = new RegExp(titleRegexStr, 'g')
     let match
     while ((match = titleRegex.exec(content)) !== null) {
-      extracted.add(match[0].trim())
-    }
-
-    // Heuristic 2: Multiple Capitalized Words
-    const multiCapRegex = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g
-    while ((match = multiCapRegex.exec(content)) !== null) {
-      const phrase = match[0].trim()
-      const words = phrase.split(/\s+/)
-      if (COMMON_EXCLUSIONS.has(words[0])) {
-        const sliced = words.slice(1).join(" ")
-        if (sliced.split(/\s+/).length >= 2) {
-          extracted.add(sliced)
+      const title = match[1]
+      const namePart = match[2] ? match[2].trim() : ""
+      
+      if (namePart) {
+        const nameWords = namePart.split(/\s+/)
+        const hasExclusions = nameWords.some(w => FANTASY_EXCLUSIONS.has(w))
+        if (!hasExclusions) {
+          extracted.add(`${title} ${namePart}`)
         }
       } else {
-        // Make sure none of the words in the phrase are exclusions
-        const hasExclusions = words.some(w => COMMON_EXCLUSIONS.has(w))
+        if (MULTI_WORD_TITLES.includes(title) || ["Elder", "Lady", "Lord", "Grandmaster", "Patriarch", "Matriarch", "Venerable", "Alchemist"].includes(title)) {
+          extracted.add(title)
+        }
+      }
+    }
+
+    // Heuristic 2: Real and Fictional Names (sequences of 2 or more capitalized words without titles)
+    const nameRegex = /\b([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))+\b/g
+    while ((match = nameRegex.exec(content)) !== null) {
+      const phrase = match[0].trim()
+      const words = phrase.split(/\s+/)
+      
+      if (FANTASY_EXCLUSIONS.has(words[0])) {
+        const remaining = words.slice(1).join(" ")
+        if (remaining.split(/\s+/).length >= 2) {
+          const hasExclusions = words.slice(1).some(w => FANTASY_EXCLUSIONS.has(w))
+          if (!hasExclusions) {
+            extracted.add(remaining)
+          }
+        }
+      } else {
+        const hasExclusions = words.some(w => FANTASY_EXCLUSIONS.has(w))
         if (!hasExclusions) {
           extracted.add(phrase)
         }
       }
     }
 
-    // Heuristic 3: Mid-sentence capitalized word (single word names)
+    // Heuristic 3: Mid-sentence single capitalized names (e.g. "... greeted Flura.")
     const singleCapRegex = /\b[A-Z][a-z]+\b/g
     while ((match = singleCapRegex.exec(content)) !== null) {
       const word = match[0]
       const index = match.index
-      if (COMMON_EXCLUSIONS.has(word) || COMMON_TITLES.includes(word)) continue
+      if (FANTASY_EXCLUSIONS.has(word) || titles.includes(word)) continue
 
       const textBefore = content.substring(0, index).trim()
       if (textBefore.length > 0) {
@@ -2251,6 +2335,19 @@ function EditorContent() {
                     <button className="fmt-btn font-mono" onClick={() => setShowSlashMenu(true)} title="Slash Commands">
                       <span>/</span>
                     </button>
+                    {aiSelectionText.trim() && (
+                      <>
+                        <div className="fmt-divider"></div>
+                        <button 
+                          className="fmt-btn-action" 
+                          onClick={handleAddSelectionToBible} 
+                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" to Story Bible`}
+                        >
+                          <Sparkles size={13} className="glow-icon" style={{ marginRight: '6px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Save Character</span>
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   {mentionedLore.length > 0 && (
@@ -3836,6 +3933,26 @@ function EditorContent() {
           height: 16px;
           background: var(--surface-border);
           margin: 0 4px;
+        }
+
+        .fmt-btn-action {
+          display: flex;
+          align-items: center;
+          background: rgba(99, 102, 241, 0.15);
+          border: 1px solid rgba(99, 102, 241, 0.3);
+          color: var(--primary-hover);
+          padding: 0 10px;
+          height: 28px;
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .fmt-btn-action:hover {
+          background: rgba(99, 102, 241, 0.25);
+          border-color: var(--primary);
+          color: var(--primary-hover);
+          transform: translateY(-1px);
         }
 
         /* Autocomplete suggestions panel styles */
