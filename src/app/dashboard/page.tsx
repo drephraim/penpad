@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen } from "lucide-react"
 import { saveDirectoryHandleForProject } from '@/lib/db'
+import { syncProjectsWithCloud, saveProjectToCloud, deleteProjectFromCloud } from '@/lib/sync'
 
 interface Project {
   id: string
@@ -31,6 +32,7 @@ export default function Dashboard() {
       return
     }
     try {
+      // 1. Read local storage first for instant load
       const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
       const projectList: Project[] = stored ? JSON.parse(stored) : []
       projectList.sort((a, b) => {
@@ -39,21 +41,25 @@ export default function Dashboard() {
         return timeB - timeA
       })
       
-      const counts: Record<string, number> = {}
-      for (const project of projectList) {
-        const notesStored = localStorage.getItem(`penpad_notes_${project.id}`)
-        if (notesStored) {
-          const notes = JSON.parse(notesStored)
-          counts[project.id] = notes.length
-        } else {
-          counts[project.id] = 0
+      const getCounts = (list: Project[]) => {
+        const counts: Record<string, number> = {}
+        for (const project of list) {
+          const notesStored = localStorage.getItem(`penpad_notes_${project.id}`)
+          counts[project.id] = notesStored ? JSON.parse(notesStored).length : 0
         }
+        return counts
       }
-      setChapterCounts(counts)
+
+      setChapterCounts(getCounts(projectList))
       setProjects(projectList)
+      setFetchDone(true)
+
+      // 2. Perform background two-way sync with Firestore
+      const syncedProjects = await syncProjectsWithCloud(user.uid, projectList)
+      setChapterCounts(getCounts(syncedProjects))
+      setProjects(syncedProjects)
     } catch (e) {
-      console.error("Failed to parse projects:", e)
-    } finally {
+      console.error("Failed to fetch/sync projects:", e)
       setFetchDone(true)
     }
   }, [user])
@@ -80,6 +86,9 @@ export default function Dashboard() {
       projectList.unshift(newProject)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
       
+      // Save project to cloud in background
+      saveProjectToCloud(user.uid, newProject)
+
       if (createFolderHandle) {
         await saveDirectoryHandleForProject(newProject.id, createFolderHandle)
       }
@@ -103,6 +112,10 @@ export default function Dashboard() {
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(filtered))
       localStorage.removeItem(`penpad_notes_${deleteModal.projectId}`)
       setProjects(filtered)
+      
+      // Delete project from cloud in background
+      deleteProjectFromCloud(user.uid, deleteModal.projectId)
+
       setDeleteModal({ show: false, projectId: '', projectName: '' })
     } catch (e) {
       console.error("Error deleting project:", e)
@@ -117,8 +130,12 @@ export default function Dashboard() {
       const idx = projectList.findIndex(p => p.id === editModal.projectId)
       if (idx >= 0) {
         projectList[idx].name = editModal.name.trim()
+        projectList[idx].lastUpdated = Date.now()
         localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
         setProjects([...projectList])
+        
+        // Save updated project to cloud in background
+        saveProjectToCloud(user.uid, projectList[idx])
       }
       
       if (editModal.folderHandle) {

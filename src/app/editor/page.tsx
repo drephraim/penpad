@@ -14,6 +14,7 @@ import {
   Sparkles, Wand2, Copy
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
+import { syncChaptersWithCloud, saveChapterToCloud, deleteChapterFromCloud } from '@/lib/sync'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -233,19 +234,23 @@ function EditorContent() {
     if (!user || !projectId) return
     setIsLoadingNotes(true)
     try {
+      // 1. Read local storage first for instant load
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        const noteList = parsed.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
-        setNotes(noteList)
-        if (noteList.length > 0 && !activeNoteId) {
-          setActiveNoteId(noteList[0].id)
-        }
-      } else {
-        setNotes([])
+      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
+      setNotes(noteList)
+      if (noteList.length > 0 && !activeNoteId) {
+        setActiveNoteId(noteList[0].id)
+      }
+      
+      // 2. Perform background two-way sync with Firestore
+      const syncedNotes = await syncChaptersWithCloud(user.uid, projectId, noteList)
+      setNotes(syncedNotes)
+      if (syncedNotes.length > 0 && !activeNoteId) {
+        setActiveNoteId(syncedNotes[0].id)
       }
     } catch (e) {
-      console.error("Fetch notes failed:", e)
+      console.error("Fetch/Sync notes failed:", e)
       setNotes([])
     } finally {
       setIsLoadingNotes(false)
@@ -283,9 +288,13 @@ function EditorContent() {
           localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
         }
       }
+
+      // Save to cloud in background
+      await saveChapterToCloud(user.uid, projectId, updatedNote)
       
       setSyncStatus('saved')
-    } catch {
+    } catch (e) {
+      console.error("Save note failed:", e)
       setSyncStatus('error')
     }
   }, [user, projectId])
@@ -611,6 +620,9 @@ function EditorContent() {
       setNotes(prev => Array.isArray(prev) ? [newNote, ...prev] : [newNote])
       setActiveNoteId(newNote.id)
       setViewMode('edit')
+
+      // Save to cloud in background
+      saveChapterToCloud(user.uid, projectId, newNote)
     } catch (e) {
       console.error("Failed to create note with content:", e)
     }
@@ -694,6 +706,9 @@ function EditorContent() {
       setNotes(prev => Array.isArray(prev) ? [newNote, ...prev] : [newNote])
       setActiveNoteId(newNote.id)
       setViewMode('edit')
+
+      // Save to cloud in background
+      saveChapterToCloud(user.uid, projectId, newNote)
     } catch (e) {
       console.error("Failed to create note:", e)
     }
@@ -708,6 +723,12 @@ function EditorContent() {
       
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
       setNotes(filtered)
+      
+      // Delete from cloud in background
+      if (user) {
+        deleteChapterFromCloud(user.uid, projectId, deleteModal.noteId)
+      }
+
       if (activeNoteId === deleteModal.noteId) {
         setActiveNoteId(filtered.length > 0 ? filtered[0].id : null)
       }
@@ -767,6 +788,13 @@ function EditorContent() {
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
       setNotes(filtered)
       
+      // Delete selected notes from cloud in background
+      if (user) {
+        selectedNoteIds.forEach(noteId => {
+          deleteChapterFromCloud(user.uid, projectId, noteId)
+        })
+      }
+
       if (activeNoteId && selectedNoteIds.has(activeNoteId)) {
         setActiveNoteId(filtered.length > 0 ? filtered[0].id : null)
       }
