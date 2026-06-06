@@ -73,8 +73,28 @@ export async function POST(req: NextRequest) {
         "5. Output ONLY the raw markdown. No intro or outro chat."
 
       userPrompt = `Generate a chapter outline based on this concept: ${prompt}`
+    } else if (action === "generate_lore") {
+      const { name, category, context } = body
+      if (!name) {
+        return NextResponse.json({ error: "Name is required for lore generation" }, { status: 400 })
+      }
+      if (!category) {
+        return NextResponse.json({ error: "Category is required for lore generation" }, { status: 400 })
+      }
+
+      systemInstruction = 
+        "You are an expert creative world builder and character designer. The user will request a bible entry for their story.\n" +
+        "Guidelines:\n" +
+        "1. Generate a beautifully detailed profile in clean markdown.\n" +
+        "2. Make the lore sound interesting, inspiring, and textured.\n" +
+        "3. For characters, include sections: 'Overview', 'Appearance', 'Personality & Motives', 'Background', and 'Story Ideas'.\n" +
+        "4. For world items/settings, include sections: 'Overview', 'Description', 'History & Origin', 'Significance', and 'Story Hooks'.\n" +
+        "5. Output ONLY the raw markdown. No intro or outro comments."
+
+      const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
+      userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, or outline." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, or generate_lore." }, { status: 400 })
     }
 
     const model = genAI.getGenerativeModel({

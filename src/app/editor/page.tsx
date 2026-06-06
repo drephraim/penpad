@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/components/Providers"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useEffect, useCallback, Suspense, useRef } from "react"
+import React, { useState, useEffect, useCallback, Suspense, useRef } from "react"
 import { 
   Plus, Search, Type,
   Eye, Edit3, Maximize2, Minimize2,
@@ -225,6 +225,152 @@ function EditorContent() {
   const [showSlashMenu, setShowSlashMenu] = useState(false)
   const [slashMenuQuery, setSlashMenuQuery] = useState("")
   const [slashMenuIndex, setSlashMenuIndex] = useState(0)
+  
+  // AI Lore Generation States
+  const [showAILoreModal, setShowAILoreModal] = useState(false)
+  const [aiLoreName, setAiLoreName] = useState("")
+  const [aiLoreCategory, setAiLoreCategory] = useState<"character" | "world">("character")
+  const [aiLoreContext, setAiLoreContext] = useState("")
+  const [aiLoreLoading, setAiLoreLoading] = useState(false)
+  const [aiLoreError, setAiLoreError] = useState("")
+
+  // Hover Tooltip States
+  const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
+  const [hoveredLorePosition, setHoveredLorePosition] = useState<{ top: number; left: number } | null>(null)
+
+  const handleLoreMouseEnter = (e: React.MouseEvent, entry: BibleEntry) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setHoveredLore(entry)
+    setHoveredLorePosition({
+      top: rect.top + window.scrollY - 10,
+      left: rect.left + window.scrollX + rect.width / 2
+    })
+  }
+
+  const handleLoreMouseLeave = () => {
+    setHoveredLore(null)
+    setHoveredLorePosition(null)
+  }
+
+  const handleLoreClick = (entry: BibleEntry) => {
+    setActiveSidebarTab('bible')
+    setIsLeftSidebarOpen(true)
+    setActiveBibleEntryId(entry.id)
+    setIsBibleDrawerOpen(true)
+  }
+
+  const handleGenerateAILore = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!aiLoreName.trim() || !user || !projectId) return
+    setAiLoreLoading(true)
+    setAiLoreError("")
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_lore",
+          name: aiLoreName,
+          category: aiLoreCategory,
+          context: aiLoreContext
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAiLoreError(data.error)
+      } else {
+        const now = Date.now()
+        const newEntry: BibleEntry = {
+          id: crypto.randomUUID(),
+          name: aiLoreName,
+          category: aiLoreCategory,
+          content: data.text || "",
+          createdAt: now,
+          updatedAt: now
+        }
+        const updated = [newEntry, ...bibleEntries]
+        setBibleEntries(updated)
+        localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+        
+        await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+
+        setActiveBibleEntryId(newEntry.id)
+        setIsBibleDrawerOpen(true)
+        setShowAILoreModal(false)
+        setAiLoreName("")
+        setAiLoreContext("")
+      }
+    } catch (err) {
+      setAiLoreError(err instanceof Error ? err.message : "Failed to generate lore")
+    } finally {
+      setAiLoreLoading(false)
+    }
+  }
+
+  const highlightBibleEntries = (text: string) => {
+    if (!bibleEntries.length || !text) return text
+    
+    const sortedEntries = [...bibleEntries]
+      .filter(e => e.name && e.name.trim().length > 1)
+      .sort((a, b) => b.name.length - a.name.length)
+
+    if (sortedEntries.length === 0) return text
+
+    const escapedNames = sortedEntries.map(e => e.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
+    const regex = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'gi')
+
+    const parts = text.split(regex)
+    if (parts.length === 1) return text
+
+    return parts.map((part, index) => {
+      const entry = sortedEntries.find(e => e.name.toLowerCase() === part.toLowerCase())
+      if (entry) {
+        return (
+          <span 
+            key={index} 
+            className="lore-chip-preview"
+            onMouseEnter={(e) => handleLoreMouseEnter(e, entry)}
+            onMouseLeave={handleLoreMouseLeave}
+            onClick={() => handleLoreClick(entry)}
+          >
+            {part}
+          </span>
+        )
+      }
+      return part
+    })
+  }
+
+  const injectLoreChips = (node: React.ReactNode): React.ReactNode => {
+    if (typeof node === 'string') {
+      return highlightBibleEntries(node)
+    }
+    
+    if (React.isValidElement(node)) {
+      if (node.type === 'code' || node.type === 'pre') {
+        return node
+      }
+      
+      const children = React.Children.map(node.props.children, child => injectLoreChips(child))
+      return React.cloneElement(node, { ...node.props, children })
+    }
+    
+    return node
+  }
+
+  // Scan activeNote.content for bibleEntries
+  const getMentionedLore = useCallback(() => {
+    if (!activeNote || !activeNote.content || !bibleEntries.length) return []
+    
+    return bibleEntries.filter(entry => {
+      if (!entry.name || entry.name.trim().length <= 1) return false
+      const escaped = entry.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+      const regex = new RegExp(`\\b${escaped}\\b`, 'i')
+      return regex.test(activeNote.content)
+    })
+  }, [activeNote, bibleEntries])
+
+  const mentionedLore = getMentionedLore()
 
   const saveFolderHandleToProject = useCallback(async (handle: FileSystemDirectoryHandle) => {
     if (!projectId) return
@@ -1689,10 +1835,14 @@ function EditorContent() {
             {/* TAB 2: CHARACTER & WORLD BIBLE */}
             {activeSidebarTab === 'bible' && (
               <div className="sidebar-tab-content fade-in flex flex-col h-full">
-                <div className="sidebar-section">
-                  <button className="btn-new" onClick={createNewBibleEntry}>
-                    <Plus size={16} />
-                    New Lore Entry
+                <div className="sidebar-section bible-header-actions">
+                  <button className="btn-new" onClick={createNewBibleEntry} style={{ flex: 1 }}>
+                    <Plus size={14} />
+                    New Lore
+                  </button>
+                  <button className="btn-export" onClick={() => setShowAILoreModal(true)} style={{ flex: 1, marginTop: 0, padding: '0.75rem' }}>
+                    <Sparkles size={14} className="text-accent" style={{ marginRight: '4px' }} />
+                    AI Generate
                   </button>
                 </div>
                 
@@ -1853,37 +2003,58 @@ function EditorContent() {
               
               {/* Markdown Formatting Toolbar: Hide in Zen Mode */}
               {viewMode === 'edit' && !isZenMode && (
-                <div className="formatting-toolbar glass-light">
-                  <button className="fmt-btn" onClick={() => applyFormatting("**", "**")} title="Bold (Ctrl+B)">
-                    <Bold size={15} />
-                  </button>
-                  <button className="fmt-btn" onClick={() => applyFormatting("*", "*")} title="Italic (Ctrl+I)">
-                    <Italic size={15} />
-                  </button>
-                  <button className="fmt-btn" onClick={() => applyFormatting("~~", "~~")} title="Strikethrough">
-                    <Strikethrough size={15} />
-                  </button>
-                  <div className="fmt-divider"></div>
-                  <button className="fmt-btn" onClick={() => applyFormatting("# ")} title="Heading 1">
-                    <Heading1 size={15} />
-                  </button>
-                  <button className="fmt-btn" onClick={() => applyFormatting("## ")} title="Heading 2">
-                    <Heading2 size={15} />
-                  </button>
-                  <div className="fmt-divider"></div>
-                  <button className="fmt-btn" onClick={() => applyFormatting("> ")} title="Blockquote">
-                    <Quote size={15} />
-                  </button>
-                  <button className="fmt-btn" onClick={() => applyFormatting("```\n", "\n```")} title="Code Block">
-                    <Code size={15} />
-                  </button>
-                  <button className="fmt-btn" onClick={() => applyFormatting("- ")} title="Bullet List">
-                    <List size={15} />
-                  </button>
-                  <div className="fmt-divider"></div>
-                  <button className="fmt-btn font-mono" onClick={() => setShowSlashMenu(true)} title="Slash Commands">
-                    <span>/</span>
-                  </button>
+                <div className="editor-controls-row">
+                  <div className="formatting-toolbar glass-light">
+                    <button className="fmt-btn" onClick={() => applyFormatting("**", "**")} title="Bold (Ctrl+B)">
+                      <Bold size={15} />
+                    </button>
+                    <button className="fmt-btn" onClick={() => applyFormatting("*", "*")} title="Italic (Ctrl+I)">
+                      <Italic size={15} />
+                    </button>
+                    <button className="fmt-btn" onClick={() => applyFormatting("~~", "~~")} title="Strikethrough">
+                      <Strikethrough size={15} />
+                    </button>
+                    <div className="fmt-divider"></div>
+                    <button className="fmt-btn" onClick={() => applyFormatting("# ")} title="Heading 1">
+                      <Heading1 size={15} />
+                    </button>
+                    <button className="fmt-btn" onClick={() => applyFormatting("## ")} title="Heading 2">
+                      <Heading2 size={15} />
+                    </button>
+                    <div className="fmt-divider"></div>
+                    <button className="fmt-btn" onClick={() => applyFormatting("> ")} title="Blockquote">
+                      <Quote size={15} />
+                    </button>
+                    <button className="fmt-btn" onClick={() => applyFormatting("```\n", "\n```")} title="Code Block">
+                      <Code size={15} />
+                    </button>
+                    <button className="fmt-btn" onClick={() => applyFormatting("- ")} title="Bullet List">
+                      <List size={15} />
+                    </button>
+                    <div className="fmt-divider"></div>
+                    <button className="fmt-btn font-mono" onClick={() => setShowSlashMenu(true)} title="Slash Commands">
+                      <span>/</span>
+                    </button>
+                  </div>
+
+                  {mentionedLore.length > 0 && (
+                    <div className="mentioned-lore-container glass-light">
+                      <span className="mentioned-label">Mentions:</span>
+                      <div className="mentioned-chips-row">
+                        {mentionedLore.map(entry => (
+                          <button 
+                            key={entry.id} 
+                            className={`mentioned-lore-chip ${entry.category}`}
+                            onClick={() => handleLoreClick(entry)}
+                            title={`View ${entry.name}`}
+                          >
+                            <span>{entry.category === 'character' ? '👤' : '🌍'}</span>
+                            <span className="chip-name">{entry.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1934,7 +2105,20 @@ function EditorContent() {
                   </div>
                 ) : (
                   <div className="markdown-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p>{React.Children.map(children, child => injectLoreChips(child))}</p>,
+                        li: ({ children }) => <li>{React.Children.map(children, child => injectLoreChips(child))}</li>,
+                        h1: ({ children }) => <h1>{React.Children.map(children, child => injectLoreChips(child))}</h1>,
+                        h2: ({ children }) => <h2>{React.Children.map(children, child => injectLoreChips(child))}</h2>,
+                        h3: ({ children }) => <h3>{React.Children.map(children, child => injectLoreChips(child))}</h3>,
+                        h4: ({ children }) => <h4>{React.Children.map(children, child => injectLoreChips(child))}</h4>,
+                        h5: ({ children }) => <h5>{React.Children.map(children, child => injectLoreChips(child))}</h5>,
+                        h6: ({ children }) => <h6>{React.Children.map(children, child => injectLoreChips(child))}</h6>,
+                        blockquote: ({ children }) => <blockquote>{React.Children.map(children, child => injectLoreChips(child))}</blockquote>,
+                      }}
+                    >
                       {activeNote.content || "_Start writing to see preview..."}
                     </ReactMarkdown>
                   </div>
@@ -2328,6 +2512,122 @@ function EditorContent() {
             </div>
           </div>
         )}
+
+        {showAILoreModal && (
+          <div className="modal-overlay" onClick={() => !aiLoreLoading && setShowAILoreModal(false)}>
+            <div className="modal glass" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={20} className="text-accent" />
+                  Generate Lore with AI
+                </h2>
+                <p className="modal-description">
+                  Enter a name and short prompt to automatically draft a detailed World Bible entry.
+                </p>
+              </div>
+              <form onSubmit={handleGenerateAILore} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div className="ai-form-field">
+                  <label>Name / Title</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. Aurelius, Elderwood Forest"
+                    value={aiLoreName}
+                    onChange={e => setAiLoreName(e.target.value)}
+                    required
+                    disabled={aiLoreLoading}
+                  />
+                </div>
+                <div className="ai-form-field">
+                  <label>Category</label>
+                  <select
+                    className="ai-select"
+                    value={aiLoreCategory}
+                    onChange={e => setAiLoreCategory(e.target.value as "character" | "world")}
+                    disabled={aiLoreLoading}
+                  >
+                    <option value="character">👤 Character</option>
+                    <option value="world">🗺️ World Item / Location</option>
+                  </select>
+                </div>
+                <div className="ai-form-field">
+                  <label>Context / Concept (Optional)</label>
+                  <textarea
+                    className="ai-textarea"
+                    placeholder="e.g. A weary time-traveler seeking a lost artifact, or an ancient woods where stars fall."
+                    value={aiLoreContext}
+                    onChange={e => setAiLoreContext(e.target.value)}
+                    disabled={aiLoreLoading}
+                  />
+                </div>
+                {aiLoreError && (
+                  <div className="ai-error-box">
+                    <AlertCircle size={16} />
+                    <span>{aiLoreError}</span>
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setShowAILoreModal(false)}
+                    disabled={aiLoreLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={aiLoreLoading || !aiLoreName.trim()}
+                  >
+                    {aiLoreLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Generate
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {hoveredLore && hoveredLorePosition && (
+          <div 
+            className="lore-hover-card glass"
+            style={{
+              position: 'absolute',
+              top: hoveredLorePosition.top,
+              left: hoveredLorePosition.left,
+              transform: 'translate(-50%, -100%)',
+              zIndex: 400,
+              pointerEvents: 'none'
+            }}
+          >
+            <div className="hover-card-header">
+              <span className={`category-badge ${hoveredLore.category}`}>
+                {hoveredLore.category === 'character' ? '👤 Character' : '🌍 World'}
+              </span>
+              <h4 className="hover-card-title">{hoveredLore.name}</h4>
+            </div>
+            <div className="hover-card-body">
+              {hoveredLore.content ? (
+                <p className="line-clamp-3">{hoveredLore.content.replace(/[#*`>_\-]/g, '').substring(0, 150)}...</p>
+              ) : (
+                <p className="no-info">No biography or notes entered yet.</p>
+              )}
+            </div>
+            <div className="hover-card-footer">
+              <span>Click to view details</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -2339,6 +2639,187 @@ function EditorContent() {
           color: var(--text-primary);
           position: relative;
           transition: background 0.5s ease;
+        }
+
+        /* World Bible Integration Styles */
+        .bible-header-actions {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 0.75rem;
+        }
+
+        .editor-controls-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          margin-bottom: 0.75rem;
+          flex-wrap: wrap;
+        }
+
+        .mentioned-lore-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 8px;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+          max-width: 50%;
+          overflow: hidden;
+        }
+
+        .mentioned-label {
+          font-size: 0.7rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--text-dim);
+          white-space: nowrap;
+        }
+
+        .mentioned-chips-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+
+        .mentioned-chips-row::-webkit-scrollbar {
+          display: none;
+        }
+
+        .mentioned-lore-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          border: 1px solid transparent;
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-secondary);
+          transition: var(--transition);
+          white-space: nowrap;
+        }
+
+        .mentioned-lore-chip:hover {
+          color: var(--text-primary);
+          background: var(--surface-hover);
+        }
+
+        .mentioned-lore-chip.character {
+          border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .mentioned-lore-chip.character:hover {
+          background: var(--primary-light);
+          color: var(--primary-hover);
+          border-color: var(--primary);
+        }
+
+        .mentioned-lore-chip.world {
+          border-color: rgba(167, 139, 250, 0.2);
+        }
+
+        .mentioned-lore-chip.world:hover {
+          background: var(--accent-light);
+          color: var(--accent);
+          border-color: var(--accent);
+        }
+
+        .chip-name {
+          max-width: 100px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .lore-chip-preview {
+          color: var(--accent);
+          font-weight: 600;
+          border-bottom: 1px dashed var(--accent);
+          cursor: pointer;
+          transition: var(--transition);
+          padding: 0 2px;
+        }
+
+        .lore-chip-preview:hover {
+          color: var(--accent-light);
+          background: rgba(167, 139, 250, 0.15);
+          border-bottom-style: solid;
+        }
+
+        .lore-hover-card {
+          width: 260px;
+          padding: 1rem;
+          border-radius: var(--radius-md);
+          background: rgba(15, 17, 23, 0.95);
+          border: 1px solid var(--surface-border);
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px -3px var(--primary-glow);
+          color: var(--text-primary);
+          animation: fadeInCard 0.2s ease-out forwards;
+        }
+
+        @keyframes fadeInCard {
+          from { opacity: 0; transform: translate(-50%, -95%); }
+          to { opacity: 1; transform: translate(-50%, -100%); }
+        }
+
+        .hover-card-header {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 0.5rem;
+          border-bottom: 1px solid var(--surface-border);
+          padding-bottom: 0.5rem;
+        }
+
+        .category-badge {
+          font-size: 0.65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 2px 6px;
+          border-radius: 4px;
+          width: fit-content;
+        }
+
+        .category-badge.character {
+          background: var(--primary-light);
+          color: var(--primary-hover);
+        }
+
+        .category-badge.world {
+          background: var(--accent-light);
+          color: var(--accent);
+        }
+
+        .hover-card-title {
+          font-family: var(--font-outfit);
+          font-size: 1rem;
+          font-weight: 700;
+        }
+
+        .hover-card-body {
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          line-height: 1.4;
+          margin-bottom: 0.5rem;
+        }
+
+        .hover-card-body .no-info {
+          font-style: italic;
+          color: var(--text-dim);
+        }
+
+        .hover-card-footer {
+          font-size: 0.65rem;
+          color: var(--text-dim);
+          text-align: right;
+          border-top: 1px dashed var(--surface-border);
+          padding-top: 0.25rem;
         }
 
         .loading-screen {
