@@ -10,7 +10,8 @@ import {
   Feather, 
   X, Check, AlertCircle, Trash2,
   Download, Save, BookOpen,
-  Play, Pause, RotateCcw
+  Play, Pause, RotateCcw,
+  Sparkles, Wand2, Copy
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
@@ -100,6 +101,19 @@ function EditorContent() {
   const [isExporting, setIsExporting] = useState(false)
   const [isTypewriterMode, setIsTypewriterMode] = useState(false)
   const [theme, setTheme] = useState('midnight')
+
+  // AI Assistant state variables
+  const [showAISidebar, setShowAISidebar] = useState(false)
+  const [aiTab, setAiTab] = useState<'continue' | 'rewrite' | 'outline'>('continue')
+  const [aiSelectionText, setAiSelectionText] = useState("")
+  const [aiSelectionStart, setAiSelectionStart] = useState(0)
+  const [aiSelectionEnd, setAiSelectionEnd] = useState(0)
+  const [aiTone, setAiTone] = useState("descriptive")
+  const [aiResponse, setAiResponse] = useState("")
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiOutlinePrompt, setAiOutlinePrompt] = useState("")
+  const [aiError, setAiError] = useState("")
+  const [aiCopied, setAiCopied] = useState(false)
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme)
@@ -451,6 +465,163 @@ function EditorContent() {
     }
   }
 
+  const handleContinueWriting = async () => {
+    if (!activeNote) return
+    setAiLoading(true)
+    setAiError("")
+    setAiResponse("")
+    try {
+      const textarea = textareaRef.current
+      let contextText = ""
+      if (textarea) {
+        const cursorPosition = textarea.selectionStart
+        const textBefore = textarea.value.substring(0, cursorPosition)
+        contextText = textBefore.substring(Math.max(0, textBefore.length - 4000))
+      } else {
+        contextText = activeNote.content.substring(Math.max(0, activeNote.content.length - 4000))
+      }
+
+      if (!contextText.trim()) {
+        setAiError("Please write something first so the AI has context to continue from.")
+        setAiLoading(false)
+        return
+      }
+
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "continue", content: contextText })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAiError(data.error)
+      } else {
+        setAiResponse(data.text)
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Request failed")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const handleRewrite = async () => {
+    if (!aiSelectionText) return
+    setAiLoading(true)
+    setAiError("")
+    setAiResponse("")
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rewrite", content: aiSelectionText, style: aiTone })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAiError(data.error)
+      } else {
+        setAiResponse(data.text)
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Request failed")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const handleGenerateOutline = async () => {
+    if (!aiOutlinePrompt.trim()) return
+    setAiLoading(true)
+    setAiError("")
+    setAiResponse("")
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "outline", prompt: aiOutlinePrompt })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAiError(data.error)
+      } else {
+        setAiResponse(data.text)
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Request failed")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const insertAtCursor = (textToInsert: string) => {
+    const textarea = textareaRef.current
+    if (!textarea || !activeNote) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const content = textarea.value
+    
+    const newContent = content.substring(0, start) + textToInsert + content.substring(end)
+    updateActiveNote({ content: newContent })
+    
+    setTimeout(() => {
+      textarea.focus()
+      const newCursorPos = start + textToInsert.length
+      textarea.setSelectionRange(newCursorPos, newCursorPos)
+    }, 50)
+  }
+
+  const replaceSelection = (newText: string) => {
+    const textarea = textareaRef.current
+    if (!textarea || !activeNote) return
+
+    const start = aiSelectionStart
+    const end = aiSelectionEnd
+    const content = textarea.value
+
+    const newContent = content.substring(0, start) + newText + content.substring(end)
+    updateActiveNote({ content: newContent })
+
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start, start + newText.length)
+      setAiSelectionText(newText)
+      setAiSelectionStart(start)
+      setAiSelectionEnd(start + newText.length)
+    }, 50)
+  }
+
+  const createNewNoteWithContent = async (title: string, initialContent: string) => {
+    if (!user || !projectId) return
+    try {
+      const now = Date.now()
+      const newNote: Note = {
+        id: crypto.randomUUID(),
+        title: title,
+        content: initialContent,
+        createdAt: now,
+        updatedAt: now,
+      }
+      
+      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      noteList.unshift(newNote)
+      
+      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+      setNotes(prev => Array.isArray(prev) ? [newNote, ...prev] : [newNote])
+      setActiveNoteId(newNote.id)
+      setViewMode('edit')
+    } catch (e) {
+      console.error("Failed to create note with content:", e)
+    }
+  }
+
+  const handleCopyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setAiCopied(true)
+    setTimeout(() => setAiCopied(false), 2000)
+  }
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -752,6 +923,14 @@ function EditorContent() {
             <span>{syncStatus === 'saving' ? 'Saving' : 'Saved'}</span>
           </div>
           <button 
+            className={`btn-icon ${showAISidebar ? 'active' : ''}`}
+            onClick={() => setShowAISidebar(!showAISidebar)}
+            title={showAISidebar ? "Close AI Assistant" : "Open AI Assistant"}
+          >
+            <Sparkles size={18} />
+          </button>
+
+          <button 
             className={`btn-icon ${isTypewriterMode ? 'active' : ''}`}
             onClick={() => setIsTypewriterMode(!isTypewriterMode)}
             title={isTypewriterMode ? "Exit typewriter mode" : "Enter typewriter mode"}
@@ -986,6 +1165,20 @@ function EditorContent() {
                       onKeyUp={() => isTypewriterMode && centerActiveLine()}
                       onMouseUp={() => isTypewriterMode && centerActiveLine()}
                       onFocus={() => isTypewriterMode && centerActiveLine()}
+                      onSelect={(e) => {
+                        const target = e.currentTarget
+                        const start = target.selectionStart
+                        const end = target.selectionEnd
+                        if (start !== end) {
+                          setAiSelectionText(target.value.substring(start, end))
+                          setAiSelectionStart(start)
+                          setAiSelectionEnd(end)
+                        } else {
+                          setAiSelectionText("")
+                          setAiSelectionStart(0)
+                          setAiSelectionEnd(0)
+                        }
+                      }}
                       placeholder="Begin writing..."
                       spellCheck={false}
                       style={{ fontFamily, fontSize: `${fontSize}px` }}
@@ -1052,6 +1245,223 @@ function EditorContent() {
             </div>
           )}
         </main>
+
+        {showAISidebar && !isFocusMode && (
+          <aside className="editor-ai-sidebar">
+            <div className="ai-sidebar-header">
+              <div className="ai-header-title">
+                <Sparkles size={16} className="sparkles-icon" />
+                <span>AI Assistant</span>
+              </div>
+              <button className="btn-close-ai" onClick={() => setShowAISidebar(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="ai-tabs">
+              <button 
+                className={`ai-tab-btn ${aiTab === 'continue' ? 'active' : ''}`}
+                onClick={() => { setAiTab('continue'); setAiResponse(""); setAiError(""); }}
+              >
+                Continue
+              </button>
+              <button 
+                className={`ai-tab-btn ${aiTab === 'rewrite' ? 'active' : ''}`}
+                onClick={() => { setAiTab('rewrite'); setAiResponse(""); setAiError(""); }}
+              >
+                Rewrite
+              </button>
+              <button 
+                className={`ai-tab-btn ${aiTab === 'outline' ? 'active' : ''}`}
+                onClick={() => { setAiTab('outline'); setAiResponse(""); setAiError(""); }}
+              >
+                Outline
+              </button>
+            </div>
+
+            <div className="ai-sidebar-content">
+              {aiTab === 'continue' && (
+                <div className="ai-tab-pane">
+                  <p className="ai-instructions">
+                    Generate a seamless continuation of your story matching your tone and voice.
+                  </p>
+                  <button 
+                    className="btn-ai-action" 
+                    onClick={handleContinueWriting}
+                    disabled={aiLoading || !activeNote}
+                  >
+                    {aiLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Continue Writing
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {aiTab === 'rewrite' && (
+                <div className="ai-tab-pane">
+                  <p className="ai-instructions">
+                    Highlight a passage in the editor, select a tone/style, and rewrite.
+                  </p>
+                  
+                  {aiSelectionText ? (
+                    <div className="ai-selection-preview">
+                      <span className="preview-label">Selected Text:</span>
+                      <div className="selection-quote-box">
+                        &ldquo;{aiSelectionText.length > 150 ? aiSelectionText.substring(0, 150) + '...' : aiSelectionText}&rdquo;
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="ai-no-selection">
+                      <AlertCircle size={16} />
+                      <span>No text selected. Highlight a passage in the editor to use this tool.</span>
+                    </div>
+                  )}
+
+                  <div className="ai-form-field">
+                    <label>Prose Style / Tone</label>
+                    <select 
+                      value={aiTone} 
+                      onChange={(e) => setAiTone(e.target.value)}
+                      className="ai-select"
+                      disabled={!aiSelectionText}
+                    >
+                      <option value="descriptive">✨ Descriptive (Show, Don&apos;t Tell)</option>
+                      <option value="dramatic">🎭 Dramatic (Emotional Stakes)</option>
+                      <option value="suspenseful">⏳ Suspenseful (Build Tension)</option>
+                      <option value="poetic">🌿 Poetic (Lyrical Flow)</option>
+                      <option value="professional">💼 Professional (Elegant & Clear)</option>
+                      <option value="shorten">✂️ Shorten (Punchy & Concise)</option>
+                      <option value="expand">🔍 Expand (Elaborate Details)</option>
+                    </select>
+                  </div>
+
+                  <button 
+                    className="btn-ai-action" 
+                    onClick={handleRewrite}
+                    disabled={aiLoading || !aiSelectionText}
+                  >
+                    {aiLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Rewriting...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={16} />
+                        Rewrite Selection
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {aiTab === 'outline' && (
+                <div className="ai-tab-pane">
+                  <p className="ai-instructions">
+                    Brainstorm a structured outline for your next scene or chapter.
+                  </p>
+                  
+                  <div className="ai-form-field">
+                    <label>Concept or story beat</label>
+                    <textarea
+                      value={aiOutlinePrompt}
+                      onChange={(e) => setAiOutlinePrompt(e.target.value)}
+                      placeholder="Describe the scene... e.g. Clara confronts Arthur in the rain about the missing necklace."
+                      className="ai-textarea"
+                      disabled={aiLoading}
+                    />
+                  </div>
+
+                  <button 
+                    className="btn-ai-action" 
+                    onClick={handleGenerateOutline}
+                    disabled={aiLoading || !aiOutlinePrompt.trim()}
+                  >
+                    {aiLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Planning...
+                      </>
+                    ) : (
+                      <>
+                        <BookOpen size={16} />
+                        Generate Outline
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {aiError && (
+                <div className="ai-error-box fade-in">
+                  <AlertCircle size={16} />
+                  <span>{aiError}</span>
+                </div>
+              )}
+
+              {aiResponse && (
+                <div className="ai-response-box fade-in">
+                  <div className="response-header">
+                    <span>AI Suggestion:</span>
+                    {aiCopied && <span className="copied-label">Copied!</span>}
+                  </div>
+                  <div className="response-content">
+                    {aiTab === 'outline' ? (
+                      <div className="markdown-preview-ai">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {aiResponse}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p>{aiResponse}</p>
+                    )}
+                  </div>
+                  <div className="response-actions">
+                    {aiTab === 'continue' && (
+                      <button className="btn-ai-sub btn-ai-primary" onClick={() => insertAtCursor(aiResponse)}>
+                        Insert
+                      </button>
+                    )}
+                    {aiTab === 'rewrite' && (
+                      <button className="btn-ai-sub btn-ai-primary" onClick={() => replaceSelection(aiResponse)}>
+                        Replace
+                      </button>
+                    )}
+                    {aiTab === 'outline' && (
+                      <button className="btn-ai-sub btn-ai-primary" onClick={() => createNewNoteWithContent("AI Outline", aiResponse)}>
+                        Insert Chapter
+                      </button>
+                    )}
+                    <button className="btn-ai-sub btn-ai-secondary" onClick={() => handleCopyToClipboard(aiResponse)}>
+                      <Copy size={12} />
+                      Copy
+                    </button>
+                    <button 
+                      className="btn-ai-sub btn-ai-secondary" 
+                      onClick={
+                        aiTab === 'continue' 
+                          ? handleContinueWriting 
+                          : aiTab === 'rewrite' 
+                            ? handleRewrite 
+                            : handleGenerateOutline
+                      }
+                    >
+                      Regen
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
 
         {deleteModal.show && (
           <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>
@@ -1607,6 +2017,360 @@ function EditorContent() {
         .btn-disconnect-folder:hover {
           background: rgba(239, 68, 68, 0.1);
           color: var(--error-hover);
+        }
+
+        /* AI Assistant Sidebar CSS */
+        .editor-ai-sidebar {
+          width: 340px;
+          display: flex;
+          flex-direction: column;
+          border-left: 1px solid var(--surface-border);
+          background: var(--surface-raised);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          flex-shrink: 0;
+          animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          overflow: hidden;
+        }
+
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+
+        .ai-sidebar-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 1.25rem 1.25rem 0.75rem 1.25rem;
+          border-bottom: 1px solid var(--surface-border);
+        }
+
+        .ai-header-title {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-family: var(--font-outfit);
+          font-weight: 700;
+          font-size: 1rem;
+          color: var(--text-primary);
+        }
+
+        .ai-header-title .sparkles-icon {
+          color: var(--accent);
+          animation: pulse 2s infinite;
+        }
+
+        .btn-close-ai {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-sm);
+          color: var(--text-dim);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-close-ai:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .ai-tabs {
+          display: flex;
+          padding: 0.25rem 1.25rem;
+          border-bottom: 1px solid var(--surface-border);
+          gap: 0.5rem;
+          background: rgba(0, 0, 0, 0.1);
+        }
+
+        .ai-tab-btn {
+          flex: 1;
+          padding: 0.6rem 0.25rem;
+          border: none;
+          background: transparent;
+          color: var(--text-dim);
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          border-radius: var(--radius-sm);
+          transition: var(--transition);
+          text-align: center;
+        }
+
+        .ai-tab-btn:hover {
+          color: var(--text-primary);
+          background: var(--surface-hover);
+        }
+
+        .ai-tab-btn.active {
+          color: var(--primary-hover);
+          background: var(--primary-light);
+        }
+
+        .ai-sidebar-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 1.25rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+        }
+
+        .ai-tab-pane {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .ai-instructions {
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          line-height: 1.4;
+        }
+
+        .btn-ai-action {
+          width: 100%;
+          padding: 0.75rem;
+          background: linear-gradient(135deg, var(--primary), var(--accent));
+          color: white;
+          border: none;
+          border-radius: var(--radius-md);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-weight: 600;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: var(--transition);
+          box-shadow: var(--shadow-glow);
+        }
+
+        .btn-ai-action:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px -3px var(--primary-glow);
+        }
+
+        .btn-ai-action:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .ai-selection-preview {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .preview-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .selection-quote-box {
+          padding: 0.75rem;
+          background: rgba(0, 0, 0, 0.15);
+          border-left: 3px solid var(--accent);
+          border-radius: var(--radius-sm);
+          font-size: 0.8rem;
+          font-style: italic;
+          color: var(--text-secondary);
+          line-height: 1.5;
+          max-height: 120px;
+          overflow-y: auto;
+        }
+
+        .ai-no-selection {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.5rem;
+          padding: 0.75rem;
+          background: var(--primary-light);
+          border: 1px solid rgba(99, 102, 241, 0.15);
+          border-radius: var(--radius-sm);
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          line-height: 1.4;
+        }
+
+        .ai-form-field {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .ai-form-field label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .ai-select {
+          width: 100%;
+          height: 38px;
+          padding: 0 0.5rem;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .ai-select option {
+          background: var(--background);
+          color: var(--text-primary);
+        }
+
+        .ai-textarea {
+          width: 100%;
+          height: 100px;
+          padding: 0.75rem;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          outline: none;
+          resize: none;
+          line-height: 1.5;
+        }
+
+        .ai-textarea:focus {
+          border-color: var(--primary);
+        }
+
+        .ai-error-box {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem;
+          background: var(--error-light);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: var(--radius-sm);
+          font-size: 0.8rem;
+          color: #fca5a5;
+        }
+
+        .ai-response-box {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          background: rgba(0, 0, 0, 0.15);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 1rem;
+        }
+
+        .response-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-dim);
+          text-transform: uppercase;
+        }
+
+        .copied-label {
+          color: var(--success);
+          font-weight: 700;
+          font-size: 0.7rem;
+        }
+
+        .response-content {
+          font-size: 0.85rem;
+          color: var(--text-primary);
+          line-height: 1.6;
+          max-height: 250px;
+          overflow-y: auto;
+          white-space: pre-wrap;
+          padding: 0.25rem 0;
+        }
+
+        .markdown-preview-ai {
+          font-size: 0.8rem;
+          line-height: 1.5;
+        }
+
+        .markdown-preview-ai h1, .markdown-preview-ai h2, .markdown-preview-ai h3 {
+          font-family: var(--font-outfit);
+          color: var(--text-primary);
+          margin-top: 0.75rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .markdown-preview-ai h1 { font-size: 1.1rem; }
+        .markdown-preview-ai h2 { font-size: 0.95rem; }
+        .markdown-preview-ai h3 { font-size: 0.85rem; }
+        
+        .markdown-preview-ai ul, .markdown-preview-ai ol {
+          padding-left: 1.25rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .response-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+          margin-top: 0.25rem;
+          border-top: 1px solid var(--surface-border);
+          padding-top: 0.75rem;
+        }
+
+        .btn-ai-sub {
+          padding: 0.4rem 0.75rem;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          border: none;
+          transition: var(--transition);
+        }
+
+        .btn-ai-primary {
+          background: var(--primary);
+          color: white;
+        }
+
+        .btn-ai-primary:hover {
+          background: var(--primary-hover);
+        }
+
+        .btn-ai-secondary {
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          color: var(--text-secondary);
+        }
+
+        .btn-ai-secondary:hover {
+          color: var(--text-primary);
+          background: var(--surface-hover);
+        }
+
+        @media (max-width: 1024px) {
+          .editor-ai-sidebar {
+            width: 100%;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 100;
+          }
         }
 
         .export-progress {
