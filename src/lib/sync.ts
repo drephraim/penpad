@@ -1,6 +1,3 @@
-import { getFirebaseDb } from "./firebase"
-import { collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore"
-
 export interface Project {
   id: string
   name: string
@@ -17,243 +14,157 @@ export interface Note {
   wordGoal?: number
 }
 
-const timeout = <T>(promise: Promise<T>, ms: number): Promise<T | null> => {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      resolve(null)
-    }, ms)
+/**
+ * Helper to execute a fetch request with a timeout.
+ */
+async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number } = {}) {
+  const { timeout = 3500, ...fetchOptions } = options
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeout)
 
-    promise.then(
-      (res) => {
-        clearTimeout(timer)
-        resolve(res)
-      },
-      (err) => {
-        clearTimeout(timer)
-        reject(err)
-      }
-    )
-  })
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal
+    })
+    clearTimeout(id)
+    return response
+  } catch (error) {
+    clearTimeout(id)
+    throw error
+  }
 }
 
 /**
- * Reconciles local projects with Firestore.
- * - If only local: uploads to Firestore.
+ * Reconciles local projects with PostgreSQL via Next.js API.
+ * - If only local: uploads to Postgres.
  * - If only in cloud: downloads to local.
  * - If in both: compares lastUpdated timestamp, uploads/downloads the newer version.
  */
 export async function syncProjectsWithCloud(userId: string, localProjects: Project[]): Promise<Project[]> {
-  const db = getFirebaseDb()
-  if (!db) return localProjects
+  if (!userId) return localProjects
 
   try {
-    const projectsCol = collection(db, "users", userId, "projects")
-    const snapshot = await timeout(getDocs(projectsCol), 3500)
-    
-    if (!snapshot) {
-      console.warn("Firestore sync timed out for projects. Using local backup.")
-      return localProjects
-    }
-    
-    const cloudProjects: Project[] = []
-    snapshot.forEach(docSnap => {
-      const data = docSnap.data()
-      cloudProjects.push({
-        id: docSnap.id,
-        name: data.name || "Untitled",
-        lastUpdated: data.lastUpdated || 0
-      })
+    const response = await fetchWithTimeout("/api/sync/projects", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, localProjects }),
+      timeout: 3500
     })
 
-    const cloudProjectsMap = new Map(cloudProjects.map(p => [p.id, p]))
-    const localProjectsMap = new Map(localProjects.map(p => [p.id, p]))
-    const finalProjectsMap = new Map<string, Project>()
-
-    // Reconcile local storage projects
-    for (const localProj of localProjects) {
-      const cloudProj = cloudProjectsMap.get(localProj.id)
-      if (!cloudProj) {
-        // Upload local project to cloud
-        await setDoc(doc(db, "users", userId, "projects", localProj.id), {
-          name: localProj.name,
-          lastUpdated: localProj.lastUpdated || Date.now()
-        })
-        finalProjectsMap.set(localProj.id, localProj)
-      } else {
-        const localTime = localProj.lastUpdated || 0
-        const cloudTime = cloudProj.lastUpdated || 0
-        if (localTime > cloudTime) {
-          // Local is newer, upload to cloud
-          await setDoc(doc(db, "users", userId, "projects", localProj.id), {
-            name: localProj.name,
-            lastUpdated: localProj.lastUpdated
-          })
-          finalProjectsMap.set(localProj.id, localProj)
-        } else {
-          // Cloud is newer, use cloud version
-          finalProjectsMap.set(localProj.id, cloudProj)
-        }
-      }
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    // Pull down cloud projects that aren't in local storage
-    for (const cloudProj of cloudProjects) {
-      if (!localProjectsMap.has(cloudProj.id)) {
-        finalProjectsMap.set(cloudProj.id, cloudProj)
-      }
-    }
-
-    const merged = Array.from(finalProjectsMap.values()).sort((a, b) => {
-      const timeA = typeof a.lastUpdated === 'number' ? a.lastUpdated : 0
-      const timeB = typeof b.lastUpdated === 'number' ? b.lastUpdated : 0
-      return timeB - timeA
-    })
+    const data = await response.json()
+    const merged = (data.projects || []) as Project[]
 
     // Cache the reconciled projects locally
     localStorage.setItem(`penpad_projects_${userId}`, JSON.stringify(merged))
     return merged
   } catch (error) {
-    console.error("Failed to sync projects with cloud:", error)
+    console.error("Failed to sync projects with cloud, falling back to local:", error)
     return localProjects
   }
 }
 
 /**
- * Reconciles local chapters with Firestore for a specific project.
+ * Reconciles local chapters/notes with PostgreSQL via Next.js API for a specific project.
  */
 export async function syncChaptersWithCloud(userId: string, projectId: string, localNotes: Note[]): Promise<Note[]> {
-  const db = getFirebaseDb()
-  if (!db) return localNotes
+  if (!userId || !projectId) return localNotes
 
   try {
-    const chaptersCol = collection(db, "users", userId, "projects", projectId, "chapters")
-    const snapshot = await timeout(getDocs(chaptersCol), 3500)
-
-    if (!snapshot) {
-      console.warn("Firestore sync timed out for chapters. Using local backup.")
-      return localNotes
-    }
-
-    const cloudNotes: Note[] = []
-    snapshot.forEach(docSnap => {
-      const data = docSnap.data()
-      cloudNotes.push({
-        id: docSnap.id,
-        title: data.title || "Untitled",
-        content: data.content || "",
-        createdAt: data.createdAt || Date.now(),
-        updatedAt: data.updatedAt || Date.now(),
-        wordGoal: data.wordGoal
-      })
+    const response = await fetchWithTimeout("/api/sync/chapters", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, localNotes }),
+      timeout: 3500
     })
 
-    const cloudNotesMap = new Map(cloudNotes.map(n => [n.id, n]))
-    const localNotesMap = new Map(localNotes.map(n => [n.id, n]))
-    const finalNotesMap = new Map<string, Note>()
-
-    // Reconcile local storage chapters
-    for (const localNote of localNotes) {
-      const cloudNote = cloudNotesMap.get(localNote.id)
-      if (!cloudNote) {
-        // Upload to cloud
-        await setDoc(doc(db, "users", userId, "projects", projectId, "chapters", localNote.id), {
-          title: localNote.title,
-          content: localNote.content,
-          createdAt: localNote.createdAt,
-          updatedAt: localNote.updatedAt || Date.now(),
-          wordGoal: localNote.wordGoal || 1200
-        })
-        finalNotesMap.set(localNote.id, localNote)
-      } else {
-        const localTime = localNote.updatedAt || 0
-        const cloudTime = cloudNote.updatedAt || 0
-        if (localTime > cloudTime) {
-          // Local is newer, upload to cloud
-          await setDoc(doc(db, "users", userId, "projects", projectId, "chapters", localNote.id), {
-            title: localNote.title,
-            content: localNote.content,
-            createdAt: localNote.createdAt,
-            updatedAt: localNote.updatedAt,
-            wordGoal: localNote.wordGoal || 1200
-          })
-          finalNotesMap.set(localNote.id, localNote)
-        } else {
-          // Cloud is newer, use cloud version
-          finalNotesMap.set(localNote.id, cloudNote)
-        }
-      }
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    // Pull down cloud chapters that aren't in local storage
-    for (const cloudNote of cloudNotes) {
-      if (!localNotesMap.has(cloudNote.id)) {
-        finalNotesMap.set(cloudNote.id, cloudNote)
-      }
-    }
-
-    const merged = Array.from(finalNotesMap.values()).sort((a, b) => b.updatedAt - a.updatedAt)
+    const data = await response.json()
+    const merged = (data.chapters || []) as Note[]
 
     // Cache the reconciled chapters locally
     localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(merged))
     return merged
   } catch (error) {
-    console.error("Failed to sync chapters with cloud:", error)
+    console.error("Failed to sync chapters with cloud, falling back to local:", error)
     return localNotes
   }
 }
 
 /**
- * Saves a single project document to Firestore.
+ * Saves a single project document to PostgreSQL via Next.js API.
  */
 export async function saveProjectToCloud(userId: string, project: Project): Promise<void> {
-  const db = getFirebaseDb()
-  if (!db) return
+  if (!userId || !project || !project.id) return
 
   try {
-    await setDoc(doc(db, "users", userId, "projects", project.id), {
-      name: project.name,
-      lastUpdated: project.lastUpdated || Date.now()
+    const response = await fetch("/api/sync/save-project", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, project })
     })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
   } catch (error) {
     console.error("Failed to save project to cloud:", error)
   }
 }
 
 /**
- * Saves a single chapter document to Firestore.
+ * Saves a single chapter document to PostgreSQL via Next.js API.
  */
 export async function saveChapterToCloud(userId: string, projectId: string, note: Note): Promise<void> {
-  const db = getFirebaseDb()
-  if (!db) return
+  if (!userId || !projectId || !note || !note.id) return
 
   try {
-    await setDoc(doc(db, "users", userId, "projects", projectId, "chapters", note.id), {
-      title: note.title,
-      content: note.content || "",
-      createdAt: note.createdAt,
-      updatedAt: note.updatedAt || Date.now(),
-      wordGoal: note.wordGoal || 1200
+    const response = await fetch("/api/sync/save-chapter", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, note })
     })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
   } catch (error) {
     console.error("Failed to save chapter to cloud:", error)
   }
 }
 
 /**
- * Deletes a project document and its subcollections from Firestore.
+ * Deletes a project and its nested chapters from PostgreSQL via Next.js API.
  */
 export async function deleteProjectFromCloud(userId: string, projectId: string): Promise<void> {
-  const db = getFirebaseDb()
-  if (!db) return
+  if (!userId || !projectId) return
 
   try {
-    await deleteDoc(doc(db, "users", userId, "projects", projectId))
-    
-    // Clean up all nested chapters
-    const chaptersCol = collection(db, "users", userId, "projects", projectId, "chapters")
-    const snapshot = await getDocs(chaptersCol)
-    for (const docSnap of snapshot.docs) {
-      await deleteDoc(docSnap.ref)
+    const response = await fetch("/api/sync/delete-project", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
   } catch (error) {
     console.error("Failed to delete project from cloud:", error)
@@ -261,14 +172,23 @@ export async function deleteProjectFromCloud(userId: string, projectId: string):
 }
 
 /**
- * Deletes a chapter document from Firestore.
+ * Deletes a single chapter document from PostgreSQL via Next.js API.
  */
 export async function deleteChapterFromCloud(userId: string, projectId: string, chapterId: string): Promise<void> {
-  const db = getFirebaseDb()
-  if (!db) return
+  if (!userId || !projectId || !chapterId) return
 
   try {
-    await deleteDoc(doc(db, "users", userId, "projects", projectId, "chapters", chapterId))
+    const response = await fetch("/api/sync/delete-chapter", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, chapterId })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
   } catch (error) {
     console.error("Failed to delete chapter from cloud:", error)
   }
