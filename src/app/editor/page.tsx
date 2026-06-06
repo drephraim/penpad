@@ -2594,7 +2594,7 @@ function EditorContent() {
           width: 280px;
           display: flex;
           flex-direction: column;
-          padding: 1.25rem;
+          padding: 1rem;
           border-right: 1px solid var(--surface-border);
           background: var(--surface-raised);
           flex-shrink: 0;
@@ -2618,7 +2618,7 @@ function EditorContent() {
         }
 
         .sidebar-section {
-          margin-bottom: 1rem;
+          margin-bottom: 0.75rem;
         }
 
         .btn-new {
@@ -2648,12 +2648,12 @@ function EditorContent() {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 0.6rem 0.75rem;
+          padding: 0.5rem 0.75rem;
           background: var(--surface);
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-md);
           color: var(--text-dim);
-          margin-bottom: 1rem;
+          margin-bottom: 0.75rem;
         }
 
         .sidebar-search input {
@@ -2774,7 +2774,7 @@ function EditorContent() {
           display: flex;
           align-items: center;
           gap: 10px;
-          padding: 0.75rem;
+          padding: 0.5rem 0.75rem;
           border-radius: var(--radius-md);
           cursor: pointer;
           transition: var(--transition);
@@ -3087,7 +3087,7 @@ function EditorContent() {
           gap: 6px;
           padding: 6px 12px;
           border-radius: var(--radius-md);
-          margin-bottom: 1.25rem;
+          margin-bottom: 0.75rem;
           width: fit-content;
           border: 1px solid var(--surface-border);
           z-index: 10;
@@ -3681,7 +3681,7 @@ function EditorContent() {
           flex: 1;
           display: flex;
           flex-direction: column;
-          padding: 1rem 2rem 1.5rem 2rem;
+          padding: 0.75rem 1.5rem 1rem 1.5rem;
           max-width: 1000px;
           margin: 0 auto;
           width: 100%;
@@ -3692,7 +3692,7 @@ function EditorContent() {
         /* Zen mode overrides */
         .zen-mode .editor-workspace {
           max-width: 800px;
-          padding: 3rem 1rem;
+          padding: 1.5rem 1rem;
         }
 
         .editor-title-input {
@@ -3705,7 +3705,7 @@ function EditorContent() {
           color: var(--text-primary);
           outline: none;
           letter-spacing: -0.02em;
-          margin-bottom: 1rem;
+          margin-bottom: 0.5rem;
           padding: 0;
           transition: font-size 0.5s ease;
         }
@@ -3713,7 +3713,7 @@ function EditorContent() {
         .zen-mode .editor-title-input {
           font-size: 2rem;
           text-align: center;
-          margin-bottom: 2rem;
+          margin-bottom: 1rem;
         }
 
         .editor-title-input::placeholder {
@@ -3757,7 +3757,7 @@ function EditorContent() {
           background: transparent;
           border: none;
           color: var(--text-secondary);
-          line-height: 1.8;
+          line-height: 1.55;
           resize: none;
           outline: none;
           font-family: Georgia, serif;
@@ -3777,11 +3777,11 @@ function EditorContent() {
 
         .markdown-preview {
           flex: 1;
-          padding: 2rem;
+          padding: 1.5rem;
           background: rgba(0,0,0,0.15);
           border-radius: var(--radius-xl);
           border: 1px solid var(--surface-border);
-          line-height: 1.8;
+          line-height: 1.55;
           color: var(--text-secondary);
           overflow-y: auto;
         }
@@ -3937,7 +3937,7 @@ function EditorContent() {
 
         .focus-mode .editor-workspace {
           max-width: 900px;
-          padding: 2rem 1.5rem;
+          padding: 1rem 1.5rem;
         }
 
         @media (max-width: 768px) {
