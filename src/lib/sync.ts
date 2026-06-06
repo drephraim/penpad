@@ -17,7 +17,7 @@ export interface Note {
 export interface BibleEntry {
   id: string
   name: string
-  category: "character" | "world"
+  category: "character" | "world" | "beast" | "place"
   content: string
   createdAt: number
   updatedAt: number

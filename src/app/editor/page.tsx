@@ -12,7 +12,8 @@ import {
   Play, Pause, RotateCcw,
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
-  Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight
+  Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight,
+  User, PawPrint, MapPin, Globe
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import { 
@@ -212,7 +213,10 @@ function EditorContent() {
   const [activeBibleEntryId, setActiveBibleEntryId] = useState<string | null>(null)
   const [isBibleDrawerOpen, setIsBibleDrawerOpen] = useState(false)
   const [bibleSearchQuery, setBibleSearchQuery] = useState('')
-  const [bibleCategoryFilter, setBibleCategoryFilter] = useState<'all' | 'character' | 'world'>('all')
+  const [bibleCategoryFilter, setBibleCategoryFilter] = useState<'all' | 'character' | 'world' | 'beast' | 'place'>('all')
+  const [isBibleSelectionMode, setIsBibleSelectionMode] = useState(false)
+  const [selectedBibleIds, setSelectedBibleIds] = useState<Set<string>>(new Set())
+  const [showMultiBibleDeleteModal, setShowMultiBibleDeleteModal] = useState(false)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -457,7 +461,6 @@ function EditorContent() {
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveBibleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const savedFilenamesRef = useRef<Map<string, string>>(new Map())
-  const autoExtractTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Sound Engine Setup
   useEffect(() => {
@@ -1010,7 +1013,7 @@ function EditorContent() {
     setAutocompleteSuggestions([])
   }
 
-  const handleAddSelectionToBible = async () => {
+  const handleAddSelectionToBible = async (category: "character" | "world" | "beast" | "place" = "character") => {
     const name = aiSelectionText.trim()
     if (!name || !user || !projectId) return
     
@@ -1027,8 +1030,8 @@ function EditorContent() {
       const newEntry: BibleEntry = {
         id: crypto.randomUUID(),
         name: name,
-        category: "character",
-        content: "Manually added by writer.",
+        category: category,
+        content: `Manually added as a ${category}.`,
         createdAt: Date.now(),
         updatedAt: Date.now()
       }
@@ -1038,7 +1041,12 @@ function EditorContent() {
       setBibleEntries(entryList)
       
       await saveBibleEntryToCloud(user.uid, projectId, newEntry)
-      alert(`Successfully saved "${name}" as a character!`)
+      
+      let categoryLabel = "character"
+      if (category === "beast") categoryLabel = "beast"
+      if (category === "place") categoryLabel = "place"
+      if (category === "world") categoryLabel = "world lore"
+      alert(`Successfully saved "${name}" as a ${categoryLabel}!`)
       
       // Clear selection text to hide button
       setAiSelectionText("")
@@ -1393,173 +1401,7 @@ function EditorContent() {
     }
   }
 
-  const autoExtractAndSaveNames = useCallback(async (content: string) => {
-    if (!user || !projectId || !content) return
-    
-    const MULTI_WORD_TITLES = [
-      "Pill Immortal", "Sword King", "Pill King", "Pill Master", "Pill Emperor",
-      "Sword Emperor", "Sword God", "Blade Emperor", "Sect Master", "Sect Leader",
-      "Hall Master", "Valley Master", "Daoist Master"
-    ];
 
-    const SINGLE_WORD_TITLES = [
-      "Mr", "Mrs", "Ms", "Miss", "Dr", "Doctor", "Prof", "Professor",
-      "Sir", "Lady", "Lord", "Count", "Countess", "Duke", "Duchess", "Baron", "Baroness",
-      "King", "Queen", "Prince", "Princess", "Uncle", "Aunt", "Father", "Mother",
-      "Brother", "Sister", "Nurse", "Coach", "Judge", "Dean", "Pastor", "Reverend",
-      "Bishop", "Saint", "Elder", "Grandmaster", "Master", "Patriarch", "Matriarch",
-      "Daoist", "Venerable", "Alchemist", "Officer", "Agent", "Detective", "Inspector",
-      "Chief", "Sheriff", "Constable", "Mayor", "Governor", "President", "Senator",
-      "Chancellor", "Emperor", "General", "Colonel", "Major", "Captain", "Lieutenant"
-    ];
-
-    const FANTASY_EXCLUSIONS = new Set([
-      // Cultivation / Fantasy nouns and states
-      "Qi", "Spiritual", "Heaven", "Heavenly", "Earth", "Earthly", "Sect", "Clan", "Pill",
-      "Elixir", "Qi Condensation", "Foundation Establishment", "Golden Core", "Nascent Soul",
-      "Dao", "Tribulation", "Beast", "Beasts", "Demon", "Demons", "Monster", "Monsters",
-      "Dragon", "Dragons", "Phoenix", "Tiger", "Tigers", "Lotus", "Sword", "Swords", "Blade",
-      "Blades", "Spear", "Aura", "Energy", "Divine", "Imperial", "Sacred", "Ancient", "Primal",
-      "Wind", "Fire", "Water", "Lightning", "Thunder", "Ice", "Frost", "Gold", "Wood", "Soil",
-      "Metal", "Yin", "Yang", "Void", "Space", "Time", "Soul", "Spirit", "Mind", "Heart",
-      "Body", "Blood", "Bone", "Essence", "Herb", "Herbs", "Medicine", "Talisman", "Array",
-      "Formation", "Manual", "Technique", "Art", "Skill", "Cultivation", "Realm", "Stage",
-      "Level", "Grade", "Rank", "Artifact", "Weapon", "Treasure", "Hall", "Pavilion", "Mountain",
-      "Peak", "Valley", "River", "Sea", "Ocean", "Lake", "Forest", "Cave", "City", "Town",
-      "Village", "Kingdom", "Empire", "Dynasty", "Continent", "World", "Star", "Sun", "Moon",
-      "Sky", "Cloud", "Rain", "Snow", "Shadow", "Light", "Darkness", "Chaos", "Order", "Law",
-      "Rule", "Will", "Intent", "Concept", "Domain", "Field", "Zone", "Palace", "Tower",
-      "Pagoda", "Temple", "Shrine", "Altar", "Tomb", "Graveyard", "Abyss", "Desert", "Plain",
-      "Swamp", "Marsh", "Island", "Dimension", "Universe", "Void",
-      
-      // Standard English Grammar Exclusions
-      "The", "He", "She", "It", "We", "You", "They", "But", "And", "Then", "When", "There",
-      "This", "That", "Here", "From", "Once", "What", "How", "Why", "Where", "First", "Next",
-      "Last", "Some", "Many", "Most", "Each", "Every", "Both", "Either", "Neither", "While",
-      "Though", "Although", "Because", "Since", "Until", "Before", "After", "Under", "Over",
-      "About", "Above", "Below", "Behind", "Beside", "Between", "Among", "Through", "During",
-      "Without", "Within", "Against", "Toward", "Towards", "A", "An", "Our", "Your", "His",
-      "Her", "Its", "Their", "My", "Or", "So", "As", "If", "To", "In", "On", "At", "By",
-      "For", "Of", "Yes", "No", "Oh", "Ah", "Okay", "One", "Two", "Three", "Four", "Five",
-      "Ten", "Who", "Whom", "Whose", "Which", "Dear", "Good", "Well", "Please", "Very",
-      "Indeed", "Maybe", "Perhaps", "Still", "Yet", "Again", "Too", "Also", "Just", "Only",
-      "Even", "Now", "Almost", "Always", "Never", "Sometimes", "Often"
-    ]);
-
-    const extracted = new Set<string>()
-    const titles = [...MULTI_WORD_TITLES, ...SINGLE_WORD_TITLES]
-    const sortedTitles = [...titles].sort((a, b) => b.length - a.length)
-
-    // Heuristic 1: Title followed by optional capitalized name
-    const titleRegexStr = `\\b(${sortedTitles.join('|')})\\b(?:\\.?\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*))?`
-    const titleRegex = new RegExp(titleRegexStr, 'g')
-    let match
-    while ((match = titleRegex.exec(content)) !== null) {
-      const title = match[1]
-      const namePart = match[2] ? match[2].trim() : ""
-      
-      if (namePart) {
-        const nameWords = namePart.split(/\s+/)
-        const hasExclusions = nameWords.some(w => FANTASY_EXCLUSIONS.has(w))
-        if (!hasExclusions) {
-          extracted.add(`${title} ${namePart}`)
-        }
-      } else {
-        if (MULTI_WORD_TITLES.includes(title) || ["Elder", "Lady", "Lord", "Grandmaster", "Patriarch", "Matriarch", "Venerable", "Alchemist"].includes(title)) {
-          extracted.add(title)
-        }
-      }
-    }
-
-    // Heuristic 2: Real and Fictional Names (sequences of 2 or more capitalized words without titles)
-    const nameRegex = /\b([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))+\b/g
-    while ((match = nameRegex.exec(content)) !== null) {
-      const phrase = match[0].trim()
-      const words = phrase.split(/\s+/)
-      
-      if (FANTASY_EXCLUSIONS.has(words[0])) {
-        const remaining = words.slice(1).join(" ")
-        if (remaining.split(/\s+/).length >= 2) {
-          const hasExclusions = words.slice(1).some(w => FANTASY_EXCLUSIONS.has(w))
-          if (!hasExclusions) {
-            extracted.add(remaining)
-          }
-        }
-      } else {
-        const hasExclusions = words.some(w => FANTASY_EXCLUSIONS.has(w))
-        if (!hasExclusions) {
-          extracted.add(phrase)
-        }
-      }
-    }
-
-    // Heuristic 3: Mid-sentence single capitalized names (e.g. "... greeted Flura.")
-    const singleCapRegex = /\b[A-Z][a-z]+\b/g
-    while ((match = singleCapRegex.exec(content)) !== null) {
-      const word = match[0]
-      const index = match.index
-      if (FANTASY_EXCLUSIONS.has(word) || titles.includes(word)) continue
-
-      const textBefore = content.substring(0, index).trim()
-      if (textBefore.length > 0) {
-        const lastChar = textBefore[textBefore.length - 1]
-        if (!['.', '!', '?', '\n', '"', '“', '`', '#', '-', '*', '_'].includes(lastChar)) {
-          extracted.add(word)
-        }
-      }
-    }
-
-    if (extracted.size === 0) return
-
-    // Read existing bible entries
-    const stored = localStorage.getItem(`penpad_bible_${projectId}`)
-    const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
-    
-    let updated = false
-    const now = Date.now()
-
-    extracted.forEach(name => {
-      if (name.length < 3) return
-      const exists = entryList.some(e => e.name.toLowerCase() === name.toLowerCase())
-      if (!exists) {
-        const newEntry: BibleEntry = {
-          id: crypto.randomUUID(),
-          name: name,
-          category: "character",
-          content: "Automatically discovered in manuscript.",
-          createdAt: now,
-          updatedAt: now
-        }
-        entryList.push(newEntry)
-        updated = true
-        saveBibleEntryToCloud(user.uid, projectId, newEntry)
-      }
-    })
-
-    if (updated) {
-      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(entryList))
-      setBibleEntries(entryList)
-    }
-  }, [user, projectId])
-
-  // Name extraction effect (runs 3s after typing stops)
-  useEffect(() => {
-    if (!activeNote?.content) return
-
-    if (autoExtractTimerRef.current) {
-      clearTimeout(autoExtractTimerRef.current)
-    }
-
-    autoExtractTimerRef.current = setTimeout(() => {
-      autoExtractAndSaveNames(activeNote.content)
-    }, 3000)
-
-    return () => {
-      if (autoExtractTimerRef.current) {
-        clearTimeout(autoExtractTimerRef.current)
-      }
-    }
-  }, [activeNote?.content, autoExtractAndSaveNames])
 
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
@@ -1670,6 +1512,88 @@ function EditorContent() {
     const matchesFilter = bibleCategoryFilter === 'all' || e.category === bibleCategoryFilter
     return matchesSearch && matchesFilter
   })
+
+  const toggleBibleEntrySelection = (entryId: string) => {
+    setSelectedBibleIds(prev => {
+      const next = new Set(prev)
+      if (next.has(entryId)) {
+        next.delete(entryId)
+      } else {
+        next.add(entryId)
+      }
+      return next
+    })
+  }
+
+  const toggleBibleSelectAll = () => {
+    const allFilteredIds = filteredBibleEntries.map(e => e.id)
+    const allSelected = allFilteredIds.every(id => selectedBibleIds.has(id))
+    
+    if (allSelected) {
+      setSelectedBibleIds(prev => {
+        const next = new Set(prev)
+        allFilteredIds.forEach(id => next.delete(id))
+        return next
+      })
+    } else {
+      setSelectedBibleIds(prev => {
+        const next = new Set(prev)
+        allFilteredIds.forEach(id => next.add(id))
+        return next
+      })
+    }
+  }
+
+  const toggleBibleSelectionMode = () => {
+    setIsBibleSelectionMode(prev => {
+      if (prev) {
+        setSelectedBibleIds(new Set())
+      }
+      return !prev
+    })
+  }
+
+  const deleteSelectedBibleEntries = async () => {
+    if (!projectId || selectedBibleIds.size === 0) return
+    try {
+      const filtered = bibleEntries.filter(e => !selectedBibleIds.has(e.id))
+      setBibleEntries(filtered)
+      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(filtered))
+
+      if (user) {
+        await Promise.all(
+          Array.from(selectedBibleIds).map(id =>
+            deleteBibleEntryFromCloud(user.uid, projectId, id)
+          )
+        )
+      }
+
+      if (activeBibleEntryId && selectedBibleIds.has(activeBibleEntryId)) {
+        setActiveBibleEntryId(null)
+        setIsBibleDrawerOpen(false)
+      }
+
+      setSelectedBibleIds(new Set())
+      setIsBibleSelectionMode(false)
+      setShowMultiBibleDeleteModal(false)
+    } catch (e) {
+      console.error("Failed to delete selected bible entries:", e)
+    }
+  }
+
+  const renderCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'character':
+        return <User size={16} className="text-primary" />
+      case 'beast':
+        return <PawPrint size={16} style={{ color: 'rgb(245, 158, 11)' }} />
+      case 'place':
+        return <MapPin size={16} style={{ color: 'rgb(16, 185, 129)' }} />
+      case 'world':
+      default:
+        return <Globe size={16} className="text-accent" />
+    }
+  }
 
   const wordCount = activeNote?.content ? activeNote.content.split(/\s+/).filter(Boolean).length : 0
   const wordGoal = activeNote?.wordGoal || 1200
@@ -2156,6 +2080,36 @@ function EditorContent() {
                   />
                 </div>
 
+                <div className={`sidebar-chapters-header ${isBibleSelectionMode ? 'selection-active' : ''}`}>
+                  {isBibleSelectionMode ? (
+                    <>
+                      <span className="selection-count">{selectedBibleIds.size} selected</span>
+                      <div className="selection-actions">
+                        <button className="btn-text-action" onClick={toggleBibleSelectAll}>
+                          {selectedBibleIds.size === filteredBibleEntries.length ? 'None' : 'All'}
+                        </button>
+                        <button 
+                          className="btn-text-action danger" 
+                          disabled={selectedBibleIds.size === 0}
+                          onClick={() => setShowMultiBibleDeleteModal(true)}
+                        >
+                          Delete
+                        </button>
+                        <button className="btn-text-action" onClick={toggleBibleSelectionMode}>
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Story Bible</span>
+                      <button className="btn-select-mode" onClick={toggleBibleSelectionMode}>
+                        Select
+                      </button>
+                    </>
+                  )}
+                </div>
+
                 <div className="bible-filters">
                   <button 
                     className={`filter-chip ${bibleCategoryFilter === 'all' ? 'active' : ''}`}
@@ -2167,7 +2121,19 @@ function EditorContent() {
                     className={`filter-chip ${bibleCategoryFilter === 'character' ? 'active' : ''}`}
                     onClick={() => setBibleCategoryFilter('character')}
                   >
-                    Characters
+                    People
+                  </button>
+                  <button 
+                    className={`filter-chip ${bibleCategoryFilter === 'beast' ? 'active' : ''}`}
+                    onClick={() => setBibleCategoryFilter('beast')}
+                  >
+                    Beasts
+                  </button>
+                  <button 
+                    className={`filter-chip ${bibleCategoryFilter === 'place' ? 'active' : ''}`}
+                    onClick={() => setBibleCategoryFilter('place')}
+                  >
+                    Places
                   </button>
                   <button 
                     className={`filter-chip ${bibleCategoryFilter === 'world' ? 'active' : ''}`}
@@ -2178,26 +2144,41 @@ function EditorContent() {
                 </div>
 
                 <div className="chapter-list bible-list">
-                  {filteredBibleEntries.map(entry => (
-                    <div 
-                      key={entry.id} 
-                      className={`chapter-item ${activeBibleEntryId === entry.id ? 'active' : ''}`}
-                      onClick={() => {
-                        setActiveBibleEntryId(entry.id)
-                        setIsBibleDrawerOpen(true)
-                      }}
-                    >
-                      <BookOpen size={16} className={entry.category === 'character' ? 'text-primary' : 'text-accent'} />
-                      <span className="chapter-title">{entry.name || 'Untitled'}</span>
-                      <button 
-                        className="btn-delete-chapter"
-                        onClick={(e) => { e.stopPropagation(); deleteBibleEntry(entry.id) }}
-                        title="Delete entry"
+                  {filteredBibleEntries.map(entry => {
+                    const isSelected = selectedBibleIds.has(entry.id);
+                    return (
+                      <div 
+                        key={entry.id} 
+                        className={`chapter-item ${activeBibleEntryId === entry.id ? 'active' : ''} ${isBibleSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (isBibleSelectionMode) {
+                            toggleBibleEntrySelection(entry.id)
+                          } else {
+                            setActiveBibleEntryId(entry.id)
+                            setIsBibleDrawerOpen(true)
+                          }
+                        }}
                       >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                        {isBibleSelectionMode ? (
+                          <div className={`checkbox-custom ${isSelected ? 'checked' : ''}`}>
+                            {isSelected && <Check size={10} strokeWidth={3} />}
+                          </div>
+                        ) : (
+                          renderCategoryIcon(entry.category)
+                        )}
+                        <span className="chapter-title">{entry.name || 'Untitled'}</span>
+                        {!isBibleSelectionMode && (
+                          <button 
+                            className="btn-delete-chapter"
+                            onClick={(e) => { e.stopPropagation(); deleteBibleEntry(entry.id) }}
+                            title="Delete entry"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
                   {filteredBibleEntries.length === 0 && (
                     <div className="empty-state-text">No lore entries found</div>
                   )}
@@ -2340,11 +2321,38 @@ function EditorContent() {
                         <div className="fmt-divider"></div>
                         <button 
                           className="fmt-btn-action" 
-                          onClick={handleAddSelectionToBible} 
-                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" to Story Bible`}
+                          onClick={() => handleAddSelectionToBible("character")} 
+                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as a person`}
                         >
-                          <Sparkles size={13} className="glow-icon" style={{ marginRight: '6px' }} />
-                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Save Character</span>
+                          <User size={13} style={{ marginRight: '4px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Person</span>
+                        </button>
+                        <button 
+                          className="fmt-btn-action" 
+                          onClick={() => handleAddSelectionToBible("beast")} 
+                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as a beast`}
+                          style={{ marginLeft: '4px' }}
+                        >
+                          <PawPrint size={13} style={{ marginRight: '4px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Beast</span>
+                        </button>
+                        <button 
+                          className="fmt-btn-action" 
+                          onClick={() => handleAddSelectionToBible("place")} 
+                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as a place`}
+                          style={{ marginLeft: '4px' }}
+                        >
+                          <MapPin size={13} style={{ marginRight: '4px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Place</span>
+                        </button>
+                        <button 
+                          className="fmt-btn-action" 
+                          onClick={() => handleAddSelectionToBible("world")} 
+                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as world lore`}
+                          style={{ marginLeft: '4px' }}
+                        >
+                          <Globe size={13} style={{ marginRight: '4px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>World</span>
                         </button>
                       </>
                     )}
@@ -2361,7 +2369,9 @@ function EditorContent() {
                             onClick={() => handleLoreClick(entry)}
                             title={`View ${entry.name}`}
                           >
-                            <span>{entry.category === 'character' ? '👤' : '🌍'}</span>
+                            <span>{entry.category === 'character' ? '👤' : 
+                                   entry.category === 'beast' ? '🐾' : 
+                                   entry.category === 'place' ? '📍' : '🗺️'}</span>
                             <span className="chip-name">{entry.name}</span>
                           </button>
                         ))}
@@ -2763,11 +2773,13 @@ function EditorContent() {
                 <label>Category</label>
                 <select 
                   value={activeBibleEntry.category}
-                  onChange={(e) => updateActiveBibleEntry({ category: e.target.value as 'character' | 'world' })}
+                  onChange={(e) => updateActiveBibleEntry({ category: e.target.value as 'character' | 'world' | 'beast' | 'place' })}
                   className="ai-select"
                 >
-                  <option value="character">👤 Character (Cast, Protagonist, NPC)</option>
-                  <option value="world">🗺️ World Item (Location, Magic, Artifact, Lore)</option>
+                  <option value="character">👤 Person (Cast, Protagonist, NPC)</option>
+                  <option value="beast">🐾 Beast (Creature, Monster, Companion)</option>
+                  <option value="place">📍 Place (Location, Region, Sect, Building)</option>
+                  <option value="world">🗺️ World Item (Magic, Artifact, Lore, Concept)</option>
                 </select>
               </div>
 
@@ -2814,6 +2826,21 @@ function EditorContent() {
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setShowMultiDeleteModal(false)}>Cancel</button>
                 <button className="btn btn-danger" onClick={deleteSelectedNotes}>Delete All</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showMultiBibleDeleteModal && (
+          <div className="modal-overlay" onClick={() => setShowMultiBibleDeleteModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Delete Multiple Story Bible Entries</h2>
+                <p className="modal-description">Are you sure you want to delete the {selectedBibleIds.size} selected entries? This action cannot be undone.</p>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowMultiBibleDeleteModal(false)}>Cancel</button>
+                <button className="btn btn-danger" onClick={deleteSelectedBibleEntries}>Delete All</button>
               </div>
             </div>
           </div>
@@ -2947,7 +2974,9 @@ function EditorContent() {
           >
             <div className="hover-card-header">
               <span className={`category-badge ${hoveredLore.category}`}>
-                {hoveredLore.category === 'character' ? '👤 Character' : '🌍 World'}
+                {hoveredLore.category === 'character' ? '👤 Person' : 
+                 hoveredLore.category === 'beast' ? '🐾 Beast' : 
+                 hoveredLore.category === 'place' ? '📍 Place' : '🗺️ World'}
               </span>
               <h4 className="hover-card-title">{hoveredLore.name}</h4>
             </div>
@@ -3065,6 +3094,26 @@ function EditorContent() {
           border-color: var(--accent);
         }
 
+        .mentioned-lore-chip.beast {
+          border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .mentioned-lore-chip.beast:hover {
+          background: rgba(245, 158, 11, 0.1);
+          color: rgb(245, 158, 11);
+          border-color: rgb(245, 158, 11);
+        }
+
+        .mentioned-lore-chip.place {
+          border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .mentioned-lore-chip.place:hover {
+          background: rgba(16, 185, 129, 0.1);
+          color: rgb(16, 185, 129);
+          border-color: rgb(16, 185, 129);
+        }
+
         .chip-name {
           max-width: 100px;
           overflow: hidden;
@@ -3124,6 +3173,16 @@ function EditorContent() {
         .category-badge.character {
           background: var(--primary-light);
           color: var(--primary-hover);
+        }
+
+        .category-badge.beast {
+          background: rgba(245, 158, 11, 0.1);
+          color: rgb(245, 158, 11);
+        }
+
+        .category-badge.place {
+          background: rgba(16, 185, 129, 0.1);
+          color: rgb(16, 185, 129);
         }
 
         .category-badge.world {

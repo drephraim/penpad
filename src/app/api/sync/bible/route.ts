@@ -4,7 +4,7 @@ import pool, { bootstrapDb } from "@/lib/db-postgres"
 interface BibleEntry {
   id: string
   name: string
-  category: "character" | "world"
+  category: "character" | "world" | "beast" | "place"
   content: string
   createdAt: number
   updatedAt: number
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const cloudEntries: BibleEntry[] = selectRes.rows.map(row => ({
       id: row.id,
       name: row.name || "Untitled",
-      category: (row.category || "character") as "character" | "world",
+      category: (row.category || "character") as "character" | "world" | "beast" | "place",
       content: row.content || "",
       createdAt: row.created_at ? Number(row.created_at) : Date.now(),
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now()
