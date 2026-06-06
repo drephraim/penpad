@@ -242,7 +242,7 @@ function EditorContent() {
   const [showAutocomplete, setShowAutocomplete] = useState(false)
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([])
   const [autocompleteIndex, setAutocompleteIndex] = useState(0)
-  const [autocompleteQuery, setAutocompleteQuery] = useState("")
+
   const [autocompleteTriggerPos, setAutocompleteTriggerPos] = useState(0)
 
   const handleLoreMouseEnter = (e: React.MouseEvent, entry: BibleEntry) => {
@@ -1096,7 +1096,7 @@ function EditorContent() {
 
         if (matches.length > 0) {
           setAutocompleteSuggestions(matches)
-          setAutocompleteQuery(cleanWord)
+
           setAutocompleteTriggerPos(cursor - cleanWord.length)
           setShowAutocomplete(true)
           setAutocompleteIndex(0)
