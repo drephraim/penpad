@@ -238,6 +238,13 @@ function EditorContent() {
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
   const [hoveredLorePosition, setHoveredLorePosition] = useState<{ top: number; left: number } | null>(null)
 
+  // Autocomplete States
+  const [showAutocomplete, setShowAutocomplete] = useState(false)
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([])
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0)
+  const [autocompleteQuery, setAutocompleteQuery] = useState("")
+  const [autocompleteTriggerPos, setAutocompleteTriggerPos] = useState(0)
+
   const handleLoreMouseEnter = (e: React.MouseEvent, entry: BibleEntry) => {
     const rect = e.currentTarget.getBoundingClientRect()
     setHoveredLore(entry)
@@ -450,6 +457,7 @@ function EditorContent() {
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveBibleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const savedFilenamesRef = useRef<Map<string, string>>(new Map())
+  const autoExtractTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Sound Engine Setup
   useEffect(() => {
@@ -977,6 +985,31 @@ function EditorContent() {
     setSlashMenuIndex(0)
   }
 
+  const handleAutocompleteSelect = (suggestion: string) => {
+    const textarea = textareaRef.current
+    if (!textarea || !activeNote) return
+    
+    const text = textarea.value
+    const cursor = textarea.selectionStart
+    
+    // Replace the typed query with the full suggestion
+    const before = text.substring(0, autocompleteTriggerPos)
+    const after = text.substring(cursor)
+    
+    const newContent = before + suggestion + after
+    updateActiveNote({ content: newContent })
+    
+    // Position cursor at the end of the completed name
+    const newCursorPos = autocompleteTriggerPos + suggestion.length
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(newCursorPos, newCursorPos)
+    }, 50)
+    
+    setShowAutocomplete(false)
+    setAutocompleteSuggestions([])
+  }
+
   // Handle textarea keyboard listener
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSlashMenu) {
@@ -996,6 +1029,23 @@ function EditorContent() {
         setShowSlashMenu(false)
         setSlashMenuQuery("")
       }
+    } else if (showAutocomplete) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setAutocompleteIndex(prev => (prev + 1) % Math.min(5, autocompleteSuggestions.length))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setAutocompleteIndex(prev => (prev - 1 + Math.min(5, autocompleteSuggestions.length)) % Math.min(5, autocompleteSuggestions.length))
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        if (autocompleteSuggestions[autocompleteIndex]) {
+          handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex])
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowAutocomplete(false)
+        setAutocompleteSuggestions([])
+      }
     }
   }
 
@@ -1013,10 +1063,50 @@ function EditorContent() {
       setShowSlashMenu(true)
       setSlashMenuQuery(lastWord.substring(1))
       setSlashMenuIndex(0)
+      setShowAutocomplete(false)
     } else {
       if (showSlashMenu) {
         setShowSlashMenu(false)
         setSlashMenuQuery("")
+      }
+
+      // Autocomplete check
+      const lastLineIdx = textBeforeCursor.lastIndexOf("\n")
+      const lastPunctuationIdx = Math.max(
+        textBeforeCursor.lastIndexOf(","),
+        textBeforeCursor.lastIndexOf("."),
+        textBeforeCursor.lastIndexOf("!"),
+        textBeforeCursor.lastIndexOf("?"),
+        textBeforeCursor.lastIndexOf("\""),
+        textBeforeCursor.lastIndexOf("“"),
+        textBeforeCursor.lastIndexOf("("),
+        textBeforeCursor.lastIndexOf("[")
+      )
+      const splitIdx = Math.max(lastWordIdx, lastLineIdx, lastPunctuationIdx)
+      const currentWord = textBeforeCursor.substring(splitIdx + 1)
+      
+      const cleanWord = currentWord.replace(/[^A-Za-z]/g, "")
+      if (cleanWord.length >= 2) {
+        const matches = bibleEntries
+          .map(entry => entry.name)
+          .filter(name => {
+            const words = name.split(/\s+/)
+            return words.some(w => w.toLowerCase().startsWith(cleanWord.toLowerCase()))
+          })
+
+        if (matches.length > 0) {
+          setAutocompleteSuggestions(matches)
+          setAutocompleteQuery(cleanWord)
+          setAutocompleteTriggerPos(cursor - cleanWord.length)
+          setShowAutocomplete(true)
+          setAutocompleteIndex(0)
+        } else {
+          setShowAutocomplete(false)
+          setAutocompleteSuggestions([])
+        }
+      } else {
+        setShowAutocomplete(false)
+        setAutocompleteSuggestions([])
       }
     }
   }
@@ -1217,6 +1307,8 @@ function EditorContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNote?.content, dirHandle, saveSingleChapterToFolder])
 
+
+
   const generateChapterTitle = (existingNotes: Note[]): string => {
     const chapterPattern = /^chapter\s*(\d+)/i
     let maxNumber = 0
@@ -1260,6 +1352,130 @@ function EditorContent() {
       console.error("Failed to create note:", e)
     }
   }
+
+  const autoExtractAndSaveNames = useCallback(async (content: string) => {
+    if (!user || !projectId || !content) return
+    
+    const COMMON_TITLES = [
+      "Mr", "Mrs", "Ms", "Miss", "Dr", "Doctor", "Prof", "Professor",
+      "Sir", "Lady", "Lord", "Count", "Countess", "Duke", "Duchess", "Baron", "Baroness",
+      "King", "Queen", "Prince", "Princess", "Captain", "Major", "Colonel", "General",
+      "Lieutenant", "Officer", "Agent", "Detective", "Inspector", "Chief", "Sheriff",
+      "Constable", "Mayor", "Governor", "President", "Senator", "Chancellor", "Emperor",
+      "Uncle", "Aunt", "Father", "Mother", "Brother", "Sister", "Nurse", "Coach", "Judge",
+      "Dean", "Pastor", "Reverend", "Bishop", "Saint"
+    ];
+
+    const COMMON_EXCLUSIONS = new Set([
+      "The", "He", "She", "It", "We", "You", "They", "But", "And", "Then", "When", "There",
+      "This", "That", "Here", "From", "Once", "What", "How", "Why", "Where", "First", "Next",
+      "Last", "Some", "Many", "Most", "Each", "Every", "Both", "Either", "Neither", "While",
+      "Though", "Although", "Because", "Since", "Until", "Before", "After", "Under", "Over",
+      "About", "Above", "Below", "Behind", "Beside", "Between", "Among", "Through", "During",
+      "Without", "Within", "Against", "Toward", "Towards", "A", "An", "Our", "Your", "His",
+      "Her", "Its", "Their", "My", "Or", "So", "As", "If", "To", "In", "On", "At", "By",
+      "For", "Of", "Yes", "No", "Oh", "Ah", "Okay", "One", "Two", "Three", "Four", "Five",
+      "Ten", "Who", "Whom", "Whose", "Which", "Dear", "Good", "Well", "Please", "Very",
+      "Indeed", "Maybe", "Perhaps", "Still", "Yet", "Again", "Too", "Also", "Just", "Only",
+      "Even", "Now", "Almost", "Always", "Never", "Sometimes", "Often"
+    ]);
+
+    const extracted = new Set<string>()
+
+    // Heuristic 1: Title + Name
+    const titleRegexStr = `\\b(?:${COMMON_TITLES.join('|')})\\.?\\s+[A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*\\b`
+    const titleRegex = new RegExp(titleRegexStr, 'g')
+    let match
+    while ((match = titleRegex.exec(content)) !== null) {
+      extracted.add(match[0].trim())
+    }
+
+    // Heuristic 2: Multiple Capitalized Words
+    const multiCapRegex = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g
+    while ((match = multiCapRegex.exec(content)) !== null) {
+      const phrase = match[0].trim()
+      const words = phrase.split(/\s+/)
+      if (COMMON_EXCLUSIONS.has(words[0])) {
+        const sliced = words.slice(1).join(" ")
+        if (sliced.split(/\s+/).length >= 2) {
+          extracted.add(sliced)
+        }
+      } else {
+        // Make sure none of the words in the phrase are exclusions
+        const hasExclusions = words.some(w => COMMON_EXCLUSIONS.has(w))
+        if (!hasExclusions) {
+          extracted.add(phrase)
+        }
+      }
+    }
+
+    // Heuristic 3: Mid-sentence capitalized word (single word names)
+    const singleCapRegex = /\b[A-Z][a-z]+\b/g
+    while ((match = singleCapRegex.exec(content)) !== null) {
+      const word = match[0]
+      const index = match.index
+      if (COMMON_EXCLUSIONS.has(word) || COMMON_TITLES.includes(word)) continue
+
+      const textBefore = content.substring(0, index).trim()
+      if (textBefore.length > 0) {
+        const lastChar = textBefore[textBefore.length - 1]
+        if (!['.', '!', '?', '\n', '"', '“', '`', '#', '-', '*', '_'].includes(lastChar)) {
+          extracted.add(word)
+        }
+      }
+    }
+
+    if (extracted.size === 0) return
+
+    // Read existing bible entries
+    const stored = localStorage.getItem(`penpad_bible_${projectId}`)
+    const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+    
+    let updated = false
+    const now = Date.now()
+
+    extracted.forEach(name => {
+      if (name.length < 3) return
+      const exists = entryList.some(e => e.name.toLowerCase() === name.toLowerCase())
+      if (!exists) {
+        const newEntry: BibleEntry = {
+          id: crypto.randomUUID(),
+          name: name,
+          category: "character",
+          content: "Automatically discovered in manuscript.",
+          createdAt: now,
+          updatedAt: now
+        }
+        entryList.push(newEntry)
+        updated = true
+        saveBibleEntryToCloud(user.uid, projectId, newEntry)
+      }
+    })
+
+    if (updated) {
+      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(entryList))
+      setBibleEntries(entryList)
+    }
+  }, [user, projectId])
+
+  // Name extraction effect (runs 3s after typing stops)
+  useEffect(() => {
+    if (!activeNote?.content) return
+
+    if (autoExtractTimerRef.current) {
+      clearTimeout(autoExtractTimerRef.current)
+    }
+
+    autoExtractTimerRef.current = setTimeout(() => {
+      autoExtractAndSaveNames(activeNote.content)
+    }, 3000)
+
+    return () => {
+      if (autoExtractTimerRef.current) {
+        clearTimeout(autoExtractTimerRef.current)
+      }
+    }
+  }, [activeNote?.content, autoExtractAndSaveNames])
 
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
@@ -2102,6 +2318,28 @@ function EditorContent() {
                       spellCheck={false}
                       style={{ fontFamily, fontSize: `${fontSize}px` }}
                     />
+                    
+                    {/* Autocomplete suggestions dropdown */}
+                    {showAutocomplete && autocompleteSuggestions.length > 0 && (
+                      <div className="autocomplete-panel glass" onClick={e => e.stopPropagation()}>
+                        <div className="autocomplete-header">
+                          <Sparkles size={12} className="glow-icon" />
+                          <span>Suggestions</span>
+                        </div>
+                        <div className="autocomplete-list">
+                          {autocompleteSuggestions.slice(0, 5).map((suggestion, idx) => (
+                            <div 
+                              key={suggestion} 
+                              className={`autocomplete-item ${idx === autocompleteIndex ? 'selected' : ''}`}
+                              onClick={() => handleAutocompleteSelect(suggestion)}
+                            >
+                              <span className="suggestion-text">{suggestion}</span>
+                              {idx === autocompleteIndex && <span className="tab-hint">Enter/Tab</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="markdown-preview" style={{ fontFamily, fontSize: `${fontSize}px` }}>
@@ -3598,6 +3836,78 @@ function EditorContent() {
           height: 16px;
           background: var(--surface-border);
           margin: 0 4px;
+        }
+
+        /* Autocomplete suggestions panel styles */
+        .autocomplete-panel {
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          width: 260px;
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--surface-border);
+          box-shadow: var(--shadow-lg), 0 0 25px -5px var(--primary-glow);
+          z-index: 50;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          animation: slideInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .autocomplete-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.03);
+          border-bottom: 1px solid var(--surface-border);
+          font-size: 0.7rem;
+          font-weight: 700;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .autocomplete-list {
+          display: flex;
+          flex-direction: column;
+          padding: 4px;
+        }
+
+        .autocomplete-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          border-radius: var(--radius-md);
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .autocomplete-item:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .autocomplete-item.selected {
+          background: var(--primary-light);
+          color: var(--primary-hover);
+        }
+
+        .tab-hint {
+          font-size: 0.65rem;
+          font-weight: 500;
+          background: rgba(255, 255, 255, 0.1);
+          padding: 2px 6px;
+          border-radius: 4px;
+          color: var(--text-dim);
+        }
+
+        @keyframes slideInUp {
+          from { transform: translateY(10px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
         /* Command Palette Slash Menu styles */
