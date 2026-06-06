@@ -7,14 +7,23 @@ import {
   Plus, Search, Type,
   Eye, Edit3, Maximize2, Minimize2,
   ArrowLeft, Loader2, FileText,
-  Feather, 
-  X, Check, AlertCircle, Trash2,
+  Feather, X, Check, AlertCircle, Trash2,
   Download, Save, BookOpen,
   Play, Pause, RotateCcw,
-  Sparkles, Wand2, Copy
+  Sparkles, Wand2, Copy,
+  Book, Volume2, VolumeX, Headphones,
+  Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
-import { syncChaptersWithCloud, saveChapterToCloud, deleteChapterFromCloud } from '@/lib/sync'
+import { 
+  syncChaptersWithCloud, 
+  saveChapterToCloud, 
+  deleteChapterFromCloud,
+  syncBibleWithCloud,
+  saveBibleEntryToCloud,
+  deleteBibleEntryFromCloud,
+  BibleEntry
+} from '@/lib/sync'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -29,6 +38,145 @@ interface Note {
 }
 
 type ViewMode = 'edit' | 'preview'
+type SidebarTab = 'manuscript' | 'bible' | 'sounds'
+
+// Synthesizer class using native Web Audio API
+class AudioFocusSynthesizer {
+  ctx: AudioContext | null = null
+  sources: { [key: string]: AudioBufferSourceNode | null } = {}
+  gainNodes: { [key: string]: GainNode | null } = {}
+  activeType: string = 'none'
+  volume: number = 0.5
+  cafeInterval: NodeJS.Timeout | null = null
+
+  init() {
+    if (!this.ctx) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      this.ctx = new AudioCtx()
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume()
+    }
+  }
+
+  stopAll() {
+    this.activeType = 'none'
+    if (this.cafeInterval) {
+      clearInterval(this.cafeInterval)
+      this.cafeInterval = null
+    }
+    for (const key of Object.keys(this.sources)) {
+      if (this.sources[key]) {
+        try { this.sources[key]!.stop() } catch {}
+        this.sources[key] = null
+      }
+      if (this.gainNodes[key]) {
+        try { this.gainNodes[key]!.disconnect() } catch {}
+        this.gainNodes[key] = null
+      }
+    }
+  }
+
+  setVolume(vol: number) {
+    this.volume = vol
+    for (const key of Object.keys(this.gainNodes)) {
+      if (this.gainNodes[key] && this.ctx) {
+        this.gainNodes[key]!.gain.setValueAtTime(vol, this.ctx.currentTime)
+      }
+    }
+  }
+
+  play(type: string) {
+    this.init()
+    this.stopAll()
+    if (type === 'none') return
+    this.activeType = type
+
+    const ctx = this.ctx!
+    const gainNode = ctx.createGain()
+    gainNode.gain.setValueAtTime(this.volume, ctx.currentTime)
+    gainNode.connect(ctx.destination)
+    this.gainNodes[type] = gainNode
+
+    const bufferSize = ctx.sampleRate * 2
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+    const data = buffer.getChannelData(0)
+
+    if (type === 'white') {
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1
+      }
+    } else if (type === 'brown' || type === 'rain' || type === 'cafe') {
+      let lastOut = 0.0
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1
+        data[i] = (lastOut + (0.02 * white)) / 1.02
+        lastOut = data[i]
+        data[i] *= 3.5
+      }
+    }
+
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.loop = true
+
+    if (type === 'rain') {
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.setValueAtTime(900, ctx.currentTime)
+
+      const peak = ctx.createBiquadFilter()
+      peak.type = 'peaking'
+      peak.frequency.setValueAtTime(1600, ctx.currentTime)
+      peak.Q.setValueAtTime(1.5, ctx.currentTime)
+      peak.gain.setValueAtTime(-10, ctx.currentTime)
+
+      source.connect(lp)
+      lp.connect(peak)
+      peak.connect(gainNode)
+    } else if (type === 'cafe') {
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.setValueAtTime(600, ctx.currentTime)
+
+      source.connect(lp)
+      lp.connect(gainNode)
+      this.startCafeClinks(gainNode)
+    } else {
+      source.connect(gainNode)
+    }
+
+    source.start()
+    this.sources[type] = source
+  }
+
+  startCafeClinks(destination: AudioNode) {
+    const triggerClink = () => {
+      if (this.activeType !== 'cafe' || !this.ctx) return
+      const ctx = this.ctx
+      try {
+        const osc = ctx.createOscillator()
+        const clickGain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(1900 + Math.random() * 700, ctx.currentTime)
+
+        clickGain.gain.setValueAtTime(0.0, ctx.currentTime)
+        clickGain.gain.linearRampToValueAtTime(0.02 + Math.random() * 0.02, ctx.currentTime + 0.004)
+        clickGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12)
+
+        osc.connect(clickGain)
+        clickGain.connect(destination)
+        osc.start()
+        osc.stop(ctx.currentTime + 0.15)
+      } catch {}
+
+      const nextDelay = 1500 + Math.random() * 4500
+      this.cafeInterval = setTimeout(triggerClink, nextDelay)
+    }
+    this.cafeInterval = setTimeout(triggerClink, 2000)
+  }
+}
 
 function EditorContent() {
   const { user, loading } = useAuth()
@@ -53,6 +201,30 @@ function EditorContent() {
   const [isFocusMode, setIsFocusMode] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
+
+  // Redesign States
+  const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab>('manuscript')
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true)
+  const [isZenMode, setIsZenMode] = useState(false)
+
+  // World Bible States
+  const [bibleEntries, setBibleEntries] = useState<BibleEntry[]>([])
+  const [activeBibleEntryId, setActiveBibleEntryId] = useState<string | null>(null)
+  const [isBibleDrawerOpen, setIsBibleDrawerOpen] = useState(false)
+  const [bibleSearchQuery, setBibleSearchQuery] = useState('')
+  const [bibleCategoryFilter, setBibleCategoryFilter] = useState<'all' | 'character' | 'world'>('all')
+
+  const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
+
+  // Ambient Sound States
+  const [activeSound, setActiveSound] = useState<string>('none')
+  const [soundVolume, setSoundVolume] = useState<number>(0.5)
+  const synthRef = useRef<AudioFocusSynthesizer | null>(null)
+
+  // Slash Menu Commands States
+  const [showSlashMenu, setShowSlashMenu] = useState(false)
+  const [slashMenuQuery, setSlashMenuQuery] = useState("")
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0)
 
   const saveFolderHandleToProject = useCallback(async (handle: FileSystemDirectoryHandle) => {
     if (!projectId) return
@@ -130,9 +302,32 @@ function EditorContent() {
   const [showChapterDrawer, setShowChapterDrawer] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const autoSaveBibleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const savedFilenamesRef = useRef<Map<string, string>>(new Map())
 
+  // Sound Engine Setup
+  useEffect(() => {
+    synthRef.current = new AudioFocusSynthesizer()
+    return () => {
+      if (synthRef.current) {
+        synthRef.current.stopAll()
+      }
+    }
+  }, [])
 
+  const handleAmbientPlay = (type: string) => {
+    setActiveSound(type)
+    if (synthRef.current) {
+      synthRef.current.play(type)
+    }
+  }
+
+  const handleVolumeChange = (vol: number) => {
+    setSoundVolume(vol)
+    if (synthRef.current) {
+      synthRef.current.setVolume(vol)
+    }
+  }
 
   useEffect(() => {
     if (!projectId) return
@@ -169,7 +364,6 @@ function EditorContent() {
 
   useEffect(() => {
     if (isTypewriterMode) {
-      // Small timeout to let state/layout settle
       const timer = setTimeout(centerActiveLine, 50)
       return () => clearTimeout(timer)
     }
@@ -234,7 +428,6 @@ function EditorContent() {
     if (!user || !projectId) return
     setIsLoadingNotes(true)
     try {
-      // 1. Read local storage first for instant load
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
       noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
@@ -243,7 +436,6 @@ function EditorContent() {
         setActiveNoteId(noteList[0].id)
       }
       
-      // 2. Perform background two-way sync with Firestore
       const syncedNotes = await syncChaptersWithCloud(user.uid, projectId, noteList)
       setNotes(syncedNotes)
       if (syncedNotes.length > 0 && !activeNoteId) {
@@ -256,6 +448,95 @@ function EditorContent() {
       setIsLoadingNotes(false)
     }
   }, [user, projectId, activeNoteId])
+
+  // World Bible Logic
+  const fetchBible = useCallback(async () => {
+    if (!user || !projectId) return
+    try {
+      const stored = localStorage.getItem(`penpad_bible_${projectId}`)
+      const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+      setBibleEntries(entryList)
+
+      const synced = await syncBibleWithCloud(user.uid, projectId, entryList)
+      setBibleEntries(synced)
+    } catch {
+      console.error("Fetch/Sync bible entries failed")
+    }
+  }, [user, projectId])
+
+  const saveBibleEntry = useCallback(async (entry: BibleEntry) => {
+    if (!user || !projectId) return
+    try {
+      const stored = localStorage.getItem(`penpad_bible_${projectId}`)
+      const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+      const existingIdx = entryList.findIndex(e => e.id === entry.id)
+      const now = Date.now()
+      const updatedEntry = { ...entry, updatedAt: now }
+
+      if (existingIdx >= 0) {
+        entryList[existingIdx] = updatedEntry
+      } else {
+        entryList.push(updatedEntry)
+      }
+
+      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(entryList))
+      setBibleEntries(entryList)
+
+      await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
+    } catch (e) {
+      console.error("Save bible entry failed:", e)
+    }
+  }, [user, projectId])
+
+  const createNewBibleEntry = async () => {
+    if (!user || !projectId) return
+    try {
+      const now = Date.now()
+      const newEntry: BibleEntry = {
+        id: crypto.randomUUID(),
+        name: "New Entry",
+        category: "character",
+        content: "",
+        createdAt: now,
+        updatedAt: now
+      }
+      const updated = [newEntry, ...bibleEntries]
+      setBibleEntries(updated)
+      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+      setActiveBibleEntryId(newEntry.id)
+      setIsBibleDrawerOpen(true)
+      
+      await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+    } catch (e) {
+      console.error("Failed to create bible entry:", e)
+    }
+  }
+
+  const deleteBibleEntry = async (entryId: string) => {
+    if (!projectId || !user) return
+    try {
+      const filtered = bibleEntries.filter(e => e.id !== entryId)
+      setBibleEntries(filtered)
+      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(filtered))
+
+      await deleteBibleEntryFromCloud(user.uid, projectId, entryId)
+
+      if (activeBibleEntryId === entryId) {
+        setActiveBibleEntryId(null)
+        setIsBibleDrawerOpen(false)
+      }
+    } catch (e) {
+      console.error("Failed to delete bible entry:", e)
+    }
+  }
+
+  const updateActiveBibleEntry = (updates: Partial<BibleEntry>) => {
+    if (!activeBibleEntryId) return
+    const updated = bibleEntries.map(e => 
+      e.id === activeBibleEntryId ? { ...e, ...updates, updatedAt: Date.now() } : e
+    )
+    setBibleEntries(updated)
+  }
 
   const saveNote = useCallback(async (note: Note) => {
     if (!user || !projectId) return
@@ -289,9 +570,7 @@ function EditorContent() {
         }
       }
 
-      // Save to cloud in background
       await saveChapterToCloud(user.uid, projectId, updatedNote)
-      
       setSyncStatus('saved')
     } catch (e) {
       console.error("Save note failed:", e)
@@ -311,8 +590,9 @@ function EditorContent() {
     if (user && projectId) {
       fetchProjectName()
       fetchNotes()
+      fetchBible()
     }
-  }, [user, projectId, fetchProjectName, fetchNotes])
+  }, [user, projectId, fetchProjectName, fetchNotes, fetchBible])
 
   useEffect(() => {
     if (activeNote && syncStatus !== 'saving') {
@@ -324,7 +604,19 @@ function EditorContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNote?.content, activeNote?.title])
 
-
+  // World Bible AutoSave
+  useEffect(() => {
+    if (activeBibleEntry) {
+      if (autoSaveBibleTimerRef.current) {
+        clearTimeout(autoSaveBibleTimerRef.current)
+      }
+      autoSaveBibleTimerRef.current = setTimeout(() => {
+        saveBibleEntry(activeBibleEntry)
+      }, 1500)
+      return () => clearTimeout(autoSaveBibleTimerRef.current!)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category])
 
   const sanitizeFilename = (name: string): string => {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
@@ -340,7 +632,7 @@ function EditorContent() {
         try {
           await targetDir.removeEntry(oldFilename)
         } catch {
-          // File may not exist, ignore error
+          // File may not exist, ignore
         }
       }
       
@@ -471,6 +763,115 @@ function EditorContent() {
       console.error("Export failed:", e)
       setIsExporting(false)
       alert(`Export failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
+  }
+
+  // Formatting helper
+  const applyFormatting = (prefix: string, suffix: string = "") => {
+    const textarea = textareaRef.current
+    if (!textarea || !activeNote) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const text = textarea.value
+    const selection = text.substring(start, end)
+    const formatted = prefix + selection + suffix
+
+    const newContent = text.substring(0, start) + formatted + text.substring(end)
+    updateActiveNote({ content: newContent })
+
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selection.length)
+    }, 50)
+  }
+
+  // Slash commands list
+  const slashCommands = [
+    { name: "Heading 1", cmd: "/h1", desc: "Insert Large Heading", action: () => applyFormatting("# ") },
+    { name: "Heading 2", cmd: "/h2", desc: "Insert Medium Heading", action: () => applyFormatting("## ") },
+    { name: "Heading 3", cmd: "/h3", desc: "Insert Small Heading", action: () => applyFormatting("### ") },
+    { name: "Blockquote", cmd: "/quote", desc: "Insert Quote Block", action: () => applyFormatting("> ") },
+    { name: "Bullet List", cmd: "/list", desc: "Insert Bullet Point", action: () => applyFormatting("- ") },
+    { name: "Code Block", cmd: "/code", desc: "Insert Code block", action: () => applyFormatting("```\n", "\n```") },
+    { name: "Focus AI assistant", cmd: "/ai", desc: "Toggle Right AI Assistant Sidebar", action: () => setShowAISidebar(prev => !prev) },
+    { name: "Toggle Zen Mode", cmd: "/zen", desc: "Fullscreen Zen mode", action: () => setIsZenMode(prev => !prev) },
+    { name: "Open World Bible", cmd: "/bible", desc: "Toggle World Bible Panel", action: () => { setActiveSidebarTab('bible'); setIsLeftSidebarOpen(true) } },
+    { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } }
+  ]
+
+  const filteredCommands = slashCommands.filter(c => 
+    c.name.toLowerCase().includes(slashMenuQuery.toLowerCase()) ||
+    c.cmd.toLowerCase().includes(slashMenuQuery.toLowerCase())
+  )
+
+  const handleSlashSelect = (action: () => void) => {
+    const textarea = textareaRef.current
+    if (!textarea || !activeNote) return
+
+    const cursor = textarea.selectionStart
+    const text = textarea.value
+    
+    // Find the position of the slash command trigger
+    const beforeSlash = text.substring(0, cursor)
+    const slashIndex = beforeSlash.lastIndexOf("/")
+    if (slashIndex >= 0) {
+      const cleanContent = text.substring(0, slashIndex) + text.substring(cursor)
+      updateActiveNote({ content: cleanContent })
+      setTimeout(() => {
+        textarea.focus()
+        textarea.setSelectionRange(slashIndex, slashIndex)
+        action()
+      }, 50)
+    } else {
+      action()
+    }
+    setShowSlashMenu(false)
+    setSlashMenuQuery("")
+    setSlashMenuIndex(0)
+  }
+
+  // Handle textarea keyboard listener
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showSlashMenu) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashMenuIndex(prev => (prev + 1) % filteredCommands.length)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashMenuIndex(prev => (prev - 1 + filteredCommands.length) % filteredCommands.length)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        if (filteredCommands[slashMenuIndex]) {
+          handleSlashSelect(filteredCommands[slashMenuIndex].action)
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowSlashMenu(false)
+        setSlashMenuQuery("")
+      }
+    }
+  }
+
+  // Listen to typing slash
+  const handleEditorInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    const target = e.currentTarget
+    const cursor = target.selectionStart
+    const text = target.value
+    
+    const textBeforeCursor = text.substring(0, cursor)
+    const lastWordIdx = textBeforeCursor.lastIndexOf(" ")
+    const lastWord = textBeforeCursor.substring(lastWordIdx + 1)
+
+    if (lastWord.startsWith("/")) {
+      setShowSlashMenu(true)
+      setSlashMenuQuery(lastWord.substring(1))
+      setSlashMenuIndex(0)
+    } else {
+      if (showSlashMenu) {
+        setShowSlashMenu(false)
+        setSlashMenuQuery("")
+      }
     }
   }
 
@@ -621,7 +1022,6 @@ function EditorContent() {
       setActiveNoteId(newNote.id)
       setViewMode('edit')
 
-      // Save to cloud in background
       saveChapterToCloud(user.uid, projectId, newNote)
     } catch (e) {
       console.error("Failed to create note with content:", e)
@@ -642,6 +1042,8 @@ function EditorContent() {
       }
       if (e.key === 'Escape') {
         setIsFocusMode(false)
+        setIsZenMode(false)
+        setShowSlashMenu(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -707,7 +1109,6 @@ function EditorContent() {
       setActiveNoteId(newNote.id)
       setViewMode('edit')
 
-      // Save to cloud in background
       saveChapterToCloud(user.uid, projectId, newNote)
     } catch (e) {
       console.error("Failed to create note:", e)
@@ -724,7 +1125,6 @@ function EditorContent() {
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
       setNotes(filtered)
       
-      // Delete from cloud in background
       if (user) {
         deleteChapterFromCloud(user.uid, projectId, deleteModal.noteId)
       }
@@ -788,7 +1188,6 @@ function EditorContent() {
       localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
       setNotes(filtered)
       
-      // Delete selected notes from cloud in background
       if (user) {
         selectedNoteIds.forEach(noteId => {
           deleteChapterFromCloud(user.uid, projectId, noteId)
@@ -815,11 +1214,16 @@ function EditorContent() {
     setNotes(updatedNotes)
   }
 
-
-
   const filteredNotes = notes.filter((n: Note) => n &&
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const filteredBibleEntries = bibleEntries.filter(e => {
+    const matchesSearch = e.name.toLowerCase().includes(bibleSearchQuery.toLowerCase()) ||
+                          e.content.toLowerCase().includes(bibleSearchQuery.toLowerCase())
+    const matchesFilter = bibleCategoryFilter === 'all' || e.category === bibleCategoryFilter
+    return matchesSearch && matchesFilter
+  })
 
   const wordCount = activeNote?.content ? activeNote.content.split(/\s+/).filter(Boolean).length : 0
   const wordGoal = activeNote?.wordGoal || 1200
@@ -866,9 +1270,47 @@ function EditorContent() {
   )
 
   return (
-    <div className={`editor-container theme-${theme} ${isFocusMode ? 'focus-mode' : ''}`}>
+    <div className={`editor-container theme-${theme} ${isFocusMode || isZenMode ? 'focus-mode' : ''} ${isZenMode ? 'zen-mode' : ''}`}>
       <div className="bg-gradient-radial"></div>
+
+      {/* Slash commands palette */}
+      {showSlashMenu && (
+        <div className="command-palette-overlay" onClick={() => { setShowSlashMenu(false); setSlashMenuQuery("") }}>
+          <div className="command-palette glass" onClick={e => e.stopPropagation()}>
+            <div className="palette-header">
+              <Sparkles size={14} className="glow-icon" />
+              <input 
+                type="text" 
+                placeholder="Type command name..." 
+                value={slashMenuQuery} 
+                onChange={(e) => setSlashMenuQuery(e.target.value)}
+                autoFocus
+              />
+              <span className="esc-hint">ESC</span>
+            </div>
+            <div className="palette-results">
+              {filteredCommands.map((command, idx) => (
+                <div 
+                  key={command.name} 
+                  className={`palette-item ${idx === slashMenuIndex ? 'selected' : ''}`}
+                  onClick={() => handleSlashSelect(command.action)}
+                >
+                  <div className="palette-left">
+                    <span className="palette-cmd">{command.cmd}</span>
+                    <span className="palette-name">{command.name}</span>
+                  </div>
+                  <span className="palette-desc">{command.desc}</span>
+                </div>
+              ))}
+              {filteredCommands.length === 0 && (
+                <div className="empty-palette">No matching commands found</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       
+      {/* Redesigned Header: Fades out in Zen Mode */}
       <header className="editor-header glass">
         <div className="header-left">
           <button className="btn-icon" onClick={() => router.push('/dashboard')}>
@@ -968,15 +1410,86 @@ function EditorContent() {
           
           <button 
             className="btn-icon" 
-            onClick={() => setIsFocusMode(!isFocusMode)}
-            title={isFocusMode ? "Exit focus mode" : "Enter focus mode"}
+            onClick={() => setIsZenMode(!isZenMode)}
+            title={isZenMode ? "Exit Zen mode" : "Enter Zen mode"}
           >
-            {isFocusMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            {isZenMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
         </div>
       </header>
 
+      {/* Floating Zen mode exit button */}
+      {isZenMode && (
+        <button className="exit-zen-btn glass" onClick={() => setIsZenMode(false)}>
+          <Minimize2 size={14} />
+          <span>Exit Zen Mode</span>
+        </button>
+      )}
+
       <div className="editor-body">
+        
+        {/* Activity Bar: Left narrow bar */}
+        {!isFocusMode && !isZenMode && (
+          <nav className="editor-activity-bar glass">
+            <div className="activity-top">
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'manuscript' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'manuscript' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('manuscript')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Manuscript Chapters"
+              >
+                <FileText size={20} />
+              </button>
+              
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'bible' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'bible' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('bible')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="World Bible"
+              >
+                <Book size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'sounds' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'sounds' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('sounds')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Ambient Focus Sounds"
+              >
+                <Headphones size={20} />
+              </button>
+            </div>
+            
+            <div className="activity-bottom">
+              <button 
+                className="activity-btn toggle-sidebar"
+                onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+                title={isLeftSidebarOpen ? "Collapse Side Panel" : "Expand Side Panel"}
+              >
+                {isLeftSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+              </button>
+            </div>
+          </nav>
+        )}
+
         <div className="mobile-fab">
           <button className="fab-btn fab-new" onClick={createNewNote} title="New Chapter">
             <Plus size={24} />
@@ -1025,157 +1538,362 @@ function EditorContent() {
             </div>
           </div>
         )}
-        {!isFocusMode && (
-          <aside className="editor-sidebar">
-            <div className="sidebar-section">
-              <button className="btn-new" onClick={createNewNote}>
-                <Plus size={16} />
-                New Chapter
-              </button>
-              <button className="btn-export" onClick={() => setExportModal(true)}>
-                <Download size={16} />
-                Export Manuscript
-              </button>
-              {dirHandle && (
-                <div className="linked-folder-info">
-                  <span className="folder-name" title={dirHandle.name}>📁 {dirHandle.name}</span>
-                  <button className="btn-disconnect-folder" onClick={disconnectFolder} title="Unlink folder">
-                    Disconnect
+
+        {/* Collapsible Left Sidebar Panel */}
+        {!isFocusMode && !isZenMode && (
+          <aside className={`editor-sidebar glass ${isLeftSidebarOpen ? 'open' : 'collapsed'}`}>
+            
+            {/* TAB 1: MANUSCRIPT CHAPTERS */}
+            {activeSidebarTab === 'manuscript' && (
+              <div className="sidebar-tab-content fade-in">
+                <div className="sidebar-section">
+                  <button className="btn-new" onClick={createNewNote}>
+                    <Plus size={16} />
+                    New Chapter
+                  </button>
+                  <button className="btn-export" onClick={() => setExportModal(true)}>
+                    <Download size={16} />
+                    Export Manuscript
+                  </button>
+                  {dirHandle && (
+                    <div className="linked-folder-info">
+                      <span className="folder-name" title={dirHandle.name}>📁 {dirHandle.name}</span>
+                      <button className="btn-disconnect-folder" onClick={disconnectFolder} title="Unlink folder">
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="sidebar-search">
+                  <Search size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Find chapter..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {isLoadingNotes && <Loader2 size={12} className="spin" />}
+                </div>
+
+                <div className={`sidebar-chapters-header ${isSelectionMode ? 'selection-active' : ''}`}>
+                  {isSelectionMode ? (
+                    <>
+                      <span className="selection-count">{selectedNoteIds.size} selected</span>
+                      <div className="selection-actions">
+                        <button className="btn-text-action" onClick={toggleSelectAll}>
+                          {selectedNoteIds.size === filteredNotes.length ? 'None' : 'All'}
+                        </button>
+                        <button 
+                          className="btn-text-action danger" 
+                          disabled={selectedNoteIds.size === 0}
+                          onClick={() => setShowMultiDeleteModal(true)}
+                        >
+                          Delete
+                        </button>
+                        <button className="btn-text-action" onClick={toggleSelectionMode}>
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="section-title">Chapters ({filteredNotes.length})</span>
+                      <button className="btn-select-mode" onClick={toggleSelectionMode}>
+                        Select
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="chapter-list">
+                  {filteredNotes.map(note => {
+                    const isSelected = selectedNoteIds.has(note.id);
+                    return (
+                      <div 
+                        key={note.id} 
+                        className={`chapter-item ${activeNoteId === note.id ? 'active' : ''} ${isSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (isSelectionMode) {
+                            toggleNoteSelection(note.id);
+                          } else {
+                            setActiveNoteId(note.id);
+                          }
+                        }}
+                      >
+                        {isSelectionMode ? (
+                          <div className={`checkbox-custom ${isSelected ? 'checked' : ''}`}>
+                            {isSelected && <Check size={10} strokeWidth={3} />}
+                          </div>
+                        ) : (
+                          <FileText size={16} />
+                        )}
+                        <span className="chapter-title">{note.title || 'Untitled'}</span>
+                        
+                        {!isSelectionMode && (
+                          <div className="chapter-actions">
+                            <button 
+                              className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
+                              onClick={async (e) => { 
+                                e.stopPropagation(); 
+                                let targetDir = dirHandle
+                                
+                                if (!targetDir && projectId) {
+                                  targetDir = await getDirectoryHandleForProject(projectId)
+                                  if (targetDir) {
+                                    setDirHandle(targetDir)
+                                  }
+                                }
+                                
+                                if (targetDir) {
+                                  const hasPermission = await verifyPermission(targetDir)
+                                  if (hasPermission) {
+                                    await saveSingleChapterToFolder(note, targetDir)
+                                  } else {
+                                    try {
+                                      const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                                      setDirHandle(dir)
+                                      await saveFolderHandleToProject(dir)
+                                      await saveSingleChapterToFolder(note, dir)
+                                    } catch (err) { console.error(err) }
+                                  }
+                                } else {
+                                  try {
+                                    const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                                    setDirHandle(dir)
+                                    await saveFolderHandleToProject(dir)
+                                    await saveSingleChapterToFolder(note, dir)
+                                  } catch (err) { console.error(err) }
+                                }
+                              }}
+                              title="Save chapter"
+                            >
+                              <Save size={12} />
+                            </button>
+                            <button 
+                              className="btn-delete-chapter"
+                              onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
+                              title="Delete chapter"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: CHARACTER & WORLD BIBLE */}
+            {activeSidebarTab === 'bible' && (
+              <div className="sidebar-tab-content fade-in flex flex-col h-full">
+                <div className="sidebar-section">
+                  <button className="btn-new" onClick={createNewBibleEntry}>
+                    <Plus size={16} />
+                    New Lore Entry
                   </button>
                 </div>
-              )}
-            </div>
-            
-            <div className="sidebar-search">
-              <Search size={14} />
-              <input 
-                type="text" 
-                placeholder="Find chapter..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {isLoadingNotes && <Loader2 size={12} className="spin" />}
-            </div>
+                
+                <div className="sidebar-search">
+                  <Search size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Find character or lore..."
+                    value={bibleSearchQuery}
+                    onChange={(e) => setBibleSearchQuery(e.target.value)}
+                  />
+                </div>
 
-            <div className={`sidebar-chapters-header ${isSelectionMode ? 'selection-active' : ''}`}>
-              {isSelectionMode ? (
-                <>
-                  <span className="selection-count">{selectedNoteIds.size} selected</span>
-                  <div className="selection-actions">
-                    <button className="btn-text-action" onClick={toggleSelectAll}>
-                      {selectedNoteIds.size === filteredNotes.length ? 'None' : 'All'}
-                    </button>
-                    <button 
-                      className="btn-text-action danger" 
-                      disabled={selectedNoteIds.size === 0}
-                      onClick={() => setShowMultiDeleteModal(true)}
-                    >
-                      Delete
-                    </button>
-                    <button className="btn-text-action" onClick={toggleSelectionMode}>
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="section-title">Chapters ({filteredNotes.length})</span>
-                  <button className="btn-select-mode" onClick={toggleSelectionMode}>
-                    Select
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="chapter-list">
-              {filteredNotes.map(note => {
-                const isSelected = selectedNoteIds.has(note.id);
-                return (
-                  <div 
-                    key={note.id} 
-                    className={`chapter-item ${activeNoteId === note.id ? 'active' : ''} ${isSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
-                    onClick={() => {
-                      if (isSelectionMode) {
-                        toggleNoteSelection(note.id);
-                      } else {
-                        setActiveNoteId(note.id);
-                      }
-                    }}
+                <div className="bible-filters">
+                  <button 
+                    className={`filter-chip ${bibleCategoryFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setBibleCategoryFilter('all')}
                   >
-                    {isSelectionMode ? (
-                      <div className={`checkbox-custom ${isSelected ? 'checked' : ''}`}>
-                        {isSelected && <Check size={10} strokeWidth={3} />}
-                      </div>
-                    ) : (
-                      <FileText size={16} />
-                    )}
-                    <span className="chapter-title">{note.title || 'Untitled'}</span>
-                    
-                    {!isSelectionMode && (
-                      <div className="chapter-actions">
-                        <button 
-                          className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
-                          onClick={async (e) => { 
-                            e.stopPropagation(); 
-                            let targetDir = dirHandle
-                            
-                            if (!targetDir && projectId) {
-                              targetDir = await getDirectoryHandleForProject(projectId)
-                              if (targetDir) {
-                                setDirHandle(targetDir)
-                              }
-                            }
-                            
-                            if (targetDir) {
-                              const hasPermission = await verifyPermission(targetDir)
-                              if (hasPermission) {
-                                await saveSingleChapterToFolder(note, targetDir)
-                              } else {
-                                try {
-                                  const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
-                                  setDirHandle(dir)
-                                  await saveFolderHandleToProject(dir)
-                                  await saveSingleChapterToFolder(note, dir)
-                                } catch (err) { console.error(err) }
-                              }
-                            } else {
-                              try {
-                                const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
-                                setDirHandle(dir)
-                                await saveFolderHandleToProject(dir)
-                                await saveSingleChapterToFolder(note, dir)
-                              } catch (err) { console.error(err) }
-                            }
-                          }}
-                          title="Save chapter"
-                        >
-                          <Save size={12} />
-                        </button>
-                        <button 
-                          className="btn-delete-chapter"
-                          onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
-                          title="Delete chapter"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
+                    All
+                  </button>
+                  <button 
+                    className={`filter-chip ${bibleCategoryFilter === 'character' ? 'active' : ''}`}
+                    onClick={() => setBibleCategoryFilter('character')}
+                  >
+                    Characters
+                  </button>
+                  <button 
+                    className={`filter-chip ${bibleCategoryFilter === 'world' ? 'active' : ''}`}
+                    onClick={() => setBibleCategoryFilter('world')}
+                  >
+                    World
+                  </button>
+                </div>
+
+                <div className="chapter-list bible-list">
+                  {filteredBibleEntries.map(entry => (
+                    <div 
+                      key={entry.id} 
+                      className={`chapter-item ${activeBibleEntryId === entry.id ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveBibleEntryId(entry.id)
+                        setIsBibleDrawerOpen(true)
+                      }}
+                    >
+                      <BookOpen size={16} className={entry.category === 'character' ? 'text-primary' : 'text-accent'} />
+                      <span className="chapter-title">{entry.name || 'Untitled'}</span>
+                      <button 
+                        className="btn-delete-chapter"
+                        onClick={(e) => { e.stopPropagation(); deleteBibleEntry(entry.id) }}
+                        title="Delete entry"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {filteredBibleEntries.length === 0 && (
+                    <div className="empty-state-text">No lore entries found</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: AMBIENT FOCUS AUDIO */}
+            {activeSidebarTab === 'sounds' && (
+              <div className="sidebar-tab-content sound-panel fade-in">
+                <span className="section-title">Focus Soundscape</span>
+                <p className="ai-instructions">Play dynamic noise synthesis offline to block distractions.</p>
+                
+                <div className="sound-options">
+                  <button 
+                    className={`sound-card ${activeSound === 'none' ? 'active' : ''}`}
+                    onClick={() => handleAmbientPlay('none')}
+                  >
+                    <VolumeX size={20} />
+                    <div className="sound-info">
+                      <span className="sound-title">Silence</span>
+                      <span className="sound-desc">Muted</span>
+                    </div>
+                  </button>
+
+                  <button 
+                    className={`sound-card ${activeSound === 'brown' ? 'active' : ''}`}
+                    onClick={() => handleAmbientPlay('brown')}
+                  >
+                    <Volume2 size={20} className="glow-icon" />
+                    <div className="sound-info">
+                      <span className="sound-title">Brown Noise</span>
+                      <span className="sound-desc">Deep focused rumble</span>
+                    </div>
+                  </button>
+
+                  <button 
+                    className={`sound-card ${activeSound === 'rain' ? 'active' : ''}`}
+                    onClick={() => handleAmbientPlay('rain')}
+                  >
+                    <Volume2 size={20} className="glow-icon" />
+                    <div className="sound-info">
+                      <span className="sound-title">Rain shower</span>
+                      <span className="sound-desc">Gentle raindrops</span>
+                    </div>
+                  </button>
+
+                  <button 
+                    className={`sound-card ${activeSound === 'white' ? 'active' : ''}`}
+                    onClick={() => handleAmbientPlay('white')}
+                  >
+                    <Volume2 size={20} className="glow-icon" />
+                    <div className="sound-info">
+                      <span className="sound-title">White Noise</span>
+                      <span className="sound-desc">Steady high frequency mask</span>
+                    </div>
+                  </button>
+
+                  <button 
+                    className={`sound-card ${activeSound === 'cafe' ? 'active' : ''}`}
+                    onClick={() => handleAmbientPlay('cafe')}
+                  >
+                    <Volume2 size={20} className="glow-icon" />
+                    <div className="sound-info">
+                      <span className="sound-title">Cozy Cafe</span>
+                      <span className="sound-desc">Soft clinks & murmurs</span>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="volume-control">
+                  <div className="volume-label">
+                    <span>Volume</span>
+                    <span>{Math.round(soundVolume * 100)}%</span>
                   </div>
-                );
-              })}
-            </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.05"
+                    value={soundVolume}
+                    onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                    className="volume-slider"
+                  />
+                </div>
+
+                <div className="zen-section">
+                  <span className="section-title">Zen Mode</span>
+                  <button className="btn-new" onClick={() => setIsZenMode(true)}>
+                    <Maximize2 size={16} />
+                    Enter Zen Mode
+                  </button>
+                </div>
+              </div>
+            )}
           </aside>
         )}
 
+        {/* Central Writing Workspace */}
         <main className="editor-main">
           {activeNote ? (
             <div className="editor-workspace fade-in">
+              
+              {/* Markdown Formatting Toolbar: Hide in Zen Mode */}
+              {viewMode === 'edit' && !isZenMode && (
+                <div className="formatting-toolbar glass-light">
+                  <button className="fmt-btn" onClick={() => applyFormatting("**", "**")} title="Bold (Ctrl+B)">
+                    <Bold size={15} />
+                  </button>
+                  <button className="fmt-btn" onClick={() => applyFormatting("*", "*")} title="Italic (Ctrl+I)">
+                    <Italic size={15} />
+                  </button>
+                  <button className="fmt-btn" onClick={() => applyFormatting("~~", "~~")} title="Strikethrough">
+                    <Strikethrough size={15} />
+                  </button>
+                  <div className="fmt-divider"></div>
+                  <button className="fmt-btn" onClick={() => applyFormatting("# ")} title="Heading 1">
+                    <Heading1 size={15} />
+                  </button>
+                  <button className="fmt-btn" onClick={() => applyFormatting("## ")} title="Heading 2">
+                    <Heading2 size={15} />
+                  </button>
+                  <div className="fmt-divider"></div>
+                  <button className="fmt-btn" onClick={() => applyFormatting("> ")} title="Blockquote">
+                    <Quote size={15} />
+                  </button>
+                  <button className="fmt-btn" onClick={() => applyFormatting("```\n", "\n```")} title="Code Block">
+                    <Code size={15} />
+                  </button>
+                  <button className="fmt-btn" onClick={() => applyFormatting("- ")} title="Bullet List">
+                    <List size={15} />
+                  </button>
+                  <div className="fmt-divider"></div>
+                  <button className="fmt-btn font-mono" onClick={() => setShowSlashMenu(true)} title="Slash Commands">
+                    <span>/</span>
+                  </button>
+                </div>
+              )}
+
               <div className="editor-title-row">
                 <input 
                   className="editor-title-input"
                   value={activeNote.title}
                   onChange={(e) => updateActiveNote({ title: e.target.value })}
                   placeholder="Chapter Title..."
+                  disabled={isZenMode}
                 />
               </div>
               
@@ -1193,6 +1911,8 @@ function EditorContent() {
                       onKeyUp={() => isTypewriterMode && centerActiveLine()}
                       onMouseUp={() => isTypewriterMode && centerActiveLine()}
                       onFocus={() => isTypewriterMode && centerActiveLine()}
+                      onKeyDown={handleEditorKeyDown}
+                      onInput={handleEditorInput}
                       onSelect={(e) => {
                         const target = e.currentTarget
                         const start = target.selectionStart
@@ -1207,7 +1927,7 @@ function EditorContent() {
                           setAiSelectionEnd(0)
                         }
                       }}
-                      placeholder="Begin writing..."
+                      placeholder="Begin writing (type '/' to insert elements)..."
                       spellCheck={false}
                       style={{ fontFamily, fontSize: `${fontSize}px` }}
                     />
@@ -1221,48 +1941,51 @@ function EditorContent() {
                 )}
               </div>
               
-              <div className="editor-status-bar">
-                <div className="status-left">
-                  <span className="word-count">
-                    <FileText size={14} />
-                    {wordCount}/{wordGoal} words
-                  </span>
-                  <div className="word-progress">
-                    <div className="word-progress-bar">
-                      <div 
-                        className="word-progress-fill" 
-                        style={{ width: `${progressPercent}%`, backgroundColor: progressPercent >= 100 ? 'var(--success)' : 'var(--primary)' }}
-                      ></div>
+              {/* Status Bar: Hide in Zen Mode */}
+              {!isZenMode && (
+                <div className="editor-status-bar">
+                  <div className="status-left">
+                    <span className="word-count">
+                      <FileText size={14} />
+                      {wordCount}/{wordGoal} words
+                    </span>
+                    <div className="word-progress">
+                      <div className="word-progress-bar">
+                        <div 
+                          className="word-progress-fill" 
+                          style={{ width: `${progressPercent}%`, backgroundColor: progressPercent >= 100 ? 'var(--success)' : 'var(--primary)' }}
+                        ></div>
+                      </div>
+                      <span className="word-progress-text">{progressPercent}%</span>
                     </div>
-                    <span className="word-progress-text">{progressPercent}%</span>
                   </div>
-                </div>
 
-                <div className="status-right">
-                  <button className="status-goal-btn" onClick={changeWordGoal} title="Change Word Goal">
-                    🎯 Goal: {wordGoal} words
-                  </button>
-                  <div className="status-timer-container">
-                    <span className="timer-display">⏱️ {formatSessionTime(sessionTime)}</span>
-                    <div className="timer-controls">
-                      <button 
-                        className="timer-btn" 
-                        onClick={() => setIsTimerRunning(!isTimerRunning)} 
-                        title={isTimerRunning ? "Pause Timer" : "Start Timer"}
-                      >
-                        {isTimerRunning ? <Pause size={12} /> : <Play size={12} />}
-                      </button>
-                      <button 
-                        className="timer-btn" 
-                        onClick={() => setSessionTime(0)} 
-                        title="Reset Timer"
-                      >
-                        <RotateCcw size={12} />
-                      </button>
+                  <div className="status-right">
+                    <button className="status-goal-btn" onClick={changeWordGoal} title="Change Word Goal">
+                      🎯 Goal: {wordGoal} words
+                    </button>
+                    <div className="status-timer-container">
+                      <span className="timer-display">⏱️ {formatSessionTime(sessionTime)}</span>
+                      <div className="timer-controls">
+                        <button 
+                          className="timer-btn" 
+                          onClick={() => setIsTimerRunning(!isTimerRunning)} 
+                          title={isTimerRunning ? "Pause Timer" : "Start Timer"}
+                        >
+                          {isTimerRunning ? <Pause size={12} /> : <Play size={12} />}
+                        </button>
+                        <button 
+                          className="timer-btn" 
+                          onClick={() => setSessionTime(0)} 
+                          title="Reset Timer"
+                        >
+                          <RotateCcw size={12} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : (
             <div className="empty-editor-state">
@@ -1274,7 +1997,8 @@ function EditorContent() {
           )}
         </main>
 
-        {showAISidebar && !isFocusMode && (
+        {/* Right Collapsible AI Assistant Sidebar */}
+        {showAISidebar && !isFocusMode && !isZenMode && (
           <aside className="editor-ai-sidebar">
             <div className="ai-sidebar-header">
               <div className="ai-header-title">
@@ -1491,6 +2215,61 @@ function EditorContent() {
           </aside>
         )}
 
+        {/* Character & World Bible Slide-out Drawer Panel */}
+        {isBibleDrawerOpen && activeBibleEntry && (
+          <aside className="editor-ai-sidebar bible-drawer fade-in">
+            <div className="ai-sidebar-header">
+              <div className="ai-header-title">
+                <BookOpen size={16} className="glow-icon text-primary" />
+                <span>Edit Lore Entry</span>
+              </div>
+              <button className="btn-close-ai" onClick={() => setIsBibleDrawerOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="ai-sidebar-content">
+              <div className="ai-form-field">
+                <label>Entry Name</label>
+                <input 
+                  type="text" 
+                  value={activeBibleEntry.name}
+                  onChange={(e) => updateActiveBibleEntry({ name: e.target.value })}
+                  placeholder="e.g. Clara, Excalibur, London"
+                  className="ai-select px-3"
+                />
+              </div>
+
+              <div className="ai-form-field">
+                <label>Category</label>
+                <select 
+                  value={activeBibleEntry.category}
+                  onChange={(e) => updateActiveBibleEntry({ category: e.target.value as 'character' | 'world' })}
+                  className="ai-select"
+                >
+                  <option value="character">👤 Character (Cast, Protagonist, NPC)</option>
+                  <option value="world">🗺️ World Item (Location, Magic, Artifact, Lore)</option>
+                </select>
+              </div>
+
+              <div className="ai-form-field flex-1 flex flex-col min-h-[300px]">
+                <label>Notes & Descriptions</label>
+                <textarea 
+                  value={activeBibleEntry.content}
+                  onChange={(e) => updateActiveBibleEntry({ content: e.target.value })}
+                  placeholder="Write biography, characteristics, locations details, and lore notes..."
+                  className="ai-textarea flex-1 min-h-[280px]"
+                />
+              </div>
+
+              <div className="drawer-save-badge flex items-center justify-end text-xs text-dim gap-1">
+                <Check size={12} className="text-success" />
+                <span>Auto-saved in real-time</span>
+              </div>
+            </div>
+          </aside>
+        )}
+
         {deleteModal.show && (
           <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>
             <div className="modal" onClick={e => e.stopPropagation()}>
@@ -1559,6 +2338,7 @@ function EditorContent() {
           background: var(--background);
           color: var(--text-primary);
           position: relative;
+          transition: background 0.5s ease;
         }
 
         .loading-screen {
@@ -1595,7 +2375,88 @@ function EditorContent() {
           position: relative;
           z-index: 50;
           flex-shrink: 0;
-          background: rgba(10, 10, 15, 0.8);
+          background: rgba(10, 10, 15, 0.85);
+          transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        /* Zen mode transitions */
+        .zen-mode .editor-header {
+          opacity: 0;
+          pointer-events: none;
+          transform: translateY(-100%);
+        }
+
+        .exit-zen-btn {
+          position: fixed;
+          top: 1.5rem;
+          right: 2rem;
+          z-index: 200;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 0.5rem 1rem;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          color: var(--text-dim);
+          background: rgba(10, 10, 15, 0.6);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+        .exit-zen-btn:hover {
+          color: var(--text-primary);
+          border-color: var(--primary);
+        }
+
+        .editor-activity-bar {
+          width: 60px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: space-between;
+          padding: 1rem 0;
+          border-right: 1px solid var(--surface-border);
+          background: rgba(8, 8, 12, 0.95);
+          flex-shrink: 0;
+          z-index: 40;
+        }
+
+        .activity-top, .activity-bottom {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          align-items: center;
+          width: 100%;
+        }
+
+        .activity-btn {
+          width: 42px;
+          height: 42px;
+          border-radius: var(--radius-md);
+          border: none;
+          background: transparent;
+          color: var(--text-dim);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .activity-btn:hover {
+          color: var(--text-primary);
+          background: var(--surface-hover);
+        }
+
+        .activity-btn.active {
+          color: var(--primary-hover);
+          background: var(--primary-light);
+          box-shadow: 0 0 10px -2px var(--primary-glow);
+        }
+
+        .activity-btn.toggle-sidebar {
+          color: var(--text-muted);
         }
 
         .header-left {
@@ -1737,6 +2598,23 @@ function EditorContent() {
           border-right: 1px solid var(--surface-border);
           background: var(--surface-raised);
           flex-shrink: 0;
+          transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease, opacity 0.3s ease;
+          overflow: hidden;
+        }
+
+        .editor-sidebar.collapsed {
+          width: 0px;
+          padding: 0px;
+          border-right: none;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .sidebar-tab-content {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-width: 254px; /* Maintain layout during collapse */
         }
 
         .sidebar-section {
@@ -1758,6 +2636,7 @@ function EditorContent() {
           font-size: 0.85rem;
           cursor: pointer;
           transition: var(--transition);
+          box-shadow: 0 4px 10px -2px var(--primary-glow);
         }
 
         .btn-new:hover {
@@ -1803,15 +2682,14 @@ function EditorContent() {
           align-items: center;
           justify-content: space-between;
           padding: 0.5rem 0.75rem;
-          margin-top: 1rem;
           margin-bottom: 0.5rem;
         }
 
         .section-title {
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.08em;
           color: var(--text-dim);
         }
 
@@ -2045,6 +2923,322 @@ function EditorContent() {
         .btn-disconnect-folder:hover {
           background: rgba(239, 68, 68, 0.1);
           color: var(--error-hover);
+        }
+
+        /* World Bible Styles */
+        .bible-filters {
+          display: flex;
+          gap: 4px;
+          padding: 0 0.5rem 0.75rem 0.5rem;
+          border-bottom: 1px solid var(--surface-border);
+          margin-bottom: 0.75rem;
+        }
+
+        .filter-chip {
+          padding: 3px 8px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border: 1px solid var(--surface-border);
+          background: transparent;
+          color: var(--text-dim);
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .filter-chip:hover {
+          color: var(--text-primary);
+          border-color: var(--text-dim);
+        }
+
+        .filter-chip.active {
+          background: var(--primary-light);
+          color: var(--primary-hover);
+          border-color: var(--primary);
+        }
+
+        .empty-state-text {
+          font-size: 0.8rem;
+          color: var(--text-dim);
+          text-align: center;
+          margin-top: 2rem;
+        }
+
+        .bible-drawer {
+          border-left: 1px solid var(--surface-border);
+          background: rgba(12, 12, 18, 0.95) !important;
+          z-index: 60 !important;
+        }
+
+        .drawer-save-badge {
+          padding-top: 1rem;
+          border-top: 1px solid var(--surface-border);
+        }
+
+        /* Ambient Sound Panel */
+        .sound-options {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin: 1rem 0;
+        }
+
+        .sound-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 0.75rem 1rem;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          cursor: pointer;
+          text-align: left;
+          transition: var(--transition);
+          width: 100%;
+        }
+
+        .sound-card:hover {
+          background: var(--surface-hover);
+          border-color: var(--text-dim);
+        }
+
+        .sound-card.active {
+          background: var(--primary-light);
+          border-color: var(--primary);
+          color: var(--primary-hover);
+        }
+
+        .sound-card.active .glow-icon {
+          animation: pulse 2.5s infinite;
+        }
+
+        .sound-info {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .sound-title {
+          font-size: 0.85rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .sound-card.active .sound-title {
+          color: var(--primary-hover);
+        }
+
+        .sound-desc {
+          font-size: 0.7rem;
+          color: var(--text-dim);
+        }
+
+        .volume-control {
+          margin: 1.5rem 0;
+          padding: 1rem;
+          background: rgba(0,0,0,0.15);
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+        }
+
+        .volume-label {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 0.5rem;
+        }
+
+        .volume-slider {
+          width: 100%;
+          background: var(--surface-border);
+          outline: none;
+          height: 4px;
+          border-radius: var(--radius-full);
+          -webkit-appearance: none;
+          cursor: pointer;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: var(--primary);
+          box-shadow: 0 0 5px var(--primary-glow);
+          transition: transform 0.15s ease;
+        }
+
+        .volume-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.2);
+        }
+
+        .zen-section {
+          margin-top: 1.5rem;
+          padding-top: 1.5rem;
+          border-top: 1px solid var(--surface-border);
+        }
+
+        /* Formatting Toolbar */
+        .formatting-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: var(--radius-md);
+          margin-bottom: 1.25rem;
+          width: fit-content;
+          border: 1px solid var(--surface-border);
+          z-index: 10;
+        }
+
+        .fmt-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .fmt-btn:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .fmt-divider {
+          width: 1px;
+          height: 16px;
+          background: var(--surface-border);
+          margin: 0 4px;
+        }
+
+        /* Command Palette Slash Menu styles */
+        .command-palette-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(4, 4, 6, 0.4);
+          z-index: 300;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding-top: 12vh;
+          backdrop-filter: blur(4px);
+        }
+
+        .command-palette {
+          width: 500px;
+          max-width: 90%;
+          border-radius: var(--radius-xl);
+          border: 1px solid var(--surface-border);
+          background: rgba(15, 17, 23, 0.95);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 40px -10px var(--primary-glow);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          animation: slideDownPalette 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes slideDownPalette {
+          from { transform: translateY(-30px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        .palette-header {
+          display: flex;
+          align-items: center;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid var(--surface-border);
+          gap: 0.75rem;
+        }
+
+        .glow-icon {
+          color: var(--primary-hover);
+          filter: drop-shadow(0 0 4px var(--primary-glow));
+        }
+
+        .palette-header input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          font-size: 1rem;
+          outline: none;
+        }
+
+        .esc-hint {
+          font-size: 0.65rem;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: var(--radius-xs);
+          background: var(--surface-raised);
+          border: 1px solid var(--surface-border);
+          color: var(--text-dim);
+        }
+
+        .palette-results {
+          max-height: 300px;
+          overflow-y: auto;
+          padding: 0.5rem;
+        }
+
+        .palette-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.75rem 1rem;
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .palette-item.selected {
+          background: var(--primary-light);
+          color: var(--primary-hover);
+        }
+
+        .palette-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .palette-cmd {
+          font-family: var(--font-mono), monospace;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--accent);
+          padding: 1px 6px;
+          border-radius: 4px;
+          background: rgba(167, 139, 250, 0.1);
+        }
+
+        .palette-item.selected .palette-cmd {
+          background: rgba(167, 139, 250, 0.2);
+        }
+
+        .palette-name {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+
+        .palette-desc {
+          font-size: 0.75rem;
+          color: var(--text-dim);
+        }
+
+        .empty-palette {
+          padding: 2rem;
+          text-align: center;
+          font-size: 0.85rem;
+          color: var(--text-dim);
         }
 
         /* AI Assistant Sidebar CSS */
@@ -2480,16 +3674,25 @@ function EditorContent() {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          background: var(--background);
         }
 
         .editor-workspace {
           flex: 1;
           display: flex;
           flex-direction: column;
-          padding: 1.5rem 2rem;
-          max-width: 100%;
+          padding: 1rem 2rem 1.5rem 2rem;
+          max-width: 1000px;
+          margin: 0 auto;
           width: 100%;
           overflow: hidden;
+          transition: max-width 0.5s ease, padding 0.5s ease;
+        }
+
+        /* Zen mode overrides */
+        .zen-mode .editor-workspace {
+          max-width: 800px;
+          padding: 3rem 1rem;
         }
 
         .editor-title-input {
@@ -2497,13 +3700,20 @@ function EditorContent() {
           background: transparent;
           border: none;
           font-family: var(--font-outfit);
-          font-size: 1.875rem;
+          font-size: 2.25rem;
           font-weight: 800;
           color: var(--text-primary);
           outline: none;
           letter-spacing: -0.02em;
           margin-bottom: 1rem;
           padding: 0;
+          transition: font-size 0.5s ease;
+        }
+
+        .zen-mode .editor-title-input {
+          font-size: 2rem;
+          text-align: center;
+          margin-bottom: 2rem;
         }
 
         .editor-title-input::placeholder {
@@ -2519,8 +3729,6 @@ function EditorContent() {
           flex-direction: column;
           gap: 0.5rem;
         }
-
-
 
         .badge-info {
           background: linear-gradient(135deg, var(--primary-light), var(--accent-light));
@@ -2549,7 +3757,7 @@ function EditorContent() {
           background: transparent;
           border: none;
           color: var(--text-secondary);
-          line-height: 1.0;
+          line-height: 1.8;
           resize: none;
           outline: none;
           font-family: Georgia, serif;
@@ -2558,14 +3766,9 @@ function EditorContent() {
           z-index: 1;
         }
 
-        .highlight-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          pointer-events: none;
-          z-index: 0;
+        .zen-mode .editor-textarea {
+          max-width: 700px;
+          margin: 0 auto;
         }
 
         .editor-textarea::placeholder {
@@ -2574,13 +3777,13 @@ function EditorContent() {
 
         .markdown-preview {
           flex: 1;
-          padding: 3rem;
-          background: var(--surface);
+          padding: 2rem;
+          background: rgba(0,0,0,0.15);
           border-radius: var(--radius-xl);
           border: 1px solid var(--surface-border);
-          line-height: 2;
+          line-height: 1.8;
           color: var(--text-secondary);
-          min-height: 500px;
+          overflow-y: auto;
         }
 
         .editor-status-bar {
@@ -2591,6 +3794,7 @@ function EditorContent() {
           flex-shrink: 0;
           border-top: 1px solid var(--surface-border);
           gap: 0.5rem;
+          background: var(--background);
         }
 
         .status-left {
@@ -2632,21 +3836,6 @@ function EditorContent() {
           font-size: 0.75rem;
           color: var(--text-dim);
           min-width: 35px;
-        }
-
-        .ai-status {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .learning-indicator {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          color: var(--warning);
-          font-size: 0.75rem;
-          font-weight: 600;
         }
 
         .status-right {
@@ -2715,26 +3904,6 @@ function EditorContent() {
           background: var(--surface-hover);
         }
 
-        .btn-action {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 0.6rem 1rem;
-          background: var(--surface);
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-md);
-          color: var(--text-secondary);
-          font-weight: 600;
-          font-size: 0.8rem;
-          cursor: pointer;
-          transition: var(--transition);
-        }
-
-        .btn-action:hover {
-          border-color: var(--primary);
-          color: var(--primary-hover);
-        }
-
         .btn-icon.active {
           background: var(--primary-light);
           color: var(--primary);
@@ -2767,8 +3936,8 @@ function EditorContent() {
         }
 
         .focus-mode .editor-workspace {
-          max-width: 1000px;
-          padding: 4rem 3rem;
+          max-width: 900px;
+          padding: 2rem 1.5rem;
         }
 
         @media (max-width: 768px) {
@@ -2784,6 +3953,9 @@ function EditorContent() {
             overscroll-behavior: contain;
           }
           .editor-sidebar {
+            display: none;
+          }
+          .editor-activity-bar {
             display: none;
           }
           .editor-workspace {
@@ -2930,7 +4102,6 @@ function EditorContent() {
     </div>
   )
 }
-
 
 export default function EditorPage() {
   return (

@@ -14,6 +14,15 @@ export interface Note {
   wordGoal?: number
 }
 
+export interface BibleEntry {
+  id: string
+  name: string
+  category: "character" | "world"
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
 /**
  * Helper to execute a fetch request with a timeout.
  */
@@ -191,5 +200,83 @@ export async function deleteChapterFromCloud(userId: string, projectId: string, 
     }
   } catch (error) {
     console.error("Failed to delete chapter from cloud:", error)
+  }
+}
+
+/**
+ * Reconciles local Bible entries with PostgreSQL via Next.js API.
+ */
+export async function syncBibleWithCloud(userId: string, projectId: string, localEntries: BibleEntry[]): Promise<BibleEntry[]> {
+  if (!userId || !projectId) return localEntries
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/bible", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, localEntries }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const merged = (data.entries || []) as BibleEntry[]
+
+    // Cache the reconciled bible entries locally
+    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(merged))
+    return merged
+  } catch (error) {
+    console.error("Failed to sync bible with cloud, falling back to local:", error)
+    return localEntries
+  }
+}
+
+/**
+ * Saves a single Bible entry to PostgreSQL via Next.js API.
+ */
+export async function saveBibleEntryToCloud(userId: string, projectId: string, entry: BibleEntry): Promise<void> {
+  if (!userId || !projectId || !entry || !entry.id) return
+
+  try {
+    const response = await fetch("/api/sync/save-bible-entry", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, entry })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save bible entry to cloud:", error)
+  }
+}
+
+/**
+ * Deletes a single Bible entry from PostgreSQL via Next.js API.
+ */
+export async function deleteBibleEntryFromCloud(userId: string, projectId: string, entryId: string): Promise<void> {
+  if (!userId || !projectId || !entryId) return
+
+  try {
+    const response = await fetch("/api/sync/delete-bible-entry", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, entryId })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to delete bible entry from cloud:", error)
   }
 }

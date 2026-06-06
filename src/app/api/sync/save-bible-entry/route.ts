@@ -1,0 +1,44 @@
+import { NextRequest, NextResponse } from "next/server"
+import pool, { bootstrapDb } from "@/lib/db-postgres"
+
+export async function POST(req: NextRequest) {
+  try {
+    await bootstrapDb()
+
+    const body = await req.json()
+    const { userId, projectId, entry } = body
+
+    if (!userId || !projectId || !entry || !entry.id) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    // Ensure the project exists
+    await pool.query(
+      `INSERT INTO projects (id, user_id, name, last_updated)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO NOTHING`,
+      [projectId, userId, "Untitled Project", Date.now()]
+    )
+
+    const createdAt = entry.createdAt || Date.now()
+    const updatedAt = entry.updatedAt || Date.now()
+
+    await pool.query(
+      `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (id)
+       DO UPDATE SET 
+         name = EXCLUDED.name,
+         category = EXCLUDED.category,
+         content = EXCLUDED.content,
+         updated_at = EXCLUDED.updated_at`,
+      [entry.id, projectId, userId, entry.name || "Untitled", entry.category || "character", entry.content || "", createdAt, updatedAt]
+    )
+
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    console.error("Error saving bible entry:", error)
+    const message = error instanceof Error ? error.message : "Internal server error"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

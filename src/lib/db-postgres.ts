@@ -42,6 +42,20 @@ export async function bootstrapDb() {
         word_goal INTEGER
       );
     `)
+
+    // 3. Create bible_entries table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS bible_entries (
+        id VARCHAR(255) PRIMARY KEY,
+        project_id VARCHAR(255) REFERENCES projects(id) ON DELETE CASCADE,
+        user_id VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(50) NOT NULL,
+        content TEXT,
+        created_at BIGINT,
+        updated_at BIGINT
+      );
+    `)
     
     isBootstrapped = true
     console.log("Postgres database tables checked/created successfully.")
