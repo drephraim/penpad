@@ -93,8 +93,26 @@ export async function POST(req: NextRequest) {
 
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
+    } else if (action === "brain_analyze") {
+      const { highlightedText, chapterContent, chapterTitle } = body
+      if (!highlightedText || !chapterContent) {
+        return NextResponse.json({ error: "highlightedText and chapterContent are required for brain_analyze" }, { status: 400 })
+      }
+
+      systemInstruction = 
+        "You are a sharp story analyst and creative writing memory assistant. The user is writing a novel/manuscript. " +
+        "They highlighted a specific word, name, phrase, or element from their chapter and want to remember its significance.\n" +
+        "Your task:\n" +
+        "1. Read the chapter content provided and identify what the highlighted element refers to.\n" +
+        "2. Write a concise recap (2-4 sentences) explaining what this element is, its role in the chapter, and why the writer might want to remember it.\n" +
+        "3. If it's a character name, describe who they are and what they did. If it's a place, describe its significance. If it's an object or concept, explain its role.\n" +
+        "4. Be specific and reference actual events/details from the chapter.\n" +
+        "5. Output ONLY the analysis text. No intro, no quotes, no markdown headers."
+
+      const titleContext = chapterTitle ? `\nChapter Title: "${chapterTitle}"` : ""
+      userPrompt = `The writer highlighted: "${highlightedText}"${titleContext}\n\nFull chapter content:\n${chapterContent}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, or generate_lore." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, or brain_analyze." }, { status: 400 })
     }
 
     const model = genAI.getGenerativeModel({

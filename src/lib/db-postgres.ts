@@ -56,6 +56,21 @@ export async function bootstrapDb() {
         updated_at BIGINT
       );
     `)
+
+    // 4. Create brain_entries table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS brain_entries (
+        id VARCHAR(255) PRIMARY KEY,
+        project_id VARCHAR(255) REFERENCES projects(id) ON DELETE CASCADE,
+        user_id VARCHAR(255) NOT NULL,
+        highlighted_text TEXT,
+        ai_summary TEXT,
+        chapter_title VARCHAR(255),
+        chapter_id VARCHAR(255),
+        created_at BIGINT,
+        updated_at BIGINT
+      );
+    `)
     
     isBootstrapped = true
     console.log("Postgres database tables checked/created successfully.")

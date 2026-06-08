@@ -17,8 +17,18 @@ export interface Note {
 export interface BibleEntry {
   id: string
   name: string
-  category: "character" | "world" | "beast" | "place"
+  category: "character" | "world" | "beast" | "place" | "item"
   content: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface BrainEntry {
+  id: string
+  highlightedText: string
+  aiSummary: string
+  chapterTitle: string
+  chapterId: string
   createdAt: number
   updatedAt: number
 }
@@ -278,5 +288,82 @@ export async function deleteBibleEntryFromCloud(userId: string, projectId: strin
     }
   } catch (error) {
     console.error("Failed to delete bible entry from cloud:", error)
+  }
+}
+
+/**
+ * Reconciles local Brain entries with PostgreSQL via Next.js API.
+ */
+export async function syncBrainWithCloud(userId: string, projectId: string, localEntries: BrainEntry[]): Promise<BrainEntry[]> {
+  if (!userId || !projectId) return localEntries
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/brain", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, localEntries }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const merged = (data.entries || []) as BrainEntry[]
+
+    localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(merged))
+    return merged
+  } catch (error) {
+    console.error("Failed to sync brain with cloud, falling back to local:", error)
+    return localEntries
+  }
+}
+
+/**
+ * Saves a single Brain entry to PostgreSQL via Next.js API.
+ */
+export async function saveBrainEntryToCloud(userId: string, projectId: string, entry: BrainEntry): Promise<void> {
+  if (!userId || !projectId || !entry || !entry.id) return
+
+  try {
+    const response = await fetch("/api/sync/save-brain-entry", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, entry })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save brain entry to cloud:", error)
+  }
+}
+
+/**
+ * Deletes a single Brain entry from PostgreSQL via Next.js API.
+ */
+export async function deleteBrainEntryFromCloud(userId: string, projectId: string, entryId: string): Promise<void> {
+  if (!userId || !projectId || !entryId) return
+
+  try {
+    const response = await fetch("/api/sync/delete-brain-entry", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, entryId })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to delete brain entry from cloud:", error)
   }
 }

@@ -13,7 +13,7 @@ import {
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight,
-  User, PawPrint, MapPin, Globe
+  User, PawPrint, MapPin, Globe, Package, BrainCircuit
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import { 
@@ -23,7 +23,11 @@ import {
   syncBibleWithCloud,
   saveBibleEntryToCloud,
   deleteBibleEntryFromCloud,
-  BibleEntry
+  syncBrainWithCloud,
+  saveBrainEntryToCloud,
+  deleteBrainEntryFromCloud,
+  BibleEntry,
+  BrainEntry
 } from '@/lib/sync'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -39,7 +43,7 @@ interface Note {
 }
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'bible' | 'sounds'
+type SidebarTab = 'manuscript' | 'bible' | 'sounds' | 'brain'
 
 // Synthesizer class using native Web Audio API
 class AudioFocusSynthesizer {
@@ -213,12 +217,16 @@ function EditorContent() {
   const [activeBibleEntryId, setActiveBibleEntryId] = useState<string | null>(null)
   const [isBibleDrawerOpen, setIsBibleDrawerOpen] = useState(false)
   const [bibleSearchQuery, setBibleSearchQuery] = useState('')
-  const [bibleCategoryFilter, setBibleCategoryFilter] = useState<'all' | 'character' | 'world' | 'beast' | 'place'>('all')
+  const [bibleCategoryFilter, setBibleCategoryFilter] = useState<'all' | 'character' | 'world' | 'beast' | 'place' | 'item'>('all')
   const [isBibleSelectionMode, setIsBibleSelectionMode] = useState(false)
   const [selectedBibleIds, setSelectedBibleIds] = useState<Set<string>>(new Set())
   const [showMultiBibleDeleteModal, setShowMultiBibleDeleteModal] = useState(false)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
+
+  // Brain Map States
+  const [brainEntries, setBrainEntries] = useState<BrainEntry[]>([])
+  const [brainSearchQuery, setBrainSearchQuery] = useState('')
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -695,6 +703,92 @@ function EditorContent() {
     setBibleEntries(updated)
   }
 
+  // Brain Map Logic
+  const fetchBrain = useCallback(async () => {
+    if (!user || !projectId) return
+    try {
+      const stored = localStorage.getItem(`penpad_brain_${projectId}`)
+      const entryList: BrainEntry[] = stored ? JSON.parse(stored) : []
+      setBrainEntries(entryList)
+
+      const synced = await syncBrainWithCloud(user.uid, projectId, entryList)
+      setBrainEntries(synced)
+    } catch {
+      console.error("Fetch/Sync brain entries failed")
+    }
+  }, [user, projectId])
+
+  const handleAddToBrain = async () => {
+    const text = aiSelectionText.trim()
+    if (!text || !user || !projectId || !activeNote) return
+
+    const now = Date.now()
+    const newEntry: BrainEntry = {
+      id: crypto.randomUUID(),
+      highlightedText: text,
+      aiSummary: "Analyzing...",
+      chapterTitle: activeNote.title || "Untitled",
+      chapterId: activeNote.id,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    // Immediately add with placeholder — zero lag
+    const updated = [newEntry, ...brainEntries]
+    setBrainEntries(updated)
+    localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(updated))
+
+    // Clear selection
+    setAiSelectionText("")
+    setAiSelectionStart(0)
+    setAiSelectionEnd(0)
+
+    // Fire-and-forget AI analysis in background
+    fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "brain_analyze",
+        highlightedText: text,
+        chapterContent: activeNote.content,
+        chapterTitle: activeNote.title
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        const summary = data.text || data.error || "Could not analyze."
+        const finalEntry = { ...newEntry, aiSummary: summary, updatedAt: Date.now() }
+
+        setBrainEntries(prev => {
+          const list = prev.map(e => e.id === newEntry.id ? finalEntry : e)
+          localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(list))
+          return list
+        })
+
+        saveBrainEntryToCloud(user.uid, projectId, finalEntry)
+      })
+      .catch(() => {
+        const errorEntry = { ...newEntry, aiSummary: "Analysis failed. Try again.", updatedAt: Date.now() }
+        setBrainEntries(prev => {
+          const list = prev.map(e => e.id === newEntry.id ? errorEntry : e)
+          localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(list))
+          return list
+        })
+      })
+  }
+
+  const deleteBrainEntry = async (entryId: string) => {
+    if (!projectId || !user) return
+    try {
+      const filtered = brainEntries.filter(e => e.id !== entryId)
+      setBrainEntries(filtered)
+      localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(filtered))
+      await deleteBrainEntryFromCloud(user.uid, projectId, entryId)
+    } catch (e) {
+      console.error("Failed to delete brain entry:", e)
+    }
+  }
+
   const saveNote = useCallback(async (note: Note) => {
     if (!user || !projectId) return
     setSyncStatus('saving')
@@ -748,8 +842,9 @@ function EditorContent() {
       fetchProjectName()
       fetchNotes()
       fetchBible()
+      fetchBrain()
     }
-  }, [user, projectId, fetchProjectName, fetchNotes, fetchBible])
+  }, [user, projectId, fetchProjectName, fetchNotes, fetchBible, fetchBrain])
 
   useEffect(() => {
     if (activeNote && syncStatus !== 'saving') {
@@ -1013,7 +1108,7 @@ function EditorContent() {
     setAutocompleteSuggestions([])
   }
 
-  const handleAddSelectionToBible = async (category: "character" | "world" | "beast" | "place" = "character") => {
+  const handleAddSelectionToBible = async (category: "character" | "world" | "beast" | "place" | "item" = "character") => {
     const name = aiSelectionText.trim()
     if (!name || !user || !projectId) return
     
@@ -1581,6 +1676,8 @@ function EditorContent() {
         return <PawPrint size={16} style={{ color: 'rgb(245, 158, 11)' }} />
       case 'place':
         return <MapPin size={16} style={{ color: 'rgb(16, 185, 129)' }} />
+      case 'item':
+        return <Package size={16} style={{ color: 'rgb(168, 85, 247)' }} />
       case 'world':
       default:
         return <Globe size={16} className="text-accent" />
@@ -1837,6 +1934,21 @@ function EditorContent() {
                 title="Ambient Focus Sounds"
               >
                 <Headphones size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'brain' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'brain' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('brain')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Brain Map"
+              >
+                <BrainCircuit size={20} />
               </button>
             </div>
             
@@ -2133,6 +2245,12 @@ function EditorContent() {
                   >
                     World
                   </button>
+                  <button 
+                    className={`filter-chip ${bibleCategoryFilter === 'item' ? 'active' : ''}`}
+                    onClick={() => setBibleCategoryFilter('item')}
+                  >
+                    Items
+                  </button>
                 </div>
 
                 <div className="chapter-list bible-list">
@@ -2266,6 +2384,74 @@ function EditorContent() {
                 </div>
               </div>
             )}
+
+            {/* TAB 4: BRAIN MAP */}
+            {activeSidebarTab === 'brain' && (
+              <div className="sidebar-tab-content brain-panel fade-in">
+                <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Brain Map</span>
+                <p className="ai-instructions">Highlight text and click 🧠 Brain to save with AI context.</p>
+                
+                <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
+                  <Search size={14} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search brain entries..."
+                    value={brainSearchQuery}
+                    onChange={(e) => setBrainSearchQuery(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+
+                <div className="brain-entries-list">
+                  {(() => {
+                    const filtered = brainEntries.filter(e => 
+                      !brainSearchQuery || 
+                      e.highlightedText.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
+                      e.aiSummary.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
+                      e.chapterTitle.toLowerCase().includes(brainSearchQuery.toLowerCase())
+                    )
+                    
+                    if (filtered.length === 0) {
+                      return <div className="empty-state-text">No brain entries yet. Highlight text and click 🧠 to add.</div>
+                    }
+
+                    let lastChapter = ""
+                    return filtered.map((entry) => {
+                      const showDivider = entry.chapterTitle !== lastChapter
+                      lastChapter = entry.chapterTitle
+                      return (
+                        <div key={entry.id}>
+                          {showDivider && (
+                            <div className="brain-chapter-divider">
+                              <span className="brain-chapter-label">— {entry.chapterTitle || "Untitled"} —</span>
+                            </div>
+                          )}
+                          <div className="brain-entry-card glass-light">
+                            <div className="brain-entry-header">
+                              <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
+                              <button 
+                                className="btn-delete-chapter"
+                                onClick={() => deleteBrainEntry(entry.id)}
+                                title="Delete"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            <div className="brain-entry-summary">
+                              {entry.aiSummary === "Analyzing..." ? (
+                                <span className="brain-loading"><Loader2 size={12} className="spin" /> Analyzing...</span>
+                              ) : (
+                                <p>{entry.aiSummary}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </div>
+            )}
           </aside>
         )}
 
@@ -2348,6 +2534,26 @@ function EditorContent() {
                       <Globe size={13} style={{ marginRight: '4px' }} />
                       <span style={{ fontSize: '11px', fontWeight: 600 }}>World</span>
                     </button>
+                    <button 
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleAddSelectionToBible("item")} 
+                      title="Select text, then click to save as an item"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <Package size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Item</span>
+                    </button>
+                    <div className="fmt-divider"></div>
+                    <button 
+                      className={`fmt-btn-action fmt-btn-brain ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={handleAddToBrain} 
+                      title="Select text, then click to save to Brain Map with AI analysis"
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <BrainCircuit size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Brain</span>
+                    </button>
                   </div>
 
                   {mentionedLore.length > 0 && (
@@ -2424,6 +2630,13 @@ function EditorContent() {
                         <div className="autocomplete-header">
                           <Sparkles size={12} className="glow-icon" />
                           <span>Suggestions</span>
+                          <button 
+                            className="autocomplete-close-btn" 
+                            onClick={(e) => { e.stopPropagation(); setShowAutocomplete(false); setAutocompleteSuggestions([]); }}
+                            title="Dismiss suggestions"
+                          >
+                            <X size={12} />
+                          </button>
                         </div>
                         <div className="autocomplete-list">
                           {autocompleteSuggestions.slice(0, 5).map((suggestion, idx) => (
@@ -2765,13 +2978,14 @@ function EditorContent() {
                 <label>Category</label>
                 <select 
                   value={activeBibleEntry.category}
-                  onChange={(e) => updateActiveBibleEntry({ category: e.target.value as 'character' | 'world' | 'beast' | 'place' })}
+                  onChange={(e) => updateActiveBibleEntry({ category: e.target.value as 'character' | 'world' | 'beast' | 'place' | 'item' })}
                   className="ai-select"
                 >
                   <option value="character">👤 Person (Cast, Protagonist, NPC)</option>
                   <option value="beast">🐾 Beast (Creature, Monster, Companion)</option>
                   <option value="place">📍 Place (Location, Region, Sect, Building)</option>
-                  <option value="world">🗺️ World Item (Magic, Artifact, Lore, Concept)</option>
+                  <option value="world">🗺️ World (Magic, Lore, Concept)</option>
+                  <option value="item">📦 Item (Weapon, Artifact, Object)</option>
                 </select>
               </div>
 
@@ -3104,6 +3318,16 @@ function EditorContent() {
           background: rgba(16, 185, 129, 0.1);
           color: rgb(16, 185, 129);
           border-color: rgb(16, 185, 129);
+        }
+
+        .mentioned-lore-chip.item {
+          border-color: rgba(168, 85, 247, 0.2);
+        }
+
+        .mentioned-lore-chip.item:hover {
+          background: rgba(168, 85, 247, 0.1);
+          color: rgb(168, 85, 247);
+          border-color: rgb(168, 85, 247);
         }
 
         .chip-name {
@@ -3831,6 +4055,93 @@ function EditorContent() {
           margin-top: 2rem;
         }
 
+        /* Brain Map Styles */
+        .brain-panel {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .brain-entries-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          overflow-y: auto;
+          flex: 1;
+        }
+
+        .brain-chapter-divider {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.5rem 0;
+          margin-top: 0.25rem;
+        }
+
+        .brain-chapter-label {
+          font-size: 0.65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--primary);
+          opacity: 0.7;
+        }
+
+        .brain-entry-card {
+          padding: 0.6rem 0.75rem;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+          transition: var(--transition);
+        }
+
+        .brain-entry-card:hover {
+          border-color: rgba(168, 85, 247, 0.3);
+          background: rgba(168, 85, 247, 0.05);
+        }
+
+        .brain-entry-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.5rem;
+          margin-bottom: 0.35rem;
+        }
+
+        .brain-highlight-text {
+          font-size: 0.78rem;
+          font-weight: 600;
+          color: rgb(192, 132, 252);
+          line-height: 1.3;
+          word-break: break-word;
+        }
+
+        .brain-entry-summary {
+          font-size: 0.73rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+
+        .brain-entry-summary p {
+          margin: 0;
+        }
+
+        .brain-loading {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.73rem;
+          color: var(--text-dim);
+          font-style: italic;
+        }
+
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
         .bible-drawer {
           border-left: 1px solid var(--surface-border);
           background: rgba(12, 12, 18, 0.95) !important;
@@ -4013,6 +4324,17 @@ function EditorContent() {
           transform: none;
         }
 
+        .fmt-btn-brain {
+          background: rgba(168, 85, 247, 0.15);
+          border-color: rgba(168, 85, 247, 0.3);
+          color: rgb(168, 85, 247);
+        }
+        .fmt-btn-brain:hover:not(:disabled) {
+          background: rgba(168, 85, 247, 0.25);
+          border-color: rgb(168, 85, 247);
+          color: rgb(192, 132, 252);
+        }
+
         /* Autocomplete suggestions panel styles */
         .autocomplete-panel {
           position: absolute;
@@ -4041,6 +4363,24 @@ function EditorContent() {
           color: var(--text-dim);
           text-transform: uppercase;
           letter-spacing: 0.05em;
+        }
+
+        .autocomplete-close-btn {
+          margin-left: auto;
+          background: transparent;
+          border: none;
+          color: var(--text-dim);
+          cursor: pointer;
+          padding: 2px;
+          border-radius: var(--radius-sm);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: var(--transition);
+        }
+        .autocomplete-close-btn:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
         }
 
         .autocomplete-list {
