@@ -1023,7 +1023,6 @@ function EditorContent() {
       
       const exists = entryList.some(e => e.name.toLowerCase() === name.toLowerCase())
       if (exists) {
-        alert(`"${name}" is already saved in the Story Bible!`)
         return
       }
 
@@ -1042,19 +1041,12 @@ function EditorContent() {
       
       await saveBibleEntryToCloud(user.uid, projectId, newEntry)
       
-      let categoryLabel = "character"
-      if (category === "beast") categoryLabel = "beast"
-      if (category === "place") categoryLabel = "place"
-      if (category === "world") categoryLabel = "world lore"
-      alert(`Successfully saved "${name}" as a ${categoryLabel}!`)
-      
-      // Clear selection text to hide button
+      // Clear selection text
       setAiSelectionText("")
       setAiSelectionStart(0)
       setAiSelectionEnd(0)
     } catch (e) {
       console.error("Failed to add highlighted text to Story Bible:", e)
-      alert("Failed to save selection. Please try again.")
     }
   }
 
@@ -2316,46 +2308,46 @@ function EditorContent() {
                     <button className="fmt-btn font-mono" onClick={() => setShowSlashMenu(true)} title="Slash Commands">
                       <span>/</span>
                     </button>
-                    {aiSelectionText.trim() && (
-                      <>
-                        <div className="fmt-divider"></div>
-                        <button 
-                          className="fmt-btn-action" 
-                          onClick={() => handleAddSelectionToBible("character")} 
-                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as a person`}
-                        >
-                          <User size={13} style={{ marginRight: '4px' }} />
-                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Person</span>
-                        </button>
-                        <button 
-                          className="fmt-btn-action" 
-                          onClick={() => handleAddSelectionToBible("beast")} 
-                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as a beast`}
-                          style={{ marginLeft: '4px' }}
-                        >
-                          <PawPrint size={13} style={{ marginRight: '4px' }} />
-                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Beast</span>
-                        </button>
-                        <button 
-                          className="fmt-btn-action" 
-                          onClick={() => handleAddSelectionToBible("place")} 
-                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as a place`}
-                          style={{ marginLeft: '4px' }}
-                        >
-                          <MapPin size={13} style={{ marginRight: '4px' }} />
-                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Place</span>
-                        </button>
-                        <button 
-                          className="fmt-btn-action" 
-                          onClick={() => handleAddSelectionToBible("world")} 
-                          title={`Save "${aiSelectionText.trim().substring(0, 20)}" as world lore`}
-                          style={{ marginLeft: '4px' }}
-                        >
-                          <Globe size={13} style={{ marginRight: '4px' }} />
-                          <span style={{ fontSize: '11px', fontWeight: 600 }}>World</span>
-                        </button>
-                      </>
-                    )}
+                    <div className="fmt-divider"></div>
+                    <button 
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleAddSelectionToBible("character")} 
+                      title="Select text, then click to save as a person"
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <User size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Person</span>
+                    </button>
+                    <button 
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleAddSelectionToBible("beast")} 
+                      title="Select text, then click to save as a beast"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <PawPrint size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Beast</span>
+                    </button>
+                    <button 
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleAddSelectionToBible("place")} 
+                      title="Select text, then click to save as a place"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <MapPin size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Place</span>
+                    </button>
+                    <button 
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleAddSelectionToBible("world")} 
+                      title="Select text, then click to save as world lore"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <Globe size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>World</span>
+                    </button>
                   </div>
 
                   {mentionedLore.length > 0 && (
@@ -4007,17 +3999,24 @@ function EditorContent() {
           transition: var(--transition);
         }
 
-        .fmt-btn-action:hover {
+        .fmt-btn-action:hover:not(:disabled) {
           background: rgba(99, 102, 241, 0.25);
           border-color: var(--primary);
           color: var(--primary-hover);
           transform: translateY(-1px);
         }
 
+        .fmt-btn-action.disabled,
+        .fmt-btn-action:disabled {
+          opacity: 0.35;
+          cursor: default;
+          transform: none;
+        }
+
         /* Autocomplete suggestions panel styles */
         .autocomplete-panel {
           position: absolute;
-          bottom: 20px;
+          top: 8px;
           right: 20px;
           width: 260px;
           border-radius: var(--radius-lg);
@@ -4027,7 +4026,7 @@ function EditorContent() {
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          animation: slideInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: slideInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .autocomplete-header {
@@ -4079,6 +4078,11 @@ function EditorContent() {
           padding: 2px 6px;
           border-radius: 4px;
           color: var(--text-dim);
+        }
+
+        @keyframes slideInDown {
+          from { transform: translateY(-10px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
         @keyframes slideInUp {
@@ -4649,7 +4653,7 @@ function EditorContent() {
           display: flex;
           flex-direction: column;
           padding: 0.75rem 1.5rem 1rem 1.5rem;
-          max-width: 1000px;
+          max-width: 1200px;
           margin: 0 auto;
           width: 100%;
           overflow: hidden;
