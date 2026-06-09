@@ -227,6 +227,7 @@ function EditorContent() {
   // Brain Map States
   const [brainEntries, setBrainEntries] = useState<BrainEntry[]>([])
   const [brainSearchQuery, setBrainSearchQuery] = useState('')
+  const [selectedBrainEntryId, setSelectedBrainEntryId] = useState<string | null>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -1415,6 +1416,7 @@ function EditorContent() {
         setIsFocusMode(false)
         setIsZenMode(false)
         setShowSlashMenu(false)
+        setSelectedBrainEntryId(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -1592,6 +1594,37 @@ function EditorContent() {
   const filteredNotes = notes.filter((n: Note) => n &&
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const filteredBrainEntries = brainEntries.filter(e => 
+    !brainSearchQuery || 
+    e.highlightedText.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
+    e.aiSummary.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
+    e.chapterTitle.toLowerCase().includes(brainSearchQuery.toLowerCase())
+  )
+
+  const selectedBrainEntry = selectedBrainEntryId 
+    ? brainEntries.find(e => e.id === selectedBrainEntryId) || null
+    : null
+
+  const getBrainEntryChapterLabel = (entry: BrainEntry) => {
+    const chapterIndex = notes.findIndex(note => note.id === entry.chapterId)
+    return chapterIndex >= 0 ? `Chapter ${chapterIndex + 1}` : "Chapter ?"
+  }
+
+  const getBrainEntryChapterTitle = (entry: BrainEntry) => {
+    const chapter = notes.find(note => note.id === entry.chapterId)
+    return chapter?.title || entry.chapterTitle || "Untitled"
+  }
+
+  const formatBrainEntryDate = (entry: BrainEntry) => {
+    const timestamp = entry.updatedAt || entry.createdAt
+    if (!timestamp) return ""
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    })
+  }
 
   const filteredBibleEntries = bibleEntries.filter(e => {
     const matchesSearch = e.name.toLowerCase().includes(bibleSearchQuery.toLowerCase()) ||
@@ -2404,12 +2437,7 @@ function EditorContent() {
 
                 <div className="brain-entries-list">
                   {(() => {
-                    const filtered = brainEntries.filter(e => 
-                      !brainSearchQuery || 
-                      e.highlightedText.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
-                      e.aiSummary.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
-                      e.chapterTitle.toLowerCase().includes(brainSearchQuery.toLowerCase())
-                    )
+                    const filtered = filteredBrainEntries
                     
                     if (filtered.length === 0) {
                       return <div className="empty-state-text">No brain entries yet. Highlight text and click 🧠 to add.</div>
@@ -2426,12 +2454,39 @@ function EditorContent() {
                               <span className="brain-chapter-label">— {entry.chapterTitle || "Untitled"} —</span>
                             </div>
                           )}
-                          <div className="brain-entry-card glass-light">
+                          <div 
+                            className="brain-entry-card glass-light"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedBrainEntryId(entry.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                setSelectedBrainEntryId(entry.id)
+                              }
+                            }}
+                            aria-label={`Open Brain Map entry for ${entry.highlightedText}`}
+                          >
                             <div className="brain-entry-header">
+                              <div className="brain-entry-card-main">
+                                <div className="brain-entry-meta-row">
+                                  <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
+                                  {entry.aiSummary === "Analyzing..." && (
+                                    <span className="brain-pending-badge">
+                                      <Loader2 size={11} className="spin" />
+                                      Analyzing
+                                    </span>
+                                  )}
+                                </div>
                               <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
+                              </div>
                               <button 
-                                className="btn-delete-chapter"
-                                onClick={() => deleteBrainEntry(entry.id)}
+                                className="btn-delete-chapter brain-card-delete"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  deleteBrainEntry(entry.id)
+                                }}
+                                onKeyDown={(e) => e.stopPropagation()}
                                 title="Delete"
                               >
                                 <Trash2 size={12} />
@@ -3005,6 +3060,56 @@ function EditorContent() {
               </div>
             </div>
           </aside>
+        )}
+
+        {selectedBrainEntry && (
+          <div className="modal-overlay" onClick={() => setSelectedBrainEntryId(null)}>
+            <div className="modal brain-detail-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header brain-detail-header">
+                <div>
+                  <h2 className="modal-title">Brain Map Entry</h2>
+                  <p className="modal-description">
+                    {getBrainEntryChapterLabel(selectedBrainEntry)} - {getBrainEntryChapterTitle(selectedBrainEntry)}
+                  </p>
+                </div>
+                <button 
+                  className="btn-close-ai" 
+                  onClick={() => setSelectedBrainEntryId(null)}
+                  title="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="brain-detail-meta">
+                <span className="brain-chapter-badge">{getBrainEntryChapterLabel(selectedBrainEntry)}</span>
+                {formatBrainEntryDate(selectedBrainEntry) && (
+                  <span className="brain-detail-date">{formatBrainEntryDate(selectedBrainEntry)}</span>
+                )}
+              </div>
+
+              <div className="brain-detail-section">
+                <span className="brain-detail-label">Keyword / Highlight</span>
+                <div className="brain-detail-keyword">
+                  &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
+                </div>
+              </div>
+
+              <div className="brain-detail-section">
+                <span className="brain-detail-label">AI Analysis</span>
+                <div className="brain-detail-summary">
+                  {selectedBrainEntry.aiSummary === "Analyzing..." ? (
+                    <span className="brain-loading">
+                      <Loader2 size={14} className="spin" />
+                      Analyzing...
+                    </span>
+                  ) : (
+                    <p>{selectedBrainEntry.aiSummary}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {deleteModal.show && (
@@ -4070,7 +4175,7 @@ function EditorContent() {
         }
 
         .brain-chapter-divider {
-          display: flex;
+          display: none;
           align-items: center;
           justify-content: center;
           padding: 0.5rem 0;
@@ -4087,34 +4192,94 @@ function EditorContent() {
         }
 
         .brain-entry-card {
-          padding: 0.6rem 0.75rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          width: 100%;
+          min-height: 74px;
+          padding: 0.75rem;
           border-radius: var(--radius-md);
           border: 1px solid var(--surface-border);
           transition: var(--transition);
+          cursor: pointer;
+          outline: none;
         }
 
-        .brain-entry-card:hover {
+        .brain-entry-card:hover,
+        .brain-entry-card:focus-visible {
           border-color: rgba(168, 85, 247, 0.3);
           background: rgba(168, 85, 247, 0.05);
+          transform: translateY(-1px);
         }
 
         .brain-entry-header {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           justify-content: space-between;
           gap: 0.5rem;
-          margin-bottom: 0.35rem;
+          width: 100%;
+        }
+
+        .brain-entry-card-main {
+          min-width: 0;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .brain-entry-meta-row {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          min-width: 0;
+        }
+
+        .brain-chapter-badge,
+        .brain-pending-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          width: fit-content;
+          border-radius: var(--radius-full);
+          padding: 0.22rem 0.5rem;
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+
+        .brain-chapter-badge {
+          background: var(--primary-light);
+          color: var(--primary-hover);
+          border: 1px solid rgba(99, 102, 241, 0.18);
+        }
+
+        .brain-pending-badge {
+          background: var(--warning-light);
+          color: var(--warning);
+          border: 1px solid rgba(245, 158, 11, 0.18);
         }
 
         .brain-highlight-text {
+          display: block;
           font-size: 0.78rem;
           font-weight: 600;
           color: rgb(192, 132, 252);
           line-height: 1.3;
-          word-break: break-word;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .brain-card-delete {
+          flex-shrink: 0;
         }
 
         .brain-entry-summary {
+          display: none;
           font-size: 0.73rem;
           color: var(--text-secondary);
           line-height: 1.5;
@@ -4131,6 +4296,70 @@ function EditorContent() {
           font-size: 0.73rem;
           color: var(--text-dim);
           font-style: italic;
+        }
+
+        .brain-detail-modal {
+          max-width: 560px;
+        }
+
+        .brain-detail-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 1rem;
+        }
+
+        .brain-detail-meta {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 1.25rem;
+        }
+
+        .brain-detail-date {
+          font-size: 0.75rem;
+          color: var(--text-dim);
+        }
+
+        .brain-detail-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          margin-top: 1rem;
+        }
+
+        .brain-detail-label {
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--text-dim);
+        }
+
+        .brain-detail-keyword,
+        .brain-detail-summary {
+          padding: 0.875rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.14);
+          color: var(--text-secondary);
+          font-size: 0.88rem;
+          line-height: 1.6;
+          word-break: break-word;
+        }
+
+        .brain-detail-keyword {
+          color: rgb(216, 180, 254);
+          font-weight: 600;
+        }
+
+        .brain-detail-summary {
+          max-height: 280px;
+          overflow-y: auto;
+        }
+
+        .brain-detail-summary p {
+          margin: 0;
         }
 
         .spin {
