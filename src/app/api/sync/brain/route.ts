@@ -8,6 +8,10 @@ interface BrainEntry {
   chapterTitle: string
   chapterId: string
   chapterNumber?: number
+  entityType?: string
+  entityName?: string
+  importance?: string
+  connections?: string[]
   createdAt: number
   updatedAt: number
 }
@@ -37,7 +41,7 @@ export async function POST(req: NextRequest) {
     )
 
     const selectRes = await pool.query(
-      "SELECT id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, created_at, updated_at FROM brain_entries WHERE user_id = $1 AND project_id = $2",
+      "SELECT id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, entity_type, entity_name, importance, connections, created_at, updated_at FROM brain_entries WHERE user_id = $1 AND project_id = $2",
       [userId, projectId]
     )
 
@@ -48,6 +52,10 @@ export async function POST(req: NextRequest) {
       chapterTitle: row.chapter_title || "",
       chapterId: row.chapter_id || "",
       chapterNumber: row.chapter_number != null ? Number(row.chapter_number) : undefined,
+      entityType: row.entity_type || undefined,
+      entityName: row.entity_name || undefined,
+      importance: row.importance || undefined,
+      connections: Array.isArray(row.connections) ? row.connections : [],
       createdAt: row.created_at ? Number(row.created_at) : Date.now(),
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now()
     }))
@@ -63,16 +71,35 @@ export async function POST(req: NextRequest) {
 
       if (!cloudEntry) {
         await pool.query(
-          `INSERT INTO brain_entries (id, project_id, user_id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          `INSERT INTO brain_entries (id, project_id, user_id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, entity_type, entity_name, importance, connections, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
            ON CONFLICT (id) DO UPDATE SET 
             highlighted_text = EXCLUDED.highlighted_text,
             ai_summary = EXCLUDED.ai_summary,
             chapter_title = EXCLUDED.chapter_title,
             chapter_id = EXCLUDED.chapter_id,
             chapter_number = EXCLUDED.chapter_number,
+            entity_type = EXCLUDED.entity_type,
+            entity_name = EXCLUDED.entity_name,
+            importance = EXCLUDED.importance,
+            connections = EXCLUDED.connections,
             updated_at = EXCLUDED.updated_at`,
-          [localEntry.id, projectId, userId, localEntry.highlightedText, localEntry.aiSummary, localEntry.chapterTitle || "", localEntry.chapterId || "", localEntry.chapterNumber ?? null, localCreated, localUpdated]
+          [
+            localEntry.id,
+            projectId,
+            userId,
+            localEntry.highlightedText,
+            localEntry.aiSummary,
+            localEntry.chapterTitle || "",
+            localEntry.chapterId || "",
+            localEntry.chapterNumber ?? null,
+            localEntry.entityType || null,
+            localEntry.entityName || null,
+            localEntry.importance || null,
+            JSON.stringify(localEntry.connections || []),
+            localCreated,
+            localUpdated
+          ]
         )
         finalMap.set(localEntry.id, {
           ...localEntry,
@@ -84,9 +111,23 @@ export async function POST(req: NextRequest) {
         if (localUpdated > cloudUpdated) {
           await pool.query(
             `UPDATE brain_entries 
-             SET highlighted_text = $1, ai_summary = $2, chapter_title = $3, chapter_id = $4, chapter_number = $5, updated_at = $6 
-             WHERE id = $7 AND user_id = $8 AND project_id = $9`,
-            [localEntry.highlightedText, localEntry.aiSummary, localEntry.chapterTitle || "", localEntry.chapterId || "", localEntry.chapterNumber ?? null, localUpdated, localEntry.id, userId, projectId]
+             SET highlighted_text = $1, ai_summary = $2, chapter_title = $3, chapter_id = $4, chapter_number = $5, entity_type = $6, entity_name = $7, importance = $8, connections = $9::jsonb, updated_at = $10 
+             WHERE id = $11 AND user_id = $12 AND project_id = $13`,
+            [
+              localEntry.highlightedText,
+              localEntry.aiSummary,
+              localEntry.chapterTitle || "",
+              localEntry.chapterId || "",
+              localEntry.chapterNumber ?? null,
+              localEntry.entityType || null,
+              localEntry.entityName || null,
+              localEntry.importance || null,
+              JSON.stringify(localEntry.connections || []),
+              localUpdated,
+              localEntry.id,
+              userId,
+              projectId
+            ]
           )
           finalMap.set(localEntry.id, {
             ...localEntry,

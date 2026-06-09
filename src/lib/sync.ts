@@ -30,6 +30,10 @@ export interface BrainEntry {
   chapterTitle: string
   chapterId: string
   chapterNumber?: number
+  entityType?: "character" | "place" | "object" | "concept" | "event" | "foreshadowing" | "unknown"
+  entityName?: string
+  importance?: "minor" | "major" | "critical"
+  connections?: string[]
   createdAt: number
   updatedAt: number
 }

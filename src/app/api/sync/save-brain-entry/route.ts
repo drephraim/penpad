@@ -23,8 +23,8 @@ export async function POST(req: NextRequest) {
     const updatedAt = entry.updatedAt || Date.now()
 
     await pool.query(
-      `INSERT INTO brain_entries (id, project_id, user_id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO brain_entries (id, project_id, user_id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, entity_type, entity_name, importance, connections, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
        ON CONFLICT (id)
        DO UPDATE SET 
          highlighted_text = EXCLUDED.highlighted_text,
@@ -32,8 +32,27 @@ export async function POST(req: NextRequest) {
          chapter_title = EXCLUDED.chapter_title,
          chapter_id = EXCLUDED.chapter_id,
          chapter_number = EXCLUDED.chapter_number,
+         entity_type = EXCLUDED.entity_type,
+         entity_name = EXCLUDED.entity_name,
+         importance = EXCLUDED.importance,
+         connections = EXCLUDED.connections,
          updated_at = EXCLUDED.updated_at`,
-      [entry.id, projectId, userId, entry.highlightedText || "", entry.aiSummary || "", entry.chapterTitle || "", entry.chapterId || "", entry.chapterNumber ?? null, createdAt, updatedAt]
+      [
+        entry.id,
+        projectId,
+        userId,
+        entry.highlightedText || "",
+        entry.aiSummary || "",
+        entry.chapterTitle || "",
+        entry.chapterId || "",
+        entry.chapterNumber ?? null,
+        entry.entityType || null,
+        entry.entityName || null,
+        entry.importance || null,
+        JSON.stringify(entry.connections || []),
+        createdAt,
+        updatedAt
+      ]
     )
 
     return NextResponse.json({ success: true })

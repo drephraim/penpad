@@ -1,6 +1,28 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
 
+type BrainAnalysis = {
+  summary?: string
+  entityType?: string
+  entityName?: string
+  importance?: string
+  connections?: string[]
+}
+
+function parseJsonObject<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0]) as T
+    } catch {
+      return null
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -94,7 +116,7 @@ export async function POST(req: NextRequest) {
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else if (action === "brain_analyze") {
-      const { highlightedText, chapterContent, chapterTitle, chapterNumber } = body
+      const { highlightedText, chapterContent, chapterTitle, chapterNumber, existingBrainEntries } = body
       if (!highlightedText || !chapterContent) {
         return NextResponse.json({ error: "highlightedText and chapterContent are required for brain_analyze" }, { status: 400 })
       }
@@ -105,18 +127,65 @@ export async function POST(req: NextRequest) {
         "Your task:\n" +
         "1. Read the chapter content provided and identify what the highlighted element refers to.\n" +
         "2. Write a concise recap (2-4 sentences) explaining what this element is, its role in the chapter, and why the writer might want to remember it.\n" +
-        "3. If it's a character name, describe who they are and what they did. If it's a place, describe its significance. If it's an object or concept, explain its role.\n" +
-        "4. Be specific and reference actual events/details from the chapter.\n" +
-        "5. Output ONLY the analysis text. No intro, no quotes, no markdown headers."
+        "3. Classify the element as one of: character, place, object, concept, event, foreshadowing, unknown.\n" +
+        "4. Choose an importance value: minor, major, or critical.\n" +
+        "5. Compare against existing Brain Map entries and list up to 3 meaningful recurring connections.\n" +
+        "6. Output ONLY valid JSON with keys: summary, entityType, entityName, importance, connections. No markdown fences."
 
       const parsedChapterNumber = Number(chapterNumber)
       const numberContext = chapterNumber !== null && chapterNumber !== undefined && Number.isFinite(parsedChapterNumber) && parsedChapterNumber > 0
         ? `\nChapter Number: ${parsedChapterNumber}`
         : ""
       const titleContext = chapterTitle ? `\nChapter Title: "${chapterTitle}"` : ""
-      userPrompt = `The writer highlighted: "${highlightedText}"${numberContext}${titleContext}\n\nFull chapter content:\n${chapterContent}`
+      const existingContext = Array.isArray(existingBrainEntries) && existingBrainEntries.length > 0
+        ? `\n\nExisting Brain Map entries:\n${existingBrainEntries.slice(0, 50).map((entry: {
+          highlightedText?: string
+          aiSummary?: string
+          chapterTitle?: string
+          chapterNumber?: number
+          entityType?: string
+          entityName?: string
+          importance?: string
+        }) => {
+          const chapter = entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle || "Unknown chapter"
+          return `- ${chapter}: ${entry.entityName || entry.highlightedText || "Unknown"} (${entry.entityType || "unknown"}, ${entry.importance || "minor"}) - ${entry.aiSummary || ""}`
+        }).join("\n")}`
+        : ""
+      userPrompt = `The writer highlighted: "${highlightedText}"${numberContext}${titleContext}\n\nFull chapter content:\n${chapterContent}${existingContext}`
+    } else if (action === "brain_ask") {
+      const { question, brainEntries } = body
+      if (!question || !Array.isArray(brainEntries)) {
+        return NextResponse.json({ error: "question and brainEntries are required for brain_ask" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a manuscript memory assistant. Answer questions using only the provided Brain Map entries.\n" +
+        "Guidelines:\n" +
+        "1. Be direct and useful for a novelist checking continuity.\n" +
+        "2. Mention chapter numbers or titles when available.\n" +
+        "3. If the answer is not in the Brain Map, say that clearly and suggest what entry would help.\n" +
+        "4. Output concise markdown. No intro or outro."
+
+      const memory = brainEntries.slice(0, 120).map((entry: {
+        highlightedText?: string
+        aiSummary?: string
+        chapterTitle?: string
+        chapterNumber?: number
+        entityType?: string
+        entityName?: string
+        importance?: string
+        connections?: string[]
+      }) => {
+        const chapter = entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle || "Unknown chapter"
+        const connections = Array.isArray(entry.connections) && entry.connections.length > 0
+          ? ` Connections: ${entry.connections.join("; ")}`
+          : ""
+        return `- ${chapter}: ${entry.entityName || entry.highlightedText || "Unknown"} (${entry.entityType || "unknown"}, ${entry.importance || "minor"}) - ${entry.aiSummary || ""}${connections}`
+      }).join("\n")
+
+      userPrompt = `Brain Map entries:\n${memory || "No entries yet."}\n\nQuestion: ${question}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, or brain_analyze." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, brain_analyze, or brain_ask." }, { status: 400 })
     }
 
     const model = genAI.getGenerativeModel({
@@ -126,6 +195,30 @@ export async function POST(req: NextRequest) {
 
     const result = await model.generateContent(userPrompt)
     const text = result.response.text()
+
+    if (action === "brain_analyze") {
+      const analysis = parseJsonObject<BrainAnalysis>(text)
+      const allowedTypes = new Set(["character", "place", "object", "concept", "event", "foreshadowing", "unknown"])
+      const allowedImportance = new Set(["minor", "major", "critical"])
+
+      if (!analysis) {
+        return NextResponse.json({ text })
+      }
+
+      const entityType = allowedTypes.has(String(analysis.entityType)) ? analysis.entityType : "unknown"
+      const importance = allowedImportance.has(String(analysis.importance)) ? analysis.importance : "minor"
+      const connections = Array.isArray(analysis.connections)
+        ? analysis.connections.filter(item => typeof item === "string").slice(0, 3)
+        : []
+
+      return NextResponse.json({
+        text: analysis.summary || text,
+        entityType,
+        entityName: analysis.entityName || "",
+        importance,
+        connections
+      })
+    }
 
     return NextResponse.json({ text })
   } catch (error: unknown) {

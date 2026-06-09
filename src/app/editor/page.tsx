@@ -13,7 +13,7 @@ import {
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight,
-  User, PawPrint, MapPin, Globe, Package, BrainCircuit
+  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import { 
@@ -44,6 +44,9 @@ interface Note {
 
 type ViewMode = 'edit' | 'preview'
 type SidebarTab = 'manuscript' | 'bible' | 'sounds' | 'brain'
+type BrainEntityType = NonNullable<BrainEntry['entityType']>
+type BrainImportance = NonNullable<BrainEntry['importance']>
+type BrainTypeFilter = 'all' | BrainEntityType
 
 // Synthesizer class using native Web Audio API
 class AudioFocusSynthesizer {
@@ -228,6 +231,12 @@ function EditorContent() {
   const [brainEntries, setBrainEntries] = useState<BrainEntry[]>([])
   const [brainSearchQuery, setBrainSearchQuery] = useState('')
   const [selectedBrainEntryId, setSelectedBrainEntryId] = useState<string | null>(null)
+  const [brainTypeFilter, setBrainTypeFilter] = useState<BrainTypeFilter>('all')
+  const [selectedBrainEntityName, setSelectedBrainEntityName] = useState<string | null>(null)
+  const [brainAskQuestion, setBrainAskQuestion] = useState('')
+  const [brainAskAnswer, setBrainAskAnswer] = useState('')
+  const [brainAskLoading, setBrainAskLoading] = useState(false)
+  const [brainAskError, setBrainAskError] = useState('')
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -768,13 +777,24 @@ function EditorContent() {
         highlightedText: text,
         chapterContent: activeNote.content,
         chapterTitle: activeNote.title,
-        chapterNumber
+        chapterNumber,
+        existingBrainEntries: brainEntries
+          .filter(entry => entry.aiSummary !== "Analyzing...")
+          .slice(0, 50)
       })
     })
       .then(res => res.json())
       .then(data => {
         const summary = data.text || data.error || "Could not analyze."
-        const finalEntry = { ...newEntry, aiSummary: summary, updatedAt: Date.now() }
+        const finalEntry: BrainEntry = {
+          ...newEntry,
+          aiSummary: summary,
+          entityType: data.entityType || "unknown",
+          entityName: data.entityName || text,
+          importance: data.importance || "minor",
+          connections: Array.isArray(data.connections) ? data.connections : [],
+          updatedAt: Date.now()
+        }
 
         setBrainEntries(prev => {
           const list = prev.map(e => e.id === newEntry.id ? finalEntry : e)
@@ -803,6 +823,49 @@ function EditorContent() {
       await deleteBrainEntryFromCloud(user.uid, projectId, entryId)
     } catch (e) {
       console.error("Failed to delete brain entry:", e)
+    }
+  }
+
+  const updateBrainEntry = (entryId: string, updates: Partial<BrainEntry>) => {
+    if (!projectId || !user) return
+
+    const updatedEntry = brainEntries.find(entry => entry.id === entryId)
+    if (!updatedEntry) return
+
+    const finalEntry = { ...updatedEntry, ...updates, updatedAt: Date.now() }
+    const updatedList = brainEntries.map(entry => entry.id === entryId ? finalEntry : entry)
+
+    setBrainEntries(updatedList)
+    localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(updatedList))
+    saveBrainEntryToCloud(user.uid, projectId, finalEntry)
+  }
+
+  const askBrainMap = async () => {
+    const question = brainAskQuestion.trim()
+    if (!question || brainAskLoading) return
+
+    setBrainAskLoading(true)
+    setBrainAskError("")
+    setBrainAskAnswer("")
+
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "brain_ask",
+          question,
+          brainEntries: brainEntries.filter(entry => entry.aiSummary !== "Analyzing...")
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Could not ask Brain Map")
+      setBrainAskAnswer(data.text || "No answer returned.")
+    } catch (err) {
+      setBrainAskError(err instanceof Error ? err.message : "Could not ask Brain Map")
+    } finally {
+      setBrainAskLoading(false)
     }
   }
 
@@ -1611,12 +1674,32 @@ function EditorContent() {
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const filteredBrainEntries = brainEntries.filter(e => 
-    !brainSearchQuery || 
-    e.highlightedText.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
-    e.aiSummary.toLowerCase().includes(brainSearchQuery.toLowerCase()) ||
-    e.chapterTitle.toLowerCase().includes(brainSearchQuery.toLowerCase())
-  )
+  const brainTypeOptions: { value: BrainTypeFilter; label: string }[] = [
+    { value: 'all', label: 'All Types' },
+    { value: 'character', label: 'Characters' },
+    { value: 'place', label: 'Places' },
+    { value: 'object', label: 'Objects' },
+    { value: 'concept', label: 'Concepts' },
+    { value: 'event', label: 'Events' },
+    { value: 'foreshadowing', label: 'Foreshadowing' },
+    { value: 'unknown', label: 'Unknown' }
+  ]
+
+  const getBrainEntryType = (entry: BrainEntry): BrainEntityType => entry.entityType || 'unknown'
+  const getBrainEntryImportance = (entry: BrainEntry): BrainImportance => entry.importance || 'minor'
+  const getBrainEntryEntityName = (entry: BrainEntry) => entry.entityName || entry.highlightedText
+
+  const filteredBrainEntries = brainEntries.filter(e => {
+    const query = brainSearchQuery.toLowerCase()
+    const matchesSearch = !query ||
+      e.highlightedText.toLowerCase().includes(query) ||
+      e.aiSummary.toLowerCase().includes(query) ||
+      e.chapterTitle.toLowerCase().includes(query) ||
+      (e.entityName || "").toLowerCase().includes(query) ||
+      (e.connections || []).some(connection => connection.toLowerCase().includes(query))
+    const matchesType = brainTypeFilter === 'all' || getBrainEntryType(e) === brainTypeFilter
+    return matchesSearch && matchesType
+  })
 
   const selectedBrainEntry = selectedBrainEntryId 
     ? brainEntries.find(e => e.id === selectedBrainEntryId) || null
@@ -1652,6 +1735,60 @@ function EditorContent() {
       year: "numeric"
     })
   }
+
+  const getBrainTypeLabel = (type: BrainEntityType) => {
+    const option = brainTypeOptions.find(item => item.value === type)
+    return option?.label.replace(/s$/, '') || 'Unknown'
+  }
+
+  const renderBrainTypeIcon = (type: BrainEntityType, size = 12) => {
+    switch (type) {
+      case 'character':
+        return <User size={size} />
+      case 'place':
+        return <MapPin size={size} />
+      case 'object':
+        return <Package size={size} />
+      case 'concept':
+        return <Globe size={size} />
+      case 'event':
+        return <BookOpen size={size} />
+      case 'foreshadowing':
+        return <Sparkles size={size} />
+      default:
+        return <BrainCircuit size={size} />
+    }
+  }
+
+  const getBrainEntityGroups = () => {
+    const groups = new Map<string, { name: string; type: BrainEntityType; entries: BrainEntry[]; criticalCount: number }>()
+
+    for (const entry of brainEntries) {
+      const name = getBrainEntryEntityName(entry).trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      const existing = groups.get(key)
+      if (existing) {
+        existing.entries.push(entry)
+        if (getBrainEntryImportance(entry) === 'critical') existing.criticalCount += 1
+      } else {
+        groups.set(key, {
+          name,
+          type: getBrainEntryType(entry),
+          entries: [entry],
+          criticalCount: getBrainEntryImportance(entry) === 'critical' ? 1 : 0
+        })
+      }
+    }
+
+    return Array.from(groups.values())
+      .sort((a, b) => b.criticalCount - a.criticalCount || b.entries.length - a.entries.length || a.name.localeCompare(b.name))
+  }
+
+  const brainEntityGroups = getBrainEntityGroups()
+  const selectedBrainEntity = selectedBrainEntityName
+    ? brainEntityGroups.find(group => group.name.toLowerCase() === selectedBrainEntityName.toLowerCase()) || null
+    : null
 
   const filteredBibleEntries = bibleEntries.filter(e => {
     const matchesSearch = e.name.toLowerCase().includes(bibleSearchQuery.toLowerCase()) ||
@@ -2449,7 +2586,57 @@ function EditorContent() {
             {activeSidebarTab === 'brain' && (
               <div className="sidebar-tab-content brain-panel fade-in">
                 <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Brain Map</span>
-                <p className="ai-instructions">Highlight text and click 🧠 Brain to save with AI context.</p>
+                {brainEntityGroups.length > 0 && (
+                  <div className="brain-entity-strip">
+                    {brainEntityGroups.slice(0, 6).map(group => (
+                      <button
+                        key={group.name}
+                        className="brain-entity-chip"
+                        onClick={() => setSelectedBrainEntityName(group.name)}
+                        title={group.name}
+                      >
+                        {renderBrainTypeIcon(group.type, 11)}
+                        <span>{group.name}</span>
+                        <strong>{group.entries.length}</strong>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="brain-ask-panel glass-light">
+                  <div className="brain-ask-header">
+                    <MessageSquare size={13} />
+                    <span>Ask Brain Map</span>
+                  </div>
+                  <textarea
+                    value={brainAskQuestion}
+                    onChange={(e) => setBrainAskQuestion(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault()
+                        askBrainMap()
+                      }
+                    }}
+                    placeholder="Where did I first mention the black door?"
+                    className="brain-ask-input"
+                  />
+                  <button
+                    className="brain-ask-button"
+                    onClick={askBrainMap}
+                    disabled={brainAskLoading || !brainAskQuestion.trim()}
+                  >
+                    {brainAskLoading ? <Loader2 size={13} className="spin" /> : <MessageSquare size={13} />}
+                    Ask
+                  </button>
+                  {(brainAskAnswer || brainAskError) && (
+                    <div className={`brain-ask-answer ${brainAskError ? 'error' : ''}`}>
+                      {brainAskError ? brainAskError : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{brainAskAnswer}</ReactMarkdown>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="ai-instructions">Highlight text and click Brain to save with AI context.</p>
                 
                 <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
                   <Search size={14} className="search-icon" />
@@ -2462,12 +2649,22 @@ function EditorContent() {
                   />
                 </div>
 
+                <select
+                  value={brainTypeFilter}
+                  onChange={(e) => setBrainTypeFilter(e.target.value as BrainTypeFilter)}
+                  className="brain-type-filter"
+                >
+                  {brainTypeOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+
                 <div className="brain-entries-list">
                   {(() => {
                     const filtered = filteredBrainEntries
                     
                     if (filtered.length === 0) {
-                      return <div className="empty-state-text">No brain entries yet. Highlight text and click 🧠 to add.</div>
+                      return <div className="empty-state-text">No brain entries yet. Highlight text and click Brain to add.</div>
                     }
 
                     let lastChapter = ""
@@ -2498,6 +2695,21 @@ function EditorContent() {
                               <div className="brain-entry-card-main">
                                 <div className="brain-entry-meta-row">
                                   <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
+                                  <button
+                                    className={`brain-type-badge type-${getBrainEntryType(entry)}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setBrainTypeFilter(getBrainEntryType(entry))
+                                    }}
+                                    title={getBrainTypeLabel(getBrainEntryType(entry))}
+                                  >
+                                    {renderBrainTypeIcon(getBrainEntryType(entry), 11)}
+                                    {getBrainTypeLabel(getBrainEntryType(entry))}
+                                  </button>
+                                  <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
+                                    <Star size={10} />
+                                    {getBrainEntryImportance(entry)}
+                                  </span>
                                   {entry.aiSummary === "Analyzing..." && (
                                     <span className="brain-pending-badge">
                                       <Loader2 size={11} className="spin" />
@@ -2505,7 +2717,22 @@ function EditorContent() {
                                     </span>
                                   )}
                                 </div>
-                              <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
+                                <button
+                                  className="brain-entity-name"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedBrainEntityName(getBrainEntryEntityName(entry))
+                                  }}
+                                >
+                                  {getBrainEntryEntityName(entry)}
+                                </button>
+                                <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
+                                {(entry.connections || []).length > 0 && (
+                                  <span className="brain-connection-count">
+                                    <Link2 size={10} />
+                                    {entry.connections?.length} link{entry.connections?.length === 1 ? '' : 's'}
+                                  </span>
+                                )}
                               </div>
                               <button 
                                 className="btn-delete-chapter brain-card-delete"
@@ -3110,9 +3337,58 @@ function EditorContent() {
 
               <div className="brain-detail-meta">
                 <span className="brain-chapter-badge">{getBrainEntryChapterLabel(selectedBrainEntry)}</span>
+                <span className={`brain-type-badge type-${getBrainEntryType(selectedBrainEntry)}`}>
+                  {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 11)}
+                  {getBrainTypeLabel(getBrainEntryType(selectedBrainEntry))}
+                </span>
+                <span className={`brain-importance-badge importance-${getBrainEntryImportance(selectedBrainEntry)}`}>
+                  <Star size={10} />
+                  {getBrainEntryImportance(selectedBrainEntry)}
+                </span>
                 {formatBrainEntryDate(selectedBrainEntry) && (
                   <span className="brain-detail-date">{formatBrainEntryDate(selectedBrainEntry)}</span>
                 )}
+              </div>
+
+              <div className="brain-detail-section">
+                <span className="brain-detail-label">Entity</span>
+                <button
+                  className="brain-detail-entity-link"
+                  onClick={() => {
+                    setSelectedBrainEntryId(null)
+                    setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry))
+                  }}
+                >
+                  {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 14)}
+                  {getBrainEntryEntityName(selectedBrainEntry)}
+                </button>
+              </div>
+
+              <div className="brain-detail-controls">
+                <label>
+                  <span className="brain-detail-label">Type</span>
+                  <select
+                    value={getBrainEntryType(selectedBrainEntry)}
+                    onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { entityType: e.target.value as BrainEntityType })}
+                    className="brain-detail-select"
+                  >
+                    {brainTypeOptions.filter(option => option.value !== 'all').map(option => (
+                      <option key={option.value} value={option.value}>{option.label.replace(/s$/, '')}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="brain-detail-label">Importance</span>
+                  <select
+                    value={getBrainEntryImportance(selectedBrainEntry)}
+                    onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { importance: e.target.value as BrainImportance })}
+                    className="brain-detail-select"
+                  >
+                    <option value="minor">Minor</option>
+                    <option value="major">Major</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </label>
               </div>
 
               <div className="brain-detail-section">
@@ -3134,6 +3410,81 @@ function EditorContent() {
                     <p>{selectedBrainEntry.aiSummary}</p>
                   )}
                 </div>
+              </div>
+
+              {(selectedBrainEntry.connections || []).length > 0 && (
+                <div className="brain-detail-section">
+                  <span className="brain-detail-label">Connections</span>
+                  <div className="brain-connection-list">
+                    {selectedBrainEntry.connections?.map(connection => (
+                      <div key={connection} className="brain-connection-item">
+                        <Link2 size={12} />
+                        <span>{connection}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {selectedBrainEntity && (
+          <div className="modal-overlay" onClick={() => setSelectedBrainEntityName(null)}>
+            <div className="modal brain-detail-modal brain-entity-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header brain-detail-header">
+                <div>
+                  <h2 className="modal-title">{selectedBrainEntity.name}</h2>
+                  <p className="modal-description">
+                    {getBrainTypeLabel(selectedBrainEntity.type)} dossier - {selectedBrainEntity.entries.length} entr{selectedBrainEntity.entries.length === 1 ? 'y' : 'ies'}
+                  </p>
+                </div>
+                <button
+                  className="btn-close-ai"
+                  onClick={() => setSelectedBrainEntityName(null)}
+                  title="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="brain-detail-meta">
+                <span className={`brain-type-badge type-${selectedBrainEntity.type}`}>
+                  {renderBrainTypeIcon(selectedBrainEntity.type, 11)}
+                  {getBrainTypeLabel(selectedBrainEntity.type)}
+                </span>
+                {selectedBrainEntity.criticalCount > 0 && (
+                  <span className="brain-importance-badge importance-critical">
+                    <Star size={10} />
+                    critical
+                  </span>
+                )}
+              </div>
+
+              <div className="brain-entity-entry-list">
+                {selectedBrainEntity.entries
+                  .slice()
+                  .sort((a, b) => (getBrainEntryChapterNumber(a) || 9999) - (getBrainEntryChapterNumber(b) || 9999))
+                  .map(entry => (
+                    <button
+                      key={entry.id}
+                      className="brain-entity-entry"
+                      onClick={() => {
+                        setSelectedBrainEntityName(null)
+                        setSelectedBrainEntryId(entry.id)
+                      }}
+                    >
+                      <div className="brain-entity-entry-top">
+                        <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
+                        <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
+                          <Star size={10} />
+                          {getBrainEntryImportance(entry)}
+                        </span>
+                      </div>
+                      <strong>{entry.highlightedText}</strong>
+                      <p>{entry.aiSummary}</p>
+                    </button>
+                  ))}
               </div>
             </div>
           </div>
@@ -4193,6 +4544,152 @@ function EditorContent() {
           flex-direction: column;
         }
 
+        .brain-panel .ai-instructions {
+          display: none;
+        }
+
+        .brain-entity-strip {
+          display: flex;
+          gap: 0.4rem;
+          overflow-x: auto;
+          padding: 0.15rem 0 0.55rem;
+          flex-shrink: 0;
+        }
+
+        .brain-entity-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          min-width: 0;
+          max-width: 132px;
+          padding: 0.38rem 0.48rem;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+          flex-shrink: 0;
+        }
+
+        .brain-entity-chip:hover {
+          border-color: rgba(168, 85, 247, 0.35);
+          color: var(--text-primary);
+        }
+
+        .brain-entity-chip span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 0.72rem;
+          font-weight: 700;
+        }
+
+        .brain-entity-chip strong {
+          font-size: 0.66rem;
+          color: var(--primary);
+        }
+
+        .brain-ask-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+          padding: 0.65rem;
+          margin-bottom: 0.75rem;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+          flex-shrink: 0;
+        }
+
+        .brain-ask-header {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .brain-ask-input {
+          width: 100%;
+          min-height: 58px;
+          max-height: 96px;
+          resize: vertical;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.16);
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          line-height: 1.45;
+          padding: 0.55rem;
+          outline: none;
+        }
+
+        .brain-ask-input:focus {
+          border-color: rgba(168, 85, 247, 0.4);
+        }
+
+        .brain-ask-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+          height: 30px;
+          border: 0;
+          border-radius: var(--radius-sm);
+          background: var(--primary);
+          color: white;
+          font-size: 0.75rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .brain-ask-button:hover:not(:disabled) {
+          background: var(--primary-hover);
+        }
+
+        .brain-ask-button:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .brain-ask-answer {
+          max-height: 150px;
+          overflow-y: auto;
+          padding: 0.55rem;
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.16);
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          line-height: 1.45;
+        }
+
+        .brain-ask-answer.error {
+          color: var(--danger);
+          background: var(--danger-light);
+        }
+
+        .brain-ask-answer p,
+        .brain-ask-answer ul {
+          margin: 0 0 0.45rem;
+        }
+
+        .brain-type-filter {
+          width: 100%;
+          margin-bottom: 0.75rem;
+          padding: 0.48rem 0.6rem;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--surface-border);
+          background: rgba(0, 0, 0, 0.16);
+          color: var(--text-secondary);
+          font-size: 0.76rem;
+          outline: none;
+          flex-shrink: 0;
+        }
+
         .brain-entries-list {
           display: flex;
           flex-direction: column;
@@ -4264,7 +4761,9 @@ function EditorContent() {
         }
 
         .brain-chapter-badge,
-        .brain-pending-badge {
+        .brain-pending-badge,
+        .brain-type-badge,
+        .brain-importance-badge {
           display: inline-flex;
           align-items: center;
           gap: 0.3rem;
@@ -4276,6 +4775,55 @@ function EditorContent() {
           letter-spacing: 0.04em;
           text-transform: uppercase;
           white-space: nowrap;
+        }
+
+        .brain-type-badge {
+          background: rgba(20, 184, 166, 0.11);
+          color: rgb(94, 234, 212);
+          border: 1px solid rgba(20, 184, 166, 0.2);
+          cursor: pointer;
+        }
+
+        .brain-type-badge.type-character {
+          background: rgba(59, 130, 246, 0.1);
+          color: rgb(147, 197, 253);
+          border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .brain-type-badge.type-place {
+          background: rgba(16, 185, 129, 0.1);
+          color: rgb(110, 231, 183);
+          border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .brain-type-badge.type-object {
+          background: rgba(245, 158, 11, 0.1);
+          color: rgb(252, 211, 77);
+          border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .brain-type-badge.type-foreshadowing {
+          background: rgba(168, 85, 247, 0.12);
+          color: rgb(216, 180, 254);
+          border-color: rgba(168, 85, 247, 0.22);
+        }
+
+        .brain-importance-badge {
+          background: rgba(148, 163, 184, 0.1);
+          color: var(--text-dim);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .brain-importance-badge.importance-major {
+          background: rgba(245, 158, 11, 0.1);
+          color: rgb(252, 211, 77);
+          border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .brain-importance-badge.importance-critical {
+          background: rgba(239, 68, 68, 0.1);
+          color: rgb(252, 165, 165);
+          border-color: rgba(239, 68, 68, 0.22);
         }
 
         .brain-chapter-badge {
@@ -4299,6 +4847,36 @@ function EditorContent() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .brain-entity-name {
+          display: block;
+          max-width: 100%;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: var(--text-primary);
+          font-size: 0.83rem;
+          font-weight: 800;
+          line-height: 1.2;
+          text-align: left;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          cursor: pointer;
+        }
+
+        .brain-entity-name:hover {
+          color: rgb(216, 180, 254);
+        }
+
+        .brain-connection-count {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 700;
         }
 
         .brain-card-delete {
@@ -4355,6 +4933,30 @@ function EditorContent() {
           margin-top: 1rem;
         }
 
+        .brain-detail-controls {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.75rem;
+          margin-top: 1rem;
+        }
+
+        .brain-detail-controls label {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .brain-detail-select {
+          width: 100%;
+          padding: 0.55rem 0.6rem;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--surface-border);
+          background: rgba(0, 0, 0, 0.16);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          outline: none;
+        }
+
         .brain-detail-label {
           font-size: 0.72rem;
           font-weight: 700;
@@ -4387,6 +4989,95 @@ function EditorContent() {
 
         .brain-detail-summary p {
           margin: 0;
+        }
+
+        .brain-detail-entity-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          width: fit-content;
+          max-width: 100%;
+          padding: 0.55rem 0.7rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-primary);
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .brain-detail-entity-link:hover {
+          border-color: rgba(168, 85, 247, 0.35);
+        }
+
+        .brain-connection-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .brain-connection-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.45rem;
+          padding: 0.62rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.12);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          line-height: 1.45;
+        }
+
+        .brain-entity-modal {
+          max-height: min(760px, 86vh);
+        }
+
+        .brain-entity-entry-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          max-height: 460px;
+          overflow-y: auto;
+        }
+
+        .brain-entity-entry {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          width: 100%;
+          padding: 0.8rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.14);
+          color: var(--text-secondary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .brain-entity-entry:hover {
+          border-color: rgba(168, 85, 247, 0.32);
+          background: rgba(168, 85, 247, 0.05);
+        }
+
+        .brain-entity-entry-top {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          flex-wrap: wrap;
+        }
+
+        .brain-entity-entry strong {
+          color: var(--text-primary);
+          font-size: 0.9rem;
+        }
+
+        .brain-entity-entry p {
+          margin: 0;
+          font-size: 0.8rem;
+          line-height: 1.5;
         }
 
         .spin {
