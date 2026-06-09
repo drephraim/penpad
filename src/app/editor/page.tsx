@@ -48,6 +48,14 @@ type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
 
+const MIN_LEFT_SIDEBAR_WIDTH = 280
+const MAX_LEFT_SIDEBAR_WIDTH = 560
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 336
+
+const clampLeftSidebarWidth = (width: number) => {
+  return Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.max(MIN_LEFT_SIDEBAR_WIDTH, width))
+}
+
 // Synthesizer class using native Web Audio API
 class AudioFocusSynthesizer {
   ctx: AudioContext | null = null
@@ -213,6 +221,13 @@ function EditorContent() {
   // Redesign States
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab>('manuscript')
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true)
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_LEFT_SIDEBAR_WIDTH
+    const stored = Number(window.localStorage.getItem('penpad_left_sidebar_width'))
+    return Number.isFinite(stored) && stored > 0
+      ? clampLeftSidebarWidth(stored)
+      : DEFAULT_LEFT_SIDEBAR_WIDTH
+  })
   const [isZenMode, setIsZenMode] = useState(false)
 
   // World Bible States
@@ -279,6 +294,47 @@ function EditorContent() {
   const handleLoreMouseLeave = () => {
     setHoveredLore(null)
     setHoveredLorePosition(null)
+  }
+
+  const persistLeftSidebarWidth = (width: number) => {
+    const clamped = clampLeftSidebarWidth(width)
+    setLeftSidebarWidth(clamped)
+    window.localStorage.setItem('penpad_left_sidebar_width', String(clamped))
+  }
+
+  const startLeftSidebarResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isLeftSidebarOpen) return
+
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = leftSidebarWidth
+    document.body.classList.add('resizing-sidebar')
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setLeftSidebarWidth(clampLeftSidebarWidth(startWidth + moveEvent.clientX - startX))
+    }
+
+    const handlePointerUp = () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.body.classList.remove('resizing-sidebar')
+      setLeftSidebarWidth(current => {
+        const clamped = clampLeftSidebarWidth(current)
+        window.localStorage.setItem('penpad_left_sidebar_width', String(clamped))
+        return clamped
+      })
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp, { once: true })
+  }
+
+  const handleSidebarResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
+    event.preventDefault()
+    const direction = event.key === 'ArrowRight' ? 24 : -24
+    persistLeftSidebarWidth(leftSidebarWidth + direction)
   }
 
   const handleLoreClick = (entry: BibleEntry) => {
@@ -2212,7 +2268,10 @@ function EditorContent() {
 
         {/* Collapsible Left Sidebar Panel */}
         {!isFocusMode && !isZenMode && (
-          <aside className={`editor-sidebar glass ${isLeftSidebarOpen ? 'open' : 'collapsed'}`}>
+          <aside
+            className={`editor-sidebar glass ${isLeftSidebarOpen ? 'open' : 'collapsed'}`}
+            style={{ width: isLeftSidebarOpen ? leftSidebarWidth : 0 }}
+          >
             
             {/* TAB 1: MANUSCRIPT CHAPTERS */}
             {activeSidebarTab === 'manuscript' && (
@@ -2761,6 +2820,18 @@ function EditorContent() {
                 </div>
               </div>
             )}
+            <div
+              className="sidebar-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              aria-valuemin={MIN_LEFT_SIDEBAR_WIDTH}
+              aria-valuemax={MAX_LEFT_SIDEBAR_WIDTH}
+              aria-valuenow={leftSidebarWidth}
+              tabIndex={0}
+              onPointerDown={startLeftSidebarResize}
+              onKeyDown={handleSidebarResizeKeyDown}
+            />
           </aside>
         )}
 
@@ -4165,7 +4236,6 @@ function EditorContent() {
         }
 
         .editor-sidebar {
-          width: 280px;
           display: flex;
           flex-direction: column;
           padding: 1rem;
@@ -4174,6 +4244,7 @@ function EditorContent() {
           flex-shrink: 0;
           transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease, opacity 0.3s ease;
           overflow: hidden;
+          position: relative;
         }
 
         .editor-sidebar.collapsed {
@@ -4184,11 +4255,50 @@ function EditorContent() {
           pointer-events: none;
         }
 
+        .resizing-sidebar,
+        .resizing-sidebar * {
+          cursor: col-resize !important;
+          user-select: none !important;
+        }
+
+        .resizing-sidebar .editor-sidebar {
+          transition: none;
+        }
+
+        .sidebar-resize-handle {
+          position: absolute;
+          top: 0;
+          right: -4px;
+          bottom: 0;
+          width: 8px;
+          cursor: col-resize;
+          z-index: 5;
+          touch-action: none;
+        }
+
+        .sidebar-resize-handle::after {
+          content: "";
+          position: absolute;
+          top: 0.75rem;
+          right: 3px;
+          bottom: 0.75rem;
+          width: 2px;
+          border-radius: var(--radius-full);
+          background: transparent;
+          transition: var(--transition);
+        }
+
+        .sidebar-resize-handle:hover::after,
+        .sidebar-resize-handle:focus-visible::after,
+        .resizing-sidebar .sidebar-resize-handle::after {
+          background: var(--primary);
+        }
+
         .sidebar-tab-content {
           display: flex;
           flex-direction: column;
           height: 100%;
-          min-width: 254px; /* Maintain layout during collapse */
+          min-width: 0;
         }
 
         .sidebar-section {
@@ -4684,10 +4794,42 @@ function EditorContent() {
           border-radius: var(--radius-sm);
           border: 1px solid var(--surface-border);
           background: rgba(0, 0, 0, 0.16);
-          color: var(--text-secondary);
+          color: var(--text-primary);
           font-size: 0.76rem;
           outline: none;
           flex-shrink: 0;
+        }
+
+        .brain-type-filter option,
+        .brain-detail-select option {
+          background: rgb(15, 15, 18);
+          color: rgb(226, 232, 240);
+        }
+
+        .brain-panel .search-bar {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          width: 100%;
+          padding: 0.48rem 0.6rem;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--surface-border);
+          background: rgba(0, 0, 0, 0.16);
+          flex-shrink: 0;
+        }
+
+        .brain-panel .search-input {
+          min-width: 0;
+          flex: 1;
+          border: 0;
+          outline: none;
+          background: transparent;
+          color: var(--text-primary);
+          font-size: 0.78rem;
+        }
+
+        .brain-panel .search-input::placeholder {
+          color: var(--text-dim);
         }
 
         .brain-entries-list {
@@ -4758,6 +4900,7 @@ function EditorContent() {
           align-items: center;
           gap: 0.45rem;
           min-width: 0;
+          flex-wrap: wrap;
         }
 
         .brain-chapter-badge,
@@ -4905,6 +5048,9 @@ function EditorContent() {
 
         .brain-detail-modal {
           max-width: 560px;
+          max-height: calc(100vh - 4rem);
+          overflow-y: auto;
+          overscroll-behavior: contain;
         }
 
         .brain-detail-header {
@@ -4952,7 +5098,7 @@ function EditorContent() {
           border-radius: var(--radius-sm);
           border: 1px solid var(--surface-border);
           background: rgba(0, 0, 0, 0.16);
-          color: var(--text-secondary);
+          color: var(--text-primary);
           font-size: 0.8rem;
           outline: none;
         }
@@ -5880,8 +6026,10 @@ function EditorContent() {
           inset: 0;
           background: rgba(0, 0, 0, 0.7);
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
+          overflow-y: auto;
+          padding: 2rem 1rem;
           z-index: 100;
         }
 
@@ -5892,6 +6040,9 @@ function EditorContent() {
           padding: 2rem;
           max-width: 400px;
           width: 90%;
+          max-height: calc(100vh - 4rem);
+          overflow-y: auto;
+          overscroll-behavior: contain;
         }
 
         .modal-header {
