@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else if (action === "brain_analyze") {
-      const { highlightedText, chapterContent, chapterTitle } = body
+      const { highlightedText, chapterContent, chapterTitle, chapterNumber } = body
       if (!highlightedText || !chapterContent) {
         return NextResponse.json({ error: "highlightedText and chapterContent are required for brain_analyze" }, { status: 400 })
       }
@@ -109,8 +109,12 @@ export async function POST(req: NextRequest) {
         "4. Be specific and reference actual events/details from the chapter.\n" +
         "5. Output ONLY the analysis text. No intro, no quotes, no markdown headers."
 
+      const parsedChapterNumber = Number(chapterNumber)
+      const numberContext = chapterNumber !== null && chapterNumber !== undefined && Number.isFinite(parsedChapterNumber) && parsedChapterNumber > 0
+        ? `\nChapter Number: ${parsedChapterNumber}`
+        : ""
       const titleContext = chapterTitle ? `\nChapter Title: "${chapterTitle}"` : ""
-      userPrompt = `The writer highlighted: "${highlightedText}"${titleContext}\n\nFull chapter content:\n${chapterContent}`
+      userPrompt = `The writer highlighted: "${highlightedText}"${numberContext}${titleContext}\n\nFull chapter content:\n${chapterContent}`
     } else {
       return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, or brain_analyze." }, { status: 400 })
     }

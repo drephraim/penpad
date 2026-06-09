@@ -29,6 +29,7 @@ export interface BrainEntry {
   aiSummary: string
   chapterTitle: string
   chapterId: string
+  chapterNumber?: number
   createdAt: number
   updatedAt: number
 }

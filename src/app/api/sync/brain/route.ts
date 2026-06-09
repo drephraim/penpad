@@ -7,6 +7,7 @@ interface BrainEntry {
   aiSummary: string
   chapterTitle: string
   chapterId: string
+  chapterNumber?: number
   createdAt: number
   updatedAt: number
 }
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
     )
 
     const selectRes = await pool.query(
-      "SELECT id, highlighted_text, ai_summary, chapter_title, chapter_id, created_at, updated_at FROM brain_entries WHERE user_id = $1 AND project_id = $2",
+      "SELECT id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, created_at, updated_at FROM brain_entries WHERE user_id = $1 AND project_id = $2",
       [userId, projectId]
     )
 
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
       aiSummary: row.ai_summary || "",
       chapterTitle: row.chapter_title || "",
       chapterId: row.chapter_id || "",
+      chapterNumber: row.chapter_number != null ? Number(row.chapter_number) : undefined,
       createdAt: row.created_at ? Number(row.created_at) : Date.now(),
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now()
     }))
@@ -61,15 +63,16 @@ export async function POST(req: NextRequest) {
 
       if (!cloudEntry) {
         await pool.query(
-          `INSERT INTO brain_entries (id, project_id, user_id, highlighted_text, ai_summary, chapter_title, chapter_id, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `INSERT INTO brain_entries (id, project_id, user_id, highlighted_text, ai_summary, chapter_title, chapter_id, chapter_number, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT (id) DO UPDATE SET 
             highlighted_text = EXCLUDED.highlighted_text,
             ai_summary = EXCLUDED.ai_summary,
             chapter_title = EXCLUDED.chapter_title,
             chapter_id = EXCLUDED.chapter_id,
+            chapter_number = EXCLUDED.chapter_number,
             updated_at = EXCLUDED.updated_at`,
-          [localEntry.id, projectId, userId, localEntry.highlightedText, localEntry.aiSummary, localEntry.chapterTitle || "", localEntry.chapterId || "", localCreated, localUpdated]
+          [localEntry.id, projectId, userId, localEntry.highlightedText, localEntry.aiSummary, localEntry.chapterTitle || "", localEntry.chapterId || "", localEntry.chapterNumber ?? null, localCreated, localUpdated]
         )
         finalMap.set(localEntry.id, {
           ...localEntry,
@@ -81,9 +84,9 @@ export async function POST(req: NextRequest) {
         if (localUpdated > cloudUpdated) {
           await pool.query(
             `UPDATE brain_entries 
-             SET highlighted_text = $1, ai_summary = $2, chapter_title = $3, chapter_id = $4, updated_at = $5 
-             WHERE id = $6 AND user_id = $7 AND project_id = $8`,
-            [localEntry.highlightedText, localEntry.aiSummary, localEntry.chapterTitle || "", localEntry.chapterId || "", localUpdated, localEntry.id, userId, projectId]
+             SET highlighted_text = $1, ai_summary = $2, chapter_title = $3, chapter_id = $4, chapter_number = $5, updated_at = $6 
+             WHERE id = $7 AND user_id = $8 AND project_id = $9`,
+            [localEntry.highlightedText, localEntry.aiSummary, localEntry.chapterTitle || "", localEntry.chapterId || "", localEntry.chapterNumber ?? null, localUpdated, localEntry.id, userId, projectId]
           )
           finalMap.set(localEntry.id, {
             ...localEntry,

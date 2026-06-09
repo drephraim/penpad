@@ -719,17 +719,32 @@ function EditorContent() {
     }
   }, [user, projectId])
 
+  const getChapterNumberFromTitle = (title?: string) => {
+    const match = title?.match(/\bchapter\s*0*(\d+)\b/i)
+    return match ? Number.parseInt(match[1], 10) : null
+  }
+
+  const getNoteChapterNumber = (note: Note) => {
+    const titleNumber = getChapterNumberFromTitle(note.title)
+    if (titleNumber) return titleNumber
+
+    const chapterIndex = notes.findIndex(n => n.id === note.id)
+    return chapterIndex >= 0 ? chapterIndex + 1 : null
+  }
+
   const handleAddToBrain = async () => {
     const text = aiSelectionText.trim()
     if (!text || !user || !projectId || !activeNote) return
 
     const now = Date.now()
+    const chapterNumber = getNoteChapterNumber(activeNote)
     const newEntry: BrainEntry = {
       id: crypto.randomUUID(),
       highlightedText: text,
       aiSummary: "Analyzing...",
       chapterTitle: activeNote.title || "Untitled",
       chapterId: activeNote.id,
+      ...(chapterNumber ? { chapterNumber } : {}),
       createdAt: now,
       updatedAt: now
     }
@@ -752,7 +767,8 @@ function EditorContent() {
         action: "brain_analyze",
         highlightedText: text,
         chapterContent: activeNote.content,
-        chapterTitle: activeNote.title
+        chapterTitle: activeNote.title,
+        chapterNumber
       })
     })
       .then(res => res.json())
@@ -1606,9 +1622,20 @@ function EditorContent() {
     ? brainEntries.find(e => e.id === selectedBrainEntryId) || null
     : null
 
-  const getBrainEntryChapterLabel = (entry: BrainEntry) => {
+  const getBrainEntryChapterNumber = (entry: BrainEntry) => {
+    if (entry.chapterNumber) return entry.chapterNumber
+
+    const chapter = notes.find(note => note.id === entry.chapterId)
+    const titleNumber = getChapterNumberFromTitle(chapter?.title || entry.chapterTitle)
+    if (titleNumber) return titleNumber
+
     const chapterIndex = notes.findIndex(note => note.id === entry.chapterId)
-    return chapterIndex >= 0 ? `Chapter ${chapterIndex + 1}` : "Chapter ?"
+    return chapterIndex >= 0 ? chapterIndex + 1 : null
+  }
+
+  const getBrainEntryChapterLabel = (entry: BrainEntry) => {
+    const chapterNumber = getBrainEntryChapterNumber(entry)
+    return chapterNumber ? `Chapter ${chapterNumber}` : "Chapter ?"
   }
 
   const getBrainEntryChapterTitle = (entry: BrainEntry) => {

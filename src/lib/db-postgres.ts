@@ -71,6 +71,11 @@ export async function bootstrapDb() {
         updated_at BIGINT
       );
     `)
+
+    await client.query(`
+      ALTER TABLE brain_entries
+      ADD COLUMN IF NOT EXISTS chapter_number INTEGER;
+    `)
     
     isBootstrapped = true
     console.log("Postgres database tables checked/created successfully.")
