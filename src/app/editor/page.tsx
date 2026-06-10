@@ -388,6 +388,7 @@ function EditorContent() {
   const [bibleCategoryFilter, setBibleCategoryFilter] = useState<'all' | 'character' | 'world' | 'beast' | 'place' | 'item'>('all')
   const [isBibleSelectionMode, setIsBibleSelectionMode] = useState(false)
   const [selectedBibleIds, setSelectedBibleIds] = useState<Set<string>>(new Set())
+  const [isBibleGroupAddMenuOpen, setIsBibleGroupAddMenuOpen] = useState(false)
   const [showMultiBibleDeleteModal, setShowMultiBibleDeleteModal] = useState(false)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
@@ -1391,8 +1392,18 @@ function EditorContent() {
     const groupId = createBibleGroup()
     if (!groupId) return
     await addBibleEntriesToGroup(Array.from(selectedBibleIds), groupId)
+    setIsBibleGroupAddMenuOpen(false)
     setSelectedBibleIds(new Set())
     setIsBibleSelectionMode(false)
+  }
+
+  const addSelectedBibleEntriesToExistingGroup = async (groupId: string) => {
+    if (selectedBibleIds.size === 0) return
+    await addBibleEntriesToGroup(Array.from(selectedBibleIds), groupId)
+    setIsBibleGroupAddMenuOpen(false)
+    setSelectedBibleIds(new Set())
+    setIsBibleSelectionMode(false)
+    setActiveBibleGroupId(groupId)
   }
 
   // Brain Map Logic
@@ -1713,6 +1724,12 @@ function EditorContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds])
+
+  useEffect(() => {
+    if (!isBibleSelectionMode || selectedBibleIds.size === 0) {
+      setIsBibleGroupAddMenuOpen(false)
+    }
+  }, [isBibleSelectionMode, selectedBibleIds.size])
 
   const sanitizeFilename = (name: string): string => {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
@@ -2997,6 +3014,7 @@ function EditorContent() {
     setIsBibleSelectionMode(prev => {
       if (prev) {
         setSelectedBibleIds(new Set())
+        setIsBibleGroupAddMenuOpen(false)
       }
       return !prev
     })
@@ -4172,13 +4190,46 @@ function EditorContent() {
                         <button className="btn-text-action" onClick={toggleBibleSelectAll}>
                           {selectedBibleIds.size === filteredBibleEntries.length ? 'None' : 'All'}
                         </button>
-                        <button
-                          className="btn-text-action"
-                          disabled={selectedBibleIds.size === 0}
-                          onClick={addSelectedBibleEntriesToGroup}
-                        >
-                          Group
-                        </button>
+                        <div className="selection-dropdown">
+                          <button
+                            className="btn-text-action selection-add-btn"
+                            disabled={selectedBibleIds.size === 0}
+                            onClick={() => setIsBibleGroupAddMenuOpen(prev => !prev)}
+                            aria-expanded={isBibleGroupAddMenuOpen}
+                            aria-haspopup="menu"
+                          >
+                            Add
+                            <ChevronDown size={12} />
+                          </button>
+                          {isBibleGroupAddMenuOpen && (
+                            <div className="selection-group-menu" role="menu">
+                              <div className="selection-menu-label">Add to group</div>
+                              {bibleGroups.length === 0 ? (
+                                <div className="selection-menu-empty">No groups yet</div>
+                              ) : (
+                                bibleGroups.map(group => (
+                                  <button
+                                    key={group.id}
+                                    className="selection-menu-item"
+                                    onClick={() => addSelectedBibleEntriesToExistingGroup(group.id)}
+                                    role="menuitem"
+                                  >
+                                    <span>{group.name}</span>
+                                    <strong>{bibleEntries.filter(entry => (entry.groupIds || []).includes(group.id)).length}</strong>
+                                  </button>
+                                ))
+                              )}
+                              <button
+                                className="selection-menu-item create"
+                                onClick={addSelectedBibleEntriesToGroup}
+                                role="menuitem"
+                              >
+                                <Plus size={12} />
+                                New Group
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         <button 
                           className="btn-text-action danger" 
                           disabled={selectedBibleIds.size === 0}
@@ -6540,6 +6591,8 @@ function EditorContent() {
           display: flex;
           gap: 8px;
           align-items: center;
+          justify-content: flex-end;
+          flex-wrap: wrap;
         }
 
         .btn-text-action {
@@ -6571,6 +6624,92 @@ function EditorContent() {
         .btn-text-action:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        .selection-dropdown {
+          position: relative;
+          display: inline-flex;
+        }
+
+        .selection-add-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+        }
+
+        .selection-group-menu {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          width: min(230px, 78vw);
+          max-height: 260px;
+          overflow-y: auto;
+          padding: 0.4rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: var(--surface-elevated);
+          box-shadow: var(--shadow-xl);
+          z-index: 80;
+        }
+
+        .selection-menu-label {
+          padding: 0.35rem 0.45rem 0.45rem;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .selection-menu-empty {
+          padding: 0.55rem 0.45rem;
+          color: var(--text-muted);
+          font-size: 0.78rem;
+        }
+
+        .selection-menu-item {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+          padding: 0.55rem 0.6rem;
+          border: none;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 0.82rem;
+          font-weight: 700;
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .selection-menu-item span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .selection-menu-item strong {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          font-weight: 800;
+        }
+
+        .selection-menu-item:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .selection-menu-item.create {
+          justify-content: flex-start;
+          color: var(--primary);
+          border-top: 1px solid var(--surface-border);
+          border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+          margin-top: 0.25rem;
+          padding-top: 0.65rem;
         }
 
         .checkbox-custom {
