@@ -110,6 +110,24 @@ interface ProgressionAbility {
   evidence?: string
 }
 
+interface ProgressionProfileTemplate {
+  enabled: boolean
+  name: string
+  defaultRealm: string
+  defaultStage: string
+  defaultRank: string
+  defaultClassName: string
+  defaultCultivationPath: string
+  baseLevel: number
+  baseExp: number
+  nextLevelExp: number
+  defaultStats: Partial<Record<ProgressionStatKey, number>>
+  defaultTraits: string[]
+  defaultAbilities: ProgressionAbility[]
+  defaultCustomFields: Record<string, string>
+  notes: string
+}
+
 interface ProgressionSystemSettings {
   realms: string[]
   stageLabels: string[]
@@ -118,6 +136,7 @@ interface ProgressionSystemSettings {
   showStats: boolean
   statKeys: ProgressionStatKey[]
   customFields: string[]
+  profileTemplate: ProgressionProfileTemplate
   notes: string
   updatedAt?: number
 }
@@ -202,6 +221,23 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
   sense: 1,
   mana: 0
 }
+const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
+  enabled: true,
+  name: "Shared Novel Profile",
+  defaultRealm: "",
+  defaultStage: "",
+  defaultRank: "",
+  defaultClassName: "",
+  defaultCultivationPath: "",
+  baseLevel: 1,
+  baseExp: 0,
+  nextLevelExp: 100,
+  defaultStats: DEFAULT_PROGRESSION_STATS,
+  defaultTraits: [],
+  defaultAbilities: [],
+  defaultCustomFields: {},
+  notes: "Use this as the baseline profile shape for every character in this novel unless chapter evidence says otherwise."
+}
 const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   realms: [],
   stageLabels: ["Low", "Middle", "High", "Peak"],
@@ -210,6 +246,7 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   showStats: true,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
   customFields: ["Race", "Bloodline", "Affiliation"],
+  profileTemplate: DEFAULT_PROFILE_TEMPLATE,
   notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
 }
 
@@ -755,9 +792,10 @@ function EditorContent() {
     historyEntry: ProgressionHistoryEntry,
     now: number
   ): CharacterProgressionProfile => {
+    const sharedTemplate = progressionSystem.profileTemplate?.enabled ? progressionSystem.profileTemplate : DEFAULT_PROFILE_TEMPLATE
     const rawAbilities = Array.isArray(aiProfile?.abilities)
       ? aiProfile?.abilities || []
-      : existingProfile?.abilities || []
+      : existingProfile?.abilities || sharedTemplate.defaultAbilities || []
     const abilities = rawAbilities.map((ability, index) => ({
       id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       name: ability.name || `Ability ${index + 1}`,
@@ -771,22 +809,23 @@ function EditorContent() {
       loreEntryId: sourceEntry.id,
       name: aiProfile?.name || existingProfile?.name || sourceEntry.name,
       title: aiProfile?.title || existingProfile?.title || "",
-      className: aiProfile?.className || existingProfile?.className || "",
-      rank: aiProfile?.rank || existingProfile?.rank || "",
-      realm: aiProfile?.realm || existingProfile?.realm || "",
-      stage: aiProfile?.stage || existingProfile?.stage || "",
-      cultivationPath: aiProfile?.cultivationPath || existingProfile?.cultivationPath || "",
-      level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || 1,
-      exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || 0,
-      nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || 100,
-      stats: { ...DEFAULT_PROGRESSION_STATS, ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) },
+      className: aiProfile?.className || existingProfile?.className || sharedTemplate.defaultClassName || "",
+      rank: aiProfile?.rank || existingProfile?.rank || sharedTemplate.defaultRank || "",
+      realm: aiProfile?.realm || existingProfile?.realm || sharedTemplate.defaultRealm || "",
+      stage: aiProfile?.stage || existingProfile?.stage || sharedTemplate.defaultStage || "",
+      cultivationPath: aiProfile?.cultivationPath || existingProfile?.cultivationPath || sharedTemplate.defaultCultivationPath || "",
+      level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || sharedTemplate.baseLevel || 1,
+      exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || sharedTemplate.baseExp || 0,
+      nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+      stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) },
       abilities,
-      traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || [],
+      traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || sharedTemplate.defaultTraits || [],
       customFields: {
+        ...(sharedTemplate.defaultCustomFields || {}),
         ...(existingProfile?.customFields || {}),
         ...(aiProfile?.customFields || {})
       },
-      notes: aiProfile?.notes || existingProfile?.notes || "",
+      notes: aiProfile?.notes || existingProfile?.notes || sharedTemplate.notes || "",
       processedChapterIds: Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId])),
       history: [historyEntry, ...(existingProfile?.history || [])],
       createdAt: existingProfile?.createdAt || now,
@@ -1010,6 +1049,64 @@ function EditorContent() {
           evidence: ""
         }
       })
+  }
+
+  const updateProgressionTemplate = (updates: Partial<ProgressionProfileTemplate>) => {
+    persistProgressionSystem({
+      ...progressionSystem,
+      profileTemplate: {
+        ...progressionSystem.profileTemplate,
+        ...updates
+      }
+    })
+  }
+
+  const setProgressionTemplateStat = (statKey: ProgressionStatKey, value: number) => {
+    updateProgressionTemplate({
+      defaultStats: {
+        ...(progressionSystem.profileTemplate.defaultStats || {}),
+        [statKey]: Number.isFinite(value) ? value : 0
+      }
+    })
+  }
+
+  const setProgressionTemplateCustomField = (fieldName: string, value: string) => {
+    updateProgressionTemplate({
+      defaultCustomFields: {
+        ...(progressionSystem.profileTemplate.defaultCustomFields || {}),
+        [fieldName]: value
+      }
+    })
+  }
+
+  const applyProgressionTemplateToProfiles = () => {
+    const template = progressionSystem.profileTemplate
+    if (!template.enabled || progressionProfiles.length === 0) return
+    const confirmed = window.confirm("Apply missing shared template defaults to existing progression profiles? Existing character-specific values will be kept.")
+    if (!confirmed) return
+    const now = Date.now()
+    const nextProfiles = progressionProfiles.map(profile => ({
+      ...profile,
+      className: profile.className || template.defaultClassName,
+      rank: profile.rank || template.defaultRank,
+      realm: profile.realm || template.defaultRealm,
+      stage: profile.stage || template.defaultStage,
+      cultivationPath: profile.cultivationPath || template.defaultCultivationPath,
+      level: profile.level || template.baseLevel || 1,
+      exp: profile.exp ?? template.baseExp ?? 0,
+      nextLevelExp: profile.nextLevelExp || template.nextLevelExp || 100,
+      stats: { ...DEFAULT_PROGRESSION_STATS, ...(template.defaultStats || {}), ...(profile.stats || {}) },
+      traits: profile.traits.length > 0 ? profile.traits : template.defaultTraits,
+      abilities: profile.abilities.length > 0 ? profile.abilities : template.defaultAbilities,
+      customFields: {
+        ...(template.defaultCustomFields || {}),
+        ...(profile.customFields || {})
+      },
+      notes: profile.notes || template.notes,
+      updatedAt: now
+    }))
+    persistProgressionProfiles(nextProfiles)
+    setProgressionNotice("Shared profile template applied to existing profiles.")
   }
 
   const toggleProgressionEditMode = () => {
@@ -1430,6 +1527,30 @@ function EditorContent() {
 
   const normalizeProgressionSystem = (settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
     const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
+    const rawTemplate = settings?.profileTemplate || DEFAULT_PROFILE_TEMPLATE
+    const normalizedTemplate: ProgressionProfileTemplate = {
+      ...DEFAULT_PROFILE_TEMPLATE,
+      ...rawTemplate,
+      defaultStats: {
+        ...DEFAULT_PROGRESSION_STATS,
+        ...(rawTemplate.defaultStats || {})
+      },
+      defaultTraits: Array.isArray(rawTemplate.defaultTraits) ? rawTemplate.defaultTraits.map(item => String(item).trim()).filter(Boolean) : [],
+      defaultAbilities: Array.isArray(rawTemplate.defaultAbilities)
+        ? rawTemplate.defaultAbilities.map((ability, index) => ({
+          id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          name: ability.name || `Ability ${index + 1}`,
+          level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+          description: ability.description || "",
+          evidence: ability.evidence || ""
+        }))
+        : [],
+      defaultCustomFields: rawTemplate.defaultCustomFields && typeof rawTemplate.defaultCustomFields === "object" ? rawTemplate.defaultCustomFields : {},
+      baseLevel: Number.isFinite(Number(rawTemplate.baseLevel)) ? Number(rawTemplate.baseLevel) : 1,
+      baseExp: Number.isFinite(Number(rawTemplate.baseExp)) ? Number(rawTemplate.baseExp) : 0,
+      nextLevelExp: Number.isFinite(Number(rawTemplate.nextLevelExp)) ? Number(rawTemplate.nextLevelExp) : 100,
+      enabled: rawTemplate.enabled !== false
+    }
     return {
       ...DEFAULT_PROGRESSION_SYSTEM,
       ...(settings || {}),
@@ -1443,6 +1564,7 @@ function EditorContent() {
       customFields: Array.isArray(settings?.customFields)
         ? Array.from(new Set(settings.customFields.map(item => String(item).trim()).filter(Boolean)))
         : DEFAULT_PROGRESSION_SYSTEM.customFields,
+      profileTemplate: normalizedTemplate,
       notes: settings?.notes || DEFAULT_PROGRESSION_SYSTEM.notes,
       showLevels: settings?.showLevels !== false,
       showExp: settings?.showExp !== false,
@@ -4389,6 +4511,164 @@ function EditorContent() {
                           onChange={(e) => updateProgressionSystemList("customFields", e.target.value)}
                           placeholder="Race, Bloodline, Sect, Affiliation"
                         />
+                      </div>
+                      <div className="progression-template-box">
+                        <div className="progression-template-header">
+                          <div>
+                            <strong>Shared Profile Template</strong>
+                            <span>Baseline used when new character profiles are created for this novel.</span>
+                          </div>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={progressionSystem.profileTemplate.enabled}
+                              onChange={(e) => updateProgressionTemplate({ enabled: e.target.checked })}
+                            />
+                            Active
+                          </label>
+                        </div>
+                        <div className="progression-edit-grid">
+                          <label>
+                            Template Name
+                            <input
+                              className="ai-input"
+                              value={progressionSystem.profileTemplate.name}
+                              onChange={(e) => updateProgressionTemplate({ name: e.target.value })}
+                            />
+                          </label>
+                          <label>
+                            Default Rank
+                            <input
+                              className="ai-input"
+                              value={progressionSystem.profileTemplate.defaultRank}
+                              onChange={(e) => updateProgressionTemplate({ defaultRank: e.target.value })}
+                            />
+                          </label>
+                          <label>
+                            Default Class
+                            <input
+                              className="ai-input"
+                              value={progressionSystem.profileTemplate.defaultClassName}
+                              onChange={(e) => updateProgressionTemplate({ defaultClassName: e.target.value })}
+                            />
+                          </label>
+                          <label>
+                            Default Path
+                            <input
+                              className="ai-input"
+                              value={progressionSystem.profileTemplate.defaultCultivationPath}
+                              onChange={(e) => updateProgressionTemplate({ defaultCultivationPath: e.target.value })}
+                            />
+                          </label>
+                          <label>
+                            Default Realm
+                            <input
+                              className="ai-input"
+                              list="progression-realms"
+                              value={progressionSystem.profileTemplate.defaultRealm}
+                              onChange={(e) => updateProgressionTemplate({ defaultRealm: e.target.value })}
+                            />
+                          </label>
+                          <label>
+                            Default Stage
+                            <input
+                              className="ai-input"
+                              list="progression-stages"
+                              value={progressionSystem.profileTemplate.defaultStage}
+                              onChange={(e) => updateProgressionTemplate({ defaultStage: e.target.value })}
+                            />
+                          </label>
+                          <label>
+                            Base Level
+                            <input
+                              className="ai-input"
+                              type="number"
+                              value={progressionSystem.profileTemplate.baseLevel}
+                              onChange={(e) => updateProgressionTemplate({ baseLevel: Number(e.target.value) })}
+                            />
+                          </label>
+                          <label>
+                            Base EXP
+                            <input
+                              className="ai-input"
+                              type="number"
+                              value={progressionSystem.profileTemplate.baseExp}
+                              onChange={(e) => updateProgressionTemplate({ baseExp: Number(e.target.value) })}
+                            />
+                          </label>
+                          <label>
+                            Next EXP
+                            <input
+                              className="ai-input"
+                              type="number"
+                              value={progressionSystem.profileTemplate.nextLevelExp}
+                              onChange={(e) => updateProgressionTemplate({ nextLevelExp: Number(e.target.value) })}
+                            />
+                          </label>
+                        </div>
+                        {progressionSystem.showStats && (
+                          <div className="progression-edit-stat-grid">
+                            {progressionSystem.statKeys.map(statKey => (
+                              <label key={statKey}>
+                                {statKey}
+                                <input
+                                  className="ai-input"
+                                  type="number"
+                                  value={progressionSystem.profileTemplate.defaultStats[statKey] ?? DEFAULT_PROGRESSION_STATS[statKey]}
+                                  onChange={(e) => setProgressionTemplateStat(statKey, Number(e.target.value))}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {progressionSystem.customFields.length > 0 && (
+                          <div className="progression-edit-grid">
+                            {progressionSystem.customFields.map(fieldName => (
+                              <label key={fieldName}>
+                                {fieldName} Default
+                                <input
+                                  className="ai-input"
+                                  value={progressionSystem.profileTemplate.defaultCustomFields[fieldName] || ""}
+                                  onChange={(e) => setProgressionTemplateCustomField(fieldName, e.target.value)}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        <div className="ai-form-field">
+                          <label>Default Traits</label>
+                          <textarea
+                            className="ai-textarea compact"
+                            value={progressionSystem.profileTemplate.defaultTraits.join("\n")}
+                            onChange={(e) => updateProgressionTemplate({ defaultTraits: e.target.value.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean) })}
+                            placeholder={"Cold aura\nRegenerative physique\nSword intent"}
+                          />
+                        </div>
+                        <div className="ai-form-field">
+                          <label>Default Abilities</label>
+                          <textarea
+                            className="ai-textarea compact"
+                            value={progressionSystem.profileTemplate.defaultAbilities.map(ability => `${ability.name} | ${ability.level} | ${ability.description}`).join("\n")}
+                            onChange={(e) => updateProgressionTemplate({ defaultAbilities: parseAbilityDraft(e.target.value) })}
+                            placeholder="Ability Name | 1 | Description"
+                          />
+                        </div>
+                        <div className="ai-form-field">
+                          <label>Template AI Rules</label>
+                          <textarea
+                            className="ai-textarea compact"
+                            value={progressionSystem.profileTemplate.notes}
+                            onChange={(e) => updateProgressionTemplate({ notes: e.target.value })}
+                          />
+                        </div>
+                        <button
+                          className="btn-ai-sub btn-ai-secondary progression-auto-btn"
+                          onClick={applyProgressionTemplateToProfiles}
+                          disabled={!progressionSystem.profileTemplate.enabled || progressionProfiles.length === 0}
+                        >
+                          <Layers size={12} />
+                          Apply To Existing Profiles
+                        </button>
                       </div>
                       <div className="ai-form-field">
                         <label>AI Rules</label>
@@ -8023,6 +8303,55 @@ function EditorContent() {
           gap: 0.65rem;
           padding-top: 0.65rem;
           border-top: 1px solid var(--surface-border);
+        }
+
+        .progression-template-box {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(20, 184, 166, 0.06);
+        }
+
+        .progression-template-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .progression-template-header div {
+          display: flex;
+          flex-direction: column;
+          gap: 0.18rem;
+          min-width: 0;
+        }
+
+        .progression-template-header strong {
+          color: var(--text-primary);
+          font-size: 0.82rem;
+        }
+
+        .progression-template-header span {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          line-height: 1.35;
+        }
+
+        .progression-template-header label {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          flex-shrink: 0;
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          font-weight: 900;
+        }
+
+        .progression-template-header input {
+          accent-color: var(--primary);
         }
 
         .progression-toggle-row,
