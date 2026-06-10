@@ -9,6 +9,18 @@ type BrainAnalysis = {
   connections?: string[]
 }
 
+type AppearancePromptResult = {
+  characterName?: string
+  overview?: string
+  prompts?: {
+    beastForm?: string
+    demiHumanForm?: string
+    humanForm?: string
+  }
+  consistencyNotes?: string[]
+  negativePrompt?: string
+}
+
 function parseJsonObject<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T
@@ -155,6 +167,52 @@ export async function POST(req: NextRequest) {
 
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
+    } else if (action === "appearance_prompts") {
+      const { name, selectedText, forms, chapter } = body
+      const safeForms = forms && typeof forms === "object" ? forms as {
+        beastForm?: string
+        demiHumanForm?: string
+        humanForm?: string
+      } : {}
+      const hasDescription = Boolean(
+        selectedText ||
+        safeForms.beastForm ||
+        safeForms.demiHumanForm ||
+        safeForms.humanForm
+      )
+
+      if (!hasDescription) {
+        return NextResponse.json({ error: "At least one appearance description or selected passage is required." }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are an expert character concept prompt engineer for novelists and visual artists. " +
+        "The user is describing a character, beast, or shapeshifter from a manuscript and wants polished image-generation prompts.\n" +
+        "Guidelines:\n" +
+        "1. Convert the user's descriptions into vivid, production-ready prompts while preserving story-specific traits.\n" +
+        "2. Generate separate prompts for beastForm, demiHumanForm, and humanForm. If a form is weakly described, infer carefully from the other forms and mark the shared traits consistently.\n" +
+        "3. Include anatomy, silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background when useful.\n" +
+        "4. Do not invent unrelated names, factions, or plot details. Use chapter context only to enrich visual accuracy.\n" +
+        "5. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt. The prompts object must use keys beastForm, demiHumanForm, humanForm. No markdown fences."
+
+      const chapterContext = chapter && typeof chapter === "object"
+        ? chapter as { title?: string; chapterNumber?: number; content?: string }
+        : null
+      const chapterLine = chapterContext
+        ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
+        : ""
+      const chapterContent = chapterContext?.content ? `\nChapter Context:\n${chapterContext.content}` : ""
+      const selectedLine = selectedText ? `\nHighlighted Passage:\n${selectedText}` : ""
+
+      userPrompt =
+        `Character or creature name: ${name || "Unknown / infer from context"}\n` +
+        `Preferred visual style: ${style || "cinematic fantasy character concept art"}` +
+        `${chapterLine}${selectedLine}\n\n` +
+        `Form descriptions:\n` +
+        `- Beast form: ${safeForms.beastForm || "Not directly described. Infer from available context."}\n` +
+        `- Demi-human form: ${safeForms.demiHumanForm || "Not directly described. Infer from available context."}\n` +
+        `- Human form: ${safeForms.humanForm || "Not directly described. Infer from available context."}` +
+        `${chapterContent}${memoryContext}`
     } else if (action === "brain_analyze") {
       const { highlightedText, chapterContent, chapterTitle, chapterNumber, existingBrainEntries } = body
       if (!highlightedText || !chapterContent) {
@@ -225,7 +283,7 @@ export async function POST(req: NextRequest) {
 
       userPrompt = `Brain Map entries:\n${memory || "No entries yet."}\n\nQuestion: ${question}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, brain_analyze, or brain_ask." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, brain_analyze, or brain_ask." }, { status: 400 })
     }
 
     const model = genAI.getGenerativeModel({
@@ -257,6 +315,40 @@ export async function POST(req: NextRequest) {
         entityName: analysis.entityName || "",
         importance,
         connections
+      })
+    }
+
+    if (action === "appearance_prompts") {
+      const appearance = parseJsonObject<AppearancePromptResult>(text)
+      if (!appearance) {
+        return NextResponse.json({
+          appearancePrompts: {
+            overview: "",
+            prompts: {
+              beastForm: text,
+              demiHumanForm: "",
+              humanForm: ""
+            },
+            consistencyNotes: [],
+            negativePrompt: ""
+          }
+        })
+      }
+
+      return NextResponse.json({
+        appearancePrompts: {
+          characterName: appearance.characterName || "",
+          overview: appearance.overview || "",
+          prompts: {
+            beastForm: appearance.prompts?.beastForm || "",
+            demiHumanForm: appearance.prompts?.demiHumanForm || "",
+            humanForm: appearance.prompts?.humanForm || ""
+          },
+          consistencyNotes: Array.isArray(appearance.consistencyNotes)
+            ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
+            : [],
+          negativePrompt: appearance.negativePrompt || ""
+        }
       })
     }
 

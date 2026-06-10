@@ -43,12 +43,13 @@ interface Note {
 }
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'bible' | 'sounds' | 'brain'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'bible' | 'sounds' | 'brain'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
 type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf'
 type SearchSource = 'chapter' | 'brain' | 'lore'
+type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
 
 interface GlobalSearchResult {
   id: string
@@ -65,6 +66,14 @@ interface ChapterVersion {
   content: string
   savedAt: number
   wordCount: number
+}
+
+interface AppearancePromptResult {
+  characterName?: string
+  overview?: string
+  prompts?: Partial<Record<AppearanceFormKey, string>>
+  consistencyNotes?: string[]
+  negativePrompt?: string
 }
 
 const MIN_LEFT_SIDEBAR_WIDTH = 280
@@ -255,6 +264,19 @@ function EditorContent() {
   })
   const [isZenMode, setIsZenMode] = useState(false)
 
+  // AI Assistant state variables
+  const [showAISidebar, setShowAISidebar] = useState(false)
+  const [aiTab, setAiTab] = useState<'continue' | 'rewrite' | 'outline'>('continue')
+  const [aiSelectionText, setAiSelectionText] = useState("")
+  const [aiSelectionStart, setAiSelectionStart] = useState(0)
+  const [aiSelectionEnd, setAiSelectionEnd] = useState(0)
+  const [aiTone, setAiTone] = useState("descriptive")
+  const [aiResponse, setAiResponse] = useState("")
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiOutlinePrompt, setAiOutlinePrompt] = useState("")
+  const [aiError, setAiError] = useState("")
+  const [aiCopied, setAiCopied] = useState(false)
+
   // World Bible States
   const [bibleEntries, setBibleEntries] = useState<BibleEntry[]>([])
   const [activeBibleEntryId, setActiveBibleEntryId] = useState<string | null>(null)
@@ -295,6 +317,17 @@ function EditorContent() {
   const [aiLoreContext, setAiLoreContext] = useState("")
   const [aiLoreLoading, setAiLoreLoading] = useState(false)
   const [aiLoreError, setAiLoreError] = useState("")
+
+  // Appearance Prompt Lab States
+  const [appearanceName, setAppearanceName] = useState("")
+  const [appearanceStyle, setAppearanceStyle] = useState("cinematic fantasy character concept art")
+  const [appearanceBeastForm, setAppearanceBeastForm] = useState("")
+  const [appearanceDemiForm, setAppearanceDemiForm] = useState("")
+  const [appearanceHumanForm, setAppearanceHumanForm] = useState("")
+  const [appearanceResult, setAppearanceResult] = useState<AppearancePromptResult | null>(null)
+  const [appearanceLoading, setAppearanceLoading] = useState(false)
+  const [appearanceError, setAppearanceError] = useState("")
+  const [appearanceCopiedKey, setAppearanceCopiedKey] = useState<string | null>(null)
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -415,6 +448,134 @@ function EditorContent() {
     } finally {
       setAiLoreLoading(false)
     }
+  }
+
+  const appearanceFormLabels: Record<AppearanceFormKey, string> = {
+    beastForm: "Beast Form",
+    demiHumanForm: "Demi-human Form",
+    humanForm: "Human Form"
+  }
+
+  const hasAppearanceDescription = Boolean(
+    appearanceBeastForm.trim() ||
+    appearanceDemiForm.trim() ||
+    appearanceHumanForm.trim() ||
+    aiSelectionText.trim()
+  )
+
+  const buildAppearanceLoreContent = (result: AppearancePromptResult) => {
+    const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+    const chapterLine = activeNote
+      ? `${activeChapterNumber ? `Chapter ${activeChapterNumber} - ` : ""}${activeNote.title || "Untitled"}`
+      : "No chapter selected"
+    const prompts = result.prompts || {}
+    const notes = Array.isArray(result.consistencyNotes) && result.consistencyNotes.length > 0
+      ? result.consistencyNotes.map(note => `- ${note}`).join("\n")
+      : "- Keep recognizable traits consistent across every form."
+
+    return [
+      "## Appearance Prompt Sheet",
+      `Source: ${chapterLine}`,
+      `Style Direction: ${appearanceStyle}`,
+      "",
+      result.overview ? `### Visual Core\n${result.overview}\n` : "",
+      "### Beast Form",
+      prompts.beastForm || "Not generated.",
+      "",
+      "### Demi-human Form",
+      prompts.demiHumanForm || "Not generated.",
+      "",
+      "### Human Form",
+      prompts.humanForm || "Not generated.",
+      "",
+      "### Consistency Notes",
+      notes,
+      "",
+      result.negativePrompt ? `### Negative Prompt\n${result.negativePrompt}` : ""
+    ].filter(Boolean).join("\n")
+  }
+
+  const handleGenerateAppearancePrompts = async () => {
+    if (!hasAppearanceDescription) {
+      setAppearanceError("Describe at least one form or highlight a description in the chapter first.")
+      return
+    }
+
+    setAppearanceLoading(true)
+    setAppearanceError("")
+    setAppearanceResult(null)
+
+    try {
+      const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+      const chapterContext = activeNote?.content
+        ? activeNote.content.slice(0, 5000)
+        : ""
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "appearance_prompts",
+          name: appearanceName,
+          style: appearanceStyle,
+          selectedText: aiSelectionText,
+          forms: {
+            beastForm: appearanceBeastForm,
+            demiHumanForm: appearanceDemiForm,
+            humanForm: appearanceHumanForm
+          },
+          chapter: activeNote ? {
+            title: activeNote.title,
+            chapterNumber: activeChapterNumber,
+            content: chapterContext
+          } : null,
+          memory: buildStoryMemoryContext()
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAppearanceError(data.error)
+      } else {
+        setAppearanceResult(data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], characterName: appearanceName })
+        if (!appearanceName.trim() && data.appearancePrompts?.characterName) {
+          setAppearanceName(data.appearancePrompts.characterName)
+        }
+      }
+    } catch (err) {
+      setAppearanceError(err instanceof Error ? err.message : "Failed to generate appearance prompts")
+    } finally {
+      setAppearanceLoading(false)
+    }
+  }
+
+  const copyAppearanceText = (key: string, text: string) => {
+    navigator.clipboard.writeText(text)
+    setAppearanceCopiedKey(key)
+    setTimeout(() => setAppearanceCopiedKey(null), 1500)
+  }
+
+  const saveAppearanceToLore = async () => {
+    if (!appearanceResult || !user || !projectId) return
+
+    const now = Date.now()
+    const entryName = appearanceResult.characterName || appearanceName || "Appearance Prompt Sheet"
+    const newEntry: BibleEntry = {
+      id: crypto.randomUUID(),
+      name: entryName,
+      category: appearanceBeastForm.trim() || appearanceDemiForm.trim() ? "beast" : "character",
+      content: buildAppearanceLoreContent(appearanceResult),
+      createdAt: now,
+      updatedAt: now
+    }
+
+    const updated = [newEntry, ...bibleEntries]
+    setBibleEntries(updated)
+    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+    await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+
+    setActiveSidebarTab("bible")
+    setIsLeftSidebarOpen(true)
+    setActiveBibleEntryId(newEntry.id)
+    setIsBibleDrawerOpen(true)
   }
 
   const getLoreAliases = useCallback((entry: BibleEntry) => {
@@ -544,19 +705,6 @@ function EditorContent() {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('folder')
   const [isTypewriterMode, setIsTypewriterMode] = useState(false)
   const [theme, setTheme] = useState('midnight')
-
-  // AI Assistant state variables
-  const [showAISidebar, setShowAISidebar] = useState(false)
-  const [aiTab, setAiTab] = useState<'continue' | 'rewrite' | 'outline'>('continue')
-  const [aiSelectionText, setAiSelectionText] = useState("")
-  const [aiSelectionStart, setAiSelectionStart] = useState(0)
-  const [aiSelectionEnd, setAiSelectionEnd] = useState(0)
-  const [aiTone, setAiTone] = useState("descriptive")
-  const [aiResponse, setAiResponse] = useState("")
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiOutlinePrompt, setAiOutlinePrompt] = useState("")
-  const [aiError, setAiError] = useState("")
-  const [aiCopied, setAiCopied] = useState(false)
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme)
@@ -1372,6 +1520,7 @@ function EditorContent() {
     { name: "Focus AI assistant", cmd: "/ai", desc: "Toggle Right AI Assistant Sidebar", action: () => setShowAISidebar(prev => !prev) },
     { name: "Toggle Zen Mode", cmd: "/zen", desc: "Fullscreen Zen mode", action: () => setIsZenMode(prev => !prev) },
     { name: "Open World Bible", cmd: "/bible", desc: "Toggle World Bible Panel", action: () => { setActiveSidebarTab('bible'); setIsLeftSidebarOpen(true) } },
+    { name: "Appearance Lab", cmd: "/appearance", desc: "Open Appearance Prompt Lab", action: () => { setActiveSidebarTab('appearance'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } }
   ]
 
@@ -2554,6 +2703,21 @@ function EditorContent() {
               >
                 <Layers size={20} />
               </button>
+
+              <button
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'appearance' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'appearance' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('appearance')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Appearance Lab"
+              >
+                <Eye size={20} />
+              </button>
               
               <button 
                 className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'bible' ? 'active' : ''}`}
@@ -2888,7 +3052,204 @@ function EditorContent() {
               </div>
             )}
 
-            {/* TAB 2: CHARACTER & WORLD BIBLE */}
+            {/* TAB 3: APPEARANCE PROMPT LAB */}
+            {activeSidebarTab === 'appearance' && (
+              <div className="sidebar-tab-content appearance-panel fade-in">
+                <div className="appearance-header">
+                  <span className="section-title">Appearance Lab</span>
+                  {activeNote && (
+                    <span className="appearance-chapter-chip">
+                      {getNoteChapterNumber(activeNote) ? `Chapter ${getNoteChapterNumber(activeNote)}` : "Current chapter"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="appearance-card glass-light">
+                  <div className="ai-form-field">
+                    <label>Name</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={appearanceName}
+                      onChange={(e) => setAppearanceName(e.target.value)}
+                      placeholder="e.g. Veyrath, Moonfang Elder"
+                      disabled={appearanceLoading}
+                    />
+                  </div>
+
+                  <div className="ai-form-field">
+                    <label>Visual Style</label>
+                    <select
+                      className="ai-select"
+                      value={appearanceStyle}
+                      onChange={(e) => setAppearanceStyle(e.target.value)}
+                      disabled={appearanceLoading}
+                    >
+                      <option value="cinematic fantasy character concept art">Cinematic fantasy concept art</option>
+                      <option value="anime key visual, high detail">Anime key visual</option>
+                      <option value="dark xianxia character design sheet">Dark xianxia design sheet</option>
+                      <option value="realistic film character design">Realistic film character design</option>
+                      <option value="game-ready creature concept art">Game-ready creature concept art</option>
+                    </select>
+                  </div>
+
+                  {aiSelectionText.trim() && (
+                    <button
+                      className="appearance-selection-btn"
+                      onClick={() => {
+                        const selected = aiSelectionText.trim()
+                        if (!appearanceBeastForm.trim()) {
+                          setAppearanceBeastForm(selected)
+                        } else if (!appearanceDemiForm.trim()) {
+                          setAppearanceDemiForm(selected)
+                        } else {
+                          setAppearanceHumanForm(selected)
+                        }
+                      }}
+                      disabled={appearanceLoading}
+                    >
+                      <Sparkles size={13} />
+                      Use highlighted description
+                    </button>
+                  )}
+
+                  {([
+                    {
+                      key: "beastForm" as AppearanceFormKey,
+                      label: "Beast Form",
+                      value: appearanceBeastForm,
+                      setter: setAppearanceBeastForm,
+                      placeholder: "Describe the full beast shape, body structure, fur/scales, eyes, aura, size, scars, horns, wings, markings..."
+                    },
+                    {
+                      key: "demiHumanForm" as AppearanceFormKey,
+                      label: "Demi-human Form",
+                      value: appearanceDemiForm,
+                      setter: setAppearanceDemiForm,
+                      placeholder: "Describe the hybrid form, retained beast traits, posture, clothing, weapons, expression, cultivation aura..."
+                    },
+                    {
+                      key: "humanForm" as AppearanceFormKey,
+                      label: "Human Form",
+                      value: appearanceHumanForm,
+                      setter: setAppearanceHumanForm,
+                      placeholder: "Describe the human disguise or true human form, hair, eyes, build, clothing, subtle beast tells..."
+                    }
+                  ]).map(form => (
+                    <div className="ai-form-field" key={form.key}>
+                      <label>{form.label}</label>
+                      <textarea
+                        className="ai-textarea appearance-textarea"
+                        value={form.value}
+                        onChange={(e) => form.setter(e.target.value)}
+                        placeholder={form.placeholder}
+                        disabled={appearanceLoading}
+                      />
+                    </div>
+                  ))}
+
+                  {appearanceError && (
+                    <div className="ai-error-box">
+                      <AlertCircle size={16} />
+                      <span>{appearanceError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    className="btn-ai-action"
+                    onClick={handleGenerateAppearancePrompts}
+                    disabled={appearanceLoading || !hasAppearanceDescription}
+                  >
+                    {appearanceLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={16} />
+                        Generate Prompts
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {appearanceResult && (
+                  <div className="appearance-results">
+                    {appearanceResult.overview && (
+                      <div className="appearance-overview">
+                        <span>Visual Core</span>
+                        <p>{appearanceResult.overview}</p>
+                      </div>
+                    )}
+
+                    {(Object.keys(appearanceFormLabels) as AppearanceFormKey[]).map(formKey => {
+                      const promptText = appearanceResult.prompts?.[formKey]
+                      if (!promptText) return null
+                      return (
+                        <div className="appearance-prompt-card" key={formKey}>
+                          <div className="appearance-prompt-header">
+                            <strong>{appearanceFormLabels[formKey]}</strong>
+                            <button
+                              className="btn-ai-sub btn-ai-secondary"
+                              onClick={() => copyAppearanceText(formKey, promptText)}
+                            >
+                              <Copy size={12} />
+                              {appearanceCopiedKey === formKey ? "Copied" : "Copy"}
+                            </button>
+                          </div>
+                          <p>{promptText}</p>
+                        </div>
+                      )
+                    })}
+
+                    {appearanceResult.negativePrompt && (
+                      <div className="appearance-prompt-card muted">
+                        <div className="appearance-prompt-header">
+                          <strong>Negative Prompt</strong>
+                          <button
+                            className="btn-ai-sub btn-ai-secondary"
+                            onClick={() => copyAppearanceText("negative", appearanceResult.negativePrompt || "")}
+                          >
+                            <Copy size={12} />
+                            {appearanceCopiedKey === "negative" ? "Copied" : "Copy"}
+                          </button>
+                        </div>
+                        <p>{appearanceResult.negativePrompt}</p>
+                      </div>
+                    )}
+
+                    {Array.isArray(appearanceResult.consistencyNotes) && appearanceResult.consistencyNotes.length > 0 && (
+                      <div className="appearance-notes">
+                        <span>Keep Consistent</span>
+                        {appearanceResult.consistencyNotes.map(note => (
+                          <p key={note}>{note}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="appearance-actions">
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={saveAppearanceToLore}
+                      >
+                        <Save size={12} />
+                        Save to Lore
+                      </button>
+                      <button
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={() => copyAppearanceText("all", buildAppearanceLoreContent(appearanceResult))}
+                      >
+                        <Copy size={12} />
+                        {appearanceCopiedKey === "all" ? "Copied" : "Copy All"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 4: CHARACTER & WORLD BIBLE */}
             {activeSidebarTab === 'bible' && (
               <div className="sidebar-tab-content fade-in flex flex-col h-full">
                 <div className="sidebar-section bible-header-actions">
@@ -5350,6 +5711,126 @@ function EditorContent() {
           color: var(--text-dim);
           text-align: center;
           margin-top: 2rem;
+        }
+
+        /* Appearance Prompt Lab */
+        .appearance-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          overflow-y: auto;
+        }
+
+        .appearance-header,
+        .appearance-prompt-header,
+        .appearance-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .appearance-chapter-chip {
+          flex-shrink: 0;
+          padding: 0.25rem 0.45rem;
+          border-radius: var(--radius-full);
+          border: 1px solid rgba(99, 102, 241, 0.24);
+          background: rgba(99, 102, 241, 0.1);
+          color: rgb(165, 180, 252);
+          font-size: 0.65rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .appearance-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+        }
+
+        .appearance-textarea {
+          min-height: 86px;
+          max-height: 160px;
+        }
+
+        .appearance-selection-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4rem;
+          min-height: 32px;
+          border: 1px solid rgba(20, 184, 166, 0.24);
+          border-radius: var(--radius-sm);
+          background: rgba(20, 184, 166, 0.1);
+          color: rgb(94, 234, 212);
+          font-size: 0.75rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .appearance-selection-btn:hover:not(:disabled) {
+          border-color: rgba(20, 184, 166, 0.42);
+          background: rgba(20, 184, 166, 0.16);
+        }
+
+        .appearance-selection-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .appearance-results {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding-bottom: 1rem;
+        }
+
+        .appearance-overview,
+        .appearance-prompt-card,
+        .appearance-notes {
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.16);
+          padding: 0.75rem;
+        }
+
+        .appearance-overview span,
+        .appearance-notes span,
+        .appearance-prompt-header strong {
+          color: var(--text-primary);
+          font-size: 0.74rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .appearance-overview p,
+        .appearance-prompt-card p,
+        .appearance-notes p {
+          margin: 0.45rem 0 0;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          line-height: 1.55;
+          word-break: break-word;
+        }
+
+        .appearance-prompt-card {
+          border-color: rgba(99, 102, 241, 0.18);
+        }
+
+        .appearance-prompt-card.muted {
+          border-color: rgba(148, 163, 184, 0.18);
+        }
+
+        .appearance-prompt-header .btn-ai-sub {
+          flex-shrink: 0;
+          min-height: 26px;
+          padding: 0.25rem 0.45rem;
         }
 
         /* Brain Map Styles */
