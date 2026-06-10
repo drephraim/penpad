@@ -13,7 +13,7 @@ import {
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight,
-  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star
+  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import { 
@@ -47,6 +47,25 @@ type SidebarTab = 'manuscript' | 'bible' | 'sounds' | 'brain'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
+type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf'
+type SearchSource = 'chapter' | 'brain' | 'lore'
+
+interface GlobalSearchResult {
+  id: string
+  source: SearchSource
+  title: string
+  subtitle: string
+  preview: string
+  chapterId?: string
+}
+
+interface ChapterVersion {
+  id: string
+  title: string
+  content: string
+  savedAt: number
+  wordCount: number
+}
 
 const MIN_LEFT_SIDEBAR_WIDTH = 280
 const MAX_LEFT_SIDEBAR_WIDTH = 560
@@ -215,6 +234,12 @@ function EditorContent() {
 
   const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [isFocusMode, setIsFocusMode] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("")
+  const [showTimelinePanel, setShowTimelinePanel] = useState(true)
+  const [showVersionsModal, setShowVersionsModal] = useState(false)
+  const [chapterVersions, setChapterVersions] = useState<ChapterVersion[]>([])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
 
@@ -503,6 +528,7 @@ function EditorContent() {
   const [exportModal, setExportModal] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('folder')
   const [isTypewriterMode, setIsTypewriterMode] = useState(false)
   const [theme, setTheme] = useState('midnight')
 
@@ -925,6 +951,53 @@ function EditorContent() {
     }
   }
 
+  const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+
+  const getVersionKey = useCallback((noteId: string) => {
+    return projectId ? `penpad_versions_${projectId}_${noteId}` : ""
+  }, [projectId])
+
+  const loadChapterVersions = useCallback((noteId: string) => {
+    const key = getVersionKey(noteId)
+    if (!key) return []
+    try {
+      const stored = localStorage.getItem(key)
+      return stored ? JSON.parse(stored) as ChapterVersion[] : []
+    } catch {
+      return []
+    }
+  }, [getVersionKey])
+
+  const saveChapterVersion = useCallback((note: Note, timestamp: number) => {
+    const key = getVersionKey(note.id)
+    if (!key || !note.content.trim()) return
+
+    const versions = loadChapterVersions(note.id)
+    const latest = versions[0]
+    if (latest && latest.content === note.content) return
+    if (latest && timestamp - latest.savedAt < 1000 * 60 * 5) return
+
+    const nextVersions: ChapterVersion[] = [
+      {
+        id: crypto.randomUUID(),
+        title: note.title || "Untitled",
+        content: note.content,
+        savedAt: timestamp,
+        wordCount: countWords(note.content)
+      },
+      ...versions
+    ].slice(0, 12)
+
+    localStorage.setItem(key, JSON.stringify(nextVersions))
+    if (note.id === activeNoteId) setChapterVersions(nextVersions)
+  }, [activeNoteId, getVersionKey, loadChapterVersions])
+
+  const restoreChapterVersion = (version: ChapterVersion) => {
+    if (!activeNote) return
+    updateActiveNote({ title: version.title, content: version.content })
+    setShowVersionsModal(false)
+  }
+
   const saveNote = useCallback(async (note: Note) => {
     if (!user || !projectId) return
     setSyncStatus('saving')
@@ -957,13 +1030,15 @@ function EditorContent() {
         }
       }
 
+      saveChapterVersion(updatedNote, now)
       await saveChapterToCloud(user.uid, projectId, updatedNote)
+      setLastSavedAt(now)
       setSyncStatus('saved')
     } catch (e) {
       console.error("Save note failed:", e)
       setSyncStatus('error')
     }
-  }, [user, projectId])
+  }, [user, projectId, saveChapterVersion])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -981,6 +1056,14 @@ function EditorContent() {
       fetchBrain()
     }
   }, [user, projectId, fetchProjectName, fetchNotes, fetchBible, fetchBrain])
+
+  useEffect(() => {
+    if (activeNoteId) {
+      setChapterVersions(loadChapterVersions(activeNoteId))
+    } else {
+      setChapterVersions([])
+    }
+  }, [activeNoteId, loadChapterVersions])
 
   useEffect(() => {
     if (activeNote && syncStatus !== 'saving') {
@@ -1152,6 +1235,97 @@ function EditorContent() {
       setIsExporting(false)
       alert(`Export failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
+  }
+
+  const getExportChapters = () => {
+    return [...notes].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
+  }
+
+  const escapeHtml = (value: string) => {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;")
+  }
+
+  const buildExportContent = (format: Exclude<ExportFormat, 'folder' | 'pdf'>) => {
+    const chapters = getExportChapters()
+    if (format === 'md') {
+      return `# ${projectName}\n\n${chapters.map(note => `## ${note.title || "Untitled"}\n\n${note.content || ""}`).join("\n\n")}`
+    }
+
+    if (format === 'html' || format === 'doc') {
+      return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(projectName)}</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 760px; margin: 48px auto; line-height: 1.7; color: #111827; }
+    h1 { text-align: center; page-break-after: always; }
+    h2 { page-break-before: always; margin-top: 0; }
+    p { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(projectName)}</h1>
+  ${chapters.map(note => `<section><h2>${escapeHtml(note.title || "Untitled")}</h2><p>${escapeHtml(note.content || "")}</p></section>`).join("\n")}
+</body>
+</html>`
+    }
+
+    return chapters.map(note => `${note.title || "Untitled"}\n${"=".repeat((note.title || "Untitled").length)}\n\n${note.content || ""}`).join("\n\n\n")
+  }
+
+  const downloadExportFile = (content: string, extension: string, type: string) => {
+    const blob = new Blob([content], { type })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${projectName || "manuscript"}.${extension}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportManuscript = async () => {
+    if (exportFormat === 'folder') {
+      await exportManuscriptToFolder()
+      return
+    }
+
+    if (notes.length === 0) {
+      alert("No chapters to export")
+      return
+    }
+
+    if (exportFormat === 'pdf') {
+      const printWindow = window.open("", "_blank")
+      if (!printWindow) {
+        alert("Popup blocked. Allow popups to print or save as PDF.")
+        return
+      }
+      printWindow.document.write(buildExportContent('html'))
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+      setExportModal(false)
+      return
+    }
+
+    const content = buildExportContent(exportFormat)
+    const exportMeta = {
+      txt: { extension: 'txt', type: 'text/plain;charset=utf-8' },
+      md: { extension: 'md', type: 'text/markdown;charset=utf-8' },
+      html: { extension: 'html', type: 'text/html;charset=utf-8' },
+      doc: { extension: 'doc', type: 'application/msword;charset=utf-8' }
+    }[exportFormat]
+
+    downloadExportFile(content, exportMeta.extension, exportMeta.type)
+    setExportModal(false)
   }
 
   // Formatting helper
@@ -1382,6 +1556,40 @@ function EditorContent() {
     }
   }
 
+  const buildStoryMemoryContext = () => {
+    const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+    const nearbyChapters = [...notes]
+      .filter(note => note.id !== activeNote?.id)
+      .sort((a, b) => Math.abs((getNoteChapterNumber(a) || 9999) - (activeChapterNumber || 9999)) - Math.abs((getNoteChapterNumber(b) || 9999) - (activeChapterNumber || 9999)))
+      .slice(0, 3)
+      .map(note => `${note.title}: ${(note.content || "").slice(0, 900)}`)
+
+    return {
+      projectName,
+      activeChapter: activeNote ? {
+        title: activeNote.title,
+        chapterNumber: activeChapterNumber
+      } : null,
+      nearbyChapters,
+      brainEntries: brainEntries
+        .filter(entry => entry.aiSummary && entry.aiSummary !== "Analyzing...")
+        .slice(0, 20)
+        .map(entry => ({
+          entityName: entry.entityName || entry.highlightedText,
+          entityType: entry.entityType || "unknown",
+          importance: entry.importance || "minor",
+          chapterNumber: entry.chapterNumber,
+          summary: entry.aiSummary,
+          connections: entry.connections || []
+        })),
+      loreEntries: bibleEntries.slice(0, 16).map(entry => ({
+        name: entry.name,
+        category: entry.category,
+        content: entry.content.slice(0, 900)
+      }))
+    }
+  }
+
   const handleContinueWriting = async () => {
     if (!activeNote) return
     setAiLoading(true)
@@ -1407,7 +1615,7 @@ function EditorContent() {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "continue", content: contextText })
+        body: JSON.stringify({ action: "continue", content: contextText, memory: buildStoryMemoryContext() })
       })
       const data = await res.json()
       if (data.error) {
@@ -1431,7 +1639,7 @@ function EditorContent() {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "rewrite", content: aiSelectionText, style: aiTone })
+        body: JSON.stringify({ action: "rewrite", content: aiSelectionText, style: aiTone, memory: buildStoryMemoryContext() })
       })
       const data = await res.json()
       if (data.error) {
@@ -1455,7 +1663,7 @@ function EditorContent() {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "outline", prompt: aiOutlinePrompt })
+        body: JSON.stringify({ action: "outline", prompt: aiOutlinePrompt, memory: buildStoryMemoryContext() })
       })
       const data = await res.json()
       if (data.error) {
@@ -1729,6 +1937,98 @@ function EditorContent() {
   const filteredNotes = notes.filter((n: Note) => n &&
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const sortedTimelineNotes = [...notes].sort((a, b) => {
+    const aNumber = getNoteChapterNumber(a)
+    const bNumber = getNoteChapterNumber(b)
+    if (aNumber && bNumber) return aNumber - bNumber
+    return a.title.localeCompare(b.title, undefined, { numeric: true })
+  })
+
+  const manuscriptStats = {
+    chapters: notes.length,
+    words: notes.reduce((total, note) => total + countWords(note.content || ""), 0),
+    brainEntries: brainEntries.length,
+    loreEntries: bibleEntries.length,
+    criticalBrainEntries: brainEntries.filter(entry => entry.importance === 'critical').length,
+    averageChapterWords: notes.length > 0
+      ? Math.round(notes.reduce((total, note) => total + countWords(note.content || ""), 0) / notes.length)
+      : 0
+  }
+
+  const globalSearchResults: GlobalSearchResult[] = (() => {
+    const query = globalSearchQuery.trim().toLowerCase()
+    if (!query) return []
+
+    const chapterResults = notes
+      .filter(note => note.title.toLowerCase().includes(query) || note.content.toLowerCase().includes(query))
+      .slice(0, 8)
+      .map(note => {
+        const content = note.content || ""
+        const index = content.toLowerCase().indexOf(query)
+        const preview = index >= 0 ? content.slice(Math.max(0, index - 60), index + 140) : content.slice(0, 160)
+        return {
+          id: `chapter-${note.id}`,
+          source: 'chapter' as SearchSource,
+          title: note.title || "Untitled",
+          subtitle: getNoteChapterNumber(note) ? `Chapter ${getNoteChapterNumber(note)}` : "Chapter",
+          preview,
+          chapterId: note.id
+        }
+      })
+
+    const brainResults = brainEntries
+      .filter(entry =>
+        entry.highlightedText.toLowerCase().includes(query) ||
+        entry.aiSummary.toLowerCase().includes(query) ||
+        (entry.entityName || "").toLowerCase().includes(query) ||
+        (entry.connections || []).some(connection => connection.toLowerCase().includes(query))
+      )
+      .slice(0, 8)
+      .map(entry => ({
+        id: `brain-${entry.id}`,
+        source: 'brain' as SearchSource,
+        title: entry.entityName || entry.highlightedText,
+        subtitle: `${entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle || "Brain Map"} - ${entry.entityType || "Brain Map"}`,
+        preview: entry.aiSummary,
+        chapterId: entry.chapterId
+      }))
+
+    const loreResults = bibleEntries
+      .filter(entry => entry.name.toLowerCase().includes(query) || entry.content.toLowerCase().includes(query))
+      .slice(0, 8)
+      .map(entry => ({
+        id: `lore-${entry.id}`,
+        source: 'lore' as SearchSource,
+        title: entry.name,
+        subtitle: entry.category,
+        preview: entry.content.slice(0, 180)
+      }))
+
+    return [...chapterResults, ...brainResults, ...loreResults].slice(0, 18)
+  })()
+
+  const openGlobalSearchResult = (result: GlobalSearchResult) => {
+    if (result.source === 'chapter' && result.chapterId) {
+      setActiveNoteId(result.chapterId)
+      setShowGlobalSearch(false)
+      setViewMode('edit')
+    } else if (result.source === 'brain') {
+      setActiveSidebarTab('brain')
+      setIsLeftSidebarOpen(true)
+      setBrainSearchQuery(result.title)
+      setShowGlobalSearch(false)
+    } else if (result.source === 'lore') {
+      const entry = bibleEntries.find(item => item.name === result.title)
+      if (entry) {
+        setActiveSidebarTab('bible')
+        setIsLeftSidebarOpen(true)
+        setActiveBibleEntryId(entry.id)
+        setIsBibleDrawerOpen(true)
+      }
+      setShowGlobalSearch(false)
+    }
+  }
 
   const brainTypeOptions: { value: BrainTypeFilter; label: string }[] = [
     { value: 'all', label: 'All Types' },
@@ -2021,6 +2321,54 @@ function EditorContent() {
           </div>
         </div>
       )}
+
+      {showGlobalSearch && (
+        <div className="command-palette-overlay" onClick={() => setShowGlobalSearch(false)}>
+          <div className="global-search-modal glass" onClick={e => e.stopPropagation()}>
+            <div className="palette-header">
+              <Search size={15} className="glow-icon" />
+              <input
+                type="text"
+                placeholder="Search chapters, Brain Map, and lore..."
+                value={globalSearchQuery}
+                onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setShowGlobalSearch(false)
+                  if (e.key === 'Enter' && globalSearchResults[0]) openGlobalSearchResult(globalSearchResults[0])
+                }}
+                autoFocus
+              />
+              <span className="esc-hint">ESC</span>
+            </div>
+            <div className="global-search-results">
+              {globalSearchQuery.trim() && globalSearchResults.length === 0 && (
+                <div className="empty-palette">No matches in this manuscript</div>
+              )}
+              {!globalSearchQuery.trim() && (
+                <div className="global-search-empty">
+                  <Search size={22} />
+                  <span>Search across chapters, Brain Map entries, and story bible lore.</span>
+                </div>
+              )}
+              {globalSearchResults.map(result => (
+                <button
+                  key={result.id}
+                  className={`global-search-result source-${result.source}`}
+                  onClick={() => openGlobalSearchResult(result)}
+                >
+                  <span className="global-result-source">
+                    {result.source === 'chapter' ? <FileText size={13} /> : result.source === 'brain' ? <BrainCircuit size={13} /> : <BookOpen size={13} />}
+                    {result.source}
+                  </span>
+                  <strong>{result.title}</strong>
+                  <small>{result.subtitle}</small>
+                  <p>{result.preview || "No preview available"}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Redesigned Header: Fades out in Zen Mode */}
       <header className="editor-header glass">
@@ -2094,6 +2442,13 @@ function EditorContent() {
         </div>
 
         <div className="header-right">
+          <button
+            className="btn-icon"
+            onClick={() => setShowGlobalSearch(true)}
+            title="Search manuscript, Brain Map, and lore"
+          >
+            <Search size={18} />
+          </button>
           <div className={`sync-badge glass-light ${syncStatus}`}>
             {syncStatus === 'saving' ? (
               <Loader2 size={12} className="spin" />
@@ -2104,6 +2459,19 @@ function EditorContent() {
             )}
             <span>{syncStatus === 'saving' ? 'Saving' : 'Saved'}</span>
           </div>
+          {lastSavedAt && (
+            <span className="last-saved-label">
+              {new Date(lastSavedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+            </span>
+          )}
+          <button
+            className="btn-icon"
+            onClick={() => setShowVersionsModal(true)}
+            title="Chapter version history"
+            disabled={!activeNote}
+          >
+            <History size={18} />
+          </button>
           <button 
             className={`btn-icon ${showAISidebar ? 'active' : ''}`}
             onClick={() => setShowAISidebar(!showAISidebar)}
@@ -2335,6 +2703,57 @@ function EditorContent() {
                     </>
                   )}
                 </div>
+
+                <div className="manuscript-insights glass-light">
+                  <div className="insights-grid">
+                    <div>
+                      <strong>{manuscriptStats.words.toLocaleString()}</strong>
+                      <span>words</span>
+                    </div>
+                    <div>
+                      <strong>{manuscriptStats.averageChapterWords.toLocaleString()}</strong>
+                      <span>avg/ch</span>
+                    </div>
+                    <div>
+                      <strong>{manuscriptStats.brainEntries}</strong>
+                      <span>brain</span>
+                    </div>
+                    <div>
+                      <strong>{manuscriptStats.loreEntries}</strong>
+                      <span>lore</span>
+                    </div>
+                  </div>
+                  <button
+                    className="btn-timeline-toggle"
+                    onClick={() => setShowTimelinePanel(prev => !prev)}
+                  >
+                    <Layers size={13} />
+                    {showTimelinePanel ? 'Hide Timeline' : 'Show Timeline'}
+                  </button>
+                </div>
+
+                {showTimelinePanel && (
+                  <div className="chapter-timeline">
+                    {sortedTimelineNotes.slice(0, 12).map(note => {
+                      const chapterBrainEntries = brainEntries.filter(entry => entry.chapterId === note.id)
+                      const chapterWords = countWords(note.content || "")
+                      return (
+                        <button
+                          key={note.id}
+                          className={`timeline-item ${note.id === activeNoteId ? 'active' : ''}`}
+                          onClick={() => setActiveNoteId(note.id)}
+                        >
+                          <span className="timeline-dot"></span>
+                          <div className="timeline-content">
+                            <strong>{getNoteChapterNumber(note) ? `Chapter ${getNoteChapterNumber(note)}` : note.title}</strong>
+                            <small>{note.title || 'Untitled'} - {chapterWords.toLocaleString()} words</small>
+                            <em>{chapterBrainEntries.length} Brain Map entr{chapterBrainEntries.length === 1 ? 'y' : 'ies'}</em>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
 
                 <div className="chapter-list">
                   {filteredNotes.map(note => {
@@ -3606,6 +4025,38 @@ function EditorContent() {
           </div>
         )}
 
+        {showVersionsModal && activeNote && (
+          <div className="modal-overlay" onClick={() => setShowVersionsModal(false)}>
+            <div className="modal versions-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Chapter History</h2>
+                <p className="modal-description">
+                  Recent autosaved versions of &ldquo;{activeNote.title || 'Untitled'}&rdquo;.
+                </p>
+              </div>
+              <div className="version-list">
+                {chapterVersions.length === 0 ? (
+                  <div className="empty-state-text">No history yet. Versions appear after autosaves.</div>
+                ) : chapterVersions.map(version => (
+                  <div key={version.id} className="version-item">
+                    <div>
+                      <strong>{new Date(version.savedAt).toLocaleString()}</strong>
+                      <span>{version.wordCount.toLocaleString()} words</span>
+                      <p>{version.content.slice(0, 180) || "Empty chapter"}</p>
+                    </div>
+                    <button className="btn-ai-sub btn-ai-primary" onClick={() => restoreChapterVersion(version)}>
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowVersionsModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {exportModal && (
           <div className="modal-overlay" onClick={() => !isExporting && setExportModal(false)}>
             <div className="modal" onClick={e => e.stopPropagation()}>
@@ -3614,9 +4065,31 @@ function EditorContent() {
                 <p className="modal-description">
                   {isExporting 
                     ? `Exporting chapters... ${exportProgress}%` 
-                    : `This will export all ${notes.length} chapters as text files to a folder on your computer.`}
+                    : `Export ${notes.length} chapter${notes.length === 1 ? '' : 's'} in the format you need.`}
                 </p>
               </div>
+              {!isExporting && (
+                <div className="export-format-grid">
+                  {[
+                    { value: 'folder', label: 'Folder', hint: 'Separate .txt files' },
+                    { value: 'txt', label: 'TXT', hint: 'Plain manuscript' },
+                    { value: 'md', label: 'Markdown', hint: 'Headings preserved' },
+                    { value: 'html', label: 'HTML', hint: 'Styled web file' },
+                    { value: 'doc', label: 'Word', hint: 'Opens in Word' },
+                    { value: 'pdf', label: 'PDF', hint: 'Print/save dialog' }
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      className={`export-format ${exportFormat === option.value ? 'active' : ''}`}
+                      onClick={() => setExportFormat(option.value as ExportFormat)}
+                    >
+                      <FileDown size={15} />
+                      <strong>{option.label}</strong>
+                      <span>{option.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {isExporting && (
                 <div className="export-progress">
                   <div className="progress-bar">
@@ -3626,9 +4099,9 @@ function EditorContent() {
               )}
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setExportModal(false)} disabled={isExporting}>Cancel</button>
-                <button className="btn btn-primary" onClick={exportManuscriptToFolder} disabled={isExporting}>
+                <button className="btn btn-primary" onClick={exportManuscript} disabled={isExporting}>
                   {isExporting ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-                  {isExporting ? 'Exporting...' : 'Export'}
+                  {isExporting ? 'Exporting...' : 'Export Manuscript'}
                 </button>
               </div>
             </div>
@@ -4224,6 +4697,13 @@ function EditorContent() {
           color: var(--error);
         }
 
+        .last-saved-label {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
         .editor-body {
           flex: 1;
           display: flex;
@@ -4303,6 +4783,132 @@ function EditorContent() {
 
         .sidebar-section {
           margin-bottom: 0.75rem;
+        }
+
+        .manuscript-insights {
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          margin-bottom: 0.75rem;
+        }
+
+        .insights-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.55rem;
+          margin-bottom: 0.65rem;
+        }
+
+        .insights-grid div {
+          padding: 0.55rem;
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .insights-grid strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 0.94rem;
+          line-height: 1.1;
+        }
+
+        .insights-grid span {
+          display: block;
+          color: var(--text-dim);
+          font-size: 0.65rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          margin-top: 0.2rem;
+        }
+
+        .btn-timeline-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+          width: 100%;
+          height: 30px;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-timeline-toggle:hover {
+          color: var(--primary);
+          border-color: var(--primary);
+        }
+
+        .chapter-timeline {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+          max-height: 260px;
+          overflow-y: auto;
+          padding-right: 0.2rem;
+          margin-bottom: 0.75rem;
+        }
+
+        .timeline-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.55rem;
+          width: 100%;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-secondary);
+          padding: 0.62rem;
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .timeline-item:hover,
+        .timeline-item.active {
+          border-color: rgba(99, 102, 241, 0.35);
+          background: var(--primary-light);
+        }
+
+        .timeline-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: var(--primary);
+          margin-top: 0.28rem;
+          flex-shrink: 0;
+        }
+
+        .timeline-content {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.18rem;
+        }
+
+        .timeline-content strong,
+        .timeline-content small,
+        .timeline-content em {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .timeline-content strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+        }
+
+        .timeline-content small,
+        .timeline-content em {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-style: normal;
         }
 
         .btn-new {
@@ -5592,6 +6198,91 @@ function EditorContent() {
           padding: 0.5rem;
         }
 
+        .global-search-modal {
+          width: min(680px, 92vw);
+          max-height: 78vh;
+          border-radius: var(--radius-xl);
+          border: 1px solid var(--surface-border);
+          background: var(--surface-raised);
+          box-shadow: var(--shadow-xl);
+          overflow: hidden;
+        }
+
+        .global-search-results {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          max-height: 58vh;
+          overflow-y: auto;
+          padding: 0.75rem;
+        }
+
+        .global-search-empty {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 1rem;
+          color: var(--text-dim);
+          font-size: 0.85rem;
+        }
+
+        .global-search-result {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 0.2rem 0.75rem;
+          width: 100%;
+          padding: 0.85rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-secondary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .global-search-result:hover {
+          border-color: rgba(99, 102, 241, 0.35);
+          background: var(--primary-light);
+        }
+
+        .global-result-source {
+          grid-row: span 3;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          height: fit-content;
+          padding: 0.24rem 0.42rem;
+          border-radius: var(--radius-full);
+          background: rgba(255, 255, 255, 0.06);
+          color: var(--primary);
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .global-search-result strong {
+          color: var(--text-primary);
+          font-size: 0.9rem;
+        }
+
+        .global-search-result small {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          text-transform: capitalize;
+        }
+
+        .global-search-result p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          line-height: 1.45;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
         .palette-item {
           display: flex;
           align-items: center;
@@ -6003,6 +6694,99 @@ function EditorContent() {
           margin: 1.5rem 0;
         }
 
+        .export-format-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.65rem;
+          margin: 1rem 0;
+        }
+
+        .export-format {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 0.2rem 0.5rem;
+          align-items: center;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-secondary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .export-format:hover,
+        .export-format.active {
+          border-color: var(--primary);
+          background: var(--primary-light);
+        }
+
+        .export-format strong {
+          color: var(--text-primary);
+          font-size: 0.84rem;
+        }
+
+        .export-format span {
+          grid-column: 2;
+          color: var(--text-dim);
+          font-size: 0.7rem;
+        }
+
+        .versions-modal {
+          max-width: 640px;
+        }
+
+        .version-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          max-height: 48vh;
+          overflow-y: auto;
+        }
+
+        .version-item {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 1rem;
+          padding: 0.85rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .version-item div {
+          min-width: 0;
+        }
+
+        .version-item strong,
+        .version-item span {
+          display: block;
+        }
+
+        .version-item strong {
+          color: var(--text-primary);
+          font-size: 0.86rem;
+        }
+
+        .version-item span {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          margin-top: 0.2rem;
+        }
+
+        .version-item p {
+          margin: 0.5rem 0 0;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          line-height: 1.45;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
         .progress-bar {
           height: 8px;
           background: var(--surface);
@@ -6380,6 +7164,26 @@ function EditorContent() {
           }
           .editor-textarea {
             min-height: calc(100dvh - 200px);
+          }
+          .header-right {
+            gap: 0.35rem;
+          }
+          .last-saved-label {
+            display: none;
+          }
+          .global-search-result {
+            grid-template-columns: 1fr;
+          }
+          .global-result-source {
+            grid-row: auto;
+            width: fit-content;
+          }
+          .export-format-grid,
+          .brain-detail-controls {
+            grid-template-columns: 1fr;
+          }
+          .version-item {
+            flex-direction: column;
           }
           .mobile-fab {
             display: flex;

@@ -3,14 +3,24 @@
 import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
-import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen } from "lucide-react"
+import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen, BrainCircuit, Library, BarChart3, ArrowRight } from "lucide-react"
 import { saveDirectoryHandleForProject } from '@/lib/db'
-import { syncProjectsWithCloud, saveProjectToCloud, deleteProjectFromCloud } from '@/lib/sync'
+import { syncProjectsWithCloud, saveProjectToCloud, deleteProjectFromCloud, Note, BrainEntry, BibleEntry } from '@/lib/sync'
 
 interface Project {
   id: string
   name: string
   lastUpdated?: number
+}
+
+interface ProjectStats {
+  chapters: number
+  words: number
+  brainEntries: number
+  loreEntries: number
+  lastChapterTitle: string
+  lastEditedAt: number
+  matches: string[]
 }
 
 export default function Dashboard() {
@@ -24,7 +34,57 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string; projectName: string }>({ show: false, projectId: '', projectName: '' })
   const [editModal, setEditModal] = useState<{ show: boolean; projectId: string; name: string; folderHandle: FileSystemDirectoryHandle | null }>({ show: false, projectId: '', name: '', folderHandle: null })
-  const [chapterCounts, setChapterCounts] = useState<Record<string, number>>({})
+  const [projectStats, setProjectStats] = useState<Record<string, ProjectStats>>({})
+
+  const safeParse = <T,>(value: string | null, fallback: T): T => {
+    if (!value) return fallback
+    try {
+      return JSON.parse(value) as T
+    } catch {
+      return fallback
+    }
+  }
+
+  const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+
+  const getProjectStats = (project: Project): ProjectStats => {
+    const notes = safeParse<Note[]>(localStorage.getItem(`penpad_notes_${project.id}`), [])
+    const brain = safeParse<BrainEntry[]>(localStorage.getItem(`penpad_brain_${project.id}`), [])
+    const lore = safeParse<BibleEntry[]>(localStorage.getItem(`penpad_bible_${project.id}`), [])
+    const sortedNotes = [...notes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    const lastEditedAt = Math.max(project.lastUpdated || 0, sortedNotes[0]?.updatedAt || 0)
+
+    return {
+      chapters: notes.length,
+      words: notes.reduce((total, note) => total + countWords(note.content || ""), 0),
+      brainEntries: brain.length,
+      loreEntries: lore.length,
+      lastChapterTitle: sortedNotes[0]?.title || "No chapters yet",
+      lastEditedAt,
+      matches: [
+        ...notes.slice(0, 6).map(note => note.title),
+        ...brain.slice(0, 6).map(entry => entry.entityName || entry.highlightedText),
+        ...lore.slice(0, 6).map(entry => entry.name)
+      ].filter(Boolean)
+    }
+  }
+
+  const getStats = (list: Project[]) => {
+    const stats: Record<string, ProjectStats> = {}
+    for (const project of list) {
+      stats[project.id] = getProjectStats(project)
+    }
+    return stats
+  }
+
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return "Not edited yet"
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    })
+  }
 
   const fetchProjects = useCallback(async () => {
     if (!user) {
@@ -41,27 +101,19 @@ export default function Dashboard() {
         return timeB - timeA
       })
       
-      const getCounts = (list: Project[]) => {
-        const counts: Record<string, number> = {}
-        for (const project of list) {
-          const notesStored = localStorage.getItem(`penpad_notes_${project.id}`)
-          counts[project.id] = notesStored ? JSON.parse(notesStored).length : 0
-        }
-        return counts
-      }
-
-      setChapterCounts(getCounts(projectList))
+      setProjectStats(getStats(projectList))
       setProjects(projectList)
       setFetchDone(true)
 
       // 2. Perform background two-way sync with Firestore
       const syncedProjects = await syncProjectsWithCloud(user.uid, projectList)
-      setChapterCounts(getCounts(syncedProjects))
+      setProjectStats(getStats(syncedProjects))
       setProjects(syncedProjects)
     } catch (e) {
       console.error("Failed to fetch/sync projects:", e)
       setFetchDone(true)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   useEffect(() => {
@@ -111,7 +163,10 @@ export default function Dashboard() {
       const filtered = projectList.filter(p => p.id !== deleteModal.projectId)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(filtered))
       localStorage.removeItem(`penpad_notes_${deleteModal.projectId}`)
+      localStorage.removeItem(`penpad_brain_${deleteModal.projectId}`)
+      localStorage.removeItem(`penpad_bible_${deleteModal.projectId}`)
       setProjects(filtered)
+      setProjectStats(getStats(filtered))
       
       // Delete project from cloud in background
       deleteProjectFromCloud(user.uid, deleteModal.projectId)
@@ -133,6 +188,7 @@ export default function Dashboard() {
         projectList[idx].lastUpdated = Date.now()
         localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projectList))
         setProjects([...projectList])
+        setProjectStats(getStats(projectList))
         
         // Save updated project to cloud in background
         saveProjectToCloud(user.uid, projectList[idx])
@@ -148,9 +204,25 @@ export default function Dashboard() {
     }
   }
 
-  const filteredProjects = projects.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredProjects = projects.filter(p => {
+    const query = searchQuery.toLowerCase()
+    if (!query) return true
+    const stats = projectStats[p.id]
+    return p.name.toLowerCase().includes(query) ||
+      stats?.lastChapterTitle.toLowerCase().includes(query) ||
+      stats?.matches.some(match => match.toLowerCase().includes(query))
+  })
+
+  const totalStats = projects.reduce((totals, project) => {
+    const stats = projectStats[project.id]
+    if (!stats) return totals
+    return {
+      chapters: totals.chapters + stats.chapters,
+      words: totals.words + stats.words,
+      brainEntries: totals.brainEntries + stats.brainEntries,
+      loreEntries: totals.loreEntries + stats.loreEntries
+    }
+  }, { chapters: 0, words: 0, brainEntries: 0, loreEntries: 0 })
 
   if (loading || !fetchDone) {
     return (
@@ -244,7 +316,7 @@ export default function Dashboard() {
         <header className="content-header">
           <div className="header-left">
             <h1>Archive</h1>
-            <p>Your creative workspace</p>
+            <p>{projects.length} manuscript{projects.length === 1 ? '' : 's'} in your creative workspace</p>
           </div>
           <div className="search-wrapper">
             <Search size={18} className="search-icon" />
@@ -259,6 +331,37 @@ export default function Dashboard() {
         </header>
 
         <div className="content-body">
+          <section className="workspace-stats">
+            <div className="stat-tile">
+              <Book size={18} />
+              <div>
+                <strong>{totalStats.chapters}</strong>
+                <span>Chapters</span>
+              </div>
+            </div>
+            <div className="stat-tile">
+              <BarChart3 size={18} />
+              <div>
+                <strong>{totalStats.words.toLocaleString()}</strong>
+                <span>Words</span>
+              </div>
+            </div>
+            <div className="stat-tile">
+              <BrainCircuit size={18} />
+              <div>
+                <strong>{totalStats.brainEntries}</strong>
+                <span>Brain Map</span>
+              </div>
+            </div>
+            <div className="stat-tile">
+              <Library size={18} />
+              <div>
+                <strong>{totalStats.loreEntries}</strong>
+                <span>Lore</span>
+              </div>
+            </div>
+          </section>
+
           {filteredProjects.length === 0 ? (
             <div className="empty-state fade-in">
               <div className="empty-state-icon">
@@ -288,6 +391,10 @@ export default function Dashboard() {
                   className="project-card card card-interactive fade-in"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
+                  {(() => {
+                    const stats = projectStats[project.id] || getProjectStats(project)
+                    return (
+                      <>
                   <div className="project-menu">
                     <button 
                       className="btn-menu"
@@ -311,15 +418,36 @@ export default function Dashboard() {
                     <div className="project-status">
                       <span className="status status-success">
                         <span className="status-dot"></span>
-                        {chapterCounts[project.id] || 0} chapter{(chapterCounts[project.id] || 0) !== 1 ? 's' : ''}
+                        {stats.chapters} chapter{stats.chapters !== 1 ? 's' : ''}
                       </span>
                     </div>
                     <h3 className="project-title">{project.name}</h3>
+                    <p className="project-last-chapter">{stats.lastChapterTitle}</p>
+                    <div className="project-metrics">
+                      <span><BarChart3 size={13} />{stats.words.toLocaleString()} words</span>
+                      <span><BrainCircuit size={13} />{stats.brainEntries}</span>
+                      <span><Library size={13} />{stats.loreEntries}</span>
+                    </div>
                     <div className="project-meta">
                       <Clock size={14} />
-                      <span>Recently edited</span>
+                      <span>{formatDate(stats.lastEditedAt)}</span>
+                    </div>
+                    <div className="project-actions">
+                      <button
+                        className="btn-open-project"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/editor?id=${project.id}`)
+                        }}
+                      >
+                        Continue
+                        <ArrowRight size={14} />
+                      </button>
                     </div>
                   </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
@@ -655,6 +783,47 @@ export default function Dashboard() {
           padding: 3rem;
         }
 
+        .workspace-stats {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .stat-tile {
+          display: flex;
+          align-items: center;
+          gap: 0.85rem;
+          padding: 1rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-lg);
+          background: var(--surface);
+          color: var(--text-secondary);
+        }
+
+        .stat-tile svg {
+          color: var(--primary);
+          flex-shrink: 0;
+        }
+
+        .stat-tile strong {
+          display: block;
+          color: var(--text-primary);
+          font-family: var(--font-outfit);
+          font-size: 1.2rem;
+          line-height: 1.1;
+        }
+
+        .stat-tile span {
+          display: block;
+          color: var(--text-dim);
+          font-size: 0.75rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          margin-top: 0.2rem;
+        }
+
         .projects-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -696,7 +865,41 @@ export default function Dashboard() {
           font-size: 1.2rem;
           font-weight: 700;
           color: var(--text-primary);
-          margin-bottom: 0.75rem;
+          margin-bottom: 0.35rem;
+          padding-right: 3.5rem;
+          overflow-wrap: anywhere;
+        }
+
+        .project-last-chapter {
+          min-height: 1.2rem;
+          margin-bottom: 0.9rem;
+          color: var(--text-dim);
+          font-size: 0.82rem;
+          line-height: 1.45;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .project-metrics {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+          margin-bottom: 0.9rem;
+        }
+
+        .project-metrics span {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          padding: 0.3rem 0.45rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-full);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          font-weight: 700;
         }
 
         .project-meta {
@@ -705,6 +908,32 @@ export default function Dashboard() {
           gap: 0.5rem;
           color: var(--text-dim);
           font-size: 0.8rem;
+        }
+
+        .project-actions {
+          margin-top: 1rem;
+        }
+
+        .btn-open-project {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4rem;
+          width: 100%;
+          height: 36px;
+          border: 0;
+          border-radius: var(--radius-md);
+          background: var(--primary-light);
+          color: var(--primary-hover);
+          font-size: 0.82rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-open-project:hover {
+          background: var(--primary);
+          color: white;
         }
 
         .project-menu {
@@ -769,6 +998,27 @@ export default function Dashboard() {
           }
           .content-body {
             padding: 1.5rem;
+          }
+          .workspace-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .project-title {
+            padding-right: 0;
+          }
+          .project-menu {
+            opacity: 1;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .workspace-stats {
+            grid-template-columns: 1fr;
+          }
+          .projects-grid {
+            grid-template-columns: 1fr;
+          }
+          .project-metrics {
+            align-items: stretch;
           }
         }
       `}</style>

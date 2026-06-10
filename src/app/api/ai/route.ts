@@ -23,6 +23,45 @@ function parseJsonObject<T>(text: string): T | null {
   }
 }
 
+function formatMemoryContext(memory: unknown) {
+  if (!memory || typeof memory !== "object") return ""
+
+  const safeMemory = memory as {
+    projectName?: string
+    activeChapter?: { title?: string; chapterNumber?: number } | null
+    nearbyChapters?: string[]
+    brainEntries?: Array<{
+      entityName?: string
+      entityType?: string
+      importance?: string
+      chapterNumber?: number
+      summary?: string
+      connections?: string[]
+    }>
+    loreEntries?: Array<{ name?: string; category?: string; content?: string }>
+  }
+
+  const lines = [
+    safeMemory.projectName ? `Project: ${safeMemory.projectName}` : "",
+    safeMemory.activeChapter ? `Active chapter: ${safeMemory.activeChapter.chapterNumber ? `Chapter ${safeMemory.activeChapter.chapterNumber} - ` : ""}${safeMemory.activeChapter.title || "Untitled"}` : "",
+    Array.isArray(safeMemory.nearbyChapters) && safeMemory.nearbyChapters.length > 0
+      ? `Nearby chapters:\n${safeMemory.nearbyChapters.slice(0, 3).map(item => `- ${item}`).join("\n")}`
+      : "",
+    Array.isArray(safeMemory.brainEntries) && safeMemory.brainEntries.length > 0
+      ? `Brain Map memory:\n${safeMemory.brainEntries.slice(0, 20).map(entry => {
+        const chapter = entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : "Unknown chapter"
+        const links = Array.isArray(entry.connections) && entry.connections.length > 0 ? ` Links: ${entry.connections.join("; ")}` : ""
+        return `- ${chapter}: ${entry.entityName || "Unknown"} (${entry.entityType || "unknown"}, ${entry.importance || "minor"}) - ${entry.summary || ""}${links}`
+      }).join("\n")}`
+      : "",
+    Array.isArray(safeMemory.loreEntries) && safeMemory.loreEntries.length > 0
+      ? `World Bible:\n${safeMemory.loreEntries.slice(0, 16).map(entry => `- ${entry.name || "Unknown"} (${entry.category || "lore"}): ${entry.content || ""}`).join("\n")}`
+      : ""
+  ].filter(Boolean)
+
+  return lines.length > 0 ? `\n\nManuscript memory context:\n${lines.join("\n\n")}` : ""
+}
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -34,7 +73,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { action, content, style, prompt } = body
+    const { action, content, style, prompt, memory } = body
+    const memoryContext = formatMemoryContext(memory)
 
     if (!action) {
       return NextResponse.json({ error: "Missing action parameter" }, { status: 400 })
@@ -57,7 +97,7 @@ export async function POST(req: NextRequest) {
         "3. Generate a natural, seamless continuation of about 2 to 4 sentences (approximately 50-80 words).\n" +
         "4. Output ONLY the continuation text. Do not include quotes around it, meta-commentary, intros (like 'Sure, here is more:'), or outros."
       
-      userPrompt = `Please continue writing from where this text ends:\n\n${content}`
+      userPrompt = `Please continue writing from where this text ends:${memoryContext}\n\nCurrent text:\n${content}`
     } else if (action === "rewrite") {
       if (!content) {
         return NextResponse.json({ error: "Content is required for rewrite action" }, { status: 400 })
@@ -79,7 +119,7 @@ export async function POST(req: NextRequest) {
         "7. If style is 'shorten': Condense the passage to its absolute, punchiest essence without losing context.\n" +
         "8. If style is 'expand': Add depth to character thoughts, immediate surroundings, and sensory context."
 
-      userPrompt = `Rewrite the following passage to make it more ${style.toUpperCase()}:\n\n${content}`
+      userPrompt = `Rewrite the following passage to make it more ${style.toUpperCase()}.${memoryContext}\n\nPassage:\n${content}`
     } else if (action === "outline") {
       if (!prompt) {
         return NextResponse.json({ error: "Prompt is required for outline action" }, { status: 400 })
@@ -94,7 +134,7 @@ export async function POST(req: NextRequest) {
         "4. Keep it highly creative, inspiring, and ready for a writer to expand.\n" +
         "5. Output ONLY the raw markdown. No intro or outro chat."
 
-      userPrompt = `Generate a chapter outline based on this concept: ${prompt}`
+      userPrompt = `Generate a chapter outline based on this concept: ${prompt}${memoryContext}`
     } else if (action === "generate_lore") {
       const { name, category, context } = body
       if (!name) {
