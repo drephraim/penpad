@@ -272,14 +272,14 @@ export async function POST(req: NextRequest) {
         "Guidelines:\n" +
         "1. Use the Story Bible entry, current chapter, existing profile, and project progression system to create or update a profile.\n" +
         "2. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter. Return targetLoreEntryId and targetProfileId when known.\n" +
-        "3. Track level, EXP, nextLevelExp, rank, realm, stage, cultivationPath, className, title, stats, abilities, traits, customFields, and notes, but adapt to the project's configured system.\n" +
+        "3. Track level, EXP, nextLevelExp, rank, realm, stage, cultivationPath, className, title, nicknames, stats, abilities, traits, customFields, and notes, but adapt to the project's configured system.\n" +
         "4. If the project progression system contains an enabled profileTemplate, use it as the baseline shape for new profiles and preserve it unless chapter evidence contradicts a default.\n" +
         "5. Use configured realms and stage labels exactly when the novel uses cultivation. Examples of stage labels include Low, Middle, High, Peak.\n" +
         "6. Stats must use keys from the configured visible stats when possible; fallback keys are strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
         "7. Only increase levels, realms, stages, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades.\n" +
         "8. If the chapter has no meaningful progression, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
         "9. Never double-count previous profile history. Use the existing profile and processed chapter history as current truth.\n" +
-        "10. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, cultivationPath, level, exp, nextLevelExp, stats, abilities, traits, customFields, notes. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, evidence."
+        "10. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, nicknames, realm, stage, cultivationPath, level, exp, nextLevelExp, stats, abilities, traits, customFields, notes. Each ability must include name, level, and a short description of the skill or technique. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, evidence."
 
       const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
       const groups = Array.isArray(safeLoreEntry?.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
