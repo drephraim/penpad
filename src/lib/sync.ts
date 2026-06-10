@@ -21,6 +21,7 @@ export interface BibleEntry {
   name: string
   category: "character" | "world" | "beast" | "place" | "item"
   content: string
+  groupIds?: string[]
   createdAt: number
   updatedAt: number
 }

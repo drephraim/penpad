@@ -76,6 +76,15 @@ interface ManuscriptVolume {
   createdAt: number
   updatedAt: number
   sortOrder: number
+  isOpen?: boolean
+}
+
+interface StoryBibleGroup {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  sortOrder: number
 }
 
 interface ExportHistoryRecord {
@@ -251,6 +260,9 @@ function EditorContent() {
   const [collapsedVolumeIds, setCollapsedVolumeIds] = useState<Set<string>>(new Set())
   const [draggedChapterId, setDraggedChapterId] = useState<string | null>(null)
   const [chapterMoveMenu, setChapterMoveMenu] = useState<{ noteId: string; x: number; y: number } | null>(null)
+  const [showVolumeCreateModal, setShowVolumeCreateModal] = useState(false)
+  const [newVolumeName, setNewVolumeName] = useState("")
+  const [newVolumeIsOpen, setNewVolumeIsOpen] = useState(true)
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [sessionTime, setSessionTime] = useState(0)
@@ -300,6 +312,9 @@ function EditorContent() {
 
   // World Bible States
   const [bibleEntries, setBibleEntries] = useState<BibleEntry[]>([])
+  const [bibleGroups, setBibleGroups] = useState<StoryBibleGroup[]>([])
+  const [activeBibleGroupId, setActiveBibleGroupId] = useState<string>('all')
+  const [draggedBibleEntryId, setDraggedBibleEntryId] = useState<string | null>(null)
   const [activeBibleEntryId, setActiveBibleEntryId] = useState<string | null>(null)
   const [isBibleDrawerOpen, setIsBibleDrawerOpen] = useState(false)
   const [bibleSearchQuery, setBibleSearchQuery] = useState('')
@@ -340,11 +355,8 @@ function EditorContent() {
   const [aiLoreError, setAiLoreError] = useState("")
 
   // Appearance Prompt Lab States
-  const [appearanceName, setAppearanceName] = useState("")
   const [appearanceStyle, setAppearanceStyle] = useState("cinematic fantasy character concept art")
-  const [appearanceBeastForm, setAppearanceBeastForm] = useState("")
-  const [appearanceDemiForm, setAppearanceDemiForm] = useState("")
-  const [appearanceHumanForm, setAppearanceHumanForm] = useState("")
+  const [appearanceSelectedEntryId, setAppearanceSelectedEntryId] = useState<string | null>(null)
   const [appearanceResult, setAppearanceResult] = useState<AppearancePromptResult | null>(null)
   const [appearanceLoading, setAppearanceLoading] = useState(false)
   const [appearanceError, setAppearanceError] = useState("")
@@ -471,18 +483,7 @@ function EditorContent() {
     }
   }
 
-  const appearanceFormLabels: Record<AppearanceFormKey, string> = {
-    beastForm: "Beast Form",
-    demiHumanForm: "Demi-human Form",
-    humanForm: "Human Form"
-  }
-
-  const hasAppearanceDescription = Boolean(
-    appearanceBeastForm.trim() ||
-    appearanceDemiForm.trim() ||
-    appearanceHumanForm.trim() ||
-    aiSelectionText.trim()
-  )
+  const selectedAppearanceEntry = bibleEntries.find(entry => entry.id === appearanceSelectedEntryId)
 
   const buildAppearanceLoreContent = (result: AppearancePromptResult) => {
     const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
@@ -516,12 +517,27 @@ function EditorContent() {
     ].filter(Boolean).join("\n")
   }
 
-  const handleGenerateAppearancePrompts = async () => {
-    if (!hasAppearanceDescription) {
-      setAppearanceError("Describe at least one form or highlight a description in the chapter first.")
+  const findLoreEntryFromSelection = (selectedText: string) => {
+    const cleanSelection = selectedText.trim().toLowerCase()
+    if (!cleanSelection) return null
+    return bibleEntries.find(entry => {
+      const aliases = getLoreAliases(entry).map(alias => alias.toLowerCase())
+      return aliases.some(alias => alias === cleanSelection || cleanSelection.includes(alias))
+    }) || null
+  }
+
+  const handleGenerateAppearancePrompts = async (entryId?: string | null, selectedTextOverride?: string) => {
+    const selectedText = selectedTextOverride ?? aiSelectionText
+    const sourceEntry = entryId
+      ? bibleEntries.find(entry => entry.id === entryId)
+      : selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
+
+    if (!sourceEntry) {
+      setAppearanceError("Highlight a Story Bible name in the chapter or choose a lore entry first.")
       return
     }
 
+    setAppearanceSelectedEntryId(sourceEntry.id)
     setAppearanceLoading(true)
     setAppearanceError("")
     setAppearanceResult(null)
@@ -536,13 +552,16 @@ function EditorContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "appearance_prompts",
-          name: appearanceName,
+          name: sourceEntry.name,
           style: appearanceStyle,
-          selectedText: aiSelectionText,
-          forms: {
-            beastForm: appearanceBeastForm,
-            demiHumanForm: appearanceDemiForm,
-            humanForm: appearanceHumanForm
+          selectedText,
+          loreEntry: {
+            name: sourceEntry.name,
+            category: sourceEntry.category,
+            content: sourceEntry.content,
+            groups: (sourceEntry.groupIds || [])
+              .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
+              .filter(Boolean)
           },
           chapter: activeNote ? {
             title: activeNote.title,
@@ -556,10 +575,7 @@ function EditorContent() {
       if (data.error) {
         setAppearanceError(data.error)
       } else {
-        setAppearanceResult(data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], characterName: appearanceName })
-        if (!appearanceName.trim() && data.appearancePrompts?.characterName) {
-          setAppearanceName(data.appearancePrompts.characterName)
-        }
+        setAppearanceResult(data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], characterName: sourceEntry.name })
       }
     } catch (err) {
       setAppearanceError(err instanceof Error ? err.message : "Failed to generate appearance prompts")
@@ -578,24 +594,24 @@ function EditorContent() {
     if (!appearanceResult || !user || !projectId) return
 
     const now = Date.now()
-    const entryName = appearanceResult.characterName || appearanceName || "Appearance Prompt Sheet"
-    const newEntry: BibleEntry = {
-      id: crypto.randomUUID(),
-      name: entryName,
-      category: appearanceBeastForm.trim() || appearanceDemiForm.trim() ? "beast" : "character",
-      content: buildAppearanceLoreContent(appearanceResult),
-      createdAt: now,
+    const targetEntry = selectedAppearanceEntry
+    if (!targetEntry) return
+
+    const promptSheet = buildAppearanceLoreContent(appearanceResult)
+    const updatedEntry: BibleEntry = {
+      ...targetEntry,
+      content: `${targetEntry.content || ""}\n\n${promptSheet}`.trim(),
       updatedAt: now
     }
 
-    const updated = [newEntry, ...bibleEntries]
+    const updated = bibleEntries.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry)
     setBibleEntries(updated)
     localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
-    await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+    await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
 
     setActiveSidebarTab("bible")
     setIsLeftSidebarOpen(true)
-    setActiveBibleEntryId(newEntry.id)
+    setActiveBibleEntryId(updatedEntry.id)
     setIsBibleDrawerOpen(true)
   }
 
@@ -872,6 +888,10 @@ function EditorContent() {
     return projectId ? `penpad_collapsed_volumes_${projectId}` : ""
   }, [projectId])
 
+  const getBibleGroupsStorageKey = useCallback(() => {
+    return projectId ? `penpad_bible_groups_${projectId}` : ""
+  }, [projectId])
+
   const getExportHistoryStorageKey = useCallback(() => {
     return projectId ? `penpad_export_history_${projectId}` : ""
   }, [projectId])
@@ -887,7 +907,9 @@ function EditorContent() {
     if (!projectId) return
     try {
       const storedVolumes = localStorage.getItem(getVolumesStorageKey())
-      const volumeList: ManuscriptVolume[] = storedVolumes ? JSON.parse(storedVolumes) : []
+      const volumeList: ManuscriptVolume[] = storedVolumes
+        ? JSON.parse(storedVolumes).map((volume: ManuscriptVolume) => ({ ...volume, isOpen: volume.isOpen !== false }))
+        : []
       setVolumes(volumeList.sort((a, b) => a.sortOrder - b.sortOrder))
 
       const storedCollapsed = localStorage.getItem(getCollapsedVolumesStorageKey())
@@ -913,14 +935,14 @@ function EditorContent() {
     try {
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
-      noteList.sort((a: Note, b: Note) => (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt))
+      noteList.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(noteList)
       if (noteList.length > 0 && !activeNoteId) {
         setActiveNoteId(noteList[0].id)
       }
       
       const syncedNotes = await syncChaptersWithCloud(user.uid, projectId, noteList)
-      const orderedSyncedNotes = syncedNotes.sort((a: Note, b: Note) => (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt))
+      const orderedSyncedNotes = syncedNotes.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(orderedSyncedNotes)
       if (syncedNotes.length > 0 && !activeNoteId) {
         setActiveNoteId(orderedSyncedNotes[0].id)
@@ -934,19 +956,45 @@ function EditorContent() {
   }, [user, projectId, activeNoteId])
 
   // World Bible Logic
+  const persistBibleGroups = useCallback((nextGroups: StoryBibleGroup[]) => {
+    const key = getBibleGroupsStorageKey()
+    if (!key) return
+    const sorted = nextGroups.sort((a, b) => a.sortOrder - b.sortOrder)
+    localStorage.setItem(key, JSON.stringify(sorted))
+    setBibleGroups(sorted)
+  }, [getBibleGroupsStorageKey])
+
   const fetchBible = useCallback(async () => {
     if (!user || !projectId) return
     try {
+      const storedGroups = localStorage.getItem(getBibleGroupsStorageKey())
+      const groupList: StoryBibleGroup[] = storedGroups ? JSON.parse(storedGroups) : []
+      setBibleGroups(groupList.sort((a, b) => a.sortOrder - b.sortOrder))
+
       const stored = localStorage.getItem(`penpad_bible_${projectId}`)
       const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
       setBibleEntries(entryList)
 
       const synced = await syncBibleWithCloud(user.uid, projectId, entryList)
       setBibleEntries(synced)
+      const knownGroupIds = new Set(groupList.map(group => group.id))
+      const missingGroupIds = Array.from(new Set(synced.flatMap(entry => entry.groupIds || [])))
+        .filter(groupId => !knownGroupIds.has(groupId))
+      if (missingGroupIds.length > 0) {
+        const now = Date.now()
+        const recoveredGroups = missingGroupIds.map((groupId, index) => ({
+          id: groupId,
+          name: `Recovered Group ${index + 1}`,
+          createdAt: now,
+          updatedAt: now,
+          sortOrder: groupList.length + index + 1
+        }))
+        persistBibleGroups([...groupList, ...recoveredGroups])
+      }
     } catch {
       console.error("Fetch/Sync bible entries failed")
     }
-  }, [user, projectId])
+  }, [user, projectId, getBibleGroupsStorageKey, persistBibleGroups])
 
   const saveBibleEntry = useCallback(async (entry: BibleEntry) => {
     if (!user || !projectId) return
@@ -1022,6 +1070,69 @@ function EditorContent() {
     setBibleEntries(updated)
   }
 
+  const createBibleGroup = () => {
+    const defaultName = "New Group"
+    const name = prompt("Name this Story Bible group:", defaultName)
+    if (name === null) return null
+    const trimmed = name.trim() || defaultName
+    const existing = bibleGroups.find(group => group.name.toLowerCase() === trimmed.toLowerCase())
+    if (existing) return existing.id
+    const now = Date.now()
+    const newGroup: StoryBibleGroup = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      createdAt: now,
+      updatedAt: now,
+      sortOrder: bibleGroups.length > 0 ? Math.max(...bibleGroups.map(group => group.sortOrder)) + 1 : 1
+    }
+    persistBibleGroups([...bibleGroups, newGroup])
+    return newGroup.id
+  }
+
+  const renameBibleGroup = (groupId: string) => {
+    const group = bibleGroups.find(item => item.id === groupId)
+    if (!group) return
+    const name = prompt("Rename Story Bible group:", group.name)
+    if (name === null) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    persistBibleGroups(bibleGroups.map(item =>
+      item.id === groupId ? { ...item, name: trimmed, updatedAt: Date.now() } : item
+    ))
+  }
+
+  const saveBibleEntriesList = async (nextEntries: BibleEntry[]) => {
+    if (!projectId) return
+    setBibleEntries(nextEntries)
+    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(nextEntries))
+  }
+
+  const addBibleEntriesToGroup = async (entryIds: string[], groupId: string) => {
+    if (!projectId || entryIds.length === 0) return
+    const now = Date.now()
+    const nextEntries = bibleEntries.map(entry => {
+      if (!entryIds.includes(entry.id)) return entry
+      const groupIds = Array.from(new Set([...(entry.groupIds || []), groupId]))
+      return { ...entry, groupIds, updatedAt: now }
+    })
+    await saveBibleEntriesList(nextEntries)
+    if (user) {
+      await Promise.all(nextEntries
+        .filter(entry => entryIds.includes(entry.id))
+        .map(entry => saveBibleEntryToCloud(user.uid, projectId, entry)))
+    }
+    setDraggedBibleEntryId(null)
+  }
+
+  const addSelectedBibleEntriesToGroup = async () => {
+    if (selectedBibleIds.size === 0) return
+    const groupId = createBibleGroup()
+    if (!groupId) return
+    await addBibleEntriesToGroup(Array.from(selectedBibleIds), groupId)
+    setSelectedBibleIds(new Set())
+    setIsBibleSelectionMode(false)
+  }
+
   // Brain Map Logic
   const fetchBrain = useCallback(async () => {
     if (!user || !projectId) return
@@ -1051,6 +1162,15 @@ function EditorContent() {
     return [...noteList].sort((a, b) => {
       const aSort = getNoteSortValue(a)
       const bSort = getNoteSortValue(b)
+      if (aSort !== bSort) return bSort - aSort
+      return a.title.localeCompare(b.title, undefined, { numeric: true })
+    })
+  }
+
+  const getManuscriptNotesList = (noteList: Note[]) => {
+    return [...noteList].sort((a, b) => {
+      const aSort = getNoteSortValue(a)
+      const bSort = getNoteSortValue(b)
       if (aSort !== bSort) return aSort - bSort
       return a.title.localeCompare(b.title, undefined, { numeric: true })
     })
@@ -1060,7 +1180,7 @@ function EditorContent() {
     const titleNumber = getChapterNumberFromTitle(note.title)
     if (titleNumber) return titleNumber
 
-    const chapterIndex = getOrderedNotesList(notes).findIndex(n => n.id === note.id)
+    const chapterIndex = getManuscriptNotesList(notes).findIndex(n => n.id === note.id)
     return chapterIndex >= 0 ? chapterIndex + 1 : null
   }
 
@@ -1329,7 +1449,7 @@ function EditorContent() {
       return () => clearTimeout(autoSaveBibleTimerRef.current!)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category])
+  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds])
 
   const sanitizeFilename = (name: string): string => {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
@@ -1495,7 +1615,7 @@ function EditorContent() {
       setIsExporting(true)
       setExportProgress(0)
       
-      const sortedNotes = getOrderedNotesList(notes)
+      const sortedNotes = getManuscriptNotesList(notes)
       const chaptersToExport = sortedNotes.filter(note => {
         const record = exportHistory[note.id]
         return !record || record.fingerprint !== getChapterExportFingerprint(note)
@@ -1524,7 +1644,7 @@ function EditorContent() {
   }
 
   const getExportChapters = () => {
-    return getOrderedNotesList(notes)
+    return getManuscriptNotesList(notes)
   }
 
   const escapeHtml = (value: string) => {
@@ -2101,26 +2221,41 @@ function EditorContent() {
   }
 
   const createNewVolume = () => {
+    setNewVolumeName(`Volume ${volumes.length + 1}`)
+    setNewVolumeIsOpen(true)
+    setShowVolumeCreateModal(true)
+  }
+
+  const confirmCreateNewVolume = () => {
     if (!projectId) return
     const defaultName = `Volume ${volumes.length + 1}`
-    const title = prompt("Name this volume:", defaultName)
-    if (title === null) return
-    const trimmedTitle = title.trim() || defaultName
+    const trimmedTitle = newVolumeName.trim() || defaultName
     const now = Date.now()
     const newVolume: ManuscriptVolume = {
       id: crypto.randomUUID(),
       title: trimmedTitle,
       createdAt: now,
       updatedAt: now,
-      sortOrder: volumes.length > 0 ? Math.max(...volumes.map(volume => volume.sortOrder)) + 1 : 1
+      sortOrder: volumes.length > 0 ? Math.max(...volumes.map(volume => volume.sortOrder)) + 1 : 1,
+      isOpen: newVolumeIsOpen
     }
     persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
+    setShowVolumeCreateModal(false)
+    setNewVolumeName("")
     setCollapsedVolumeIds(prev => {
       const next = new Set(prev)
       next.delete(newVolume.id)
       localStorage.setItem(getCollapsedVolumesStorageKey(), JSON.stringify(Array.from(next)))
       return next
     })
+  }
+
+  const toggleVolumeOpen = (volumeId: string) => {
+    persistVolumes(volumes.map(volume =>
+      volume.id === volumeId
+        ? { ...volume, isOpen: !volume.isOpen, updatedAt: Date.now() }
+        : volume
+    ))
   }
 
   const toggleVolumeCollapsed = (volumeId: string) => {
@@ -2154,13 +2289,16 @@ function EditorContent() {
     try {
       const now = Date.now()
       const newTitle = generateChapterTitle(notes)
+      const targetVolumeId = volumeId !== undefined
+        ? (volumeId === UNASSIGNED_VOLUME_ID ? null : volumeId)
+        : (volumes.find(volume => volume.isOpen !== false)?.id || volumes[0]?.id || null)
       const newNote: Note = {
         id: crypto.randomUUID(),
         title: newTitle,
         content: "",
         createdAt: now,
         updatedAt: now,
-        volumeId: volumeId === UNASSIGNED_VOLUME_ID ? null : volumeId || null,
+        volumeId: targetVolumeId,
         sortOrder: getNextChapterSortOrder(notes),
       }
       
@@ -2322,12 +2460,14 @@ function EditorContent() {
       id: volume.id,
       title: volume.title,
       isSystem: false,
+      isOpen: volume.isOpen !== false,
       chapters: orderedFilteredNotes.filter(note => note.volumeId === volume.id)
     })),
     ...orphanVolumeIds.map((volumeId, index) => ({
       id: volumeId,
       title: `Recovered Volume ${index + 1}`,
       isSystem: true,
+      isOpen: false,
       chapters: orderedFilteredNotes.filter(note => note.volumeId === volumeId)
     })),
     ...(unassignedFilteredNotes.length > 0 || sortedVolumes.length === 0
@@ -2335,6 +2475,7 @@ function EditorContent() {
           id: UNASSIGNED_VOLUME_ID,
           title: sortedVolumes.length === 0 ? "Chapters" : "Unassigned Chapters",
           isSystem: true,
+          isOpen: false,
           chapters: unassignedFilteredNotes
         }]
       : [])
@@ -2552,7 +2693,9 @@ function EditorContent() {
     const matchesSearch = e.name.toLowerCase().includes(bibleSearchQuery.toLowerCase()) ||
                           e.content.toLowerCase().includes(bibleSearchQuery.toLowerCase())
     const matchesFilter = bibleCategoryFilter === 'all' || e.category === bibleCategoryFilter
-    return matchesSearch && matchesFilter
+    const matchesGroup = activeBibleGroupId === 'all'
+      || (activeBibleGroupId === 'ungrouped' ? !(e.groupIds || []).length : (e.groupIds || []).includes(activeBibleGroupId))
+    return matchesSearch && matchesFilter && matchesGroup
   })
 
   const toggleBibleEntrySelection = (entryId: string) => {
@@ -3174,7 +3317,27 @@ function EditorContent() {
                           >
                             {group.title}
                           </button>
+                          {!group.isSystem && (
+                            <button
+                              type="button"
+                              className={`volume-open-toggle ${group.isOpen ? 'open' : ''}`}
+                              onClick={() => toggleVolumeOpen(group.id)}
+                              title={group.isOpen ? "Open for new chapters" : "Closed for new chapters"}
+                            >
+                              {group.isOpen ? "Open" : "Closed"}
+                            </button>
+                          )}
                           <span className="volume-count">{group.chapters.length}</span>
+                          {!group.isSystem && (
+                            <button
+                              type="button"
+                              className="volume-add-chapter"
+                              onClick={() => renameVolume(group.id)}
+                              title="Rename volume"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="volume-add-chapter"
@@ -3374,15 +3537,24 @@ function EditorContent() {
 
                 <div className="appearance-card glass-light">
                   <div className="ai-form-field">
-                    <label>Name</label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={appearanceName}
-                      onChange={(e) => setAppearanceName(e.target.value)}
-                      placeholder="e.g. Veyrath, Moonfang Elder"
+                    <label>Story Bible Entry</label>
+                    <select
+                      className="ai-select"
+                      value={appearanceSelectedEntryId || ""}
+                      onChange={(e) => {
+                        setAppearanceSelectedEntryId(e.target.value || null)
+                        setAppearanceResult(null)
+                        setAppearanceError("")
+                      }}
                       disabled={appearanceLoading}
-                    />
+                    >
+                      <option value="">Choose a person, beast, item, or lore entry...</option>
+                      {bibleEntries.map(entry => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.name} - {entry.category}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="ai-form-field">
@@ -3405,56 +3577,28 @@ function EditorContent() {
                     <button
                       className="appearance-selection-btn"
                       onClick={() => {
-                        const selected = aiSelectionText.trim()
-                        if (!appearanceBeastForm.trim()) {
-                          setAppearanceBeastForm(selected)
-                        } else if (!appearanceDemiForm.trim()) {
-                          setAppearanceDemiForm(selected)
+                        const entry = findLoreEntryFromSelection(aiSelectionText)
+                        if (entry) {
+                          setAppearanceSelectedEntryId(entry.id)
+                          setAppearanceError("")
                         } else {
-                          setAppearanceHumanForm(selected)
+                          setAppearanceError("The highlighted text does not match a Story Bible entry yet.")
                         }
                       }}
                       disabled={appearanceLoading}
                     >
                       <Sparkles size={13} />
-                      Use highlighted description
+                      Use highlighted name
                     </button>
                   )}
 
-                  {([
-                    {
-                      key: "beastForm" as AppearanceFormKey,
-                      label: "Beast Form",
-                      value: appearanceBeastForm,
-                      setter: setAppearanceBeastForm,
-                      placeholder: "Describe the full beast shape, body structure, fur/scales, eyes, aura, size, scars, horns, wings, markings..."
-                    },
-                    {
-                      key: "demiHumanForm" as AppearanceFormKey,
-                      label: "Demi-human Form",
-                      value: appearanceDemiForm,
-                      setter: setAppearanceDemiForm,
-                      placeholder: "Describe the hybrid form, retained beast traits, posture, clothing, weapons, expression, cultivation aura..."
-                    },
-                    {
-                      key: "humanForm" as AppearanceFormKey,
-                      label: "Human Form",
-                      value: appearanceHumanForm,
-                      setter: setAppearanceHumanForm,
-                      placeholder: "Describe the human disguise or true human form, hair, eyes, build, clothing, subtle beast tells..."
-                    }
-                  ]).map(form => (
-                    <div className="ai-form-field" key={form.key}>
-                      <label>{form.label}</label>
-                      <textarea
-                        className="ai-textarea appearance-textarea"
-                        value={form.value}
-                        onChange={(e) => form.setter(e.target.value)}
-                        placeholder={form.placeholder}
-                        disabled={appearanceLoading}
-                      />
+                  {selectedAppearanceEntry && (
+                    <div className="appearance-source-card">
+                      <strong>{selectedAppearanceEntry.name}</strong>
+                      <span>{selectedAppearanceEntry.category}</span>
+                      <p>{selectedAppearanceEntry.content ? selectedAppearanceEntry.content.slice(0, 220) : "No lore notes yet. The AI will lean more heavily on the current chapter context."}</p>
                     </div>
-                  ))}
+                  )}
 
                   {appearanceError && (
                     <div className="ai-error-box">
@@ -3465,8 +3609,8 @@ function EditorContent() {
 
                   <button
                     className="btn-ai-action"
-                    onClick={handleGenerateAppearancePrompts}
-                    disabled={appearanceLoading || !hasAppearanceDescription}
+                    onClick={() => handleGenerateAppearancePrompts(appearanceSelectedEntryId, aiSelectionText)}
+                    disabled={appearanceLoading || (!appearanceSelectedEntryId && !aiSelectionText.trim())}
                   >
                     {appearanceLoading ? (
                       <>
@@ -3491,13 +3635,17 @@ function EditorContent() {
                       </div>
                     )}
 
-                    {(Object.keys(appearanceFormLabels) as AppearanceFormKey[]).map(formKey => {
+                    {([
+                      ["beastForm", "Beast Form"],
+                      ["demiHumanForm", "Demi-human Form"],
+                      ["humanForm", "Human Form"]
+                    ] as Array<[AppearanceFormKey, string]>).map(([formKey, label]) => {
                       const promptText = appearanceResult.prompts?.[formKey]
                       if (!promptText) return null
                       return (
                         <div className="appearance-prompt-card" key={formKey}>
                           <div className="appearance-prompt-header">
-                            <strong>{appearanceFormLabels[formKey]}</strong>
+                            <strong>{label}</strong>
                             <button
                               className="btn-ai-sub btn-ai-secondary"
                               onClick={() => copyAppearanceText(formKey, promptText)}
@@ -3540,9 +3688,10 @@ function EditorContent() {
                       <button
                         className="btn-ai-sub btn-ai-primary"
                         onClick={saveAppearanceToLore}
+                        disabled={!selectedAppearanceEntry}
                       >
                         <Save size={12} />
-                        Save to Lore
+                        Append to Lore
                       </button>
                       <button
                         className="btn-ai-sub btn-ai-secondary"
@@ -3588,6 +3737,13 @@ function EditorContent() {
                       <div className="selection-actions">
                         <button className="btn-text-action" onClick={toggleBibleSelectAll}>
                           {selectedBibleIds.size === filteredBibleEntries.length ? 'None' : 'All'}
+                        </button>
+                        <button
+                          className="btn-text-action"
+                          disabled={selectedBibleIds.size === 0}
+                          onClick={addSelectedBibleEntriesToGroup}
+                        >
+                          Group
                         </button>
                         <button 
                           className="btn-text-action danger" 
@@ -3650,12 +3806,56 @@ function EditorContent() {
                   </button>
                 </div>
 
+                <div className="bible-group-strip">
+                  <button
+                    className={`bible-group-chip ${activeBibleGroupId === 'all' ? 'active' : ''}`}
+                    onClick={() => setActiveBibleGroupId('all')}
+                  >
+                    All Groups
+                  </button>
+                  {bibleGroups.map(group => {
+                    const count = bibleEntries.filter(entry => (entry.groupIds || []).includes(group.id)).length
+                    return (
+                      <button
+                        key={group.id}
+                        className={`bible-group-chip ${activeBibleGroupId === group.id ? 'active' : ''} ${draggedBibleEntryId ? 'drop-ready' : ''}`}
+                        onClick={() => setActiveBibleGroupId(group.id)}
+                        onDoubleClick={() => renameBibleGroup(group.id)}
+                        onDragOver={(e) => {
+                          if (draggedBibleEntryId) e.preventDefault()
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          if (draggedBibleEntryId) addBibleEntriesToGroup([draggedBibleEntryId], group.id)
+                        }}
+                        title="Double-click to rename. Drop lore entries here to group them."
+                      >
+                        <span>{group.name}</span>
+                        <strong>{count}</strong>
+                      </button>
+                    )
+                  })}
+                  <button
+                    className={`bible-group-chip ${activeBibleGroupId === 'ungrouped' ? 'active' : ''}`}
+                    onClick={() => setActiveBibleGroupId('ungrouped')}
+                  >
+                    Ungrouped
+                  </button>
+                  <button className="bible-group-chip add" onClick={createBibleGroup}>
+                    <Plus size={12} />
+                    Group
+                  </button>
+                </div>
+
                 <div className="chapter-list bible-list">
                   {filteredBibleEntries.map(entry => {
                     const isSelected = selectedBibleIds.has(entry.id);
                     return (
                       <div 
                         key={entry.id} 
+                        draggable={!isBibleSelectionMode}
+                        onDragStart={() => setDraggedBibleEntryId(entry.id)}
+                        onDragEnd={() => setDraggedBibleEntryId(null)}
                         className={`chapter-item ${activeBibleEntryId === entry.id ? 'active' : ''} ${isBibleSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
                         onClick={() => {
                           if (isBibleSelectionMode) {
@@ -3674,6 +3874,15 @@ function EditorContent() {
                           renderCategoryIcon(entry.category)
                         )}
                         <span className="chapter-title">{entry.name || 'Untitled'}</span>
+                        {(entry.groupIds || []).length > 0 && (
+                          <span className="bible-entry-groups">
+                            {(entry.groupIds || [])
+                              .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .join(", ")}
+                          </span>
+                        )}
                         {!isBibleSelectionMode && (
                           <button 
                             className="btn-delete-chapter"
@@ -4074,6 +4283,20 @@ function EditorContent() {
                     >
                       <BrainCircuit size={13} style={{ marginRight: '4px' }} />
                       <span style={{ fontSize: '11px', fontWeight: 600 }}>Brain</span>
+                    </button>
+                    <button
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => {
+                        setActiveSidebarTab('appearance')
+                        setIsLeftSidebarOpen(true)
+                        handleGenerateAppearancePrompts(null, aiSelectionText)
+                      }}
+                      title="Highlight a Story Bible name, then generate an appearance prompt from lore and chapter context"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim() || appearanceLoading}
+                    >
+                      <Eye size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Appearance</span>
                     </button>
                   </div>
 
@@ -4510,6 +4733,39 @@ function EditorContent() {
                 </select>
               </div>
 
+              <div className="ai-form-field">
+                <label>Story Groups</label>
+                <div className="bible-group-editor">
+                  {bibleGroups.length === 0 && (
+                    <span className="empty-state-text compact">No custom groups yet.</span>
+                  )}
+                  {bibleGroups.map(group => {
+                    const checked = (activeBibleEntry.groupIds || []).includes(group.id)
+                    return (
+                      <label key={group.id} className="bible-group-check">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const current = activeBibleEntry.groupIds || []
+                            updateActiveBibleEntry({
+                              groupIds: e.target.checked
+                                ? Array.from(new Set([...current, group.id]))
+                                : current.filter(id => id !== group.id)
+                            })
+                          }}
+                        />
+                        <span>{group.name}</span>
+                      </label>
+                    )
+                  })}
+                  <button className="btn-ai-sub btn-ai-secondary" onClick={createBibleGroup}>
+                    <Plus size={12} />
+                    New Group
+                  </button>
+                </div>
+              </div>
+
               <div className="ai-form-field flex-1 flex flex-col min-h-[300px]">
                 <label>Notes & Descriptions</label>
                 <textarea 
@@ -4724,6 +4980,44 @@ function EditorContent() {
               <button onClick={() => moveChapterToVolume(chapterMoveMenu.noteId, UNASSIGNED_VOLUME_ID)}>
                 Unassigned Chapters
               </button>
+            </div>
+          </div>
+        )}
+
+        {showVolumeCreateModal && (
+          <div className="modal-overlay" onClick={() => setShowVolumeCreateModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Create Volume</h2>
+                <p className="modal-description">
+                  Open volumes receive new chapters when you use the main New Chapter button.
+                </p>
+              </div>
+              <div className="ai-form-field">
+                <label>Volume Name</label>
+                <input
+                  className="input"
+                  value={newVolumeName}
+                  onChange={(e) => setNewVolumeName(e.target.value)}
+                  placeholder="Volume 1"
+                  autoFocus
+                />
+              </div>
+              <label className="volume-open-field">
+                <input
+                  type="checkbox"
+                  checked={newVolumeIsOpen}
+                  onChange={(e) => setNewVolumeIsOpen(e.target.checked)}
+                />
+                <span>Open this volume for new chapters</span>
+              </label>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowVolumeCreateModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={confirmCreateNewVolume}>
+                  <Plus size={16} />
+                  Create Volume
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -5889,7 +6183,8 @@ function EditorContent() {
 
         .volume-toggle,
         .volume-title,
-        .volume-add-chapter {
+        .volume-add-chapter,
+        .volume-open-toggle {
           border: 0;
           background: transparent;
           color: var(--text-secondary);
@@ -5937,6 +6232,43 @@ function EditorContent() {
           font-size: 0.68rem;
           font-weight: 800;
           text-align: center;
+        }
+
+        .volume-open-toggle {
+          flex-shrink: 0;
+          padding: 0.18rem 0.42rem;
+          border-radius: var(--radius-full);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(148, 163, 184, 0.08);
+          color: var(--text-dim);
+          font-size: 0.62rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .volume-open-toggle.open {
+          border-color: rgba(16, 185, 129, 0.25);
+          background: rgba(16, 185, 129, 0.1);
+          color: rgb(110, 231, 183);
+        }
+
+        .volume-open-field {
+          display: flex;
+          align-items: center;
+          gap: 0.55rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-secondary);
+          font-size: 0.86rem;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .volume-open-field input {
+          accent-color: var(--primary);
         }
 
         .volume-chapters {
@@ -6190,6 +6522,91 @@ function EditorContent() {
           margin-bottom: 0.75rem;
         }
 
+        .bible-group-strip {
+          display: flex;
+          gap: 0.4rem;
+          overflow-x: auto;
+          padding: 0 0.5rem 0.75rem;
+          margin-bottom: 0.4rem;
+          border-bottom: 1px solid var(--surface-border);
+        }
+
+        .bible-group-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          max-width: 155px;
+          min-height: 28px;
+          padding: 0.32rem 0.5rem;
+          border-radius: var(--radius-full);
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+          flex-shrink: 0;
+        }
+
+        .bible-group-chip span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .bible-group-chip strong {
+          color: var(--primary);
+          font-size: 0.68rem;
+        }
+
+        .bible-group-chip:hover,
+        .bible-group-chip.active,
+        .bible-group-chip.drop-ready {
+          border-color: rgba(99, 102, 241, 0.32);
+          background: var(--primary-light);
+          color: var(--text-primary);
+        }
+
+        .bible-group-chip.add {
+          color: rgb(94, 234, 212);
+          border-color: rgba(20, 184, 166, 0.2);
+        }
+
+        .bible-entry-groups {
+          flex-shrink: 0;
+          max-width: 90px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          font-weight: 800;
+        }
+
+        .bible-group-editor {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+          padding: 0.55rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.12);
+        }
+
+        .bible-group-check {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          color: var(--text-secondary);
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .bible-group-check input {
+          accent-color: var(--primary);
+        }
+
         .filter-chip {
           padding: 3px 8px;
           font-size: 0.75rem;
@@ -6218,6 +6635,12 @@ function EditorContent() {
           color: var(--text-dim);
           text-align: center;
           margin-top: 2rem;
+        }
+
+        .empty-state-text.compact {
+          margin-top: 0;
+          text-align: left;
+          font-size: 0.75rem;
         }
 
         /* Appearance Prompt Lab */
@@ -6288,6 +6711,39 @@ function EditorContent() {
         .appearance-selection-btn:disabled {
           opacity: 0.55;
           cursor: not-allowed;
+        }
+
+        .appearance-source-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          padding: 0.7rem;
+          border: 1px solid rgba(99, 102, 241, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(99, 102, 241, 0.08);
+        }
+
+        .appearance-source-card strong {
+          color: var(--text-primary);
+          font-size: 0.86rem;
+        }
+
+        .appearance-source-card span {
+          width: fit-content;
+          padding: 0.16rem 0.42rem;
+          border-radius: var(--radius-full);
+          background: rgba(0, 0, 0, 0.16);
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .appearance-source-card p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.76rem;
+          line-height: 1.45;
         }
 
         .appearance-results {

@@ -22,17 +22,19 @@ export async function POST(req: NextRequest) {
 
     const createdAt = entry.createdAt || Date.now()
     const updatedAt = entry.updatedAt || Date.now()
+    const groupIds = Array.isArray(entry.groupIds) ? entry.groupIds : []
 
     await pool.query(
-      `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at, group_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id)
        DO UPDATE SET 
          name = EXCLUDED.name,
          category = EXCLUDED.category,
          content = EXCLUDED.content,
-         updated_at = EXCLUDED.updated_at`,
-      [entry.id, projectId, userId, entry.name || "Untitled", entry.category || "character", entry.content || "", createdAt, updatedAt]
+         updated_at = EXCLUDED.updated_at,
+         group_ids = EXCLUDED.group_ids`,
+      [entry.id, projectId, userId, entry.name || "Untitled", entry.category || "character", entry.content || "", createdAt, updatedAt, JSON.stringify(groupIds)]
     )
 
     return NextResponse.json({ success: true })
