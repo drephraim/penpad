@@ -12,6 +12,8 @@ export interface Note {
   updatedAt: number
   isMemories?: boolean
   wordGoal?: number
+  volumeId?: string | null
+  sortOrder?: number
 }
 
 export interface BibleEntry {

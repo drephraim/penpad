@@ -23,17 +23,21 @@ export async function POST(req: NextRequest) {
     const createdAt = note.createdAt || Date.now()
     const updatedAt = note.updatedAt || Date.now()
     const wordGoal = note.wordGoal || 1200
+    const volumeId = note.volumeId || null
+    const sortOrder = typeof note.sortOrder === "number" ? note.sortOrder : null
 
     await pool.query(
-      `INSERT INTO chapters (id, project_id, user_id, title, content, created_at, updated_at, word_goal)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO chapters (id, project_id, user_id, title, content, created_at, updated_at, word_goal, volume_id, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (id)
        DO UPDATE SET 
          title = EXCLUDED.title,
          content = EXCLUDED.content,
          updated_at = EXCLUDED.updated_at,
-         word_goal = EXCLUDED.word_goal`,
-      [note.id, projectId, userId, note.title || "Untitled", note.content || "", createdAt, updatedAt, wordGoal]
+         word_goal = EXCLUDED.word_goal,
+         volume_id = EXCLUDED.volume_id,
+         sort_order = EXCLUDED.sort_order`,
+      [note.id, projectId, userId, note.title || "Untitled", note.content || "", createdAt, updatedAt, wordGoal, volumeId, sortOrder]
     )
 
     return NextResponse.json({ success: true })

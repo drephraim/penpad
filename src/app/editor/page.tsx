@@ -12,7 +12,7 @@ import {
   Play, Pause, RotateCcw,
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
-  Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight,
+  Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
@@ -40,6 +40,8 @@ interface Note {
   updatedAt: number
   isMemories?: boolean
   wordGoal?: number
+  volumeId?: string | null
+  sortOrder?: number
 }
 
 type ViewMode = 'edit' | 'preview'
@@ -68,6 +70,20 @@ interface ChapterVersion {
   wordCount: number
 }
 
+interface ManuscriptVolume {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  sortOrder: number
+}
+
+interface ExportHistoryRecord {
+  filename: string
+  fingerprint: string
+  exportedAt: number
+}
+
 interface AppearancePromptResult {
   characterName?: string
   overview?: string
@@ -79,6 +95,7 @@ interface AppearancePromptResult {
 const MIN_LEFT_SIDEBAR_WIDTH = 280
 const MAX_LEFT_SIDEBAR_WIDTH = 560
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 336
+const UNASSIGNED_VOLUME_ID = "unassigned"
 
 const clampLeftSidebarWidth = (width: number) => {
   return Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.max(MIN_LEFT_SIDEBAR_WIDTH, width))
@@ -230,6 +247,10 @@ function EditorContent() {
 
   const [projectName, setProjectName] = useState("Loading...")
   const [notes, setNotes] = useState<Note[]>([])
+  const [volumes, setVolumes] = useState<ManuscriptVolume[]>([])
+  const [collapsedVolumeIds, setCollapsedVolumeIds] = useState<Set<string>>(new Set())
+  const [draggedChapterId, setDraggedChapterId] = useState<string | null>(null)
+  const [chapterMoveMenu, setChapterMoveMenu] = useState<{ noteId: string; x: number; y: number } | null>(null)
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [sessionTime, setSessionTime] = useState(0)
@@ -699,6 +720,7 @@ function EditorContent() {
   
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; noteId: string; noteTitle: string }>({ show: false, noteId: '', noteTitle: '' })
   const [savedChapters, setSavedChapters] = useState<Set<string>>(new Set())
+  const [exportHistory, setExportHistory] = useState<Record<string, ExportHistoryRecord>>({})
   const [exportModal, setExportModal] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
@@ -842,22 +864,66 @@ function EditorContent() {
     }
   }, [user, projectId])
 
+  const getVolumesStorageKey = useCallback(() => {
+    return projectId ? `penpad_volumes_${projectId}` : ""
+  }, [projectId])
+
+  const getCollapsedVolumesStorageKey = useCallback(() => {
+    return projectId ? `penpad_collapsed_volumes_${projectId}` : ""
+  }, [projectId])
+
+  const getExportHistoryStorageKey = useCallback(() => {
+    return projectId ? `penpad_export_history_${projectId}` : ""
+  }, [projectId])
+
+  const persistVolumes = useCallback((nextVolumes: ManuscriptVolume[]) => {
+    const key = getVolumesStorageKey()
+    if (!key) return
+    localStorage.setItem(key, JSON.stringify(nextVolumes))
+    setVolumes(nextVolumes)
+  }, [getVolumesStorageKey])
+
+  const fetchVolumes = useCallback(() => {
+    if (!projectId) return
+    try {
+      const storedVolumes = localStorage.getItem(getVolumesStorageKey())
+      const volumeList: ManuscriptVolume[] = storedVolumes ? JSON.parse(storedVolumes) : []
+      setVolumes(volumeList.sort((a, b) => a.sortOrder - b.sortOrder))
+
+      const storedCollapsed = localStorage.getItem(getCollapsedVolumesStorageKey())
+      const collapsedList: string[] = storedCollapsed ? JSON.parse(storedCollapsed) : []
+      setCollapsedVolumeIds(new Set(collapsedList))
+
+      const storedHistory = localStorage.getItem(getExportHistoryStorageKey())
+      const history: Record<string, ExportHistoryRecord> = storedHistory ? JSON.parse(storedHistory) : {}
+      setExportHistory(history)
+      savedFilenamesRef.current = new Map(Object.entries(history).map(([chapterId, record]) => [chapterId, record.filename]))
+      setSavedChapters(new Set(Object.keys(history)))
+    } catch (e) {
+      console.error("Failed to load volume or export history:", e)
+      setVolumes([])
+      setCollapsedVolumeIds(new Set())
+      setExportHistory({})
+    }
+  }, [projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
+
   const fetchNotes = useCallback(async () => {
     if (!user || !projectId) return
     setIsLoadingNotes(true)
     try {
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
-      noteList.sort((a: Note, b: Note) => b.updatedAt - a.updatedAt)
+      noteList.sort((a: Note, b: Note) => (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt))
       setNotes(noteList)
       if (noteList.length > 0 && !activeNoteId) {
         setActiveNoteId(noteList[0].id)
       }
       
       const syncedNotes = await syncChaptersWithCloud(user.uid, projectId, noteList)
-      setNotes(syncedNotes)
+      const orderedSyncedNotes = syncedNotes.sort((a: Note, b: Note) => (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt))
+      setNotes(orderedSyncedNotes)
       if (syncedNotes.length > 0 && !activeNoteId) {
-        setActiveNoteId(syncedNotes[0].id)
+        setActiveNoteId(orderedSyncedNotes[0].id)
       }
     } catch (e) {
       console.error("Fetch/Sync notes failed:", e)
@@ -976,11 +1042,25 @@ function EditorContent() {
     return match ? Number.parseInt(match[1], 10) : null
   }
 
+  const getNoteSortValue = (note: Note) => {
+    if (Number.isFinite(note.sortOrder)) return note.sortOrder as number
+    return getChapterNumberFromTitle(note.title) ?? note.createdAt
+  }
+
+  const getOrderedNotesList = (noteList: Note[]) => {
+    return [...noteList].sort((a, b) => {
+      const aSort = getNoteSortValue(a)
+      const bSort = getNoteSortValue(b)
+      if (aSort !== bSort) return aSort - bSort
+      return a.title.localeCompare(b.title, undefined, { numeric: true })
+    })
+  }
+
   const getNoteChapterNumber = (note: Note) => {
     const titleNumber = getChapterNumberFromTitle(note.title)
     if (titleNumber) return titleNumber
 
-    const chapterIndex = notes.findIndex(n => n.id === note.id)
+    const chapterIndex = getOrderedNotesList(notes).findIndex(n => n.id === note.id)
     return chapterIndex >= 0 ? chapterIndex + 1 : null
   }
 
@@ -1212,11 +1292,12 @@ function EditorContent() {
   useEffect(() => {
     if (user && projectId) {
       fetchProjectName()
+      fetchVolumes()
       fetchNotes()
       fetchBible()
       fetchBrain()
     }
-  }, [user, projectId, fetchProjectName, fetchNotes, fetchBible, fetchBrain])
+  }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain])
 
   useEffect(() => {
     if (activeNoteId) {
@@ -1254,6 +1335,24 @@ function EditorContent() {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
   }
 
+  const getChapterExportFingerprint = (note: Note) => {
+    const raw = `${note.title || ""}\n${note.content || ""}\n${note.updatedAt || 0}`
+    let hash = 0
+    for (let i = 0; i < raw.length; i++) {
+      hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0
+    }
+    return `${note.updatedAt || 0}:${raw.length}:${hash}`
+  }
+
+  const persistExportHistory = useCallback((nextHistory: Record<string, ExportHistoryRecord>) => {
+    const key = getExportHistoryStorageKey()
+    if (!key) return
+    localStorage.setItem(key, JSON.stringify(nextHistory))
+    setExportHistory(nextHistory)
+    savedFilenamesRef.current = new Map(Object.entries(nextHistory).map(([chapterId, record]) => [chapterId, record.filename]))
+    setSavedChapters(new Set(Object.keys(nextHistory)))
+  }, [getExportHistoryStorageKey])
+
   const saveSingleChapterToFolder = useCallback(async (note: Note, targetDir: FileSystemDirectoryHandle) => {
     try {
       const safeTitle = sanitizeFilename(note.title)
@@ -1274,10 +1373,24 @@ function EditorContent() {
       await writable.close()
       savedFilenamesRef.current.set(note.id, newFilename)
       setSavedChapters(prev => new Set(prev).add(note.id))
+      setExportHistory(prev => {
+        const next = {
+          ...prev,
+          [note.id]: {
+            filename: newFilename,
+            fingerprint: getChapterExportFingerprint(note),
+            exportedAt: Date.now()
+          }
+        }
+        const key = getExportHistoryStorageKey()
+        if (key) localStorage.setItem(key, JSON.stringify(next))
+        savedFilenamesRef.current = new Map(Object.entries(next).map(([chapterId, record]) => [chapterId, record.filename]))
+        return next
+      })
     } catch (e) {
       console.error("Failed to save chapter:", e)
     }
-  }, [])
+  }, [getExportHistoryStorageKey])
 
   const saveCurrentChapterToFolder = useCallback(async () => {
     if (!activeNote) return
@@ -1382,11 +1495,23 @@ function EditorContent() {
       setIsExporting(true)
       setExportProgress(0)
       
-      const sortedNotes = [...notes].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
+      const sortedNotes = getOrderedNotesList(notes)
+      const chaptersToExport = sortedNotes.filter(note => {
+        const record = exportHistory[note.id]
+        return !record || record.fingerprint !== getChapterExportFingerprint(note)
+      })
+
+      if (chaptersToExport.length === 0) {
+        setExportProgress(100)
+        setIsExporting(false)
+        setExportModal(false)
+        alert("All chapters are already exported and unchanged.")
+        return
+      }
       
-      for (let i = 0; i < sortedNotes.length; i++) {
-        await saveSingleChapterToFolder(sortedNotes[i], targetDir)
-        setExportProgress(Math.round(((i + 1) / sortedNotes.length) * 100))
+      for (let i = 0; i < chaptersToExport.length; i++) {
+        await saveSingleChapterToFolder(chaptersToExport[i], targetDir)
+        setExportProgress(Math.round(((i + 1) / chaptersToExport.length) * 100))
       }
       
       setIsExporting(false)
@@ -1399,7 +1524,7 @@ function EditorContent() {
   }
 
   const getExportChapters = () => {
-    return [...notes].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
+    return getOrderedNotesList(notes)
   }
 
   const escapeHtml = (value: string) => {
@@ -1888,14 +2013,16 @@ function EditorContent() {
         content: initialContent,
         createdAt: now,
         updatedAt: now,
+        volumeId: activeNote?.volumeId || null,
+        sortOrder: getNextChapterSortOrder(notes),
       }
       
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
-      noteList.unshift(newNote)
+      const updatedNotes = getOrderedNotesList([...noteList, newNote])
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-      setNotes(prev => Array.isArray(prev) ? [newNote, ...prev] : [newNote])
+      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(updatedNotes))
+      setNotes(updatedNotes)
       setActiveNoteId(newNote.id)
       setViewMode('edit')
 
@@ -1922,6 +2049,7 @@ function EditorContent() {
         setIsZenMode(false)
         setShowSlashMenu(false)
         setSelectedBrainEntryId(null)
+        setChapterMoveMenu(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -1967,7 +2095,61 @@ function EditorContent() {
     return `Chapter ${nextNumber.toString().padStart(2, '0')}`
   }
 
-  const createNewNote = async () => {
+  const getNextChapterSortOrder = (existingNotes: Note[]) => {
+    if (existingNotes.length === 0) return 1
+    return Math.max(...existingNotes.map(note => getNoteSortValue(note))) + 1
+  }
+
+  const createNewVolume = () => {
+    if (!projectId) return
+    const defaultName = `Volume ${volumes.length + 1}`
+    const title = prompt("Name this volume:", defaultName)
+    if (title === null) return
+    const trimmedTitle = title.trim() || defaultName
+    const now = Date.now()
+    const newVolume: ManuscriptVolume = {
+      id: crypto.randomUUID(),
+      title: trimmedTitle,
+      createdAt: now,
+      updatedAt: now,
+      sortOrder: volumes.length > 0 ? Math.max(...volumes.map(volume => volume.sortOrder)) + 1 : 1
+    }
+    persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
+    setCollapsedVolumeIds(prev => {
+      const next = new Set(prev)
+      next.delete(newVolume.id)
+      localStorage.setItem(getCollapsedVolumesStorageKey(), JSON.stringify(Array.from(next)))
+      return next
+    })
+  }
+
+  const toggleVolumeCollapsed = (volumeId: string) => {
+    setCollapsedVolumeIds(prev => {
+      const next = new Set(prev)
+      if (next.has(volumeId)) {
+        next.delete(volumeId)
+      } else {
+        next.add(volumeId)
+      }
+      const key = getCollapsedVolumesStorageKey()
+      if (key) localStorage.setItem(key, JSON.stringify(Array.from(next)))
+      return next
+    })
+  }
+
+  const renameVolume = (volumeId: string) => {
+    const volume = volumes.find(item => item.id === volumeId)
+    if (!volume) return
+    const title = prompt("Rename volume:", volume.title)
+    if (title === null) return
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return
+    persistVolumes(volumes.map(item =>
+      item.id === volumeId ? { ...item, title: trimmedTitle, updatedAt: Date.now() } : item
+    ))
+  }
+
+  const createNewNote = async (volumeId?: string | null) => {
     if (!user || !projectId) return
     try {
       const now = Date.now()
@@ -1978,14 +2160,16 @@ function EditorContent() {
         content: "",
         createdAt: now,
         updatedAt: now,
+        volumeId: volumeId === UNASSIGNED_VOLUME_ID ? null : volumeId || null,
+        sortOrder: getNextChapterSortOrder(notes),
       }
       
       const stored = localStorage.getItem(`penpad_notes_${projectId}`)
       const noteList: Note[] = stored ? JSON.parse(stored) : []
-      noteList.unshift(newNote)
+      const updatedNotes = getOrderedNotesList([...noteList, newNote])
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
-      setNotes(prev => Array.isArray(prev) ? [newNote, ...prev] : [newNote])
+      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(updatedNotes))
+      setNotes(updatedNotes)
       setActiveNoteId(newNote.id)
       setViewMode('edit')
 
@@ -1995,7 +2179,32 @@ function EditorContent() {
     }
   }
 
+  const moveChapterToVolume = async (noteId: string, volumeId: string | null) => {
+    if (!projectId) return
+    const normalizedVolumeId = volumeId === UNASSIGNED_VOLUME_ID ? null : volumeId
+    const movingNote = notes.find(note => note.id === noteId)
+    if (!movingNote) return
 
+    const targetVolumeNotes = notes.filter(note => (note.volumeId || null) === normalizedVolumeId && note.id !== noteId)
+    const nextSortOrder = targetVolumeNotes.length > 0
+      ? Math.max(...targetVolumeNotes.map(note => getNoteSortValue(note))) + 0.01
+      : getNextChapterSortOrder(notes)
+    const updatedNote: Note = {
+      ...movingNote,
+      volumeId: normalizedVolumeId,
+      sortOrder: nextSortOrder,
+      updatedAt: Date.now()
+    }
+    const updatedNotes = getOrderedNotesList(notes.map(note => note.id === noteId ? updatedNote : note))
+    setNotes(updatedNotes)
+    localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(updatedNotes))
+    setChapterMoveMenu(null)
+    setDraggedChapterId(null)
+
+    if (user) {
+      await saveChapterToCloud(user.uid, projectId, updatedNote)
+    }
+  }
 
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
@@ -2100,7 +2309,38 @@ function EditorContent() {
     n.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const sortedTimelineNotes = [...notes].sort((a, b) => {
+  const orderedNotes = getOrderedNotesList(notes)
+  const orderedFilteredNotes = getOrderedNotesList(filteredNotes)
+  const sortedVolumes = [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
+  const knownVolumeIds = new Set(sortedVolumes.map(volume => volume.id))
+  const orphanVolumeIds = Array.from(new Set(orderedFilteredNotes
+    .map(note => note.volumeId)
+    .filter((volumeId): volumeId is string => typeof volumeId === "string" && volumeId.length > 0 && !knownVolumeIds.has(volumeId))))
+  const unassignedFilteredNotes = orderedFilteredNotes.filter(note => !note.volumeId)
+  const manuscriptVolumeGroups = [
+    ...sortedVolumes.map(volume => ({
+      id: volume.id,
+      title: volume.title,
+      isSystem: false,
+      chapters: orderedFilteredNotes.filter(note => note.volumeId === volume.id)
+    })),
+    ...orphanVolumeIds.map((volumeId, index) => ({
+      id: volumeId,
+      title: `Recovered Volume ${index + 1}`,
+      isSystem: true,
+      chapters: orderedFilteredNotes.filter(note => note.volumeId === volumeId)
+    })),
+    ...(unassignedFilteredNotes.length > 0 || sortedVolumes.length === 0
+      ? [{
+          id: UNASSIGNED_VOLUME_ID,
+          title: sortedVolumes.length === 0 ? "Chapters" : "Unassigned Chapters",
+          isSystem: true,
+          chapters: unassignedFilteredNotes
+        }]
+      : [])
+  ]
+
+  const sortedTimelineNotes = [...orderedNotes].sort((a, b) => {
     const aNumber = getNoteChapterNumber(a)
     const bNumber = getNoteChapterNumber(b)
     if (aNumber && bNumber) return aNumber - bNumber
@@ -2778,7 +3018,7 @@ function EditorContent() {
         )}
 
         <div className="mobile-fab">
-          <button className="fab-btn fab-new" onClick={createNewNote} title="New Chapter">
+          <button className="fab-btn fab-new" onClick={() => createNewNote()} title="New Chapter">
             <Plus size={24} />
           </button>
           <button className="fab-btn fab-list" onClick={() => setShowChapterDrawer(true)} title="Chapters">
@@ -2837,9 +3077,13 @@ function EditorContent() {
             {activeSidebarTab === 'manuscript' && (
               <div className="sidebar-tab-content fade-in">
                 <div className="sidebar-section">
-                  <button className="btn-new" onClick={createNewNote}>
+                  <button className="btn-new" onClick={() => createNewNote()}>
                     <Plus size={16} />
                     New Chapter
+                  </button>
+                  <button className="btn-export btn-volume-add" onClick={createNewVolume}>
+                    <Plus size={16} />
+                    Add Volume
                   </button>
                   <button className="btn-export" onClick={() => setExportModal(true)}>
                     <Download size={16} />
@@ -2897,89 +3141,153 @@ function EditorContent() {
                 </div>
 
                 <div className="chapter-list">
-                  {filteredNotes.map(note => {
-                    const isSelected = selectedNoteIds.has(note.id);
+                  {manuscriptVolumeGroups.map(group => {
+                    const isCollapsed = collapsedVolumeIds.has(group.id)
                     return (
-                      <div 
-                        key={note.id} 
-                        className={`chapter-item ${activeNoteId === note.id ? 'active' : ''} ${isSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
-                        onClick={() => {
-                          if (isSelectionMode) {
-                            toggleNoteSelection(note.id);
-                          } else {
-                            setActiveNoteId(note.id);
+                      <div
+                        key={group.id}
+                        className={`volume-group ${draggedChapterId ? 'drag-ready' : ''}`}
+                        onDragOver={(e) => {
+                          if (draggedChapterId) e.preventDefault()
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          if (draggedChapterId) {
+                            moveChapterToVolume(draggedChapterId, group.id)
                           }
                         }}
                       >
-                        {isSelectionMode ? (
+                        <div className="volume-header">
                           <button
                             type="button"
-                            className={`checkbox-custom ${isSelected ? 'checked' : ''}`}
-                            aria-label={`${isSelected ? 'Deselect' : 'Select'} ${note.title || 'Untitled'}`}
-                            aria-pressed={isSelected}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleNoteSelection(note.id)
-                            }}
+                            className="volume-toggle"
+                            onClick={() => toggleVolumeCollapsed(group.id)}
+                            aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.title}`}
                           >
-                            {isSelected && <Check size={10} strokeWidth={3} />}
+                            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                           </button>
-                        ) : (
-                          <FileText size={16} />
-                        )}
-                        <span className="chapter-title">{note.title || 'Untitled'}</span>
-                        
-                        {!isSelectionMode && (
-                          <div className="chapter-actions">
-                            <button 
-                              className={`btn-save-chapter ${savedChapters.has(note.id) ? 'saved' : ''}`}
-                              onClick={async (e) => { 
-                                e.stopPropagation(); 
-                                let targetDir = dirHandle
-                                
-                                if (!targetDir && projectId) {
-                                  targetDir = await getDirectoryHandleForProject(projectId)
-                                  if (targetDir) {
-                                    setDirHandle(targetDir)
-                                  }
-                                }
-                                
-                                if (targetDir) {
-                                  const hasPermission = await verifyPermission(targetDir)
-                                  if (hasPermission) {
-                                    await saveSingleChapterToFolder(note, targetDir)
-                                  } else {
-                                    try {
-                                      const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
-                                      setDirHandle(dir)
-                                      await saveFolderHandleToProject(dir)
-                                      await saveSingleChapterToFolder(note, dir)
-                                    } catch (err) { console.error(err) }
-                                  }
-                                } else {
-                                  try {
-                                    const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
-                                    setDirHandle(dir)
-                                    await saveFolderHandleToProject(dir)
-                                    await saveSingleChapterToFolder(note, dir)
-                                  } catch (err) { console.error(err) }
-                                }
-                              }}
-                              title="Save chapter"
-                            >
-                              <Save size={12} />
-                            </button>
-                            <button 
-                              className="btn-delete-chapter"
-                              onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
-                              title="Delete chapter"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                          <button
+                            type="button"
+                            className="volume-title"
+                            onClick={() => !group.isSystem && renameVolume(group.id)}
+                            title={group.isSystem ? group.title : "Rename volume"}
+                          >
+                            {group.title}
+                          </button>
+                          <span className="volume-count">{group.chapters.length}</span>
+                          <button
+                            type="button"
+                            className="volume-add-chapter"
+                            onClick={() => createNewNote(group.id)}
+                            title={`Add chapter to ${group.title}`}
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
+
+                        {!isCollapsed && (
+                          <div className="volume-chapters">
+                            {group.chapters.map(note => {
+                              const isSelected = selectedNoteIds.has(note.id);
+                              const exportRecord = exportHistory[note.id]
+                              const needsExport = !exportRecord || exportRecord.fingerprint !== getChapterExportFingerprint(note)
+                              return (
+                                <div
+                                  key={note.id}
+                                  draggable={!isSelectionMode}
+                                  onDragStart={() => setDraggedChapterId(note.id)}
+                                  onDragEnd={() => setDraggedChapterId(null)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault()
+                                    setChapterMoveMenu({ noteId: note.id, x: e.clientX, y: e.clientY })
+                                  }}
+                                  className={`chapter-item ${activeNoteId === note.id ? 'active' : ''} ${isSelectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`}
+                                  onClick={() => {
+                                    if (isSelectionMode) {
+                                      toggleNoteSelection(note.id);
+                                    } else {
+                                      setActiveNoteId(note.id);
+                                    }
+                                  }}
+                                >
+                                  {isSelectionMode ? (
+                                    <button
+                                      type="button"
+                                      className={`checkbox-custom ${isSelected ? 'checked' : ''}`}
+                                      aria-label={`${isSelected ? 'Deselect' : 'Select'} ${note.title || 'Untitled'}`}
+                                      aria-pressed={isSelected}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        toggleNoteSelection(note.id)
+                                      }}
+                                    >
+                                      {isSelected && <Check size={10} strokeWidth={3} />}
+                                    </button>
+                                  ) : (
+                                    <FileText size={16} />
+                                  )}
+                                  <span className="chapter-title">{note.title || 'Untitled'}</span>
+                                  {!needsExport && <span className="chapter-exported-badge">Exported</span>}
+                                  
+                                  {!isSelectionMode && (
+                                    <div className="chapter-actions">
+                                      <button 
+                                        className={`btn-save-chapter ${savedChapters.has(note.id) && !needsExport ? 'saved' : ''}`}
+                                        onClick={async (e) => { 
+                                          e.stopPropagation(); 
+                                          let targetDir = dirHandle
+                                          
+                                          if (!targetDir && projectId) {
+                                            targetDir = await getDirectoryHandleForProject(projectId)
+                                            if (targetDir) {
+                                              setDirHandle(targetDir)
+                                            }
+                                          }
+                                          
+                                          if (targetDir) {
+                                            const hasPermission = await verifyPermission(targetDir)
+                                            if (hasPermission) {
+                                              await saveSingleChapterToFolder(note, targetDir)
+                                            } else {
+                                              try {
+                                                const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                                                setDirHandle(dir)
+                                                await saveFolderHandleToProject(dir)
+                                                await saveSingleChapterToFolder(note, dir)
+                                              } catch (err) { console.error(err) }
+                                            }
+                                          } else {
+                                            try {
+                                              const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+                                              setDirHandle(dir)
+                                              await saveFolderHandleToProject(dir)
+                                              await saveSingleChapterToFolder(note, dir)
+                                            } catch (err) { console.error(err) }
+                                          }
+                                        }}
+                                        title={needsExport ? "Save chapter" : "Chapter already exported"}
+                                      >
+                                        <Save size={12} />
+                                      </button>
+                                      <button 
+                                        className="btn-delete-chapter"
+                                        onClick={(e) => { e.stopPropagation(); setDeleteModal({ show: true, noteId: note.id, noteTitle: note.title }) }}
+                                        title="Delete chapter"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {group.chapters.length === 0 && (
+                              <div className="volume-empty">Drop chapters here or add a new one.</div>
+                            )}
                           </div>
                         )}
                       </div>
-                    );
+                    )
                   })}
                 </div>
               </div>
@@ -4394,6 +4702,32 @@ function EditorContent() {
           </div>
         )}
 
+        {chapterMoveMenu && (
+          <div className="chapter-move-menu-backdrop" onClick={() => setChapterMoveMenu(null)}>
+            <div
+              className="chapter-move-menu glass"
+              style={{
+                top: chapterMoveMenu.y,
+                left: chapterMoveMenu.x
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <span className="chapter-move-title">Move to volume</span>
+              {sortedVolumes.map(volume => (
+                <button
+                  key={volume.id}
+                  onClick={() => moveChapterToVolume(chapterMoveMenu.noteId, volume.id)}
+                >
+                  {volume.title}
+                </button>
+              ))}
+              <button onClick={() => moveChapterToVolume(chapterMoveMenu.noteId, UNASSIGNED_VOLUME_ID)}>
+                Unassigned Chapters
+              </button>
+            </div>
+          </div>
+        )}
+
         {deleteModal.show && (
           <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>
             <div className="modal" onClick={e => e.stopPropagation()}>
@@ -4479,7 +4813,9 @@ function EditorContent() {
                 <p className="modal-description">
                   {isExporting 
                     ? `Exporting chapters... ${exportProgress}%` 
-                    : `Export ${notes.length} chapter${notes.length === 1 ? '' : 's'} in the format you need.`}
+                    : exportFormat === 'folder'
+                      ? `${getOrderedNotesList(notes).filter(note => !exportHistory[note.id] || exportHistory[note.id].fingerprint !== getChapterExportFingerprint(note)).length} of ${notes.length} chapters need folder export. Unchanged exported chapters will be skipped.`
+                      : `Export ${notes.length} chapter${notes.length === 1 ? '' : 's'} in the format you need.`}
                 </p>
               </div>
               {!isExporting && (
@@ -4512,6 +4848,14 @@ function EditorContent() {
                 </div>
               )}
               <div className="modal-actions">
+                {!isExporting && exportFormat === 'folder' && Object.keys(exportHistory).length > 0 && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => persistExportHistory({})}
+                  >
+                    Reset History
+                  </button>
+                )}
                 <button className="btn btn-ghost" onClick={() => setExportModal(false)} disabled={isExporting}>Cancel</button>
                 <button className="btn btn-primary" onClick={exportManuscript} disabled={isExporting}>
                   {isExporting ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
@@ -5413,7 +5757,7 @@ function EditorContent() {
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 0.55rem;
         }
 
         .sidebar-chapters-header {
@@ -5517,6 +5861,99 @@ function EditorContent() {
           outline-offset: 2px;
         }
 
+        .volume-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          border: 1px solid transparent;
+          border-radius: var(--radius-md);
+          padding: 0.2rem;
+          transition: var(--transition);
+        }
+
+        .volume-group.drag-ready {
+          border-color: rgba(99, 102, 241, 0.18);
+          background: rgba(99, 102, 241, 0.04);
+        }
+
+        .volume-header {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          min-height: 34px;
+          padding: 0.35rem 0.5rem;
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--surface-border);
+        }
+
+        .volume-toggle,
+        .volume-title,
+        .volume-add-chapter {
+          border: 0;
+          background: transparent;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .volume-toggle,
+        .volume-add-chapter {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: var(--radius-sm);
+          flex-shrink: 0;
+        }
+
+        .volume-toggle:hover,
+        .volume-add-chapter:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .volume-title {
+          flex: 1;
+          min-width: 0;
+          padding: 0;
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          font-weight: 800;
+          text-align: left;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .volume-count {
+          flex-shrink: 0;
+          min-width: 22px;
+          padding: 0.12rem 0.38rem;
+          border-radius: var(--radius-full);
+          background: rgba(148, 163, 184, 0.1);
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 800;
+          text-align: center;
+        }
+
+        .volume-chapters {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          padding-left: 0.35rem;
+        }
+
+        .volume-empty {
+          padding: 0.55rem 0.75rem;
+          color: var(--text-dim);
+          font-size: 0.75rem;
+          border: 1px dashed var(--surface-border);
+          border-radius: var(--radius-sm);
+        }
+
         .chapter-item {
           display: flex;
           align-items: center;
@@ -5526,6 +5963,14 @@ function EditorContent() {
           cursor: pointer;
           transition: var(--transition);
           color: var(--text-secondary);
+        }
+
+        .chapter-item[draggable="true"] {
+          cursor: grab;
+        }
+
+        .chapter-item[draggable="true"]:active {
+          cursor: grabbing;
         }
 
         .chapter-item.selection-mode {
@@ -5556,6 +6001,19 @@ function EditorContent() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .chapter-exported-badge {
+          flex-shrink: 0;
+          padding: 0.14rem 0.38rem;
+          border-radius: var(--radius-full);
+          background: rgba(16, 185, 129, 0.1);
+          color: rgb(110, 231, 183);
+          border: 1px solid rgba(16, 185, 129, 0.18);
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .btn-delete-chapter {
@@ -5633,6 +6091,55 @@ function EditorContent() {
         .btn-export:hover {
           border-color: var(--primary);
           color: var(--primary-hover);
+        }
+
+        .btn-volume-add {
+          margin-top: 0.5rem;
+        }
+
+        .chapter-move-menu-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 450;
+        }
+
+        .chapter-move-menu {
+          position: fixed;
+          display: flex;
+          flex-direction: column;
+          min-width: 190px;
+          max-width: min(260px, calc(100vw - 1rem));
+          padding: 0.4rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          box-shadow: 0 18px 35px rgba(0, 0, 0, 0.35);
+        }
+
+        .chapter-move-title {
+          padding: 0.35rem 0.45rem 0.45rem;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .chapter-move-menu button {
+          width: 100%;
+          padding: 0.5rem 0.55rem;
+          border: 0;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          color: var(--text-secondary);
+          text-align: left;
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .chapter-move-menu button:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
         }
 
         .linked-folder-info {

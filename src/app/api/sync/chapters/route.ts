@@ -8,6 +8,8 @@ interface Note {
   createdAt: number
   updatedAt: number
   wordGoal?: number
+  volumeId?: string | null
+  sortOrder?: number
 }
 
 export async function POST(req: NextRequest) {
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch chapters from DB
     const selectRes = await pool.query(
-      "SELECT id, title, content, created_at, updated_at, word_goal FROM chapters WHERE user_id = $1 AND project_id = $2",
+      "SELECT id, title, content, created_at, updated_at, word_goal, volume_id, sort_order FROM chapters WHERE user_id = $1 AND project_id = $2",
       [userId, projectId]
     )
 
@@ -43,7 +45,9 @@ export async function POST(req: NextRequest) {
       content: row.content || "",
       createdAt: row.created_at ? Number(row.created_at) : Date.now(),
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now(),
-      wordGoal: row.word_goal !== null ? Number(row.word_goal) : undefined
+      wordGoal: row.word_goal !== null ? Number(row.word_goal) : undefined,
+      volumeId: row.volume_id || null,
+      sortOrder: row.sort_order !== null ? Number(row.sort_order) : undefined
     }))
 
     const cloudNotesMap = new Map(cloudNotes.map(n => [n.id, n]))
@@ -56,24 +60,30 @@ export async function POST(req: NextRequest) {
       const localUpdated = localNote.updatedAt || Date.now()
       const localCreated = localNote.createdAt || Date.now()
       const wordGoal = localNote.wordGoal || 1200
+      const volumeId = localNote.volumeId || null
+      const sortOrder = typeof localNote.sortOrder === "number" ? localNote.sortOrder : null
 
       if (!cloudNote) {
         // Upload to cloud
         await pool.query(
-          `INSERT INTO chapters (id, project_id, user_id, title, content, created_at, updated_at, word_goal)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `INSERT INTO chapters (id, project_id, user_id, title, content, created_at, updated_at, word_goal, volume_id, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT (id) DO UPDATE SET 
             title = EXCLUDED.title, 
             content = EXCLUDED.content, 
             updated_at = EXCLUDED.updated_at, 
-            word_goal = EXCLUDED.word_goal`,
-          [localNote.id, projectId, userId, localNote.title, localNote.content || "", localCreated, localUpdated, wordGoal]
+            word_goal = EXCLUDED.word_goal,
+            volume_id = EXCLUDED.volume_id,
+            sort_order = EXCLUDED.sort_order`,
+          [localNote.id, projectId, userId, localNote.title, localNote.content || "", localCreated, localUpdated, wordGoal, volumeId, sortOrder]
         )
         finalNotesMap.set(localNote.id, {
           ...localNote,
           updatedAt: localUpdated,
           createdAt: localCreated,
-          wordGoal
+          wordGoal,
+          volumeId,
+          ...(sortOrder !== null ? { sortOrder } : {})
         })
       } else {
         const cloudUpdated = cloudNote.updatedAt || 0
@@ -81,14 +91,16 @@ export async function POST(req: NextRequest) {
           // Local is newer, upload to cloud
           await pool.query(
             `UPDATE chapters 
-             SET title = $1, content = $2, updated_at = $3, word_goal = $4 
-             WHERE id = $5 AND user_id = $6 AND project_id = $7`,
-            [localNote.title, localNote.content || "", localUpdated, wordGoal, localNote.id, userId, projectId]
+             SET title = $1, content = $2, updated_at = $3, word_goal = $4, volume_id = $5, sort_order = $6 
+             WHERE id = $7 AND user_id = $8 AND project_id = $9`,
+            [localNote.title, localNote.content || "", localUpdated, wordGoal, volumeId, sortOrder, localNote.id, userId, projectId]
           )
           finalNotesMap.set(localNote.id, {
             ...localNote,
             updatedAt: localUpdated,
-            wordGoal
+            wordGoal,
+            volumeId,
+            ...(sortOrder !== null ? { sortOrder } : {})
           })
         } else {
           // Cloud is newer, use cloud version
@@ -104,7 +116,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const merged = Array.from(finalNotesMap.values()).sort((a, b) => b.updatedAt - a.updatedAt)
+    const merged = Array.from(finalNotesMap.values()).sort((a, b) => {
+      const aSort = typeof a.sortOrder === "number" ? a.sortOrder : a.createdAt
+      const bSort = typeof b.sortOrder === "number" ? b.sortOrder : b.createdAt
+      return aSort - bSort
+    })
 
     return NextResponse.json({ chapters: merged })
   } catch (error: unknown) {
