@@ -110,6 +110,18 @@ interface ProgressionAbility {
   evidence?: string
 }
 
+interface ProgressionSystemSettings {
+  realms: string[]
+  stageLabels: string[]
+  showLevels: boolean
+  showExp: boolean
+  showStats: boolean
+  statKeys: ProgressionStatKey[]
+  customFields: string[]
+  notes: string
+  updatedAt?: number
+}
+
 interface ProgressionHistoryEntry {
   id: string
   chapterId: string
@@ -119,6 +131,10 @@ interface ProgressionHistoryEntry {
   summary: string
   levelBefore: number
   levelAfter: number
+  realmBefore?: string
+  realmAfter?: string
+  stageBefore?: string
+  stageAfter?: string
   statChanges: Partial<Record<ProgressionStatKey, number>>
   abilityChanges: string[]
   rewards: string[]
@@ -132,12 +148,16 @@ interface CharacterProgressionProfile {
   title?: string
   className?: string
   rank?: string
+  realm?: string
+  stage?: string
+  cultivationPath?: string
   level: number
   exp: number
   nextLevelExp: number
   stats: Record<ProgressionStatKey, number>
   abilities: ProgressionAbility[]
   traits: string[]
+  customFields?: Record<string, string>
   notes: string
   processedChapterIds: string[]
   history: ProgressionHistoryEntry[]
@@ -146,17 +166,27 @@ interface CharacterProgressionProfile {
 }
 
 interface ProgressionAiResponse {
+  targetLoreEntryId?: string
+  targetProfileId?: string
   profile?: Partial<CharacterProgressionProfile>
   update?: {
     shouldApply?: boolean
     summary?: string
     levelBefore?: number
     levelAfter?: number
+    realmBefore?: string
+    realmAfter?: string
+    stageBefore?: string
+    stageAfter?: string
     statChanges?: Partial<Record<ProgressionStatKey, number>>
     abilityChanges?: string[]
     rewards?: string[]
     evidence?: string[]
   }
+}
+
+interface CultivationImportResponse {
+  settings?: Partial<ProgressionSystemSettings>
 }
 
 const MIN_LEFT_SIDEBAR_WIDTH = 280
@@ -171,6 +201,16 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
   intelligence: 1,
   sense: 1,
   mana: 0
+}
+const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
+  realms: [],
+  stageLabels: ["Low", "Middle", "High", "Peak"],
+  showLevels: true,
+  showExp: true,
+  showStats: true,
+  statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
+  customFields: ["Race", "Bloodline", "Affiliation"],
+  notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
 }
 
 const clampLeftSidebarWidth = (width: number) => {
@@ -406,11 +446,17 @@ function EditorContent() {
 
   // Character Progression States
   const [progressionProfiles, setProgressionProfiles] = useState<CharacterProgressionProfile[]>([])
+  const [progressionSystem, setProgressionSystem] = useState<ProgressionSystemSettings>(DEFAULT_PROGRESSION_SYSTEM)
   const [selectedProgressionProfileId, setSelectedProgressionProfileId] = useState<string | null>(null)
   const [progressionSelectedEntryId, setProgressionSelectedEntryId] = useState<string | null>(null)
   const [progressionLoading, setProgressionLoading] = useState(false)
+  const [progressionSystemLoading, setProgressionSystemLoading] = useState(false)
   const [progressionError, setProgressionError] = useState("")
   const [progressionNotice, setProgressionNotice] = useState("")
+  const [isProgressionSystemOpen, setIsProgressionSystemOpen] = useState(false)
+  const [isProgressionEditMode, setIsProgressionEditMode] = useState(false)
+  const [progressionEditDraft, setProgressionEditDraft] = useState("")
+  const progressionFileInputRef = useRef<HTMLInputElement>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -727,12 +773,19 @@ function EditorContent() {
       title: aiProfile?.title || existingProfile?.title || "",
       className: aiProfile?.className || existingProfile?.className || "",
       rank: aiProfile?.rank || existingProfile?.rank || "",
+      realm: aiProfile?.realm || existingProfile?.realm || "",
+      stage: aiProfile?.stage || existingProfile?.stage || "",
+      cultivationPath: aiProfile?.cultivationPath || existingProfile?.cultivationPath || "",
       level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || 1,
       exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || 0,
       nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || 100,
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) },
       abilities,
       traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || [],
+      customFields: {
+        ...(existingProfile?.customFields || {}),
+        ...(aiProfile?.customFields || {})
+      },
       notes: aiProfile?.notes || existingProfile?.notes || "",
       processedChapterIds: Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId])),
       history: [historyEntry, ...(existingProfile?.history || [])],
@@ -755,13 +808,13 @@ function EditorContent() {
       ? bibleEntries.find(entry => entry.id === entryId)
       : findProgressionSourceEntry(selectedText) || selectedProfileEntry
 
-    if (!sourceEntry) {
+    if (!sourceEntry && progressionProfiles.length === 0) {
       setProgressionError("Highlight a Story Bible character name or select a profile first.")
       return
     }
 
-    const existingProfile = progressionProfiles.find(profile => profile.loreEntryId === sourceEntry.id)
-    if (existingProfile?.processedChapterIds.includes(activeNote.id)) {
+    const existingProfile = sourceEntry ? progressionProfiles.find(profile => profile.loreEntryId === sourceEntry.id) : undefined
+    if (sourceEntry && existingProfile?.processedChapterIds.includes(activeNote.id)) {
       setSelectedProgressionProfileId(existingProfile.id)
       setProgressionNotice(`${sourceEntry.name} already has a progression update recorded for this chapter.`)
       setProgressionError("")
@@ -782,21 +835,43 @@ function EditorContent() {
         body: JSON.stringify({
           action: "progression_update",
           selectedText,
-          loreEntry: {
+          loreEntry: sourceEntry ? {
+            id: sourceEntry.id,
             name: sourceEntry.name,
             category: sourceEntry.category,
             content: sourceEntry.content,
             groups: (sourceEntry.groupIds || [])
               .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
               .filter(Boolean)
-          },
+          } : null,
           chapter: {
             id: activeNote.id,
             title: activeNote.title,
             chapterNumber,
             content: activeNote.content.slice(0, 7000)
           },
+          progressionSystem,
           existingProfile,
+          candidateProfiles: progressionProfiles.map(profile => ({
+            id: profile.id,
+            loreEntryId: profile.loreEntryId,
+            name: profile.name,
+            realm: profile.realm,
+            stage: profile.stage,
+            rank: profile.rank,
+            level: profile.level,
+            processedChapterIds: profile.processedChapterIds
+          })),
+          candidateLoreEntries: bibleEntries
+            .filter(entry => entry.category === "character" || entry.category === "beast")
+            .slice(0, 80)
+            .map(entry => ({
+              id: entry.id,
+              name: entry.name,
+              category: entry.category,
+              aliases: getLoreAliases(entry),
+              content: entry.content.slice(0, 1200)
+            })),
           memory: buildStoryMemoryContext()
         })
       })
@@ -807,9 +882,25 @@ function EditorContent() {
       }
 
       const progression = (data.progression || {}) as ProgressionAiResponse
+      const finalSourceEntry = sourceEntry
+        || bibleEntries.find(entry => entry.id === progression.targetLoreEntryId)
+        || bibleEntries.find(entry => entry.id === progression.profile?.loreEntryId)
+        || bibleEntries.find(entry => entry.name.toLowerCase() === String(progression.profile?.name || "").toLowerCase())
+      if (!finalSourceEntry) {
+        setProgressionError("The AI could not determine which progression profile this chapter should update.")
+        return
+      }
+      const finalExistingProfile = progressionProfiles.find(profile => profile.loreEntryId === finalSourceEntry.id)
+      if (finalExistingProfile?.processedChapterIds.includes(activeNote.id)) {
+        setSelectedProgressionProfileId(finalExistingProfile.id)
+        setProgressionSelectedEntryId(finalSourceEntry.id)
+        setProgressionNotice(`${finalSourceEntry.name} already has a progression update recorded for this chapter.`)
+        setProgressionError("")
+        return
+      }
       const now = Date.now()
       const aiUpdate = progression.update || {}
-      const levelBefore = aiUpdate.levelBefore ?? existingProfile?.level ?? 1
+      const levelBefore = aiUpdate.levelBefore ?? finalExistingProfile?.level ?? 1
       const levelAfter = aiUpdate.levelAfter ?? progression.profile?.level ?? levelBefore
       const historyEntry: ProgressionHistoryEntry = {
         id: crypto.randomUUID(),
@@ -820,26 +911,191 @@ function EditorContent() {
         summary: aiUpdate.summary || "Progression profile reviewed from this chapter.",
         levelBefore,
         levelAfter,
+        realmBefore: aiUpdate.realmBefore ?? finalExistingProfile?.realm ?? "",
+        realmAfter: aiUpdate.realmAfter ?? progression.profile?.realm ?? finalExistingProfile?.realm ?? "",
+        stageBefore: aiUpdate.stageBefore ?? finalExistingProfile?.stage ?? "",
+        stageAfter: aiUpdate.stageAfter ?? progression.profile?.stage ?? finalExistingProfile?.stage ?? "",
         statChanges: aiUpdate.statChanges || {},
         abilityChanges: Array.isArray(aiUpdate.abilityChanges) ? aiUpdate.abilityChanges : [],
         rewards: Array.isArray(aiUpdate.rewards) ? aiUpdate.rewards : [],
         evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : []
       }
-      const nextProfile = normalizeProgressionProfile(sourceEntry, progression.profile, existingProfile, historyEntry, now)
-      const nextProfiles = existingProfile
-        ? progressionProfiles.map(profile => profile.id === existingProfile.id ? nextProfile : profile)
+      const nextProfile = normalizeProgressionProfile(finalSourceEntry, progression.profile, finalExistingProfile, historyEntry, now)
+      const nextProfiles = finalExistingProfile
+        ? progressionProfiles.map(profile => profile.id === finalExistingProfile.id ? nextProfile : profile)
         : [nextProfile, ...progressionProfiles]
       persistProgressionProfiles(nextProfiles)
       setSelectedProgressionProfileId(nextProfile.id)
-      setProgressionSelectedEntryId(sourceEntry.id)
+      setProgressionSelectedEntryId(finalSourceEntry.id)
       setProgressionNotice(aiUpdate.shouldApply === false
-        ? `No major level change found, but this chapter has been marked as reviewed for ${sourceEntry.name}.`
-        : `Updated ${sourceEntry.name} from ${activeNote.title || "this chapter"}.`)
+        ? `No major progression change found, but this chapter has been marked as reviewed for ${finalSourceEntry.name}.`
+        : `Updated ${finalSourceEntry.name} from ${activeNote.title || "this chapter"}.`)
     } catch (err) {
       setProgressionError(err instanceof Error ? err.message : "Failed to update progression profile")
     } finally {
       setProgressionLoading(false)
     }
+  }
+
+  const updateProgressionProfile = (profileId: string, updater: (profile: CharacterProgressionProfile) => CharacterProgressionProfile) => {
+    const nextProfiles = progressionProfiles.map(profile => profile.id === profileId ? updater(profile) : profile)
+    persistProgressionProfiles(nextProfiles)
+  }
+
+  const deleteProgressionProfile = (profileId: string) => {
+    const profile = progressionProfiles.find(item => item.id === profileId)
+    if (!profile) return
+    const confirmed = window.confirm(`Delete the progression profile for ${profile.name}? This will remove its stats, abilities, and history.`)
+    if (!confirmed) return
+    const nextProfiles = progressionProfiles.filter(item => item.id !== profileId)
+    persistProgressionProfiles(nextProfiles)
+    const nextSelected = nextProfiles[0] || null
+    setSelectedProgressionProfileId(nextSelected?.id || null)
+    setProgressionSelectedEntryId(nextSelected?.loreEntryId || null)
+    setIsProgressionEditMode(false)
+    setProgressionEditDraft("")
+    setProgressionNotice(`Deleted ${profile.name}'s progression profile.`)
+  }
+
+  const setProgressionProfileField = (field: keyof CharacterProgressionProfile, value: string | number | Record<string, string>) => {
+    if (!selectedProgressionProfile) return
+    updateProgressionProfile(selectedProgressionProfile.id, profile => ({
+      ...profile,
+      [field]: value,
+      updatedAt: Date.now()
+    }))
+  }
+
+  const setProgressionStat = (statKey: ProgressionStatKey, value: number) => {
+    if (!selectedProgressionProfile) return
+    updateProgressionProfile(selectedProgressionProfile.id, profile => ({
+      ...profile,
+      stats: {
+        ...profile.stats,
+        [statKey]: Number.isFinite(value) ? value : 0
+      },
+      updatedAt: Date.now()
+    }))
+  }
+
+  const setProgressionCustomField = (fieldName: string, value: string) => {
+    if (!selectedProgressionProfile) return
+    updateProgressionProfile(selectedProgressionProfile.id, profile => ({
+      ...profile,
+      customFields: {
+        ...(profile.customFields || {}),
+        [fieldName]: value
+      },
+      updatedAt: Date.now()
+    }))
+  }
+
+  const buildAbilityDraft = (profile: CharacterProgressionProfile) => {
+    return profile.abilities.map(ability => `${ability.name} | ${ability.level} | ${ability.description}`).join("\n")
+  }
+
+  const parseAbilityDraft = (draft: string): ProgressionAbility[] => {
+    return draft.split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
+        const parts = line.split("|").map(part => part.trim())
+        const name = parts[0] || `Ability ${index + 1}`
+        const level = Number(parts[1])
+        return {
+          id: `${name}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          name,
+          level: Number.isFinite(level) ? level : 1,
+          description: parts.slice(2).join(" | "),
+          evidence: ""
+        }
+      })
+  }
+
+  const toggleProgressionEditMode = () => {
+    if (!selectedProgressionProfile) return
+    setProgressionEditDraft(buildAbilityDraft(selectedProgressionProfile))
+    setIsProgressionEditMode(prev => !prev)
+  }
+
+  const saveProgressionAbilityDraft = () => {
+    if (!selectedProgressionProfile) return
+    updateProgressionProfile(selectedProgressionProfile.id, profile => ({
+      ...profile,
+      abilities: parseAbilityDraft(progressionEditDraft),
+      updatedAt: Date.now()
+    }))
+    setProgressionNotice("Progression abilities updated.")
+  }
+
+  const updateProgressionSystemList = (field: "realms" | "stageLabels" | "customFields", value: string) => {
+    const list = value.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean)
+    persistProgressionSystem({
+      ...progressionSystem,
+      [field]: Array.from(new Set(list))
+    })
+  }
+
+  const toggleProgressionStatKey = (statKey: ProgressionStatKey) => {
+    const current = new Set(progressionSystem.statKeys)
+    if (current.has(statKey)) {
+      current.delete(statKey)
+    } else {
+      current.add(statKey)
+    }
+    persistProgressionSystem({
+      ...progressionSystem,
+      statKeys: Array.from(current)
+    })
+  }
+
+  const handleCultivationFileUpload = async (file?: File | null) => {
+    if (!file) return
+    setProgressionSystemLoading(true)
+    setProgressionError("")
+    setProgressionNotice("")
+    try {
+      const rawText = await file.text()
+      if (!rawText.trim()) {
+        setProgressionError("That cultivation-stage file is empty.")
+        return
+      }
+
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cultivation_realm_import",
+          rawText: rawText.slice(0, 12000),
+          currentSettings: progressionSystem
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setProgressionError(data.error)
+        return
+      }
+      const imported = (data.imported || {}) as CultivationImportResponse
+      persistProgressionSystem(normalizeProgressionSystem({
+        ...progressionSystem,
+        ...(imported.settings || {})
+      }))
+      setProgressionNotice("Cultivation stages imported and arranged for this novel.")
+    } catch (err) {
+      setProgressionError(err instanceof Error ? err.message : "Failed to import cultivation stages")
+    } finally {
+      setProgressionSystemLoading(false)
+      if (progressionFileInputRef.current) {
+        progressionFileInputRef.current.value = ""
+      }
+    }
+  }
+
+  const formatProgressionStage = (profile: CharacterProgressionProfile) => {
+    const realm = profile.realm || profile.rank || "Unranked"
+    const stage = profile.stage ? ` - ${profile.stage}` : ""
+    const level = progressionSystem.showLevels ? `Lv ${profile.level}` : ""
+    return [realm + stage, level].filter(Boolean).join(" | ")
   }
 
   const getLoreAliases = useCallback((entry: BibleEntry) => {
@@ -1123,6 +1379,10 @@ function EditorContent() {
     return projectId ? `penpad_progression_${projectId}` : ""
   }, [projectId])
 
+  const getProgressionSystemStorageKey = useCallback(() => {
+    return projectId ? `penpad_progression_system_${projectId}` : ""
+  }, [projectId])
+
   const getExportHistoryStorageKey = useCallback(() => {
     return projectId ? `penpad_export_history_${projectId}` : ""
   }, [projectId])
@@ -1168,6 +1428,47 @@ function EditorContent() {
     setProgressionProfiles(sorted)
   }, [getProgressionStorageKey])
 
+  const normalizeProgressionSystem = (settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
+    const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
+    return {
+      ...DEFAULT_PROGRESSION_SYSTEM,
+      ...(settings || {}),
+      realms: Array.isArray(settings?.realms) ? settings.realms.map(item => String(item).trim()).filter(Boolean) : DEFAULT_PROGRESSION_SYSTEM.realms,
+      stageLabels: Array.isArray(settings?.stageLabels) && settings.stageLabels.length > 0
+        ? settings.stageLabels.map(item => String(item).trim()).filter(Boolean)
+        : DEFAULT_PROGRESSION_SYSTEM.stageLabels,
+      statKeys: Array.isArray(settings?.statKeys) && settings.statKeys.length > 0
+        ? settings.statKeys.filter(item => validStatKeys.has(item))
+        : DEFAULT_PROGRESSION_SYSTEM.statKeys,
+      customFields: Array.isArray(settings?.customFields)
+        ? Array.from(new Set(settings.customFields.map(item => String(item).trim()).filter(Boolean)))
+        : DEFAULT_PROGRESSION_SYSTEM.customFields,
+      notes: settings?.notes || DEFAULT_PROGRESSION_SYSTEM.notes,
+      showLevels: settings?.showLevels !== false,
+      showExp: settings?.showExp !== false,
+      showStats: settings?.showStats !== false
+    }
+  }
+
+  const persistProgressionSystem = useCallback((nextSettings: ProgressionSystemSettings) => {
+    const key = getProgressionSystemStorageKey()
+    if (!key) return
+    const normalized = normalizeProgressionSystem({ ...nextSettings, updatedAt: Date.now() })
+    localStorage.setItem(key, JSON.stringify(normalized))
+    setProgressionSystem(normalized)
+  }, [getProgressionSystemStorageKey])
+
+  const fetchProgressionSystem = useCallback(() => {
+    if (!projectId) return
+    try {
+      const stored = localStorage.getItem(getProgressionSystemStorageKey())
+      setProgressionSystem(normalizeProgressionSystem(stored ? JSON.parse(stored) : undefined))
+    } catch (e) {
+      console.error("Failed to load progression system:", e)
+      setProgressionSystem(DEFAULT_PROGRESSION_SYSTEM)
+    }
+  }, [projectId, getProgressionSystemStorageKey])
+
   const fetchProgressionProfiles = useCallback(() => {
     if (!projectId) return
     try {
@@ -1178,6 +1479,7 @@ function EditorContent() {
         stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
         abilities: Array.isArray(profile.abilities) ? profile.abilities : [],
         traits: Array.isArray(profile.traits) ? profile.traits : [],
+        customFields: profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {},
         processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
         history: Array.isArray(profile.history) ? profile.history : []
       })).sort((a, b) => b.updatedAt - a.updatedAt)
@@ -1689,9 +1991,10 @@ function EditorContent() {
       fetchNotes()
       fetchBible()
       fetchBrain()
+      fetchProgressionSystem()
       fetchProgressionProfiles()
     }
-  }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain, fetchProgressionProfiles])
+  }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain, fetchProgressionSystem, fetchProgressionProfiles])
 
   useEffect(() => {
     if (activeNoteId) {
@@ -4016,6 +4319,90 @@ function EditorContent() {
                 </div>
 
                 <div className="progression-card glass-light">
+                  <button className="progression-system-toggle" onClick={() => setIsProgressionSystemOpen(prev => !prev)}>
+                    <span>Novel Progression System</span>
+                    <ChevronDown size={14} className={isProgressionSystemOpen ? "rotate" : ""} />
+                  </button>
+                  <div className="progression-system-summary">
+                    <span>{progressionSystem.realms.length || 0} realms</span>
+                    <span>{progressionSystem.stageLabels.join(" / ")}</span>
+                  </div>
+                  {isProgressionSystemOpen && (
+                    <div className="progression-system-editor">
+                      <input
+                        ref={progressionFileInputRef}
+                        type="file"
+                        accept=".txt,text/plain"
+                        hidden
+                        onChange={(e) => handleCultivationFileUpload(e.target.files?.[0])}
+                      />
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={() => progressionFileInputRef.current?.click()}
+                        disabled={progressionSystemLoading}
+                      >
+                        {progressionSystemLoading ? <Loader2 size={12} className="spin" /> : <FileText size={12} />}
+                        Import TXT
+                      </button>
+                      <div className="ai-form-field">
+                        <label>Cultivation Realms</label>
+                        <textarea
+                          className="ai-textarea compact"
+                          value={progressionSystem.realms.join("\n")}
+                          onChange={(e) => updateProgressionSystemList("realms", e.target.value)}
+                          placeholder={"Qi Gathering\nFoundation Establishment\nCore Formation"}
+                        />
+                      </div>
+                      <div className="ai-form-field">
+                        <label>Stages</label>
+                        <input
+                          className="ai-input"
+                          value={progressionSystem.stageLabels.join(", ")}
+                          onChange={(e) => updateProgressionSystemList("stageLabels", e.target.value)}
+                          placeholder="Low, Middle, High, Peak"
+                        />
+                      </div>
+                      <div className="progression-toggle-row">
+                        <label><input type="checkbox" checked={progressionSystem.showLevels} onChange={(e) => persistProgressionSystem({ ...progressionSystem, showLevels: e.target.checked })} /> Levels</label>
+                        <label><input type="checkbox" checked={progressionSystem.showExp} onChange={(e) => persistProgressionSystem({ ...progressionSystem, showExp: e.target.checked })} /> EXP</label>
+                        <label><input type="checkbox" checked={progressionSystem.showStats} onChange={(e) => persistProgressionSystem({ ...progressionSystem, showStats: e.target.checked })} /> Stats</label>
+                      </div>
+                      <div className="ai-form-field">
+                        <label>Visible Stats</label>
+                        <div className="progression-stat-toggles">
+                          {(Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[]).map(statKey => (
+                            <button
+                              key={statKey}
+                              className={`progression-mini-toggle ${progressionSystem.statKeys.includes(statKey) ? "active" : ""}`}
+                              onClick={() => toggleProgressionStatKey(statKey)}
+                            >
+                              {statKey}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="ai-form-field">
+                        <label>Custom Profile Fields</label>
+                        <input
+                          className="ai-input"
+                          value={progressionSystem.customFields.join(", ")}
+                          onChange={(e) => updateProgressionSystemList("customFields", e.target.value)}
+                          placeholder="Race, Bloodline, Sect, Affiliation"
+                        />
+                      </div>
+                      <div className="ai-form-field">
+                        <label>AI Rules</label>
+                        <textarea
+                          className="ai-textarea compact"
+                          value={progressionSystem.notes}
+                          onChange={(e) => persistProgressionSystem({ ...progressionSystem, notes: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="progression-card glass-light">
                   <div className="ai-form-field">
                     <label>Character / Beast</label>
                     <select
@@ -4074,6 +4461,15 @@ function EditorContent() {
                       </>
                     )}
                   </button>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary progression-auto-btn"
+                    onClick={() => handleProgressionUpdate(null, "")}
+                    disabled={progressionLoading || progressionProfiles.length === 0}
+                    title="Let the AI choose which existing progression profile this chapter updates"
+                  >
+                    <BrainCircuit size={13} />
+                    Auto From Chapter
+                  </button>
                 </div>
 
                 <div className="progression-profile-list">
@@ -4084,7 +4480,7 @@ function EditorContent() {
                       onClick={() => setSelectedProgressionProfileId(profile.id)}
                     >
                       <span>{profile.name}</span>
-                      <strong>Lv {profile.level}</strong>
+                      <strong>{formatProgressionStage(profile)}</strong>
                     </button>
                   ))}
                 </div>
@@ -4093,31 +4489,156 @@ function EditorContent() {
                   <div className="progression-detail">
                     <div className="progression-hero">
                       <div>
-                        <span>{selectedProgressionProfile.rank || "Unranked"}</span>
+                        <span>{formatProgressionStage(selectedProgressionProfile)}</span>
                         <h3>{selectedProgressionProfile.name}</h3>
-                        <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || "No class/title yet"}</p>
+                        <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || selectedProgressionProfile.cultivationPath || "No class/title yet"}</p>
                       </div>
-                      <strong>Lv {selectedProgressionProfile.level}</strong>
-                    </div>
-
-                    <div className="progression-exp">
-                      <div>
-                        <span>EXP</span>
-                        <strong>{selectedProgressionProfile.exp}/{selectedProgressionProfile.nextLevelExp}</strong>
-                      </div>
-                      <div className="progression-exp-bar">
-                        <span style={{ width: `${Math.min(100, Math.round((selectedProgressionProfile.exp / Math.max(1, selectedProgressionProfile.nextLevelExp)) * 100))}%` }} />
+                      <div className="progression-hero-actions">
+                        <button className="btn-icon-mini" onClick={toggleProgressionEditMode} title="Edit profile">
+                          <Edit3 size={13} />
+                        </button>
+                        <button className="btn-icon-mini danger" onClick={() => deleteProgressionProfile(selectedProgressionProfile.id)} title="Delete profile">
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
 
-                    <div className="progression-stat-grid">
-                      {(Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[]).map(statKey => (
-                        <div key={statKey}>
-                          <span>{statKey}</span>
-                          <strong>{selectedProgressionProfile.stats[statKey]}</strong>
+                    {isProgressionEditMode && (
+                      <div className="progression-edit-panel">
+                        <div className="progression-edit-grid">
+                          <label>
+                            Name
+                            <input className="ai-input" value={selectedProgressionProfile.name} onChange={(e) => setProgressionProfileField("name", e.target.value)} />
+                          </label>
+                          <label>
+                            Title
+                            <input className="ai-input" value={selectedProgressionProfile.title || ""} onChange={(e) => setProgressionProfileField("title", e.target.value)} />
+                          </label>
+                          <label>
+                            Class / Role
+                            <input className="ai-input" value={selectedProgressionProfile.className || ""} onChange={(e) => setProgressionProfileField("className", e.target.value)} />
+                          </label>
+                          <label>
+                            Path
+                            <input className="ai-input" value={selectedProgressionProfile.cultivationPath || ""} onChange={(e) => setProgressionProfileField("cultivationPath", e.target.value)} />
+                          </label>
+                          <label>
+                            Realm
+                            <input className="ai-input" list="progression-realms" value={selectedProgressionProfile.realm || ""} onChange={(e) => setProgressionProfileField("realm", e.target.value)} />
+                          </label>
+                          <label>
+                            Stage
+                            <input className="ai-input" list="progression-stages" value={selectedProgressionProfile.stage || ""} onChange={(e) => setProgressionProfileField("stage", e.target.value)} />
+                          </label>
+                          {progressionSystem.showLevels && (
+                            <label>
+                              Level
+                              <input className="ai-input" type="number" value={selectedProgressionProfile.level} onChange={(e) => setProgressionProfileField("level", Number(e.target.value))} />
+                            </label>
+                          )}
+                          {progressionSystem.showExp && (
+                            <>
+                              <label>
+                                EXP
+                                <input className="ai-input" type="number" value={selectedProgressionProfile.exp} onChange={(e) => setProgressionProfileField("exp", Number(e.target.value))} />
+                              </label>
+                              <label>
+                                Next EXP
+                                <input className="ai-input" type="number" value={selectedProgressionProfile.nextLevelExp} onChange={(e) => setProgressionProfileField("nextLevelExp", Number(e.target.value))} />
+                              </label>
+                            </>
+                          )}
                         </div>
-                      ))}
-                    </div>
+                        <datalist id="progression-realms">
+                          {progressionSystem.realms.map(realm => <option key={realm} value={realm} />)}
+                        </datalist>
+                        <datalist id="progression-stages">
+                          {progressionSystem.stageLabels.map(stage => <option key={stage} value={stage} />)}
+                        </datalist>
+                        {progressionSystem.showStats && (
+                          <div className="progression-edit-stat-grid">
+                            {progressionSystem.statKeys.map(statKey => (
+                              <label key={statKey}>
+                                {statKey}
+                                <input
+                                  className="ai-input"
+                                  type="number"
+                                  value={selectedProgressionProfile.stats[statKey]}
+                                  onChange={(e) => setProgressionStat(statKey, Number(e.target.value))}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {progressionSystem.customFields.length > 0 && (
+                          <div className="progression-edit-grid">
+                            {progressionSystem.customFields.map(fieldName => (
+                              <label key={fieldName}>
+                                {fieldName}
+                                <input
+                                  className="ai-input"
+                                  value={(selectedProgressionProfile.customFields || {})[fieldName] || ""}
+                                  onChange={(e) => setProgressionCustomField(fieldName, e.target.value)}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        <div className="ai-form-field">
+                          <label>Notes</label>
+                          <textarea className="ai-textarea compact" value={selectedProgressionProfile.notes} onChange={(e) => setProgressionProfileField("notes", e.target.value)} />
+                        </div>
+                        <div className="ai-form-field">
+                          <label>Abilities</label>
+                          <textarea
+                            className="ai-textarea compact"
+                            value={progressionEditDraft}
+                            onChange={(e) => setProgressionEditDraft(e.target.value)}
+                            placeholder="Skill Name | 1 | Description"
+                          />
+                          <button className="btn-ai-sub btn-ai-primary" onClick={saveProgressionAbilityDraft}>
+                            <Save size={12} />
+                            Save Abilities
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {progressionSystem.showExp && (
+                      <div className="progression-exp">
+                        <div>
+                          <span>EXP</span>
+                          <strong>{selectedProgressionProfile.exp}/{selectedProgressionProfile.nextLevelExp}</strong>
+                        </div>
+                        <div className="progression-exp-bar">
+                          <span style={{ width: `${Math.min(100, Math.round((selectedProgressionProfile.exp / Math.max(1, selectedProgressionProfile.nextLevelExp)) * 100))}%` }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {progressionSystem.showStats && (
+                      <div className="progression-stat-grid">
+                        {progressionSystem.statKeys.map(statKey => (
+                          <div key={statKey}>
+                            <span>{statKey}</span>
+                            <strong>{selectedProgressionProfile.stats[statKey]}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {progressionSystem.customFields.some(fieldName => (selectedProgressionProfile.customFields || {})[fieldName]) && (
+                      <div className="progression-field-grid">
+                        {progressionSystem.customFields
+                          .filter(fieldName => (selectedProgressionProfile.customFields || {})[fieldName])
+                          .map(fieldName => (
+                            <div key={fieldName}>
+                              <span>{fieldName}</span>
+                              <strong>{(selectedProgressionProfile.customFields || {})[fieldName]}</strong>
+                            </div>
+                          ))}
+                      </div>
+                    )}
 
                     <div className="progression-section">
                       <span className="brain-detail-label">Abilities</span>
@@ -4142,7 +4663,11 @@ function EditorContent() {
                         <div key={entry.id} className="progression-history-item">
                           <div>
                             <strong>{entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle}</strong>
-                            <span>Lv {entry.levelBefore} &rarr; {entry.levelAfter}</span>
+                            <span>
+                              {progressionSystem.showLevels
+                                ? `Lv ${entry.levelBefore} -> ${entry.levelAfter}`
+                                : `${entry.realmBefore || "Unranked"}${entry.stageBefore ? ` ${entry.stageBefore}` : ""} -> ${entry.realmAfter || entry.realmBefore || "Unranked"}${entry.stageAfter ? ` ${entry.stageAfter}` : ""}`}
+                            </span>
                           </div>
                           <p>{entry.summary}</p>
                           {(entry.abilityChanges.length > 0 || entry.rewards.length > 0) && (
@@ -7420,7 +7945,7 @@ function EditorContent() {
           display: inline-flex;
           align-items: center;
           gap: 0.4rem;
-          max-width: 150px;
+          max-width: 210px;
           padding: 0.42rem 0.55rem;
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-full);
@@ -7449,6 +7974,91 @@ function EditorContent() {
         .progression-profile-chip strong {
           color: var(--primary);
           font-size: 0.72rem;
+          white-space: nowrap;
+        }
+
+        .progression-system-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          width: 100%;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: var(--text-primary);
+          font-size: 0.82rem;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .progression-system-toggle svg {
+          transition: var(--transition);
+        }
+
+        .progression-system-toggle svg.rotate {
+          transform: rotate(180deg);
+        }
+
+        .progression-system-summary {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.35rem;
+        }
+
+        .progression-system-summary span,
+        .progression-mini-toggle {
+          padding: 0.24rem 0.45rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-full);
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 800;
+        }
+
+        .progression-system-editor {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding-top: 0.65rem;
+          border-top: 1px solid var(--surface-border);
+        }
+
+        .progression-toggle-row,
+        .progression-stat-toggles {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.45rem;
+        }
+
+        .progression-toggle-row label {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          font-weight: 800;
+        }
+
+        .progression-toggle-row input {
+          accent-color: var(--primary);
+        }
+
+        .progression-mini-toggle {
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .progression-mini-toggle.active {
+          border-color: rgba(99, 102, 241, 0.35);
+          background: var(--primary-light);
+          color: var(--primary-hover);
+        }
+
+        .progression-auto-btn {
+          justify-content: center;
         }
 
         .progression-detail {
@@ -7494,6 +8104,71 @@ function EditorContent() {
           flex-shrink: 0;
           color: rgb(252, 211, 77);
           font-size: 1.2rem;
+        }
+
+        .progression-hero-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          flex-shrink: 0;
+        }
+
+        .btn-icon-mini {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .btn-icon-mini:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .btn-icon-mini.danger {
+          color: var(--error);
+        }
+
+        .btn-icon-mini.danger:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--error-hover);
+        }
+
+        .progression-edit-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(20, 184, 166, 0.07);
+        }
+
+        .progression-edit-grid,
+        .progression-edit-stat-grid,
+        .progression-field-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.55rem;
+        }
+
+        .progression-edit-grid label,
+        .progression-edit-stat-grid label {
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .progression-exp {
@@ -7550,6 +8225,29 @@ function EditorContent() {
 
         .progression-stat-grid strong {
           color: var(--text-primary);
+        }
+
+        .progression-field-grid div {
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+          padding: 0.55rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .progression-field-grid span {
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          font-weight: 900;
+          text-transform: uppercase;
+        }
+
+        .progression-field-grid strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          overflow-wrap: anywhere;
         }
 
         .progression-section {
@@ -8897,6 +9595,22 @@ function EditorContent() {
           color: var(--text-primary);
         }
 
+        .ai-input {
+          width: 100%;
+          height: 36px;
+          padding: 0 0.55rem;
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          color: var(--text-primary);
+          font-size: 0.82rem;
+          outline: none;
+        }
+
+        .ai-input:focus {
+          border-color: var(--primary);
+        }
+
         .ai-textarea {
           width: 100%;
           height: 100px;
@@ -8913,6 +9627,11 @@ function EditorContent() {
 
         .ai-textarea:focus {
           border-color: var(--primary);
+        }
+
+        .ai-textarea.compact {
+          height: 82px;
+          min-height: 82px;
         }
 
         .ai-error-box {

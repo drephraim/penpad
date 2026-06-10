@@ -22,16 +22,35 @@ type AppearancePromptResult = {
 }
 
 type ProgressionAiResponse = {
+  targetLoreEntryId?: string
+  targetProfileId?: string
   profile?: Record<string, unknown>
   update?: {
     shouldApply?: boolean
     summary?: string
     levelBefore?: number
     levelAfter?: number
+    realmBefore?: string
+    realmAfter?: string
+    stageBefore?: string
+    stageAfter?: string
     statChanges?: Record<string, number>
     abilityChanges?: string[]
     rewards?: string[]
     evidence?: string[]
+  }
+}
+
+type CultivationImportResponse = {
+  settings?: {
+    realms?: string[]
+    stageLabels?: string[]
+    showLevels?: boolean
+    showExp?: boolean
+    showStats?: boolean
+    statKeys?: string[]
+    customFields?: string[]
+    notes?: string
   }
 }
 
@@ -235,40 +254,60 @@ export async function POST(req: NextRequest) {
         `- Human form: ${safeForms.humanForm || "Not directly described. Infer from available context."}` +
         `${chapterContent}${memoryContext}`
     } else if (action === "progression_update") {
-      const { selectedText, loreEntry, chapter, existingProfile } = body
+      const { selectedText, loreEntry, chapter, existingProfile, progressionSystem, candidateProfiles, candidateLoreEntries } = body
       const safeLoreEntry = loreEntry && typeof loreEntry === "object"
-        ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[] }
+        ? loreEntry as { id?: string; name?: string; category?: string; content?: string; groups?: string[] }
         : null
       const chapterContext = chapter && typeof chapter === "object"
         ? chapter as { id?: string; title?: string; chapterNumber?: number; content?: string }
         : null
 
-      if (!safeLoreEntry?.name || !chapterContext?.content) {
-        return NextResponse.json({ error: "A Story Bible entry and chapter content are required for progression_update." }, { status: 400 })
+      if (!chapterContext?.content || (!safeLoreEntry?.name && !Array.isArray(candidateProfiles))) {
+        return NextResponse.json({ error: "A Story Bible entry or candidate profiles and chapter content are required for progression_update." }, { status: 400 })
       }
 
       systemInstruction =
         "You are a LitRPG, xianxia, and web-novel progression system designer. " +
         "The writer wants a character status/profile that evolves only when the current chapter provides evidence.\n" +
         "Guidelines:\n" +
-        "1. Use the Story Bible entry, current chapter, and existing profile to create or update a progression profile.\n" +
-        "2. Track level, EXP, nextLevelExp, rank, className, title, stats, abilities, traits, and notes.\n" +
-        "3. Stats must use keys: strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
-        "4. Only increase levels, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades.\n" +
-        "5. If the chapter has no meaningful progression, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
-        "6. Never double-count previous profile history. Use the existing profile as the current truth.\n" +
-        "7. Output ONLY valid JSON with keys: profile and update. No markdown fences. profile must include name, title, className, rank, level, exp, nextLevelExp, stats, abilities, traits, notes. update must include shouldApply, summary, levelBefore, levelAfter, statChanges, abilityChanges, rewards, evidence."
+        "1. Use the Story Bible entry, current chapter, existing profile, and project progression system to create or update a profile.\n" +
+        "2. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter. Return targetLoreEntryId and targetProfileId when known.\n" +
+        "3. Track level, EXP, nextLevelExp, rank, realm, stage, cultivationPath, className, title, stats, abilities, traits, customFields, and notes, but adapt to the project's configured system.\n" +
+        "4. Use configured realms and stage labels exactly when the novel uses cultivation. Examples of stage labels include Low, Middle, High, Peak.\n" +
+        "5. Stats must use keys from the configured visible stats when possible; fallback keys are strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
+        "6. Only increase levels, realms, stages, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades.\n" +
+        "7. If the chapter has no meaningful progression, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
+        "8. Never double-count previous profile history. Use the existing profile and processed chapter history as current truth.\n" +
+        "9. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, cultivationPath, level, exp, nextLevelExp, stats, abilities, traits, customFields, notes. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, evidence."
 
       const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
-      const groups = Array.isArray(safeLoreEntry.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
+      const groups = Array.isArray(safeLoreEntry?.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
+      const explicitTarget = safeLoreEntry?.name
+        ? `Target: ${safeLoreEntry.name}\nTarget lore id: ${safeLoreEntry.id || ""}\nHighlighted text: ${selectedText || ""}\nType: ${safeLoreEntry.category || "character"}\nGroups: ${groups}\nStory Bible Notes:\n${safeLoreEntry.content || ""}\n\n`
+        : "Target: Auto-detect from candidate profiles and chapter content.\n"
       userPrompt =
-        `Target: ${safeLoreEntry.name}\n` +
-        `Highlighted text: ${selectedText || ""}\n` +
-        `Type: ${safeLoreEntry.category || "character"}\n` +
-        `Groups: ${groups}\n` +
-        `Story Bible Notes:\n${safeLoreEntry.content || ""}\n\n` +
+        explicitTarget +
+        `Project Progression System JSON:\n${JSON.stringify(progressionSystem || {}).slice(0, 5000)}\n\n` +
+        `Candidate Profiles JSON:\n${JSON.stringify(Array.isArray(candidateProfiles) ? candidateProfiles : []).slice(0, 6000)}\n\n` +
+        `Candidate Lore Entries JSON:\n${JSON.stringify(Array.isArray(candidateLoreEntries) ? candidateLoreEntries : []).slice(0, 8000)}\n\n` +
         `Active Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}\n` +
         `Chapter Content:\n${chapterContext.content}${existing}${memoryContext}`
+    } else if (action === "cultivation_realm_import") {
+      const { rawText, currentSettings } = body
+      if (!rawText || typeof rawText !== "string") {
+        return NextResponse.json({ error: "rawText is required for cultivation_realm_import." }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You organize cultivation, realm, rank, and progression-stage lists for web novel writing tools. " +
+        "The writer uploaded plain text that may contain messy headings, numbering, notes, duplicate stages, or mixed realm/stage terms.\n" +
+        "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, and notes.\n" +
+        "Realms should be ordered weakest to strongest. stageLabels should include repeated sub-stages such as Low, Middle, High, Peak when present. " +
+        "If the text is cultivation-focused, set showLevels and showExp to false unless numeric levels are clearly part of the system. Keep useful custom fields like Sect, Bloodline, Race, Affiliation, Dao, Core, Physique, or Legion."
+
+      userPrompt =
+        `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
+        `Uploaded progression text:\n${rawText.slice(0, 12000)}`
     } else if (action === "brain_analyze") {
       const { highlightedText, chapterContent, chapterTitle, chapterNumber, existingBrainEntries } = body
       if (!highlightedText || !chapterContent) {
@@ -339,7 +378,7 @@ export async function POST(req: NextRequest) {
 
       userPrompt = `Brain Map entries:\n${memory || "No entries yet."}\n\nQuestion: ${question}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, brain_analyze, or brain_ask." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, or brain_ask." }, { status: 400 })
     }
 
     const model = genAI.getGenerativeModel({
@@ -413,6 +452,8 @@ export async function POST(req: NextRequest) {
       if (!progression) {
         return NextResponse.json({
           progression: {
+            targetLoreEntryId: "",
+            targetProfileId: "",
             profile: {
               notes: text
             },
@@ -421,6 +462,10 @@ export async function POST(req: NextRequest) {
               summary: "Could not parse a structured progression update.",
               levelBefore: 1,
               levelAfter: 1,
+              realmBefore: "",
+              realmAfter: "",
+              stageBefore: "",
+              stageAfter: "",
               statChanges: {},
               abilityChanges: [],
               rewards: [],
@@ -432,17 +477,49 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         progression: {
+          targetLoreEntryId: progression.targetLoreEntryId || "",
+          targetProfileId: progression.targetProfileId || "",
           profile: progression.profile || {},
           update: {
             shouldApply: progression.update?.shouldApply !== false,
             summary: progression.update?.summary || "Progression reviewed.",
             levelBefore: Number(progression.update?.levelBefore || 1),
             levelAfter: Number(progression.update?.levelAfter || progression.update?.levelBefore || 1),
+            realmBefore: progression.update?.realmBefore || "",
+            realmAfter: progression.update?.realmAfter || "",
+            stageBefore: progression.update?.stageBefore || "",
+            stageAfter: progression.update?.stageAfter || "",
             statChanges: progression.update?.statChanges || {},
             abilityChanges: Array.isArray(progression.update?.abilityChanges) ? progression.update.abilityChanges : [],
             rewards: Array.isArray(progression.update?.rewards) ? progression.update.rewards : [],
             evidence: Array.isArray(progression.update?.evidence) ? progression.update.evidence : []
           }
+        }
+      })
+    }
+
+    if (action === "cultivation_realm_import") {
+      const imported = parseJsonObject<CultivationImportResponse>(text)
+      if (!imported) {
+        return NextResponse.json({
+          imported: {
+            settings: {
+              realms: text.split(/\r?\n/).map(line => line.replace(/^\s*[-*\d.)]+/, "").trim()).filter(Boolean).slice(0, 80),
+              stageLabels: ["Low", "Middle", "High", "Peak"],
+              showLevels: false,
+              showExp: false,
+              showStats: true,
+              statKeys: ["strength", "agility", "endurance", "vitality", "intelligence", "sense", "mana"],
+              customFields: ["Race", "Bloodline", "Sect", "Affiliation"],
+              notes: "Imported without structured AI parsing; review the realm order."
+            }
+          }
+        })
+      }
+
+      return NextResponse.json({
+        imported: {
+          settings: imported.settings || {}
         }
       })
     }
