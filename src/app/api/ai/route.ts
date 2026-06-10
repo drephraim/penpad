@@ -21,6 +21,20 @@ type AppearancePromptResult = {
   negativePrompt?: string
 }
 
+type ProgressionAiResponse = {
+  profile?: Record<string, unknown>
+  update?: {
+    shouldApply?: boolean
+    summary?: string
+    levelBefore?: number
+    levelAfter?: number
+    statChanges?: Record<string, number>
+    abilityChanges?: string[]
+    rewards?: string[]
+    evidence?: string[]
+  }
+}
+
 function parseJsonObject<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T
@@ -220,6 +234,41 @@ export async function POST(req: NextRequest) {
         `- Demi-human form: ${safeForms.demiHumanForm || "Not directly described. Infer from available context."}\n` +
         `- Human form: ${safeForms.humanForm || "Not directly described. Infer from available context."}` +
         `${chapterContent}${memoryContext}`
+    } else if (action === "progression_update") {
+      const { selectedText, loreEntry, chapter, existingProfile } = body
+      const safeLoreEntry = loreEntry && typeof loreEntry === "object"
+        ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[] }
+        : null
+      const chapterContext = chapter && typeof chapter === "object"
+        ? chapter as { id?: string; title?: string; chapterNumber?: number; content?: string }
+        : null
+
+      if (!safeLoreEntry?.name || !chapterContext?.content) {
+        return NextResponse.json({ error: "A Story Bible entry and chapter content are required for progression_update." }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a LitRPG, xianxia, and web-novel progression system designer. " +
+        "The writer wants a character status/profile that evolves only when the current chapter provides evidence.\n" +
+        "Guidelines:\n" +
+        "1. Use the Story Bible entry, current chapter, and existing profile to create or update a progression profile.\n" +
+        "2. Track level, EXP, nextLevelExp, rank, className, title, stats, abilities, traits, and notes.\n" +
+        "3. Stats must use keys: strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
+        "4. Only increase levels, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades.\n" +
+        "5. If the chapter has no meaningful progression, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
+        "6. Never double-count previous profile history. Use the existing profile as the current truth.\n" +
+        "7. Output ONLY valid JSON with keys: profile and update. No markdown fences. profile must include name, title, className, rank, level, exp, nextLevelExp, stats, abilities, traits, notes. update must include shouldApply, summary, levelBefore, levelAfter, statChanges, abilityChanges, rewards, evidence."
+
+      const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
+      const groups = Array.isArray(safeLoreEntry.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
+      userPrompt =
+        `Target: ${safeLoreEntry.name}\n` +
+        `Highlighted text: ${selectedText || ""}\n` +
+        `Type: ${safeLoreEntry.category || "character"}\n` +
+        `Groups: ${groups}\n` +
+        `Story Bible Notes:\n${safeLoreEntry.content || ""}\n\n` +
+        `Active Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}\n` +
+        `Chapter Content:\n${chapterContext.content}${existing}${memoryContext}`
     } else if (action === "brain_analyze") {
       const { highlightedText, chapterContent, chapterTitle, chapterNumber, existingBrainEntries } = body
       if (!highlightedText || !chapterContent) {
@@ -290,7 +339,7 @@ export async function POST(req: NextRequest) {
 
       userPrompt = `Brain Map entries:\n${memory || "No entries yet."}\n\nQuestion: ${question}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, brain_analyze, or brain_ask." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, brain_analyze, or brain_ask." }, { status: 400 })
     }
 
     const model = genAI.getGenerativeModel({
@@ -355,6 +404,45 @@ export async function POST(req: NextRequest) {
             ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
             : [],
           negativePrompt: appearance.negativePrompt || ""
+        }
+      })
+    }
+
+    if (action === "progression_update") {
+      const progression = parseJsonObject<ProgressionAiResponse>(text)
+      if (!progression) {
+        return NextResponse.json({
+          progression: {
+            profile: {
+              notes: text
+            },
+            update: {
+              shouldApply: false,
+              summary: "Could not parse a structured progression update.",
+              levelBefore: 1,
+              levelAfter: 1,
+              statChanges: {},
+              abilityChanges: [],
+              rewards: [],
+              evidence: []
+            }
+          }
+        })
+      }
+
+      return NextResponse.json({
+        progression: {
+          profile: progression.profile || {},
+          update: {
+            shouldApply: progression.update?.shouldApply !== false,
+            summary: progression.update?.summary || "Progression reviewed.",
+            levelBefore: Number(progression.update?.levelBefore || 1),
+            levelAfter: Number(progression.update?.levelAfter || progression.update?.levelBefore || 1),
+            statChanges: progression.update?.statChanges || {},
+            abilityChanges: Array.isArray(progression.update?.abilityChanges) ? progression.update.abilityChanges : [],
+            rewards: Array.isArray(progression.update?.rewards) ? progression.update.rewards : [],
+            evidence: Array.isArray(progression.update?.evidence) ? progression.update.evidence : []
+          }
         }
       })
     }

@@ -13,7 +13,7 @@ import {
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
-  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers
+  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import { 
@@ -45,13 +45,14 @@ interface Note {
 }
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'bible' | 'sounds' | 'brain'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
 type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf'
 type SearchSource = 'chapter' | 'brain' | 'lore'
 type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
+type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
 
 interface GlobalSearchResult {
   id: string
@@ -101,10 +102,76 @@ interface AppearancePromptResult {
   negativePrompt?: string
 }
 
+interface ProgressionAbility {
+  id: string
+  name: string
+  level: number
+  description: string
+  evidence?: string
+}
+
+interface ProgressionHistoryEntry {
+  id: string
+  chapterId: string
+  chapterTitle: string
+  chapterNumber?: number | null
+  appliedAt: number
+  summary: string
+  levelBefore: number
+  levelAfter: number
+  statChanges: Partial<Record<ProgressionStatKey, number>>
+  abilityChanges: string[]
+  rewards: string[]
+  evidence: string[]
+}
+
+interface CharacterProgressionProfile {
+  id: string
+  loreEntryId: string
+  name: string
+  title?: string
+  className?: string
+  rank?: string
+  level: number
+  exp: number
+  nextLevelExp: number
+  stats: Record<ProgressionStatKey, number>
+  abilities: ProgressionAbility[]
+  traits: string[]
+  notes: string
+  processedChapterIds: string[]
+  history: ProgressionHistoryEntry[]
+  createdAt: number
+  updatedAt: number
+}
+
+interface ProgressionAiResponse {
+  profile?: Partial<CharacterProgressionProfile>
+  update?: {
+    shouldApply?: boolean
+    summary?: string
+    levelBefore?: number
+    levelAfter?: number
+    statChanges?: Partial<Record<ProgressionStatKey, number>>
+    abilityChanges?: string[]
+    rewards?: string[]
+    evidence?: string[]
+  }
+}
+
 const MIN_LEFT_SIDEBAR_WIDTH = 280
 const MAX_LEFT_SIDEBAR_WIDTH = 560
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 336
 const UNASSIGNED_VOLUME_ID = "unassigned"
+const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
+  strength: 1,
+  agility: 1,
+  endurance: 1,
+  vitality: 1,
+  intelligence: 1,
+  sense: 1,
+  mana: 0
+}
 
 const clampLeftSidebarWidth = (width: number) => {
   return Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.max(MIN_LEFT_SIDEBAR_WIDTH, width))
@@ -335,6 +402,14 @@ function EditorContent() {
   const [brainAskAnswer, setBrainAskAnswer] = useState('')
   const [brainAskLoading, setBrainAskLoading] = useState(false)
   const [brainAskError, setBrainAskError] = useState('')
+
+  // Character Progression States
+  const [progressionProfiles, setProgressionProfiles] = useState<CharacterProgressionProfile[]>([])
+  const [selectedProgressionProfileId, setSelectedProgressionProfileId] = useState<string | null>(null)
+  const [progressionSelectedEntryId, setProgressionSelectedEntryId] = useState<string | null>(null)
+  const [progressionLoading, setProgressionLoading] = useState(false)
+  const [progressionError, setProgressionError] = useState("")
+  const [progressionNotice, setProgressionNotice] = useState("")
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -615,6 +690,157 @@ function EditorContent() {
     setIsBibleDrawerOpen(true)
   }
 
+  const selectedProgressionProfile = progressionProfiles.find(profile => profile.id === selectedProgressionProfileId) || null
+
+  const findProgressionSourceEntry = (selectedText: string) => {
+    const cleanSelection = selectedText.trim().toLowerCase()
+    if (!cleanSelection) return null
+    return bibleEntries.find(entry => {
+      const aliases = getLoreAliases(entry).map(alias => alias.toLowerCase())
+      return aliases.some(alias => alias === cleanSelection || cleanSelection.includes(alias))
+    }) || null
+  }
+
+  const normalizeProgressionProfile = (
+    sourceEntry: BibleEntry,
+    aiProfile: Partial<CharacterProgressionProfile> | undefined,
+    existingProfile: CharacterProgressionProfile | undefined,
+    historyEntry: ProgressionHistoryEntry,
+    now: number
+  ): CharacterProgressionProfile => {
+    const rawAbilities = Array.isArray(aiProfile?.abilities)
+      ? aiProfile?.abilities || []
+      : existingProfile?.abilities || []
+    const abilities = rawAbilities.map((ability, index) => ({
+      id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      name: ability.name || `Ability ${index + 1}`,
+      level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+      description: ability.description || "",
+      evidence: ability.evidence || ""
+    }))
+
+    return {
+      id: existingProfile?.id || crypto.randomUUID(),
+      loreEntryId: sourceEntry.id,
+      name: aiProfile?.name || existingProfile?.name || sourceEntry.name,
+      title: aiProfile?.title || existingProfile?.title || "",
+      className: aiProfile?.className || existingProfile?.className || "",
+      rank: aiProfile?.rank || existingProfile?.rank || "",
+      level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || 1,
+      exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || 0,
+      nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || 100,
+      stats: { ...DEFAULT_PROGRESSION_STATS, ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) },
+      abilities,
+      traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || [],
+      notes: aiProfile?.notes || existingProfile?.notes || "",
+      processedChapterIds: Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId])),
+      history: [historyEntry, ...(existingProfile?.history || [])],
+      createdAt: existingProfile?.createdAt || now,
+      updatedAt: now
+    }
+  }
+
+  const handleProgressionUpdate = async (entryId?: string | null, selectedTextOverride?: string) => {
+    if (!activeNote || !projectId) {
+      setProgressionError("Select a chapter first.")
+      return
+    }
+
+    const selectedText = selectedTextOverride ?? aiSelectionText
+    const selectedProfileEntry = selectedProgressionProfile
+      ? bibleEntries.find(entry => entry.id === selectedProgressionProfile.loreEntryId)
+      : null
+    const sourceEntry = entryId
+      ? bibleEntries.find(entry => entry.id === entryId)
+      : findProgressionSourceEntry(selectedText) || selectedProfileEntry
+
+    if (!sourceEntry) {
+      setProgressionError("Highlight a Story Bible character name or select a profile first.")
+      return
+    }
+
+    const existingProfile = progressionProfiles.find(profile => profile.loreEntryId === sourceEntry.id)
+    if (existingProfile?.processedChapterIds.includes(activeNote.id)) {
+      setSelectedProgressionProfileId(existingProfile.id)
+      setProgressionNotice(`${sourceEntry.name} already has a progression update recorded for this chapter.`)
+      setProgressionError("")
+      return
+    }
+
+    setProgressionLoading(true)
+    setProgressionError("")
+    setProgressionNotice("")
+    setActiveSidebarTab("progression")
+    setIsLeftSidebarOpen(true)
+
+    try {
+      const chapterNumber = getNoteChapterNumber(activeNote)
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "progression_update",
+          selectedText,
+          loreEntry: {
+            name: sourceEntry.name,
+            category: sourceEntry.category,
+            content: sourceEntry.content,
+            groups: (sourceEntry.groupIds || [])
+              .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
+              .filter(Boolean)
+          },
+          chapter: {
+            id: activeNote.id,
+            title: activeNote.title,
+            chapterNumber,
+            content: activeNote.content.slice(0, 7000)
+          },
+          existingProfile,
+          memory: buildStoryMemoryContext()
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setProgressionError(data.error)
+        return
+      }
+
+      const progression = (data.progression || {}) as ProgressionAiResponse
+      const now = Date.now()
+      const aiUpdate = progression.update || {}
+      const levelBefore = aiUpdate.levelBefore ?? existingProfile?.level ?? 1
+      const levelAfter = aiUpdate.levelAfter ?? progression.profile?.level ?? levelBefore
+      const historyEntry: ProgressionHistoryEntry = {
+        id: crypto.randomUUID(),
+        chapterId: activeNote.id,
+        chapterTitle: activeNote.title || "Untitled",
+        chapterNumber,
+        appliedAt: now,
+        summary: aiUpdate.summary || "Progression profile reviewed from this chapter.",
+        levelBefore,
+        levelAfter,
+        statChanges: aiUpdate.statChanges || {},
+        abilityChanges: Array.isArray(aiUpdate.abilityChanges) ? aiUpdate.abilityChanges : [],
+        rewards: Array.isArray(aiUpdate.rewards) ? aiUpdate.rewards : [],
+        evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : []
+      }
+      const nextProfile = normalizeProgressionProfile(sourceEntry, progression.profile, existingProfile, historyEntry, now)
+      const nextProfiles = existingProfile
+        ? progressionProfiles.map(profile => profile.id === existingProfile.id ? nextProfile : profile)
+        : [nextProfile, ...progressionProfiles]
+      persistProgressionProfiles(nextProfiles)
+      setSelectedProgressionProfileId(nextProfile.id)
+      setProgressionSelectedEntryId(sourceEntry.id)
+      setProgressionNotice(aiUpdate.shouldApply === false
+        ? `No major level change found, but this chapter has been marked as reviewed for ${sourceEntry.name}.`
+        : `Updated ${sourceEntry.name} from ${activeNote.title || "this chapter"}.`)
+    } catch (err) {
+      setProgressionError(err instanceof Error ? err.message : "Failed to update progression profile")
+    } finally {
+      setProgressionLoading(false)
+    }
+  }
+
   const getLoreAliases = useCallback((entry: BibleEntry) => {
     const rawName = entry.name || ""
     const withoutMarkdown = rawName.replace(/[\[\]#*_`]/g, " ").replace(/\s+/g, " ").trim()
@@ -892,6 +1118,10 @@ function EditorContent() {
     return projectId ? `penpad_bible_groups_${projectId}` : ""
   }, [projectId])
 
+  const getProgressionStorageKey = useCallback(() => {
+    return projectId ? `penpad_progression_${projectId}` : ""
+  }, [projectId])
+
   const getExportHistoryStorageKey = useCallback(() => {
     return projectId ? `penpad_export_history_${projectId}` : ""
   }, [projectId])
@@ -928,6 +1158,38 @@ function EditorContent() {
       setExportHistory({})
     }
   }, [projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
+
+  const persistProgressionProfiles = useCallback((nextProfiles: CharacterProgressionProfile[]) => {
+    const key = getProgressionStorageKey()
+    if (!key) return
+    const sorted = [...nextProfiles].sort((a, b) => b.updatedAt - a.updatedAt)
+    localStorage.setItem(key, JSON.stringify(sorted))
+    setProgressionProfiles(sorted)
+  }, [getProgressionStorageKey])
+
+  const fetchProgressionProfiles = useCallback(() => {
+    if (!projectId) return
+    try {
+      const stored = localStorage.getItem(getProgressionStorageKey())
+      const profiles: CharacterProgressionProfile[] = stored ? JSON.parse(stored) : []
+      const normalized = profiles.map(profile => ({
+        ...profile,
+        stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
+        abilities: Array.isArray(profile.abilities) ? profile.abilities : [],
+        traits: Array.isArray(profile.traits) ? profile.traits : [],
+        processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
+        history: Array.isArray(profile.history) ? profile.history : []
+      })).sort((a, b) => b.updatedAt - a.updatedAt)
+      setProgressionProfiles(normalized)
+      if (normalized.length > 0 && !selectedProgressionProfileId) {
+        setSelectedProgressionProfileId(normalized[0].id)
+        setProgressionSelectedEntryId(normalized[0].loreEntryId)
+      }
+    } catch (e) {
+      console.error("Failed to load progression profiles:", e)
+      setProgressionProfiles([])
+    }
+  }, [projectId, getProgressionStorageKey, selectedProgressionProfileId])
 
   const fetchNotes = useCallback(async () => {
     if (!user || !projectId) return
@@ -1416,8 +1678,9 @@ function EditorContent() {
       fetchNotes()
       fetchBible()
       fetchBrain()
+      fetchProgressionProfiles()
     }
-  }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain])
+  }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain, fetchProgressionProfiles])
 
   useEffect(() => {
     if (activeNoteId) {
@@ -1766,6 +2029,7 @@ function EditorContent() {
     { name: "Toggle Zen Mode", cmd: "/zen", desc: "Fullscreen Zen mode", action: () => setIsZenMode(prev => !prev) },
     { name: "Open World Bible", cmd: "/bible", desc: "Toggle World Bible Panel", action: () => { setActiveSidebarTab('bible'); setIsLeftSidebarOpen(true) } },
     { name: "Appearance Lab", cmd: "/appearance", desc: "Open Appearance Prompt Lab", action: () => { setActiveSidebarTab('appearance'); setIsLeftSidebarOpen(true) } },
+    { name: "Progression", cmd: "/progress", desc: "Open Character Progression Profiles", action: () => { setActiveSidebarTab('progression'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } }
   ]
 
@@ -3101,6 +3365,21 @@ function EditorContent() {
               >
                 <Eye size={20} />
               </button>
+
+              <button
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'progression' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'progression' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('progression')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Character Progression"
+              >
+                <TrendingUp size={20} />
+              </button>
               
               <button 
                 className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'bible' ? 'active' : ''}`}
@@ -3706,7 +3985,162 @@ function EditorContent() {
               </div>
             )}
 
-            {/* TAB 4: CHARACTER & WORLD BIBLE */}
+            {/* TAB 4: CHARACTER PROGRESSION */}
+            {activeSidebarTab === 'progression' && (
+              <div className="sidebar-tab-content progression-panel fade-in">
+                <div className="appearance-header">
+                  <span className="section-title">Progression</span>
+                  {activeNote && (
+                    <span className="appearance-chapter-chip">
+                      {getNoteChapterNumber(activeNote) ? `Chapter ${getNoteChapterNumber(activeNote)}` : "Current chapter"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="progression-card glass-light">
+                  <div className="ai-form-field">
+                    <label>Character / Beast</label>
+                    <select
+                      className="ai-select"
+                      value={selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || ""}
+                      onChange={(e) => {
+                        const existing = progressionProfiles.find(profile => profile.loreEntryId === e.target.value)
+                        setProgressionSelectedEntryId(e.target.value || null)
+                        setSelectedProgressionProfileId(existing?.id || null)
+                        setProgressionError("")
+                        setProgressionNotice("")
+                      }}
+                      disabled={progressionLoading}
+                    >
+                      <option value="">Choose a Story Bible entry...</option>
+                      {bibleEntries
+                        .filter(entry => entry.category === "character" || entry.category === "beast")
+                        .map(entry => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name} - {entry.category}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {progressionError && (
+                    <div className="ai-error-box">
+                      <AlertCircle size={16} />
+                      <span>{progressionError}</span>
+                    </div>
+                  )}
+                  {progressionNotice && (
+                    <div className="progression-notice">
+                      <Check size={14} />
+                      <span>{progressionNotice}</span>
+                    </div>
+                  )}
+
+                  <button
+                    className="btn-ai-action"
+                    onClick={() => {
+                      const entryId = selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || null
+                      handleProgressionUpdate(entryId, aiSelectionText)
+                    }}
+                    disabled={progressionLoading || (!selectedProgressionProfile && !progressionSelectedEntryId && !aiSelectionText.trim())}
+                  >
+                    {progressionLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <TrendingUp size={16} />
+                        Update From Chapter
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="progression-profile-list">
+                  {progressionProfiles.map(profile => (
+                    <button
+                      key={profile.id}
+                      className={`progression-profile-chip ${selectedProgressionProfileId === profile.id ? 'active' : ''}`}
+                      onClick={() => setSelectedProgressionProfileId(profile.id)}
+                    >
+                      <span>{profile.name}</span>
+                      <strong>Lv {profile.level}</strong>
+                    </button>
+                  ))}
+                </div>
+
+                {selectedProgressionProfile ? (
+                  <div className="progression-detail">
+                    <div className="progression-hero">
+                      <div>
+                        <span>{selectedProgressionProfile.rank || "Unranked"}</span>
+                        <h3>{selectedProgressionProfile.name}</h3>
+                        <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || "No class/title yet"}</p>
+                      </div>
+                      <strong>Lv {selectedProgressionProfile.level}</strong>
+                    </div>
+
+                    <div className="progression-exp">
+                      <div>
+                        <span>EXP</span>
+                        <strong>{selectedProgressionProfile.exp}/{selectedProgressionProfile.nextLevelExp}</strong>
+                      </div>
+                      <div className="progression-exp-bar">
+                        <span style={{ width: `${Math.min(100, Math.round((selectedProgressionProfile.exp / Math.max(1, selectedProgressionProfile.nextLevelExp)) * 100))}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="progression-stat-grid">
+                      {(Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[]).map(statKey => (
+                        <div key={statKey}>
+                          <span>{statKey}</span>
+                          <strong>{selectedProgressionProfile.stats[statKey]}</strong>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="progression-section">
+                      <span className="brain-detail-label">Abilities</span>
+                      {selectedProgressionProfile.abilities.length === 0 ? (
+                        <div className="empty-state-text compact">No abilities tracked yet.</div>
+                      ) : selectedProgressionProfile.abilities.map(ability => (
+                        <div key={ability.id} className="progression-ability">
+                          <div>
+                            <strong>{ability.name}</strong>
+                            <span>Lv {ability.level}</span>
+                          </div>
+                          <p>{ability.description}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="progression-section">
+                      <span className="brain-detail-label">Chapter History</span>
+                      {selectedProgressionProfile.history.length === 0 ? (
+                        <div className="empty-state-text compact">No progression history yet.</div>
+                      ) : selectedProgressionProfile.history.slice(0, 8).map(entry => (
+                        <div key={entry.id} className="progression-history-item">
+                          <div>
+                            <strong>{entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle}</strong>
+                            <span>Lv {entry.levelBefore} &rarr; {entry.levelAfter}</span>
+                          </div>
+                          <p>{entry.summary}</p>
+                          {(entry.abilityChanges.length > 0 || entry.rewards.length > 0) && (
+                            <small>{[...entry.abilityChanges, ...entry.rewards].slice(0, 3).join("; ")}</small>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="empty-state-text">Highlight a character name and click Progress to create their profile.</div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 5: CHARACTER & WORLD BIBLE */}
             {activeSidebarTab === 'bible' && (
               <div className="sidebar-tab-content fade-in flex flex-col h-full">
                 <div className="sidebar-section bible-header-actions">
@@ -4297,6 +4731,16 @@ function EditorContent() {
                     >
                       <Eye size={13} style={{ marginRight: '4px' }} />
                       <span style={{ fontSize: '11px', fontWeight: 600 }}>Appearance</span>
+                    </button>
+                    <button
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleProgressionUpdate(null, aiSelectionText)}
+                      title="Highlight a Story Bible character name, then update their level, stats, and skills from this chapter"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim() || progressionLoading}
+                    >
+                      <TrendingUp size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Progress</span>
                     </button>
                   </div>
 
@@ -6794,6 +7238,228 @@ function EditorContent() {
           flex-shrink: 0;
           min-height: 26px;
           padding: 0.25rem 0.45rem;
+        }
+
+        /* Character Progression */
+        .progression-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          overflow-y: auto;
+        }
+
+        .progression-card,
+        .progression-detail {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+        }
+
+        .progression-notice {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.45rem;
+          padding: 0.6rem;
+          border-radius: var(--radius-sm);
+          background: rgba(16, 185, 129, 0.1);
+          color: rgb(110, 231, 183);
+          font-size: 0.76rem;
+          line-height: 1.4;
+        }
+
+        .progression-profile-list {
+          display: flex;
+          gap: 0.45rem;
+          overflow-x: auto;
+          flex-shrink: 0;
+        }
+
+        .progression-profile-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          max-width: 150px;
+          padding: 0.42rem 0.55rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-full);
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+          flex-shrink: 0;
+        }
+
+        .progression-profile-chip:hover,
+        .progression-profile-chip.active {
+          border-color: rgba(99, 102, 241, 0.35);
+          background: var(--primary-light);
+          color: var(--text-primary);
+        }
+
+        .progression-profile-chip span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 0.76rem;
+          font-weight: 800;
+        }
+
+        .progression-profile-chip strong {
+          color: var(--primary);
+          font-size: 0.72rem;
+        }
+
+        .progression-detail {
+          background: rgba(0, 0, 0, 0.12);
+        }
+
+        .progression-hero {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.75rem;
+          padding: 0.8rem;
+          border: 1px solid rgba(99, 102, 241, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(99, 102, 241, 0.08);
+        }
+
+        .progression-hero h3,
+        .progression-hero p {
+          margin: 0;
+        }
+
+        .progression-hero span {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-hero h3 {
+          color: var(--text-primary);
+          font-size: 1rem;
+          line-height: 1.2;
+        }
+
+        .progression-hero p {
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+        }
+
+        .progression-hero > strong {
+          flex-shrink: 0;
+          color: rgb(252, 211, 77);
+          font-size: 1.2rem;
+        }
+
+        .progression-exp {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .progression-exp > div:first-child {
+          display: flex;
+          justify-content: space-between;
+          color: var(--text-secondary);
+          font-size: 0.74rem;
+          font-weight: 800;
+        }
+
+        .progression-exp-bar {
+          height: 7px;
+          overflow: hidden;
+          border-radius: var(--radius-full);
+          background: rgba(148, 163, 184, 0.14);
+        }
+
+        .progression-exp-bar span {
+          display: block;
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, rgb(99, 102, 241), rgb(20, 184, 166));
+        }
+
+        .progression-stat-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.45rem;
+        }
+
+        .progression-stat-grid div {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+          padding: 0.55rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .progression-stat-grid span {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+        }
+
+        .progression-stat-grid strong {
+          color: var(--text-primary);
+        }
+
+        .progression-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .progression-ability,
+        .progression-history-item {
+          padding: 0.65rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .progression-ability div,
+        .progression-history-item div {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+
+        .progression-ability strong,
+        .progression-history-item strong {
+          color: var(--text-primary);
+          font-size: 0.8rem;
+        }
+
+        .progression-ability span,
+        .progression-history-item span {
+          color: rgb(252, 211, 77);
+          font-size: 0.72rem;
+          font-weight: 900;
+        }
+
+        .progression-ability p,
+        .progression-history-item p,
+        .progression-history-item small {
+          margin: 0.35rem 0 0;
+          color: var(--text-secondary);
+          font-size: 0.74rem;
+          line-height: 1.45;
+        }
+
+        .progression-history-item small {
+          display: block;
+          color: var(--text-dim);
         }
 
         /* Brain Map Styles */
