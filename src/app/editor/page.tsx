@@ -43,7 +43,7 @@ interface Note {
 }
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'bible' | 'sounds' | 'brain'
+type SidebarTab = 'manuscript' | 'insights' | 'bible' | 'sounds' | 'brain'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -417,31 +417,42 @@ function EditorContent() {
     }
   }
 
+  const getLoreAliases = useCallback((entry: BibleEntry) => {
+    const rawName = entry.name || ""
+    const withoutMarkdown = rawName.replace(/[\[\]#*_`]/g, " ").replace(/\s+/g, " ").trim()
+    const afterColon = withoutMarkdown.includes(":") ? withoutMarkdown.split(":").pop()?.trim() || "" : ""
+    const withoutTitleTag = withoutMarkdown.replace(/\b(Name|Title|Character|Place|Item|Lore)\s*:\s*/gi, "").trim()
+
+    return Array.from(new Set([rawName, withoutMarkdown, afterColon, withoutTitleTag]
+      .map(alias => alias.trim())
+      .filter(alias => alias.length > 1)))
+  }, [])
+
   const highlightBibleEntries = (text: string) => {
     if (!bibleEntries.length || !text) return text
     
-    const sortedEntries = [...bibleEntries]
-      .filter(e => e.name && e.name.trim().length > 1)
-      .sort((a, b) => b.name.length - a.name.length)
+    const aliasEntries = bibleEntries.flatMap(entry =>
+      getLoreAliases(entry).map(alias => ({ entry, alias }))
+    ).sort((a, b) => b.alias.length - a.alias.length)
 
-    if (sortedEntries.length === 0) return text
+    if (aliasEntries.length === 0) return text
 
-    const escapedNames = sortedEntries.map(e => e.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
+    const escapedNames = aliasEntries.map(item => item.alias.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
     const regex = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'gi')
 
     const parts = text.split(regex)
     if (parts.length === 1) return text
 
     return parts.map((part, index) => {
-      const entry = sortedEntries.find(e => e.name.toLowerCase() === part.toLowerCase())
-      if (entry) {
+      const match = aliasEntries.find(item => item.alias.toLowerCase() === part.toLowerCase())
+      if (match) {
         return (
           <span 
             key={index} 
             className="lore-chip-preview"
-            onMouseEnter={(e) => handleLoreMouseEnter(e, entry)}
+            onMouseEnter={(e) => handleLoreMouseEnter(e, match.entry)}
             onMouseLeave={handleLoreMouseLeave}
-            onClick={() => handleLoreClick(entry)}
+            onClick={() => handleLoreClick(match.entry)}
           >
             {part}
           </span>
@@ -474,11 +485,13 @@ function EditorContent() {
     
     return bibleEntries.filter(entry => {
       if (!entry.name || entry.name.trim().length <= 1) return false
-      const escaped = entry.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
-      const regex = new RegExp(`\\b${escaped}\\b`, 'i')
-      return regex.test(activeNote.content)
+      return getLoreAliases(entry).some(alias => {
+        const escaped = alias.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+        const regex = new RegExp(`\\b${escaped}\\b`, 'i')
+        return regex.test(activeNote.content)
+      })
     })
-  }, [activeNote, bibleEntries])
+  }, [activeNote, bibleEntries, getLoreAliases])
 
   const mentionedLore = getMentionedLore()
 
@@ -2526,6 +2539,21 @@ function EditorContent() {
               >
                 <FileText size={20} />
               </button>
+
+              <button
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'insights' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'insights' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('insights')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Manuscript Insights"
+              >
+                <Layers size={20} />
+              </button>
               
               <button 
                 className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'bible' ? 'active' : ''}`}
@@ -2704,57 +2732,6 @@ function EditorContent() {
                   )}
                 </div>
 
-                <div className="manuscript-insights glass-light">
-                  <div className="insights-grid">
-                    <div>
-                      <strong>{manuscriptStats.words.toLocaleString()}</strong>
-                      <span>words</span>
-                    </div>
-                    <div>
-                      <strong>{manuscriptStats.averageChapterWords.toLocaleString()}</strong>
-                      <span>avg/ch</span>
-                    </div>
-                    <div>
-                      <strong>{manuscriptStats.brainEntries}</strong>
-                      <span>brain</span>
-                    </div>
-                    <div>
-                      <strong>{manuscriptStats.loreEntries}</strong>
-                      <span>lore</span>
-                    </div>
-                  </div>
-                  <button
-                    className="btn-timeline-toggle"
-                    onClick={() => setShowTimelinePanel(prev => !prev)}
-                  >
-                    <Layers size={13} />
-                    {showTimelinePanel ? 'Hide Timeline' : 'Show Timeline'}
-                  </button>
-                </div>
-
-                {showTimelinePanel && (
-                  <div className="chapter-timeline">
-                    {sortedTimelineNotes.slice(0, 12).map(note => {
-                      const chapterBrainEntries = brainEntries.filter(entry => entry.chapterId === note.id)
-                      const chapterWords = countWords(note.content || "")
-                      return (
-                        <button
-                          key={note.id}
-                          className={`timeline-item ${note.id === activeNoteId ? 'active' : ''}`}
-                          onClick={() => setActiveNoteId(note.id)}
-                        >
-                          <span className="timeline-dot"></span>
-                          <div className="timeline-content">
-                            <strong>{getNoteChapterNumber(note) ? `Chapter ${getNoteChapterNumber(note)}` : note.title}</strong>
-                            <small>{note.title || 'Untitled'} - {chapterWords.toLocaleString()} words</small>
-                            <em>{chapterBrainEntries.length} Brain Map entr{chapterBrainEntries.length === 1 ? 'y' : 'ies'}</em>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-
                 <div className="chapter-list">
                   {filteredNotes.map(note => {
                     const isSelected = selectedNoteIds.has(note.id);
@@ -2771,9 +2748,18 @@ function EditorContent() {
                         }}
                       >
                         {isSelectionMode ? (
-                          <div className={`checkbox-custom ${isSelected ? 'checked' : ''}`}>
+                          <button
+                            type="button"
+                            className={`checkbox-custom ${isSelected ? 'checked' : ''}`}
+                            aria-label={`${isSelected ? 'Deselect' : 'Select'} ${note.title || 'Untitled'}`}
+                            aria-pressed={isSelected}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleNoteSelection(note.id)
+                            }}
+                          >
                             {isSelected && <Check size={10} strokeWidth={3} />}
-                          </div>
+                          </button>
                         ) : (
                           <FileText size={16} />
                         )}
@@ -2832,6 +2818,73 @@ function EditorContent() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* TAB 2: MANUSCRIPT INSIGHTS */}
+            {activeSidebarTab === 'insights' && (
+              <div className="sidebar-tab-content insights-panel fade-in">
+                <span className="section-title">Manuscript Insights</span>
+                <div className="manuscript-insights glass-light">
+                  <div className="insights-grid">
+                    <div>
+                      <strong>{manuscriptStats.words.toLocaleString()}</strong>
+                      <span>words</span>
+                    </div>
+                    <div>
+                      <strong>{manuscriptStats.averageChapterWords.toLocaleString()}</strong>
+                      <span>avg/ch</span>
+                    </div>
+                    <div>
+                      <strong>{manuscriptStats.brainEntries}</strong>
+                      <span>brain</span>
+                    </div>
+                    <div>
+                      <strong>{manuscriptStats.loreEntries}</strong>
+                      <span>lore</span>
+                    </div>
+                  </div>
+                  <div className="insight-callout">
+                    <Star size={14} />
+                    <span>{manuscriptStats.criticalBrainEntries} critical Brain Map entr{manuscriptStats.criticalBrainEntries === 1 ? 'y' : 'ies'}</span>
+                  </div>
+                </div>
+
+                <div className="insights-section-header">
+                  <span>Chapter Timeline</span>
+                  <button
+                    className="btn-text-action"
+                    onClick={() => setShowTimelinePanel(prev => !prev)}
+                  >
+                    {showTimelinePanel ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+
+                {showTimelinePanel && (
+                  <div className="chapter-timeline insights-timeline">
+                    {sortedTimelineNotes.map(note => {
+                      const chapterBrainEntries = brainEntries.filter(entry => entry.chapterId === note.id)
+                      const chapterWords = countWords(note.content || "")
+                      return (
+                        <button
+                          key={note.id}
+                          className={`timeline-item ${note.id === activeNoteId ? 'active' : ''}`}
+                          onClick={() => {
+                            setActiveNoteId(note.id)
+                            setActiveSidebarTab('manuscript')
+                          }}
+                        >
+                          <span className="timeline-dot"></span>
+                          <div className="timeline-content">
+                            <strong>{getNoteChapterNumber(note) ? `Chapter ${getNoteChapterNumber(note)}` : note.title}</strong>
+                            <small>{note.title || 'Untitled'} - {chapterWords.toLocaleString()} words</small>
+                            <em>{chapterBrainEntries.length} Brain Map entr{chapterBrainEntries.length === 1 ? 'y' : 'ies'}</em>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -4792,6 +4845,10 @@ function EditorContent() {
           margin-bottom: 0.75rem;
         }
 
+        .insights-panel {
+          gap: 0.75rem;
+        }
+
         .insights-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4844,6 +4901,31 @@ function EditorContent() {
           border-color: var(--primary);
         }
 
+        .insight-callout {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.62rem;
+          border: 1px solid rgba(245, 158, 11, 0.2);
+          border-radius: var(--radius-sm);
+          background: rgba(245, 158, 11, 0.08);
+          color: rgb(252, 211, 77);
+          font-size: 0.76rem;
+          font-weight: 800;
+        }
+
+        .insights-section-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
         .chapter-timeline {
           display: flex;
           flex-direction: column;
@@ -4852,6 +4934,12 @@ function EditorContent() {
           overflow-y: auto;
           padding-right: 0.2rem;
           margin-bottom: 0.75rem;
+        }
+
+        .insights-timeline {
+          max-height: none;
+          flex: 1;
+          margin-bottom: 0;
         }
 
         .timeline-item {
@@ -5048,16 +5136,24 @@ function EditorContent() {
           justify-content: center;
           width: 16px;
           height: 16px;
+          padding: 0;
+          background: transparent;
           border: 1.5px solid var(--text-dim);
           border-radius: 4px;
           transition: var(--transition);
           flex-shrink: 0;
+          cursor: pointer;
         }
 
         .checkbox-custom.checked {
           background: var(--primary);
           border-color: var(--primary);
           color: white;
+        }
+
+        .checkbox-custom:focus-visible {
+          outline: 2px solid var(--primary);
+          outline-offset: 2px;
         }
 
         .chapter-item {
@@ -5073,11 +5169,13 @@ function EditorContent() {
 
         .chapter-item.selection-mode {
           border-left: 3px solid transparent;
+          user-select: none;
         }
 
         .chapter-item.selection-mode.selected {
-          background: var(--surface-hover);
+          background: var(--primary-light);
           border-left-color: var(--primary);
+          color: var(--text-primary);
         }
 
         .chapter-item:hover {
