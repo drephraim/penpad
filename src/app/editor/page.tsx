@@ -807,14 +807,56 @@ function EditorContent() {
   }
 
   const selectedProgressionProfile = progressionProfiles.find(profile => profile.id === selectedProgressionProfileId) || null
+  const selectedProgressionBibleEntry = progressionSelectedEntryId
+    ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId) || null
+    : null
+
+  const normalizeProgressionLookupText = (value: string) => {
+    return value
+      .toLowerCase()
+      .replace(/[\[\]#*_`"'.?!,;:(){}<>]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
 
   const findProgressionSourceEntry = (selectedText: string) => {
-    const cleanSelection = selectedText.trim().toLowerCase()
+    const cleanSelection = normalizeProgressionLookupText(selectedText)
     if (!cleanSelection) return null
     return bibleEntries.find(entry => {
-      const aliases = getLoreAliases(entry).map(alias => alias.toLowerCase())
-      return aliases.some(alias => alias === cleanSelection || cleanSelection.includes(alias))
+      const aliases = getLoreAliases(entry).map(alias => normalizeProgressionLookupText(alias)).filter(Boolean)
+      return aliases.some(alias => {
+        if (alias === cleanSelection) return true
+        if (cleanSelection.length >= 3 && alias.includes(cleanSelection)) return true
+        return alias.length >= 3 && cleanSelection.includes(alias)
+      })
     }) || null
+  }
+
+  const createProgressionSourceEntryFromHighlight = async (selectedText: string) => {
+    if (!projectId) return null
+    const cleanName = selectedText.replace(/\s+/g, " ").trim().replace(/^["'“”‘’]+|["'“”‘’.,!?;:]+$/g, "")
+    if (!cleanName) return null
+    const existing = findProgressionSourceEntry(cleanName)
+    if (existing) return existing
+
+    const now = Date.now()
+    const newEntry: BibleEntry = {
+      id: crypto.randomUUID(),
+      name: cleanName,
+      category: "character",
+      content: activeNote
+        ? `Created from highlighted text in ${activeNote.title || "the active chapter"}.`
+        : "Created from highlighted text for progression tracking.",
+      createdAt: now,
+      updatedAt: now
+    }
+    const updated = [newEntry, ...bibleEntries]
+    setBibleEntries(updated)
+    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+    if (user) {
+      await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+    }
+    return newEntry
   }
 
   const getProgressionTemplateCardId = (label: string) => {
@@ -1183,18 +1225,23 @@ function EditorContent() {
       return
     }
 
-    const selectedText = selectedTextOverride ?? aiSelectionText
+    const selectedText = (selectedTextOverride ?? aiSelectionText).trim()
     const selectedDropdownEntry = progressionSelectedEntryId
       ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId)
       : null
     const selectedProfileEntry = selectedProgressionProfile
       ? bibleEntries.find(entry => entry.id === selectedProgressionProfile.loreEntryId)
       : null
-    const sourceEntry = entryId
+    const highlightedEntry = selectedText ? findProgressionSourceEntry(selectedText) : null
+    let sourceEntry = entryId
       ? bibleEntries.find(entry => entry.id === entryId)
-      : selectedDropdownEntry || findProgressionSourceEntry(selectedText) || selectedProfileEntry
+      : highlightedEntry || selectedDropdownEntry || selectedProfileEntry
 
-    if (!sourceEntry && progressionProfiles.length === 0) {
+    if (!sourceEntry && selectedText) {
+      sourceEntry = await createProgressionSourceEntryFromHighlight(selectedText)
+    }
+
+    if (!sourceEntry && (selectedText || progressionProfiles.length === 0)) {
       setProgressionError("Highlight a Story Bible character name or select a profile first.")
       return
     }
@@ -4866,13 +4913,11 @@ function EditorContent() {
                       disabled={progressionLoading}
                     >
                       <option value="">Choose a Story Bible entry...</option>
-                      {bibleEntries
-                        .filter(entry => entry.category === "character" || entry.category === "beast")
-                        .map(entry => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.name} - {entry.category}
-                          </option>
-                        ))}
+                      {bibleEntries.map(entry => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.name} - {entry.category}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -5007,6 +5052,22 @@ function EditorContent() {
                         Delete
                       </button>
                     </div>
+                  </div>
+                ) : selectedProgressionBibleEntry ? (
+                  <div className="progression-create-card">
+                    <div>
+                      <span>Selected Story Bible Entry</span>
+                      <strong>{selectedProgressionBibleEntry.name}</strong>
+                      <p>{selectedProgressionBibleEntry.category} - create a progression profile from this entry, then update it from the active chapter.</p>
+                    </div>
+                    <button
+                      className="btn-ai-sub btn-ai-primary"
+                      onClick={() => handleProgressionUpdate(selectedProgressionBibleEntry.id, aiSelectionText)}
+                      disabled={progressionLoading}
+                    >
+                      {progressionLoading ? <Loader2 size={13} className="spin" /> : <TrendingUp size={13} />}
+                      Create / Update Profile
+                    </button>
                   </div>
                 ) : (
                   <div className="empty-state-text">Highlight a character name and click Progress to create their profile.</div>
@@ -8859,6 +8920,42 @@ function EditorContent() {
           font-size: 0.72rem;
           line-height: 1.35;
           overflow-wrap: anywhere;
+        }
+
+        .progression-create-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.85rem;
+          border: 1px solid rgba(20, 184, 166, 0.24);
+          border-radius: var(--radius-md);
+          background: radial-gradient(circle at top left, rgba(20, 184, 166, 0.18), transparent 48%), rgba(255, 255, 255, 0.04);
+        }
+
+        .progression-create-card div {
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+        }
+
+        .progression-create-card span {
+          color: rgb(94, 234, 212);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-create-card strong {
+          color: var(--text-primary);
+          font-size: 1rem;
+        }
+
+        .progression-create-card p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.76rem;
+          line-height: 1.45;
         }
 
         .progression-system-toggle {
