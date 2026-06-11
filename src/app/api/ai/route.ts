@@ -53,6 +53,48 @@ type CultivationImportResponse = {
   }
 }
 
+type ProgressionTemplateDesignResponse = {
+  settings?: ProgressionTemplateDesignSettings
+  profileTemplate?: ProgressionTemplateDesignSettings["profileTemplate"]
+  realms?: string[]
+  stageLabels?: string[]
+  showLevels?: boolean
+  showExp?: boolean
+  showStats?: boolean
+  statKeys?: string[]
+  customFields?: string[]
+  notes?: string
+}
+
+type ProgressionTemplateDesignSettings = {
+  realms?: string[]
+  stageLabels?: string[]
+  showLevels?: boolean
+  showExp?: boolean
+  showStats?: boolean
+  statKeys?: string[]
+  customFields?: string[]
+  notes?: string
+  profileTemplate?: {
+    enabled?: boolean
+    name?: string
+    defaultRealm?: string
+    defaultStage?: string
+    defaultRank?: string
+    defaultClassName?: string
+    defaultCultivationPath?: string
+    baseLevel?: number
+    baseExp?: number
+    nextLevelExp?: number
+    defaultStats?: Record<string, number>
+    defaultTraits?: string[]
+    defaultAbilities?: unknown[]
+    defaultCustomFields?: Record<string, string>
+    cards?: unknown[]
+    notes?: string
+  }
+}
+
 function parseJsonObject<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T
@@ -130,7 +172,7 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
         { role: "user", content: userPrompt }
       ],
       temperature: jsonMode ? 0.15 : 0.7,
-      max_tokens: 4096,
+      max_tokens: jsonMode ? 8192 : 4096,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {})
     })
   })
@@ -470,8 +512,9 @@ export async function POST(req: NextRequest) {
         "Your task is to generate a comprehensive profile template matching their requirements.\n" +
         "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, notes, and profileTemplate.\n" +
         "profileTemplate must contain: enabled (true), name, defaultRealm, defaultStage, defaultRank, defaultClassName, defaultCultivationPath, baseLevel, baseExp, nextLevelExp, defaultStats, defaultTraits, defaultAbilities, defaultCustomFields, cards, and notes.\n" +
-        "Each card in profileTemplate.cards must have id (starts with 'template-'), label, type ('text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound'), sourceKey (the variable name like 'name', 'cultivation', 'abilities', or a custom field name like 'Affinity'), fields (array of sub-field names displayed in the card), color (rose, violet, cyan, amber, emerald, blue, fuchsia, or lime), and enabled (true).\n" +
-        "Ensure all requested categories (like Name, Cultivation, Levels, Attributes, Affinity/Element) are mapped to appropriate template cards. For attributes, create a 'stat' or 'compound' card and ensure the used stats are in settings.statKeys and set defaults in profileTemplate.defaultStats. For elemental affinity or bloodline cards, create a compound card with companion fields for ranks/grades, such as ['Affinity Names', 'Rank'] (card name: 'Affinity') or ['Bloodline', 'Bloodline Grade'], and include those fields in settings.customFields."
+        "Each card in profileTemplate.cards must have id (starts with 'template-'), label, type ('text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound' | 'counter'), sourceKey (the variable name like 'name', 'cultivation', 'abilities', 'exp', or a custom field name like 'Affinity'), fields (array of sub-field names displayed in the card), color (rose, violet, cyan, amber, emerald, blue, fuchsia, or lime), and enabled (true).\n" +
+        "Use type 'progress' for values like EXP that render as current/max timelines, with values such as 120/300. Use type 'counter' for simple numeric counters such as Level Ups or available points.\n" +
+        "Ensure all requested categories (like Name, Cultivation, Levels, Attributes, Affinity/Element) are mapped to appropriate template cards. For attributes, create a 'stat' or 'compound' card and ensure the used stats are in settings.statKeys and set defaults in profileTemplate.defaultStats. For elemental affinity or bloodline cards, create a compound card with companion fields for ranks/grades, such as ['Affinity Names', 'Rank'] (card name: 'Affinity') or ['Bloodline', 'Bloodline Grade'], and include those fields in settings.customFields. Always include all non-direct card source fields and fields in settings.customFields."
 
       userPrompt =
         `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
@@ -613,13 +656,24 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "progression_template_design") {
-      const design = parseJsonObject<CultivationImportResponse>(text)
-      if (!design || !design.settings) {
-        return NextResponse.json({ error: "Could not parse designed template JSON from AI response." }, { status: 500 })
+      const design = parseJsonObject<ProgressionTemplateDesignResponse>(text)
+      const settings = design?.settings || (design?.profileTemplate ? {
+        realms: design.realms,
+        stageLabels: design.stageLabels,
+        showLevels: design.showLevels,
+        showExp: design.showExp,
+        showStats: design.showStats,
+        statKeys: design.statKeys,
+        customFields: design.customFields,
+        notes: design.notes,
+        profileTemplate: design.profileTemplate
+      } : null)
+      if (!settings?.profileTemplate || !Array.isArray(settings.profileTemplate.cards) || settings.profileTemplate.cards.length === 0) {
+        return NextResponse.json({ error: "Could not parse a complete profile template from the AI response. Please include the cards you want in the prompt." }, { status: 500 })
       }
       return NextResponse.json({
         imported: {
-          settings: design.settings
+          settings
         }
       })
     }

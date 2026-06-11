@@ -111,7 +111,7 @@ interface ProgressionAbility {
   evidence?: string
 }
 
-type ProgressionTemplateCardType = 'text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound'
+type ProgressionTemplateCardType = 'text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound' | 'counter'
 
 interface ProgressionTemplateCard {
   id: string
@@ -235,6 +235,39 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
 }
 const PROGRESSION_CARD_COLORS = ["rose", "violet", "cyan", "amber", "emerald", "blue", "fuchsia", "lime"]
 const RANKED_PROGRESSION_RANK_WORDS = ["rank", "ranks", "grade", "grades", "tier", "tiers", "quality", "qualities"]
+const DIRECT_PROGRESSION_TEMPLATE_KEYS = new Set([
+  "name",
+  "title",
+  "cultivation",
+  "cultivationstage",
+  "realm",
+  "stage",
+  "rank",
+  "level",
+  "levelrank",
+  "classname",
+  "class",
+  "jobclass",
+  "abilities",
+  "nicknames",
+  "uniquetrait",
+  "cultivationpath",
+  "path",
+  "exp",
+  "experience",
+  ...Object.keys(DEFAULT_PROGRESSION_STATS)
+])
+const PROGRESSION_TEMPLATE_CARD_TYPES: ProgressionTemplateCardType[] = ["text", "rank", "progress", "resource", "stat", "ability", "compound", "counter"]
+const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "template-preset-exp", label: "EXP", type: "progress", sourceKey: "exp", fields: ["EXP"], color: "lime", enabled: true },
+  { id: "template-preset-level-up", label: "Level Up", type: "counter", sourceKey: "Level Ups", fields: ["Level Ups"], color: "fuchsia", enabled: true },
+  { id: "template-preset-realm-stage", label: "Realm / Stage", type: "rank", sourceKey: "cultivation", fields: ["Realm", "Stage"], color: "violet", enabled: true },
+  { id: "template-preset-affinity", label: "Affinity", type: "compound", sourceKey: "Affinity", fields: ["Affinity Names", "Rank"], color: "cyan", enabled: true },
+  { id: "template-preset-bloodline", label: "Bloodline", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Bloodline Grade"], color: "emerald", enabled: true },
+  { id: "template-preset-titles", label: "Titles", type: "compound", sourceKey: "Titles", fields: ["Title", "Reputation"], color: "amber", enabled: true },
+  { id: "template-preset-resources", label: "Resources", type: "resource", sourceKey: "Resources", fields: ["HP", "Mana / Qi", "Stamina"], color: "blue", enabled: true },
+  { id: "template-preset-artifacts", label: "Inventory / Artifacts", type: "compound", sourceKey: "Artifacts", fields: ["Artifact", "Grade", "Status"], color: "rose", enabled: true }
+]
 const OVERBUILT_DEFAULT_TEMPLATE_IDS = new Set([
   "template-bloodline",
   "template-attributes",
@@ -277,7 +310,7 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   showExp: true,
   showStats: true,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
-  customFields: ["Race", "Bloodline", "Bloodline Grade", "Affiliation", "Affinity Names", "Rank"],
+  customFields: ["Race", "Affiliation"],
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
   notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
 }
@@ -364,6 +397,14 @@ const getProgressionRankedTemplateFields = (label: string, sourceKey: string, fi
   if (!kind || baseFields.some(isProgressionRankFieldName)) return baseFields
   const companionField = getProgressionRankCompanionFieldName(label, sourceKey)
   return companionField ? [...baseFields, companionField] : baseFields
+}
+
+const normalizeProgressionTemplateLookupKey = (value: unknown) => {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
+
+const isDirectProgressionTemplateKey = (value: unknown) => {
+  return DIRECT_PROGRESSION_TEMPLATE_KEYS.has(normalizeProgressionTemplateLookupKey(value))
 }
 
 const clampLeftSidebarWidth = (width: number) => {
@@ -1005,6 +1046,7 @@ function EditorContent() {
   const inferProgressionTemplateCardType = useCallback((label: string): ProgressionTemplateCardType => {
     const cleanLabel = label.toLowerCase()
     if (/(ability|abilities|skill|technique|summon|art)\b/.test(cleanLabel)) return "ability"
+    if (/(level[\s-]?up|counter|count|points available|available points)\b/.test(cleanLabel)) return "counter"
     if (/(bloodline|physique|attribute|affinity|element|custom|unnamed)\b/.test(cleanLabel)) return "compound"
     if (/(exp|experience|progress|points|xp)\b/.test(cleanLabel)) return "progress"
     if (/(hp|health|mana|qi|ki|stamina|energy|spirit|aura|essence|divinity)\b/.test(cleanLabel)) return "resource"
@@ -1019,6 +1061,7 @@ function EditorContent() {
     if (type === "rank") return "violet"
     if (type === "resource") return "cyan"
     if (type === "stat") return "blue"
+    if (type === "counter") return "fuchsia"
     return PROGRESSION_CARD_COLORS[index % PROGRESSION_CARD_COLORS.length]
   }, [])
 
@@ -1052,7 +1095,7 @@ function EditorContent() {
         if (label === "Spirit Affinity" || label === "Elemental Affinity") {
           label = "Affinity"
         }
-        const type = card.type && ["text", "rank", "progress", "resource", "stat", "ability", "compound"].includes(card.type)
+        const type = card.type && PROGRESSION_TEMPLATE_CARD_TYPES.includes(card.type)
           ? card.type
           : inferProgressionTemplateCardType(label)
         let sourceKey = String(card.sourceKey || label).trim()
@@ -1078,13 +1121,19 @@ function EditorContent() {
           type,
           sourceKey,
           fields,
-          color: card.color || getProgressionCardColor(index, type),
+          color: card.color && PROGRESSION_CARD_COLORS.includes(card.color) ? card.color : getProgressionCardColor(index, type),
           enabled: card.enabled !== false
         }
       })
       .filter(Boolean) as ProgressionTemplateCard[]
 
-    const seen = new Set(normalized.map(card => `${card.sourceKey.toLowerCase()}::${card.label.toLowerCase()}`))
+    const seen = new Set<string>()
+    const uniqueCards = normalized.filter(card => {
+      const key = `${normalizeProgressionTemplateLookupKey(card.sourceKey)}::${normalizeProgressionTemplateLookupKey(card.label)}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
     customFields.forEach(fieldName => {
       let cleanName = String(fieldName || "").trim()
       if (!cleanName) return
@@ -1093,7 +1142,7 @@ function EditorContent() {
       }
       const companionKind = getRankedProgressionFieldKind(cleanName)
       if (isProgressionRankFieldName(cleanName)) {
-        const hasParentCard = normalized.some(card => {
+        const hasParentCard = uniqueCards.some(card => {
           const cardKind = getRankedProgressionFieldKind(`${card.label} ${card.sourceKey} ${card.fields.join(" ")}`)
           if (companionKind && cardKind === companionKind) {
             return card.fields.some(field => !isProgressionRankFieldName(field))
@@ -1102,10 +1151,10 @@ function EditorContent() {
         })
         if (hasParentCard) return
       }
-      const key = `${cleanName.toLowerCase()}::${cleanName.toLowerCase()}`
+      const key = `${normalizeProgressionTemplateLookupKey(cleanName)}::${normalizeProgressionTemplateLookupKey(cleanName)}`
       if (seen.has(key)) return
       const type = inferProgressionTemplateCardType(cleanName)
-      normalized.push({
+      uniqueCards.push({
         id: getProgressionTemplateCardId(cleanName),
         label: cleanName,
         type,
@@ -1117,7 +1166,7 @@ function EditorContent() {
       seen.add(key)
     })
 
-    return normalized
+    return uniqueCards
   }, [getProgressionCardColor, getProgressionTemplateCardId, inferProgressionTemplateCardType])
 
   const parseProgressionRatio = (value: string | number | undefined) => {
@@ -1254,16 +1303,78 @@ function EditorContent() {
     return configuredCards.filter(card => card.enabled)
   }
 
+  const getProgressionCustomFieldsFromTemplateCards = (cards: ProgressionTemplateCard[]) => {
+    const fields = new Set<string>()
+    cards.forEach(card => {
+      const cardKind = getRankedProgressionFieldKind(`${card.label} ${card.sourceKey} ${card.fields.join(" ")}`)
+      if (card.sourceKey && !isDirectProgressionTemplateKey(card.sourceKey)) {
+        fields.add(card.sourceKey)
+      }
+      card.fields.forEach(fieldName => {
+        const isRankedCompanion = Boolean(cardKind && isProgressionRankFieldName(fieldName))
+        if (fieldName && (isRankedCompanion || card.type === "counter" || !isDirectProgressionTemplateKey(fieldName))) {
+          fields.add(fieldName)
+        }
+      })
+    })
+    return Array.from(fields)
+  }
+
   const setProgressionTemplateCards = (updater: (cards: ProgressionTemplateCard[]) => ProgressionTemplateCard[]) => {
     const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards || [], progressionSystem?.customFields || [])
     const nextCards = updater(currentCards)
     persistProgressionSystem({
       ...progressionSystem,
+      customFields: Array.from(new Set([
+        ...(progressionSystem?.customFields || []),
+        ...getProgressionCustomFieldsFromTemplateCards(nextCards)
+      ])),
       profileTemplate: {
         ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         cards: nextCards
       }
     })
+  }
+
+  const removeProgressionTemplateCard = (cardId: string) => {
+    setProgressionTemplateCards(cards => cards.map(card => card.id === cardId ? { ...card, enabled: false } : card))
+  }
+
+  const addProgressionPresetCard = (preset: ProgressionTemplateCard) => {
+    const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards || [], progressionSystem?.customFields || [])
+    const presetMatchKey = `${normalizeProgressionTemplateLookupKey(preset.sourceKey)}::${normalizeProgressionTemplateLookupKey(preset.label)}`
+    let matched = false
+    const nextCards = currentCards.map(card => {
+      const cardMatchKey = `${normalizeProgressionTemplateLookupKey(card.sourceKey)}::${normalizeProgressionTemplateLookupKey(card.label)}`
+      if (card.id === preset.id || cardMatchKey === presetMatchKey) {
+        matched = true
+        return {
+          ...preset,
+          ...card,
+          id: card.id || preset.id,
+          fields: card.fields.length > 0 ? card.fields : preset.fields,
+          color: card.color || preset.color,
+          enabled: true
+        }
+      }
+      return card
+    })
+    if (!matched) {
+      nextCards.push({ ...preset, id: `${preset.id}-${crypto.randomUUID()}` })
+    }
+
+    persistProgressionSystem({
+      ...progressionSystem,
+      customFields: Array.from(new Set([
+        ...(progressionSystem?.customFields || []),
+        ...getProgressionCustomFieldsFromTemplateCards(nextCards)
+      ])),
+      profileTemplate: {
+        ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
+        cards: nextCards
+      }
+    })
+    setProgressionNotice(`${preset.label} card added to the profile template.`)
   }
 
   const reorderProgressionTemplateCard = (draggedId: string, targetId: string) => {
@@ -1377,12 +1488,26 @@ function EditorContent() {
       }
 
       const importedSettings = data.imported?.settings || {}
+      const importedTemplate = importedSettings.profileTemplate || {}
+      const rawDesignedCards = Array.isArray(importedTemplate.cards) ? importedTemplate.cards : []
+      if (rawDesignedCards.length === 0) {
+        throw new Error("The AI response did not include any template cards. Try describing the exact cards you want.")
+      }
+      const designedCards = normalizeProgressionTemplateCards(rawDesignedCards, Array.isArray(importedSettings.customFields) ? importedSettings.customFields : [])
+      const designedCustomFields = Array.from(new Set([
+        ...(Array.isArray(importedSettings.customFields) ? importedSettings.customFields.map((item: unknown) => String(item).trim()).filter(Boolean) : []),
+        ...Object.keys(importedTemplate.defaultCustomFields || {}),
+        ...getProgressionCustomFieldsFromTemplateCards(designedCards)
+      ]))
+
       persistProgressionSystem({
         ...progressionSystem,
         ...importedSettings,
+        customFields: designedCustomFields,
         profileTemplate: {
-          ...progressionSystem.profileTemplate,
-          ...(importedSettings.profileTemplate || {}),
+          ...DEFAULT_PROFILE_TEMPLATE,
+          ...importedTemplate,
+          cards: designedCards,
           enabled: true
         }
       })
@@ -7090,6 +7215,7 @@ function EditorContent() {
                       <option value="compound">Multi-field Card</option>
                       <option value="progress">EXP / Progress</option>
                       <option value="resource">HP / Mana / Qi</option>
+                      <option value="counter">Counter</option>
                       <option value="stat">Stat</option>
                       <option value="ability">Ability</option>
                     </select>
@@ -7097,7 +7223,7 @@ function EditorContent() {
                       className="ai-input"
                       value={progressionNewFieldValue}
                       onChange={(e) => setProgressionNewFieldValue(e.target.value)}
-                      placeholder={progressionNewFieldType === "progress" || progressionNewFieldType === "resource" ? "100/1000" : "Value"}
+                      placeholder={progressionNewFieldType === "progress" || progressionNewFieldType === "resource" ? "100/1000" : progressionNewFieldType === "counter" ? "0" : "Value"}
                     />
                     <button className="btn-ai-sub btn-ai-primary" onClick={addProgressionDraftCustomField}>
                       <Plus size={12} />
@@ -7118,6 +7244,7 @@ function EditorContent() {
                         const fields = templateCard.fields.length > 0 ? templateCard.fields : [templateCard.label]
                         return (
                           <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
+                            <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><X size={12} /></button>
                             <span>{templateCard.label}</span>
                             <div className="progression-template-value-fields">
                               {fields.map(fieldName => (
@@ -7125,9 +7252,10 @@ function EditorContent() {
                                   <small>{fieldName}</small>
                                   <input
                                     className="ai-input"
+                                    type={templateCard.type === "counter" ? "number" : "text"}
                                     value={getProgressionTemplateFieldValue(progressionEditProfileDraft, templateCard, fieldName) || ""}
                                     onChange={(e) => setProgressionDraftTemplateField(templateCard, fieldName, e.target.value)}
-                                    placeholder={templateCard.type === "progress" || templateCard.type === "resource" ? "100/1000" : "Saint, Sage, 100+"}
+                                    placeholder={templateCard.type === "progress" || templateCard.type === "resource" ? "100/1000" : templateCard.type === "counter" ? "0" : "Saint, Sage, 100+"}
                                   />
                                 </label>
                               ))}
@@ -7222,6 +7350,7 @@ function EditorContent() {
                   <span>EXP</span>
                   <span>HP / Mana / Qi</span>
                   <span>Realm / Rank</span>
+                  <span>Level Up</span>
                   <span>Stats</span>
                   <span>Abilities</span>
                   <button
@@ -7231,6 +7360,27 @@ function EditorContent() {
                     <RotateCcw size={12} />
                     Load Simple Template
                   </button>
+                </div>
+                <div className="progression-preset-library">
+                  <div className="progression-template-header">
+                    <div>
+                      <strong>Preset Cards</strong>
+                      <span>Add optional status cards, then drag them into the order you want.</span>
+                    </div>
+                  </div>
+                  <div className="progression-preset-grid">
+                    {PROGRESSION_PRESET_TEMPLATE_CARDS.map(preset => (
+                      <button
+                        key={preset.id}
+                        className={`progression-preset-card color-${preset.color}`}
+                        onClick={() => addProgressionPresetCard(preset)}
+                        type="button"
+                      >
+                        <strong>{preset.label}</strong>
+                        <span>{preset.fields.join(" / ")}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
                   <div className="progression-template-header">
@@ -7319,7 +7469,7 @@ function EditorContent() {
                   )}
                 </div>
                 <div className="progression-template-builder-list">
-                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
+                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(templateCard => templateCard.enabled).map(templateCard => (
                     <div
                       className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""}`}
                       key={templateCard.id}
@@ -7369,6 +7519,7 @@ function EditorContent() {
                         <option value="compound">Multi-field Card</option>
                         <option value="progress">EXP / Progress</option>
                         <option value="resource">HP / Mana / Qi</option>
+                        <option value="counter">Counter</option>
                         <option value="stat">Stat</option>
                         <option value="ability">Abilities</option>
                       </select>
@@ -7431,7 +7582,7 @@ function EditorContent() {
                       </label>
                       <button
                         className="btn-ai-sub btn-ai-secondary danger-text"
-                        onClick={() => setProgressionTemplateCards(cards => cards.filter(card => card.id !== templateCard.id))}
+                        onClick={() => removeProgressionTemplateCard(templateCard.id)}
                       >
                         <Trash2 size={12} />
                         Remove
@@ -10339,7 +10490,15 @@ function EditorContent() {
         .progression-profile-edit-card.color-emerald,
         .progression-profile-edit-card.color-blue,
         .progression-profile-edit-card.color-fuchsia,
-        .progression-profile-edit-card.color-lime {
+        .progression-profile-edit-card.color-lime,
+        .progression-preset-card.color-rose,
+        .progression-preset-card.color-violet,
+        .progression-preset-card.color-cyan,
+        .progression-preset-card.color-amber,
+        .progression-preset-card.color-emerald,
+        .progression-preset-card.color-blue,
+        .progression-preset-card.color-fuchsia,
+        .progression-preset-card.color-lime {
           border-color: color-mix(in srgb, var(--card-accent, rgb(244, 63, 94)) 30%, transparent);
           background: linear-gradient(145deg, color-mix(in srgb, var(--card-accent, rgb(244, 63, 94)) 10%, transparent), rgba(255, 255, 255, 0.035));
         }
@@ -10351,6 +10510,13 @@ function EditorContent() {
         .progression-profile-edit-card.color-blue { --card-accent: rgb(59, 130, 246); }
         .progression-profile-edit-card.color-fuchsia { --card-accent: rgb(217, 70, 239); }
         .progression-profile-edit-card.color-lime { --card-accent: rgb(132, 204, 22); }
+        .progression-preset-card.color-violet { --card-accent: rgb(139, 92, 246); }
+        .progression-preset-card.color-cyan { --card-accent: rgb(6, 182, 212); }
+        .progression-preset-card.color-amber { --card-accent: rgb(245, 158, 11); }
+        .progression-preset-card.color-emerald { --card-accent: rgb(16, 185, 129); }
+        .progression-preset-card.color-blue { --card-accent: rgb(59, 130, 246); }
+        .progression-preset-card.color-fuchsia { --card-accent: rgb(217, 70, 239); }
+        .progression-preset-card.color-lime { --card-accent: rgb(132, 204, 22); }
 
         .progression-template-value-fields {
           display: grid;
@@ -10570,6 +10736,55 @@ function EditorContent() {
           color: rgb(199, 210, 254);
           font-size: 0.7rem;
           font-weight: 900;
+        }
+
+        .progression-preset-library {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+          padding: 0.75rem;
+          margin-bottom: 0.75rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.025);
+        }
+
+        .progression-preset-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 0.45rem;
+        }
+
+        .progression-preset-card {
+          --card-accent: rgb(244, 63, 94);
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+          min-height: 64px;
+          padding: 0.6rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-sm);
+          color: var(--text-primary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .progression-preset-card:hover {
+          transform: translateY(-1px);
+          border-color: color-mix(in srgb, var(--card-accent) 58%, transparent);
+        }
+
+        .progression-preset-card strong {
+          color: white;
+          font-size: 0.78rem;
+          line-height: 1.2;
+        }
+
+        .progression-preset-card span {
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          line-height: 1.3;
         }
 
         .progression-cultivation-import-box {
@@ -12194,6 +12409,9 @@ function EditorContent() {
           .progression-edit-card-grid,
           .progression-ability-card-editor-list,
           .progression-template-value-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .progression-preset-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .editor-ai-sidebar {
