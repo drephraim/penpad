@@ -168,6 +168,7 @@ interface CharacterProgressionProfile {
   className?: string
   rank?: string
   nicknames?: string[]
+  uniqueTrait?: string
   realm?: string
   stage?: string
   cultivationPath?: string
@@ -816,6 +817,7 @@ function EditorContent() {
       className: aiProfile?.className || existingProfile?.className || sharedTemplate.defaultClassName || "",
       rank: aiProfile?.rank || existingProfile?.rank || sharedTemplate.defaultRank || "",
       nicknames: Array.isArray(aiProfile?.nicknames) ? aiProfile.nicknames : existingProfile?.nicknames || [],
+      uniqueTrait: aiProfile?.uniqueTrait || existingProfile?.uniqueTrait || "",
       realm: aiProfile?.realm || existingProfile?.realm || sharedTemplate.defaultRealm || "",
       stage: aiProfile?.stage || existingProfile?.stage || sharedTemplate.defaultStage || "",
       cultivationPath: aiProfile?.cultivationPath || existingProfile?.cultivationPath || sharedTemplate.defaultCultivationPath || "",
@@ -1262,7 +1264,7 @@ function EditorContent() {
 
   const getProgressionProfileFields = (profile: CharacterProgressionProfile) => {
     const customFields = profile.customFields || {}
-    const reservedCustomFields = new Set(["Affiliation", "Nicknames", "Bloodline", "Race"])
+    const reservedCustomFields = new Set(["Affiliation", "Nicknames", "Bloodline", "Race", "Unique Trait", "uniqueTrait"])
     const namedFields = [
       { label: "Name", value: profile.name },
       { label: "Cultivation Stage", value: [profile.realm, profile.stage].filter(Boolean).join(" - ") || profile.rank },
@@ -1272,7 +1274,8 @@ function EditorContent() {
       { label: "Nicknames", value: profile.nicknames?.join(", ") || customFields.Nicknames || customFields.nicknames },
       { label: "Title", value: profile.title },
       { label: "Bloodline", value: customFields.Bloodline || customFields.bloodline },
-      { label: "Race", value: customFields.Race || customFields.race }
+      { label: "Race", value: customFields.Race || customFields.race },
+      { label: "Unique Trait", value: profile.uniqueTrait || customFields["Unique Trait"] || customFields.uniqueTrait }
     ]
     const custom = Object.entries(customFields)
       .filter(([key, value]) => value && !reservedCustomFields.has(key) && !reservedCustomFields.has(key.charAt(0).toUpperCase() + key.slice(1)))
@@ -1687,6 +1690,7 @@ function EditorContent() {
         abilities: Array.isArray(profile.abilities) ? profile.abilities : [],
         traits: Array.isArray(profile.traits) ? profile.traits : [],
         nicknames: Array.isArray(profile.nicknames) ? profile.nicknames : [],
+        uniqueTrait: profile.uniqueTrait || "",
         customFields: profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {},
         processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
         history: Array.isArray(profile.history) ? profile.history : []
@@ -6406,6 +6410,16 @@ function EditorContent() {
                       </label>
                     </>
                   )}
+                </div>
+
+                <div className="ai-form-field">
+                  <label>Unique Trait</label>
+                  <textarea
+                    className="ai-textarea compact"
+                    value={progressionEditProfileDraft.uniqueTrait || ""}
+                    onChange={(e) => setProgressionDraftField("uniqueTrait", e.target.value)}
+                    placeholder="What makes this character special? Summoned beasts, rare physique, contracted legion, forbidden art, unique artifact..."
+                  />
                 </div>
 
                 {progressionSystem.showStats && (
