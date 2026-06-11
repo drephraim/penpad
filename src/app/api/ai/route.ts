@@ -274,6 +274,7 @@ export async function POST(req: NextRequest) {
         "2. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter. Return targetLoreEntryId and targetProfileId when known.\n" +
         "3. Track level, EXP, nextLevelExp, rank, realm, stage, cultivationPath, className, title, nicknames, uniqueTrait, stats, abilities, traits, customFields, and notes, but adapt to the project's configured system.\n" +
         "4. If the project progression system contains an enabled profileTemplate, use it as the baseline shape for new profiles and preserve it unless chapter evidence contradicts a default. Treat profileTemplate.cards and each card.fields array as the writer's desired status-screen fields; fill card source fields through direct profile keys or customFields when supported by evidence.\n" +
+        "4b. If the chapter reveals progression information that has no matching template card, add it to profile.customFields using a clear reusable field name, such as Artifact Grade, Beast Contract, Soul Sea, Dao Comprehension, Elemental Affinity, Bloodline Rank, Physique Type, or similar. The UI can learn these new fields as cards.\n" +
         "5. Use configured realms and stage labels exactly when the novel uses cultivation. Examples of stage labels include Low, Middle, High, Peak.\n" +
         "6. Stats must use keys from the configured visible stats when possible; fallback keys are strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
         "7. Only increase levels, realms, stages, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades. Update uniqueTrait when the chapter reveals something distinctive about the character, such as summoned beasts, contracted creatures, rare bloodlines, physiques, artifacts, divine powers, legions, hidden identities, or special techniques.\n" +
@@ -288,7 +289,7 @@ export async function POST(req: NextRequest) {
         : "Target: Auto-detect from candidate profiles and chapter content.\n"
       userPrompt =
         explicitTarget +
-        `Project Progression System JSON:\n${JSON.stringify(progressionSystem || {}).slice(0, 5000)}\n\n` +
+        `Project Progression System JSON:\n${JSON.stringify(progressionSystem || {}).slice(0, 10000)}\n\n` +
         `Candidate Profiles JSON:\n${JSON.stringify(Array.isArray(candidateProfiles) ? candidateProfiles : []).slice(0, 6000)}\n\n` +
         `Candidate Lore Entries JSON:\n${JSON.stringify(Array.isArray(candidateLoreEntries) ? candidateLoreEntries : []).slice(0, 8000)}\n\n` +
         `Active Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}\n` +

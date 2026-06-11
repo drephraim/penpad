@@ -524,6 +524,8 @@ function EditorContent() {
   const [showProgressionCharactersModal, setShowProgressionCharactersModal] = useState(false)
   const [showProgressionTemplateModal, setShowProgressionTemplateModal] = useState(false)
   const [draggedProgressionTemplateCardId, setDraggedProgressionTemplateCardId] = useState<string | null>(null)
+  const [progressionRealmImportText, setProgressionRealmImportText] = useState("")
+  const [progressionRealmImportLoading, setProgressionRealmImportLoading] = useState(false)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -989,6 +991,82 @@ function EditorContent() {
     })
   }
 
+  const addProgressionTemplateField = (cardId: string) => {
+    setProgressionTemplateCards(cards => cards.map(card => {
+      if (card.id !== cardId) return card
+      const baseName = "New Field"
+      let nextName = baseName
+      let suffix = 2
+      while (card.fields.some(field => field.toLowerCase() === nextName.toLowerCase())) {
+        nextName = `${baseName} ${suffix}`
+        suffix += 1
+      }
+      return { ...card, fields: [...card.fields, nextName] }
+    }))
+  }
+
+  const updateProgressionTemplateField = (cardId: string, fieldIndex: number, value: string) => {
+    setProgressionTemplateCards(cards => cards.map(card => card.id === cardId ? {
+      ...card,
+      fields: card.fields.map((field, index) => index === fieldIndex ? value : field).filter(field => field.trim())
+    } : card))
+  }
+
+  const removeProgressionTemplateField = (cardId: string, fieldIndex: number) => {
+    setProgressionTemplateCards(cards => cards.map(card => card.id === cardId ? {
+      ...card,
+      fields: card.fields.filter((_, index) => index !== fieldIndex)
+    } : card))
+  }
+
+  const handleCultivationRealmImport = async (rawText?: string) => {
+    const text = (rawText ?? progressionRealmImportText).trim()
+    if (!text || progressionRealmImportLoading) return
+    setProgressionRealmImportLoading(true)
+    setProgressionError("")
+    setProgressionNotice("")
+
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cultivation_realm_import",
+          rawText: text,
+          currentSettings: progressionSystem
+        })
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Could not import cultivation stages.")
+      }
+
+      const importedSettings = data.imported?.settings || {}
+      persistProgressionSystem({
+        ...progressionSystem,
+        ...importedSettings,
+        customFields: Array.from(new Set([
+          ...progressionSystem.customFields,
+          ...(Array.isArray(importedSettings.customFields) ? importedSettings.customFields : [])
+        ].map(item => String(item).trim()).filter(Boolean))),
+        profileTemplate: progressionSystem.profileTemplate,
+        notes: importedSettings.notes || progressionSystem.notes
+      })
+      setProgressionRealmImportText("")
+      setProgressionNotice("Cultivation stages imported. The AI will use this realm order when updating profiles.")
+    } catch (err) {
+      setProgressionError(err instanceof Error ? err.message : "Failed to import cultivation stages.")
+    } finally {
+      setProgressionRealmImportLoading(false)
+    }
+  }
+
+  const handleCultivationRealmFileUpload = async (file?: File | null) => {
+    if (!file) return
+    const text = await file.text()
+    setProgressionRealmImportText(text)
+  }
+
   const normalizeProgressionProfile = (
     sourceEntry: BibleEntry,
     aiProfile: Partial<CharacterProgressionProfile> | undefined,
@@ -1267,6 +1345,7 @@ function EditorContent() {
         ? progressionProfiles.map(profile => profile.id === finalExistingProfile.id ? nextProfile : profile)
         : [nextProfile, ...progressionProfiles]
       persistProgressionProfiles(nextProfiles)
+      learnProgressionProfileShape(nextProfile)
       setSelectedProgressionProfileId(nextProfile.id)
       setProgressionSelectedEntryId(finalSourceEntry.id)
       setProgressionNotice(aiUpdate.shouldApply === false
@@ -6624,6 +6703,43 @@ function EditorContent() {
                   Load Writer Template
                 </button>
               </div>
+              <div className="progression-cultivation-import-box">
+                <div className="progression-template-header">
+                  <div>
+                    <strong>Cultivation System</strong>
+                    <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
+                  </div>
+                  <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
+                    <FileText size={12} />
+                    Upload TXT
+                    <input
+                      type="file"
+                      accept=".txt,text/plain"
+                      onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  className="ai-textarea compact progression-realm-import-textarea"
+                  value={progressionRealmImportText}
+                  onChange={(e) => setProgressionRealmImportText(e.target.value)}
+                  placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
+                />
+                <div className="progression-cultivation-import-footer">
+                  <div className="progression-system-summary">
+                    <span>{progressionSystem.realms.length} realms</span>
+                    <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
+                  </div>
+                  <button
+                    className="btn-ai-sub btn-ai-primary"
+                    onClick={() => handleCultivationRealmImport()}
+                    disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
+                  >
+                    {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                    Arrange Stages
+                  </button>
+                </div>
+              </div>
               <div className="progression-template-builder-list">
                 {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
                   <div
@@ -6700,15 +6816,31 @@ function EditorContent() {
                     </label>
                     <label className="progression-template-fields-editor">
                       <span>Fields</span>
-                      <textarea
-                        className="ai-textarea compact"
-                        value={templateCard.fields.join(", ")}
-                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? {
-                          ...card,
-                          fields: e.target.value.split(",").map(field => field.trim()).filter(Boolean)
-                        } : card))}
-                        placeholder="Field one, Field two, Field three"
-                      />
+                      <div className="progression-template-field-editor-list">
+                        {templateCard.fields.length === 0 ? (
+                          <div className="empty-state-text compact">No fields yet.</div>
+                        ) : templateCard.fields.map((fieldName, fieldIndex) => (
+                          <div className="progression-template-field-editor-row" key={`${templateCard.id}-${fieldIndex}`}>
+                            <input
+                              className="ai-input"
+                              value={fieldName}
+                              onChange={(e) => updateProgressionTemplateField(templateCard.id, fieldIndex, e.target.value)}
+                              placeholder="Field name"
+                            />
+                            <button
+                              className="btn-icon-mini danger"
+                              onClick={() => removeProgressionTemplateField(templateCard.id, fieldIndex)}
+                              title="Remove field"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addProgressionTemplateField(templateCard.id)}>
+                        <Plus size={12} />
+                        Add Field
+                      </button>
                     </label>
                     <div className="progression-template-card-actions">
                       <label>
@@ -9604,6 +9736,42 @@ function EditorContent() {
           font-weight: 900;
         }
 
+        .progression-cultivation-import-box {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding: 0.75rem;
+          margin-bottom: 0.75rem;
+          border: 1px solid rgba(20, 184, 166, 0.24);
+          border-radius: var(--radius-md);
+          background: linear-gradient(145deg, rgba(20, 184, 166, 0.11), rgba(255, 255, 255, 0.03));
+        }
+
+        .progression-file-btn {
+          position: relative;
+          overflow: hidden;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        .progression-file-btn input {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+
+        .progression-realm-import-textarea {
+          min-height: 92px;
+        }
+
+        .progression-cultivation-import-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
         .progression-template-builder-card {
           --card-accent: rgb(244, 63, 94);
           display: grid;
@@ -9654,8 +9822,21 @@ function EditorContent() {
           grid-column: 1 / -1;
         }
 
-        .progression-template-fields-editor textarea {
-          min-height: 76px;
+        .progression-template-field-editor-list {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.45rem;
+        }
+
+        .progression-template-field-editor-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 30px;
+          gap: 0.35rem;
+          align-items: center;
+        }
+
+        .progression-add-field-inline {
+          justify-content: center;
         }
 
         .progression-template-builder-card label span {
@@ -11663,11 +11844,13 @@ function EditorContent() {
           .progression-ability-card-editor-list,
           .progression-template-value-grid,
           .progression-template-field-list,
-          .progression-template-value-fields {
+          .progression-template-value-fields,
+          .progression-template-field-editor-list {
             grid-template-columns: 1fr;
           }
           .progression-showcase-head,
-          .progression-character-row {
+          .progression-character-row,
+          .progression-cultivation-import-footer {
             flex-direction: column;
             align-items: stretch;
           }
