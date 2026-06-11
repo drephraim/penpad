@@ -234,6 +234,7 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
   mana: 0
 }
 const PROGRESSION_CARD_COLORS = ["rose", "violet", "cyan", "amber", "emerald", "blue", "fuchsia", "lime"]
+const RANKED_PROGRESSION_RANK_WORDS = ["rank", "ranks", "grade", "grades", "tier", "tiers", "quality", "qualities"]
 const OVERBUILT_DEFAULT_TEMPLATE_IDS = new Set([
   "template-bloodline",
   "template-attributes",
@@ -276,9 +277,38 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   showExp: true,
   showStats: true,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
-  customFields: ["Race", "Bloodline", "Affiliation"],
+  customFields: ["Race", "Bloodline", "Bloodline Grade", "Affiliation"],
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
   notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
+}
+
+const getRankedProgressionFieldKind = (value: string) => {
+  const cleanValue = value.toLowerCase()
+  if (cleanValue.includes("bloodline")) return "bloodline"
+  if (cleanValue.includes("affinity") || cleanValue.includes("element")) return "affinity"
+  return ""
+}
+
+const isProgressionRankFieldName = (value: string) => {
+  const cleanValue = value.toLowerCase()
+  return RANKED_PROGRESSION_RANK_WORDS.some(word => new RegExp(`\\b${word}\\b`).test(cleanValue))
+}
+
+const getProgressionRankCompanionFieldName = (label: string, sourceKey: string) => {
+  const baseName = (label || sourceKey || "").trim()
+  const kind = getRankedProgressionFieldKind(`${label} ${sourceKey}`)
+  if (!baseName || !kind) return ""
+  return kind === "bloodline" ? `${baseName} Grade` : `${baseName} Ranks`
+}
+
+const getProgressionRankedTemplateFields = (label: string, sourceKey: string, fields: string[]) => {
+  const initialFields = fields.length > 0 ? fields : [label]
+  const kind = getRankedProgressionFieldKind(`${label} ${sourceKey} ${initialFields.join(" ")}`)
+  const hasOnlyPlaceholderFields = initialFields.every(field => /^new field(?: \d+)?$/i.test(field) || /^field$/i.test(field))
+  const baseFields = kind && hasOnlyPlaceholderFields ? [label] : initialFields
+  if (!kind || baseFields.some(isProgressionRankFieldName)) return baseFields
+  const companionField = getProgressionRankCompanionFieldName(label, sourceKey)
+  return companionField ? [...baseFields, companionField] : baseFields
 }
 
 const clampLeftSidebarWidth = (width: number) => {
@@ -920,11 +950,11 @@ function EditorContent() {
   const inferProgressionTemplateCardType = useCallback((label: string): ProgressionTemplateCardType => {
     const cleanLabel = label.toLowerCase()
     if (/(ability|abilities|skill|technique|summon|art)\b/.test(cleanLabel)) return "ability"
+    if (/(bloodline|physique|attribute|affinity|element|custom|unnamed)\b/.test(cleanLabel)) return "compound"
     if (/(exp|experience|progress|points|xp)\b/.test(cleanLabel)) return "progress"
     if (/(hp|health|mana|qi|ki|stamina|energy|spirit|aura|essence|divinity)\b/.test(cleanLabel)) return "resource"
     if (/(realm|stage|rank|tier|grade|level|cultivation|class)\b/.test(cleanLabel)) return "rank"
     if (Object.keys(DEFAULT_PROGRESSION_STATS).some(stat => cleanLabel === stat || cleanLabel.includes(stat))) return "stat"
-    if (/(bloodline|physique|attribute|affinity|element|custom|unnamed)\b/.test(cleanLabel)) return "compound"
     return "text"
   }, [])
 
@@ -960,9 +990,10 @@ function EditorContent() {
         const type = card.type && ["text", "rank", "progress", "resource", "stat", "ability", "compound"].includes(card.type)
           ? card.type
           : inferProgressionTemplateCardType(label)
-        const fields = Array.isArray(card.fields)
+        const rawFields = Array.isArray(card.fields)
           ? card.fields.map(field => String(field).trim()).filter(Boolean)
           : []
+        const fields = getProgressionRankedTemplateFields(label, String(card.sourceKey || label).trim(), rawFields)
         return {
           id: card.id || getProgressionTemplateCardId(label),
           label,
@@ -979,6 +1010,14 @@ function EditorContent() {
     customFields.forEach(fieldName => {
       const cleanName = fieldName.trim()
       if (!cleanName) return
+      const companionKind = getRankedProgressionFieldKind(cleanName)
+      if (companionKind && isProgressionRankFieldName(cleanName)) {
+        const hasParentCard = normalized.some(card => {
+          const cardKind = getRankedProgressionFieldKind(`${card.label} ${card.sourceKey} ${card.fields.join(" ")}`)
+          return cardKind === companionKind && card.fields.some(field => !isProgressionRankFieldName(field))
+        })
+        if (hasParentCard) return
+      }
       const key = `${cleanName.toLowerCase()}::${cleanName.toLowerCase()}`
       if (seen.has(key)) return
       const type = inferProgressionTemplateCardType(cleanName)
@@ -987,7 +1026,7 @@ function EditorContent() {
         label: cleanName,
         type,
         sourceKey: cleanName,
-        fields: [cleanName],
+        fields: getProgressionRankedTemplateFields(cleanName, cleanName, [cleanName]),
         color: getProgressionCardColor(normalized.length, type),
         enabled: true
       })
@@ -1016,9 +1055,52 @@ function EditorContent() {
     return foundKey ? customFields[foundKey] : ""
   }
 
+  const getProgressionRankedFieldValue = (profile: CharacterProgressionProfile, card: ProgressionTemplateCard, fieldName: string) => {
+    const cardContext = `${card.label} ${card.sourceKey} ${card.fields.join(" ")}`
+    const kind = getRankedProgressionFieldKind(`${cardContext} ${fieldName}`)
+    if (!kind) return ""
+
+    const labelCandidates = Array.from(new Set([
+      fieldName,
+      card.sourceKey,
+      card.label,
+      kind === "bloodline" ? "Bloodline" : "Affinity",
+      kind === "bloodline" ? "Bloodline Name" : "Elemental Affinity",
+      kind === "bloodline" ? "Bloodline Type" : "Spirit Affinity"
+    ].filter(Boolean)))
+    const rankCandidates = Array.from(new Set([
+      fieldName,
+      `${card.label} Rank`,
+      `${card.label} Ranks`,
+      `${card.label} Grade`,
+      `${card.label} Grades`,
+      `${card.sourceKey} Rank`,
+      `${card.sourceKey} Ranks`,
+      `${card.sourceKey} Grade`,
+      `${card.sourceKey} Grades`,
+      kind === "bloodline" ? "Bloodline Rank" : "Affinity Rank",
+      kind === "bloodline" ? "Bloodline Grade" : "Affinity Grade",
+      kind === "bloodline" ? "Bloodline Ranks" : "Affinity Ranks",
+      kind === "bloodline" ? "Bloodline Grades" : "Affinity Grades",
+      kind === "bloodline" ? "Bloodline Quality" : "Elemental Affinity Rank",
+      kind === "bloodline" ? "Bloodline Tier" : "Elemental Affinity Grade",
+      kind === "bloodline" ? "Bloodline Realm" : "Spirit Affinity Ranks",
+      kind === "bloodline" ? "Bloodline Stage" : "Spirit Affinity Grade"
+    ].filter(Boolean)))
+
+    const candidates = isProgressionRankFieldName(fieldName) ? rankCandidates : labelCandidates
+    for (const candidate of candidates) {
+      const value = getProgressionCustomFieldValue(profile, candidate)
+      if (value) return value
+    }
+    return ""
+  }
+
   const getProgressionTemplateFieldValue = (profile: CharacterProgressionProfile, card: ProgressionTemplateCard, fieldName: string) => {
     const cleanField = fieldName.toLowerCase()
     const cleanCard = card.label.toLowerCase()
+    const rankedFieldValue = getProgressionRankedFieldValue(profile, card, fieldName)
+    if (rankedFieldValue) return rankedFieldValue
     if (cleanField === "name") return profile.name
     if (cleanField === "title") return profile.title
     if (cleanField === "cultivation stage" || cleanField === "realm") return profile.realm || getProgressionCustomFieldValue(profile, "Cultivation Stage")
@@ -1660,7 +1742,7 @@ function EditorContent() {
           label: cleanName,
           type: progressionNewFieldType,
           sourceKey: cleanName,
-          fields: [cleanName],
+          fields: getProgressionRankedTemplateFields(cleanName, cleanName, [cleanName]),
           color: getProgressionCardColor(cards.length, progressionNewFieldType),
           enabled: true
         }
