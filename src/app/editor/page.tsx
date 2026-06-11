@@ -816,6 +816,21 @@ function EditorContent() {
     ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId) || null
     : null
 
+  const formatProgressionDate = (timestamp?: number) => {
+    if (!timestamp) return ""
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    })
+  }
+
+  const formatProgressionStatLabel = (key: string) => {
+    return key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, char => char.toUpperCase())
+  }
+
   const normalizeProgressionLookupText = (value: string) => {
     return value
       .toLowerCase()
@@ -5119,6 +5134,103 @@ function EditorContent() {
                         <Trash2 size={13} />
                         Delete
                       </button>
+                    </div>
+
+                    <div className="progression-growth-timeline">
+                      <div className="progression-growth-header">
+                        <div>
+                          <History size={14} />
+                          <strong>Recent Growth</strong>
+                        </div>
+                        <span>{selectedProgressionProfile.processedChapterIds.length} reviewed</span>
+                      </div>
+
+                      {selectedProgressionProfile.history.length === 0 ? (
+                        <div className="progression-growth-empty">
+                          <p>No chapter updates recorded yet.</p>
+                          <small>Run Update Profile from a chapter to build a canon-backed trail of changes.</small>
+                        </div>
+                      ) : (
+                        <div className="progression-growth-list">
+                          {[...selectedProgressionProfile.history]
+                            .sort((a, b) => (b.appliedAt || 0) - (a.appliedAt || 0))
+                            .slice(0, 6)
+                            .map(historyEntry => {
+                              const statEntries = Object.entries(historyEntry.statChanges || {})
+                                .filter(([, value]) => typeof value === "number" && value !== 0)
+                              const levelChanged = historyEntry.levelBefore !== historyEntry.levelAfter
+                              const realmChanged = Boolean(historyEntry.realmBefore || historyEntry.realmAfter)
+                                && (historyEntry.realmBefore || "") !== (historyEntry.realmAfter || "")
+                              const stageChanged = Boolean(historyEntry.stageBefore || historyEntry.stageAfter)
+                                && (historyEntry.stageBefore || "") !== (historyEntry.stageAfter || "")
+                              const abilityChanges = historyEntry.abilityChanges || []
+                              const rewards = historyEntry.rewards || []
+                              const evidence = historyEntry.evidence || []
+
+                              return (
+                                <details className="progression-growth-item" key={historyEntry.id}>
+                                  <summary>
+                                    <div className="progression-growth-summary-main">
+                                      <span>Chapter {historyEntry.chapterNumber ?? "?"}</span>
+                                      <strong>{historyEntry.chapterTitle || "Untitled chapter"}</strong>
+                                      {formatProgressionDate(historyEntry.appliedAt) && (
+                                        <small>{formatProgressionDate(historyEntry.appliedAt)}</small>
+                                      )}
+                                    </div>
+                                    <div className="progression-growth-deltas">
+                                      {levelChanged && <em>Lv {historyEntry.levelBefore} -&gt; {historyEntry.levelAfter}</em>}
+                                      {realmChanged && <em>{historyEntry.realmBefore || "Unknown"} -&gt; {historyEntry.realmAfter || "Unknown"}</em>}
+                                      {stageChanged && <em>{historyEntry.stageBefore || "Unknown"} -&gt; {historyEntry.stageAfter || "Unknown"}</em>}
+                                      {!levelChanged && !realmChanged && !stageChanged && <em>Reviewed</em>}
+                                    </div>
+                                  </summary>
+
+                                  <div className="progression-growth-body">
+                                    <p>{historyEntry.summary || "Progression reviewed for this chapter."}</p>
+
+                                    {statEntries.length > 0 && (
+                                      <div className="progression-growth-detail-block">
+                                        <span>Stat Changes</span>
+                                        <div className="progression-growth-chip-list">
+                                          {statEntries.map(([key, value]) => (
+                                            <em key={key}>{formatProgressionStatLabel(key)} {Number(value) > 0 ? "+" : ""}{value}</em>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {abilityChanges.length > 0 && (
+                                      <div className="progression-growth-detail-block">
+                                        <span>Abilities</span>
+                                        <ul>
+                                          {abilityChanges.map((item, index) => <li key={`${historyEntry.id}-ability-${index}`}>{item}</li>)}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {rewards.length > 0 && (
+                                      <div className="progression-growth-detail-block">
+                                        <span>Rewards</span>
+                                        <ul>
+                                          {rewards.map((item, index) => <li key={`${historyEntry.id}-reward-${index}`}>{item}</li>)}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {evidence.length > 0 && (
+                                      <div className="progression-growth-detail-block evidence">
+                                        <span>Canon Evidence</span>
+                                        <ul>
+                                          {evidence.map((item, index) => <li key={`${historyEntry.id}-evidence-${index}`}>{item}</li>)}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                </details>
+                              )
+                            })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : selectedProgressionBibleEntry ? (
@@ -9617,6 +9729,198 @@ function EditorContent() {
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 0.55rem;
           padding-top: 0.25rem;
+        }
+
+        .progression-growth-timeline {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+          padding-top: 0.25rem;
+        }
+
+        .progression-growth-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .progression-growth-header div {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          min-width: 0;
+        }
+
+        .progression-growth-header strong {
+          color: var(--text-primary);
+          font-size: 0.82rem;
+        }
+
+        .progression-growth-header span {
+          flex-shrink: 0;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .progression-growth-empty,
+        .progression-growth-item {
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .progression-growth-empty {
+          padding: 0.7rem;
+        }
+
+        .progression-growth-empty p,
+        .progression-growth-empty small {
+          margin: 0;
+        }
+
+        .progression-growth-empty p {
+          color: var(--text-primary);
+          font-size: 0.8rem;
+          font-weight: 800;
+        }
+
+        .progression-growth-empty small {
+          display: block;
+          margin-top: 0.25rem;
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          line-height: 1.4;
+        }
+
+        .progression-growth-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .progression-growth-item {
+          overflow: hidden;
+        }
+
+        .progression-growth-item summary {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 0.55rem;
+          align-items: center;
+          padding: 0.65rem;
+          cursor: pointer;
+          list-style: none;
+        }
+
+        .progression-growth-item summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .progression-growth-item summary:focus-visible {
+          outline: 2px solid var(--accent);
+          outline-offset: -2px;
+        }
+
+        .progression-growth-summary-main {
+          display: flex;
+          flex-direction: column;
+          gap: 0.12rem;
+          min-width: 0;
+        }
+
+        .progression-growth-summary-main span,
+        .progression-growth-detail-block > span {
+          color: rgb(125, 211, 252);
+          font-size: 0.64rem;
+          font-weight: 950;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .progression-growth-summary-main strong {
+          color: var(--text-primary);
+          font-size: 0.82rem;
+          line-height: 1.25;
+          overflow-wrap: anywhere;
+        }
+
+        .progression-growth-summary-main small {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+        }
+
+        .progression-growth-deltas {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 0.3rem;
+          max-width: 160px;
+        }
+
+        .progression-growth-deltas em,
+        .progression-growth-chip-list em {
+          display: inline-flex;
+          align-items: center;
+          min-height: 22px;
+          padding: 0.18rem 0.42rem;
+          border: 1px solid rgba(252, 211, 77, 0.24);
+          border-radius: var(--radius-full);
+          background: rgba(252, 211, 77, 0.1);
+          color: rgb(253, 224, 71);
+          font-size: 0.66rem;
+          font-style: normal;
+          font-weight: 900;
+          line-height: 1.2;
+          text-align: center;
+        }
+
+        .progression-growth-body {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          padding: 0 0.65rem 0.7rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .progression-growth-body p {
+          margin: 0.65rem 0 0;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          line-height: 1.45;
+        }
+
+        .progression-growth-detail-block {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .progression-growth-chip-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.3rem;
+        }
+
+        .progression-growth-detail-block ul {
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
+          margin: 0;
+          padding-left: 1rem;
+          color: var(--text-secondary);
+          font-size: 0.73rem;
+          line-height: 1.45;
+        }
+
+        .progression-growth-detail-block.evidence {
+          padding: 0.55rem;
+          border: 1px solid rgba(125, 211, 252, 0.15);
+          border-radius: var(--radius-sm);
+          background: rgba(14, 165, 233, 0.07);
         }
 
         .danger-text {
