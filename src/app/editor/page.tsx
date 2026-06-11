@@ -282,20 +282,20 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
 }
 
-const getRankedProgressionFieldKind = (value: string) => {
-  const cleanValue = value.toLowerCase()
+const getRankedProgressionFieldKind = (value: unknown) => {
+  const cleanValue = String(value || "").toLowerCase()
   if (cleanValue.includes("bloodline")) return "bloodline"
   if (cleanValue.includes("affinity") || cleanValue.includes("element")) return "affinity"
   return ""
 }
 
-const isProgressionRankFieldName = (value: string) => {
-  const cleanValue = value.toLowerCase()
+const isProgressionRankFieldName = (value: unknown) => {
+  const cleanValue = String(value || "").toLowerCase()
   return RANKED_PROGRESSION_RANK_WORDS.some(word => new RegExp(`\\b${word}\\b`).test(cleanValue))
 }
 
 const getProgressionRankCompanionFieldName = (label: string, sourceKey: string) => {
-  const baseName = (label || sourceKey || "").trim()
+  const baseName = String(label || sourceKey || "").trim()
   const kind = getRankedProgressionFieldKind(`${label} ${sourceKey}`)
   if (!baseName || !kind) return ""
   return kind === "bloodline" ? `${baseName} Grade` : `${baseName} Ranks`
@@ -971,12 +971,19 @@ function EditorContent() {
     cards?: Partial<ProgressionTemplateCard>[],
     customFields: string[] = []
   ): ProgressionTemplateCard[] => {
-    const rawSource = Array.isArray(cards) && cards.length > 0 ? cards : DEFAULT_PROFILE_TEMPLATE_CARDS
-    const hasOverbuiltDefaults = rawSource.some(card => card.id && OVERBUILT_DEFAULT_TEMPLATE_IDS.has(card.id))
+    const rawCards = Array.isArray(cards)
+      ? cards.filter((card): card is Partial<ProgressionTemplateCard> => Boolean(card) && typeof card === "object")
+      : []
+    const rawSource = rawCards.length > 0 ? rawCards : DEFAULT_PROFILE_TEMPLATE_CARDS
+    const hasOverbuiltDefaults = rawSource.some(card => {
+      const cardId = String(card.id || "")
+      return Boolean(cardId) && OVERBUILT_DEFAULT_TEMPLATE_IDS.has(cardId)
+    })
     const preservedCustomCards = hasOverbuiltDefaults
       ? rawSource.filter(card => {
-        if (!card.id) return true
-        if (OVERBUILT_DEFAULT_TEMPLATE_IDS.has(card.id)) return false
+        const cardId = String(card.id || "")
+        if (!cardId) return true
+        if (OVERBUILT_DEFAULT_TEMPLATE_IDS.has(cardId)) return false
         return !DEFAULT_PROFILE_TEMPLATE_CARDS.some(defaultCard => defaultCard.id === card.id)
       })
       : []
@@ -1008,7 +1015,7 @@ function EditorContent() {
 
     const seen = new Set(normalized.map(card => `${card.sourceKey.toLowerCase()}::${card.label.toLowerCase()}`))
     customFields.forEach(fieldName => {
-      const cleanName = fieldName.trim()
+      const cleanName = String(fieldName || "").trim()
       if (!cleanName) return
       const companionKind = getRankedProgressionFieldKind(cleanName)
       if (companionKind && isProgressionRankFieldName(cleanName)) {
