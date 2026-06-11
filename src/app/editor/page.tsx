@@ -1068,19 +1068,19 @@ function EditorContent() {
 
   const getProgressionTemplateCardsForProfile = (profile: CharacterProgressionProfile) => {
     const configuredCards = normalizeProgressionTemplateCards(
-      progressionSystem.profileTemplate.cards,
-      Array.from(new Set([...progressionSystem.customFields, ...Object.keys(profile.customFields || {})]))
+      progressionSystem?.profileTemplate?.cards || [],
+      Array.from(new Set([...(progressionSystem?.customFields || []), ...Object.keys(profile.customFields || {})]))
     )
     return configuredCards.filter(card => card.enabled)
   }
 
   const setProgressionTemplateCards = (updater: (cards: ProgressionTemplateCard[]) => ProgressionTemplateCard[]) => {
-    const currentCards = normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
+    const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards || [], progressionSystem?.customFields || [])
     const nextCards = updater(currentCards)
     persistProgressionSystem({
       ...progressionSystem,
       profileTemplate: {
-        ...progressionSystem.profileTemplate,
+        ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         cards: nextCards
       }
     })
@@ -1450,7 +1450,7 @@ function EditorContent() {
               name: entry.name,
               category: entry.category,
               aliases: getLoreAliases(entry),
-              content: entry.content.slice(0, 1200)
+              content: (entry.content || "").slice(0, 1200)
             })),
           memory: buildStoryMemoryContext()
         })
@@ -1478,13 +1478,13 @@ function EditorContent() {
       const finalSourceEntry = sourceEntry
         || bibleEntries.find(entry => entry.id === progression.targetLoreEntryId)
         || bibleEntries.find(entry => entry.id === progression.profile?.loreEntryId)
-        || bibleEntries.find(entry => entry.name.toLowerCase() === String(progression.profile?.name || "").toLowerCase())
+        || bibleEntries.find(entry => String(entry.name || "").toLowerCase() === String(progression.profile?.name || "").toLowerCase())
       if (!finalSourceEntry) {
         setProgressionError("The AI could not determine which progression profile this chapter should update.")
         return
       }
       const finalExistingProfile = progressionProfiles.find(profile => profile.loreEntryId === finalSourceEntry.id)
-      const wasChapterReviewed = Boolean(finalExistingProfile?.processedChapterIds.includes(activeNote.id))
+      const wasChapterReviewed = Boolean(finalExistingProfile?.processedChapterIds?.includes(activeNote.id))
       const now = Date.now()
       const aiUpdate = progression.update || {}
       const levelBefore = aiUpdate.levelBefore ?? finalExistingProfile?.level ?? 1
@@ -1713,30 +1713,31 @@ function EditorContent() {
 
   const learnProgressionProfileShape = (profile: CharacterProgressionProfile) => {
     const customFieldNames = Object.keys(profile.customFields || {}).map(item => item.trim()).filter(Boolean)
-    const learnedCustomFields = Array.from(new Set([...progressionSystem.customFields, ...customFieldNames]))
+    const learnedCustomFields = Array.from(new Set([...(progressionSystem?.customFields || []), ...customFieldNames]))
     const learnedDefaultCustomFields = learnedCustomFields.reduce<Record<string, string>>((acc, fieldName) => {
-      acc[fieldName] = progressionSystem.profileTemplate.defaultCustomFields[fieldName] || ""
+      const defaultCustomFields = progressionSystem?.profileTemplate?.defaultCustomFields || {}
+      acc[fieldName] = defaultCustomFields[fieldName] || ""
       return acc
     }, {})
     const learnedCards = normalizeProgressionTemplateCards(
-      progressionSystem.profileTemplate.cards,
+      progressionSystem?.profileTemplate?.cards || [],
       learnedCustomFields
     )
     persistProgressionSystem({
       ...progressionSystem,
       customFields: learnedCustomFields,
       profileTemplate: {
-        ...progressionSystem.profileTemplate,
+        ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         defaultStats: {
-          ...progressionSystem.profileTemplate.defaultStats,
-          ...Object.fromEntries(progressionSystem.statKeys.map(statKey => [statKey, progressionSystem.profileTemplate.defaultStats[statKey] ?? DEFAULT_PROGRESSION_STATS[statKey]]))
+          ...(progressionSystem?.profileTemplate?.defaultStats || {}),
+          ...Object.fromEntries((progressionSystem?.statKeys || []).map(statKey => [statKey, progressionSystem?.profileTemplate?.defaultStats?.[statKey] ?? DEFAULT_PROGRESSION_STATS[statKey]]))
         },
         defaultCustomFields: learnedDefaultCustomFields,
-        defaultAbilities: progressionSystem.profileTemplate.defaultAbilities.length > 0
-          ? progressionSystem.profileTemplate.defaultAbilities
+        defaultAbilities: (progressionSystem?.profileTemplate?.defaultAbilities || []).length > 0
+          ? (progressionSystem?.profileTemplate?.defaultAbilities || [])
           : profile.abilities.map(ability => ({ ...ability, evidence: "" })),
         cards: learnedCards,
-        notes: progressionSystem.profileTemplate.notes || "Use edited profile fields as the baseline shape for this novel."
+        notes: progressionSystem?.profileTemplate?.notes || "Use edited profile fields as the baseline shape for this novel."
       }
     })
   }
