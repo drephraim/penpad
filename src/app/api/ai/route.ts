@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
 
 type BrainAnalysis = {
@@ -68,6 +67,86 @@ function parseJsonObject<T>(text: string): T | null {
   }
 }
 
+function parseCultivationSettingsFromText(rawText: string, currentSettings?: unknown): CultivationImportResponse {
+  const current = currentSettings && typeof currentSettings === "object"
+    ? currentSettings as { stageLabels?: string[]; statKeys?: string[]; customFields?: string[] }
+    : {}
+  const rawLines = rawText
+    .split(/\r?\n/)
+    .map(line => line.replace(/^\s*[-*•\d.)]+/, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+
+  const knownStageOrder = ["Low", "Medium", "Middle", "High", "Peak", "Early", "Mid", "Late", "Initial", "Perfected", "Half-step"]
+  const explicitStageLine = rawLines.find(line => /\b(stage|rank|sub[-\s]?realm|minor realm)\b/i.test(line))
+  const parsedStages = explicitStageLine
+    ? knownStageOrder.filter(stage => new RegExp(`\\b${stage}\\b`, "i").test(explicitStageLine))
+    : []
+  const stageLabels = Array.from(new Set((parsedStages.length > 0 ? parsedStages : current.stageLabels || ["Low", "Medium", "High", "Peak"])
+    .map(stage => stage === "Middle" || stage === "Mid" ? "Medium" : stage)))
+
+  const splitRealmTokens = rawLines.flatMap(line => {
+    const withoutHeading = line.replace(/^(realm|realms|stage|stages|rank|ranks|cultivation|cultivation stages?)\s*[:：-]\s*/i, "")
+    return withoutHeading.split(/\s*(?:,|->|→|>|;|\|)\s*/).map(item => item.trim()).filter(Boolean)
+  })
+
+  const stageSet = new Set(stageLabels.map(item => item.toLowerCase()))
+  const realms = Array.from(new Set(splitRealmTokens
+    .map(item => item.replace(/\s*\([^)]*\)\s*/g, "").trim())
+    .filter(item => item.length > 1)
+    .filter(item => !/^(stage|stages|rank|ranks|realm|realms|weakest|strongest)$/i.test(item))
+    .filter(item => !stageSet.has(item.toLowerCase()))))
+    .slice(0, 120)
+
+  return {
+    settings: {
+      realms,
+      stageLabels,
+      showLevels: false,
+      showExp: false,
+      showStats: true,
+      statKeys: current.statKeys || ["strength", "agility", "endurance", "vitality", "intelligence", "sense", "mana"],
+      customFields: Array.from(new Set([...(current.customFields || []), "Race", "Affiliation"])),
+      notes: `Imported ${realms.length} cultivation realms. Realm names such as Demigod belong in profile.realm; sub-ranks such as Medium belong in profile.stage.`
+    }
+  }
+}
+
+async function generateWithGroq(systemInstruction: string, userPrompt: string, jsonMode: boolean) {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) {
+    throw new Error("Groq API key is not configured on the server. Please add GROQ_API_KEY to your environment.")
+  }
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: jsonMode ? 0.15 : 0.7,
+      max_tokens: 4096,
+      ...(jsonMode ? { response_format: { type: "json_object" } } : {})
+    })
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `Groq API error: ${response.status}`)
+  }
+
+  const text = data?.choices?.[0]?.message?.content
+  if (!text || typeof text !== "string") {
+    throw new Error("Groq returned an empty response.")
+  }
+  return text
+}
+
 function formatMemoryContext(memory: unknown) {
   if (!memory || typeof memory !== "object") return ""
 
@@ -109,14 +188,6 @@ function formatMemoryContext(memory: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "Gemini API key is not configured on the server. Please add GOOGLE_GENERATIVE_AI_API_KEY to your .env file." },
-        { status: 500 }
-      )
-    }
-
     const body = await req.json()
     const { action, content, style, prompt, memory } = body
     const memoryContext = formatMemoryContext(memory)
@@ -125,7 +196,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing action parameter" }, { status: 400 })
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey)
     let systemInstruction = ""
     let userPrompt = ""
 
@@ -275,7 +345,7 @@ export async function POST(req: NextRequest) {
         "3. Track level, EXP, nextLevelExp, rank, realm, stage, cultivationPath, className, title, nicknames, uniqueTrait, stats, abilities, traits, customFields, and notes, but adapt to the project's configured system.\n" +
         "4. If the project progression system contains an enabled profileTemplate, use it as the baseline shape for new profiles and preserve it unless chapter evidence contradicts a default. Treat profileTemplate.cards and each card.fields array as the writer's desired status-screen fields; fill card source fields through direct profile keys or customFields when supported by evidence.\n" +
         "4b. If the chapter reveals progression information that has no matching template card, add it to profile.customFields using a clear reusable field name, such as Artifact Grade, Beast Contract, Soul Sea, Dao Comprehension, Elemental Affinity, Bloodline Rank, Physique Type, or similar. The UI can learn these new fields as cards.\n" +
-        "5. Use configured realms and stage labels exactly when the novel uses cultivation. The configured realm order is authoritative. If the chapter states the target is at a realm/stage/rank, extract that value even if no level-up happened. Examples of stage labels include Low, Middle, High, Peak.\n" +
+        "5. Use configured realms and stage labels exactly when the novel uses cultivation. The configured realm order is authoritative. If the chapter states the target is at a realm/stage/rank, extract that value even if no level-up happened. In this app, cultivation stage or realm names such as Demigod, God King, Saint, or True Immortal belong in profile.realm. Sub-ranks such as Low, Medium, High, and Peak belong in profile.stage. Use profile.rank only as an extra display rank when the novel has a separate class/rank system.\n" +
         "6. Stats must use keys from the configured visible stats when possible; fallback keys are strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
         "7. Only increase levels, realms, stages, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades. Update uniqueTrait when the chapter reveals something distinctive about the character, such as summoned beasts, contracted creatures, rare bloodlines, physiques, artifacts, divine powers, legions, hidden identities, or special techniques.\n" +
         "8. If the chapter has no meaningful progression, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
@@ -391,13 +461,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, or brain_ask." }, { status: 400 })
     }
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      systemInstruction: systemInstruction,
-    })
-
-    const result = await model.generateContent(userPrompt)
-    const text = result.response.text()
+    const jsonActions = new Set(["appearance_prompts", "progression_update", "cultivation_realm_import", "brain_analyze"])
+    let text = ""
+    if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
+      text = JSON.stringify({ settings: parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings })
+    } else {
+      text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action))
+    }
 
     if (action === "brain_analyze") {
       const analysis = parseJsonObject<BrainAnalysis>(text)
@@ -511,32 +581,21 @@ export async function POST(req: NextRequest) {
     if (action === "cultivation_realm_import") {
       const imported = parseJsonObject<CultivationImportResponse>(text)
       if (!imported) {
-        return NextResponse.json({
-          imported: {
-            settings: {
-              realms: text.split(/\r?\n/).map(line => line.replace(/^\s*[-*\d.)]+/, "").trim()).filter(Boolean).slice(0, 80),
-              stageLabels: ["Low", "Middle", "High", "Peak"],
-              showLevels: false,
-              showExp: false,
-              showStats: true,
-              statKeys: ["strength", "agility", "endurance", "vitality", "intelligence", "sense", "mana"],
-              customFields: ["Race", "Bloodline", "Sect", "Affiliation"],
-              notes: "Imported without structured AI parsing; review the realm order."
-            }
-          }
-        })
+        return NextResponse.json({ imported: parseCultivationSettingsFromText(body.rawText, body.currentSettings) })
       }
 
       return NextResponse.json({
         imported: {
-          settings: imported.settings || {}
+          settings: imported.settings && Array.isArray(imported.settings.realms) && imported.settings.realms.length > 0
+            ? imported.settings
+            : parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings
         }
       })
     }
 
     return NextResponse.json({ text })
   } catch (error: unknown) {
-    console.error("Gemini API error:", error)
+    console.error("Groq API error:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json({ error: `AI Generation failed: ${message}` }, { status: 500 })
   }

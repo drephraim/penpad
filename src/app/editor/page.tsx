@@ -234,18 +234,22 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
   mana: 0
 }
 const PROGRESSION_CARD_COLORS = ["rose", "violet", "cyan", "amber", "emerald", "blue", "fuchsia", "lime"]
+const OVERBUILT_DEFAULT_TEMPLATE_IDS = new Set([
+  "template-bloodline",
+  "template-attributes",
+  "template-physique",
+  "template-rpg-stats",
+  "template-exp",
+  "template-elemental-affinity",
+  "template-unnamed"
+])
 const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
-  { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name"], color: "rose", enabled: true },
-  { id: "template-cultivation", label: "Cultivation", type: "rank", sourceKey: "cultivation", fields: ["Stage", "Rank"], color: "violet", enabled: true },
-  { id: "template-bloodline", label: "Bloodline", type: "compound", sourceKey: "bloodline", fields: ["Bloodline Name", "Bloodline Grade", "Bloodline Rank"], color: "fuchsia", enabled: true },
+  { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name", "Title"], color: "rose", enabled: true },
+  { id: "template-cultivation", label: "Cultivation Stage", type: "rank", sourceKey: "cultivation", fields: ["Cultivation Stage", "Rank"], color: "violet", enabled: true },
   { id: "template-job-class", label: "Job Class", type: "text", sourceKey: "className", fields: ["Class"], color: "cyan", enabled: true },
-  { id: "template-attributes", label: "Attributes", type: "compound", sourceKey: "attributes", fields: ["Dao Comprehension", "Law Comprehension", "Soul Strength", "Spiritual Sense", "Mental Strength", "Body Cultivation Realm", "Soul Cultivation Realm"], color: "emerald", enabled: true },
-  { id: "template-physique", label: "Physique", type: "compound", sourceKey: "physique", fields: ["Physique Name", "Physique Rank", "Physique Type"], color: "blue", enabled: true },
+  { id: "template-race", label: "Race", type: "text", sourceKey: "Race", fields: ["Race"], color: "blue", enabled: true },
   { id: "template-skills-techniques", label: "Skills & Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Grade", "Type", "Description", "Level"], color: "amber", enabled: true },
-  { id: "template-rpg-stats", label: "RPG Stats", type: "stat", sourceKey: "stats", fields: ["Strength", "Agility", "Dexterity", "Vitality", "Constitution", "Intelligence", "Wisdom", "Spirit", "Perception", "Charm", "Luck"], color: "rose", enabled: true },
-  { id: "template-exp", label: "EXP", type: "progress", sourceKey: "EXP", fields: ["EXP"], color: "lime", enabled: true },
-  { id: "template-elemental-affinity", label: "Elemental Affinity", type: "compound", sourceKey: "elementalAffinity", fields: ["Flame", "Water", "Ice", "Lightning", "Earth", "Wind", "Light", "Dark"], color: "cyan", enabled: true },
-  { id: "template-unnamed", label: "Unnamed Card", type: "compound", sourceKey: "custom", fields: ["Field"], color: "violet", enabled: true }
+  { id: "template-affiliation", label: "Affiliation", type: "text", sourceKey: "Affiliation", fields: ["Affiliation"], color: "emerald", enabled: true }
 ]
 const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   enabled: true,
@@ -267,7 +271,7 @@ const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
 }
 const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   realms: [],
-  stageLabels: ["Low", "Middle", "High", "Peak"],
+  stageLabels: ["Low", "Medium", "High", "Peak"],
   showLevels: true,
   showExp: true,
   showStats: true,
@@ -889,12 +893,12 @@ function EditorContent() {
     return evidenceLines.join("\n").slice(0, 8000)
   }
 
-  const getProgressionTemplateCardId = (label: string) => {
+  const getProgressionTemplateCardId = useCallback((label: string) => {
     const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "card"
     return `template-${slug}`
-  }
+  }, [])
 
-  const inferProgressionTemplateCardType = (label: string): ProgressionTemplateCardType => {
+  const inferProgressionTemplateCardType = useCallback((label: string): ProgressionTemplateCardType => {
     const cleanLabel = label.toLowerCase()
     if (/(ability|abilities|skill|technique|summon|art)\b/.test(cleanLabel)) return "ability"
     if (/(exp|experience|progress|points|xp)\b/.test(cleanLabel)) return "progress"
@@ -903,22 +907,33 @@ function EditorContent() {
     if (Object.keys(DEFAULT_PROGRESSION_STATS).some(stat => cleanLabel === stat || cleanLabel.includes(stat))) return "stat"
     if (/(bloodline|physique|attribute|affinity|element|custom|unnamed)\b/.test(cleanLabel)) return "compound"
     return "text"
-  }
+  }, [])
 
-  const getProgressionCardColor = (index: number, type?: ProgressionTemplateCardType) => {
+  const getProgressionCardColor = useCallback((index: number, type?: ProgressionTemplateCardType) => {
     if (type === "progress") return "lime"
     if (type === "ability") return "amber"
     if (type === "rank") return "violet"
     if (type === "resource") return "cyan"
     if (type === "stat") return "blue"
     return PROGRESSION_CARD_COLORS[index % PROGRESSION_CARD_COLORS.length]
-  }
+  }, [])
 
-  const normalizeProgressionTemplateCards = (
+  const normalizeProgressionTemplateCards = useCallback((
     cards?: Partial<ProgressionTemplateCard>[],
     customFields: string[] = []
   ): ProgressionTemplateCard[] => {
-    const source = Array.isArray(cards) && cards.length > 0 ? cards : DEFAULT_PROFILE_TEMPLATE_CARDS
+    const rawSource = Array.isArray(cards) && cards.length > 0 ? cards : DEFAULT_PROFILE_TEMPLATE_CARDS
+    const hasOverbuiltDefaults = rawSource.some(card => card.id && OVERBUILT_DEFAULT_TEMPLATE_IDS.has(card.id))
+    const preservedCustomCards = hasOverbuiltDefaults
+      ? rawSource.filter(card => {
+        if (!card.id) return true
+        if (OVERBUILT_DEFAULT_TEMPLATE_IDS.has(card.id)) return false
+        return !DEFAULT_PROFILE_TEMPLATE_CARDS.some(defaultCard => defaultCard.id === card.id)
+      })
+      : []
+    const source = hasOverbuiltDefaults
+      ? [...DEFAULT_PROFILE_TEMPLATE_CARDS, ...preservedCustomCards]
+      : rawSource
     const normalized = source
       .map((card, index) => {
         const label = String(card.label || card.sourceKey || `Card ${index + 1}`).trim()
@@ -961,7 +976,7 @@ function EditorContent() {
     })
 
     return normalized
-  }
+  }, [getProgressionCardColor, getProgressionTemplateCardId, inferProgressionTemplateCardType])
 
   const parseProgressionRatio = (value: string | number | undefined) => {
     if (typeof value === "number") return { current: value, max: 100 }
@@ -986,8 +1001,10 @@ function EditorContent() {
     const cleanField = fieldName.toLowerCase()
     const cleanCard = card.label.toLowerCase()
     if (cleanField === "name") return profile.name
-    if (cleanField === "stage") return profile.stage || getProgressionCustomFieldValue(profile, "Stage")
-    if (cleanField === "rank") return profile.rank || profile.realm || getProgressionCustomFieldValue(profile, "Rank")
+    if (cleanField === "title") return profile.title
+    if (cleanField === "cultivation stage" || cleanField === "realm") return profile.realm || getProgressionCustomFieldValue(profile, "Cultivation Stage")
+    if (cleanField === "stage") return profile.realm || profile.stage || getProgressionCustomFieldValue(profile, "Stage")
+    if (cleanField === "rank") return profile.stage || profile.rank || getProgressionCustomFieldValue(profile, "Rank")
     if (cleanField === "realm") return profile.realm
     if (cleanField === "class" || cleanField === "job class") return profile.className
     if (cleanField === "level") return String(profile.level || "")
@@ -1018,7 +1035,7 @@ function EditorContent() {
     const sourceKey = card.sourceKey || card.label
     const cleanSource = sourceKey.toLowerCase()
     if (cleanSource === "name") return profile.name
-    if (cleanSource === "cultivationstage") return [profile.realm, profile.stage].filter(Boolean).join(" - ") || profile.rank
+    if (cleanSource === "cultivationstage" || cleanSource === "cultivation") return [profile.realm, profile.stage || profile.rank].filter(Boolean).join(" - ")
     if (cleanSource === "levelrank") return progressionSystem.showLevels ? `Level ${profile.level}` : profile.stage || profile.rank
     if (cleanSource === "classname" || cleanSource === "class") return profile.className
     if (cleanSource === "title") return profile.title
@@ -1125,6 +1142,7 @@ function EditorContent() {
         notes: importedSettings.notes || progressionSystem.notes
       })
       setProgressionRealmImportText("")
+      setIsProgressionCultivationImportOpen(false)
       setProgressionNotice("Cultivation stages imported. The AI will use this realm order when updating profiles.")
     } catch (err) {
       setProgressionError(err instanceof Error ? err.message : "Failed to import cultivation stages.")
@@ -1137,6 +1155,7 @@ function EditorContent() {
     if (!file) return
     const text = await file.text()
     setProgressionRealmImportText(text)
+    await handleCultivationRealmImport(text)
   }
 
   const normalizeProgressionProfile = (
@@ -1538,12 +1557,13 @@ function EditorContent() {
       setProgressionDraftField("name", value)
       return
     }
-    if (cleanField === "stage") {
-      setProgressionDraftField("stage", value)
+    if (cleanField === "cultivation stage" || cleanField === "realm" || cleanField === "stage") {
+      setProgressionDraftField("realm", value)
       setProgressionDraftCustomField(fieldName, value)
       return
     }
     if (cleanField === "rank") {
+      setProgressionDraftField("stage", value)
       setProgressionDraftField("rank", value)
       setProgressionDraftCustomField(fieldName, value)
       return
@@ -2028,7 +2048,7 @@ function EditorContent() {
     setProgressionProfiles(sorted)
   }, [getProgressionStorageKey])
 
-  const normalizeProgressionSystem = (settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
+  const normalizeProgressionSystem = useCallback((settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
     const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
     const rawTemplate = settings?.profileTemplate || DEFAULT_PROFILE_TEMPLATE
     const normalizedTemplate: ProgressionProfileTemplate = {
@@ -2081,7 +2101,7 @@ function EditorContent() {
       showExp: settings?.showExp !== false,
       showStats: settings?.showStats !== false
     }
-  }
+  }, [normalizeProgressionTemplateCards])
 
   const persistProgressionSystem = useCallback((nextSettings: ProgressionSystemSettings) => {
     const key = getProgressionSystemStorageKey()
@@ -2089,7 +2109,7 @@ function EditorContent() {
     const normalized = normalizeProgressionSystem({ ...nextSettings, updatedAt: Date.now() })
     localStorage.setItem(key, JSON.stringify(normalized))
     setProgressionSystem(normalized)
-  }, [getProgressionSystemStorageKey])
+  }, [getProgressionSystemStorageKey, normalizeProgressionSystem])
 
   const fetchProgressionSystem = useCallback(() => {
     if (!projectId) return
@@ -2100,7 +2120,7 @@ function EditorContent() {
       console.error("Failed to load progression system:", e)
       setProgressionSystem(DEFAULT_PROGRESSION_SYSTEM)
     }
-  }, [projectId, getProgressionSystemStorageKey])
+  }, [projectId, getProgressionSystemStorageKey, normalizeProgressionSystem])
 
   const fetchProgressionProfiles = useCallback(() => {
     if (!projectId) return
@@ -6809,7 +6829,7 @@ function EditorContent() {
                   onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
                 >
                   <RotateCcw size={12} />
-                  Load Writer Template
+                  Load Simple Template
                 </button>
               </div>
               <div className="progression-cultivation-import-box">
@@ -9804,10 +9824,16 @@ function EditorContent() {
           color: var(--text-dim);
         }
 
-        .progression-characters-modal,
-        .progression-template-modal {
+        .progression-characters-modal {
           width: min(760px, calc(100vw - 2rem));
           max-height: min(88vh, 860px);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .progression-template-modal {
+          width: min(1120px, calc(100vw - 2rem));
+          max-height: min(90vh, 900px);
           display: flex;
           flex-direction: column;
         }
