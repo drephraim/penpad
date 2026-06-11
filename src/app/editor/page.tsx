@@ -13,7 +13,7 @@ import {
   Sparkles, Wand2, Copy,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
-  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp
+  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical
 } from "lucide-react"
 import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
 import { 
@@ -523,6 +523,7 @@ function EditorContent() {
   const [progressionNewFieldType, setProgressionNewFieldType] = useState<ProgressionTemplateCardType>("text")
   const [showProgressionCharactersModal, setShowProgressionCharactersModal] = useState(false)
   const [showProgressionTemplateModal, setShowProgressionTemplateModal] = useState(false)
+  const [draggedProgressionTemplateCardId, setDraggedProgressionTemplateCardId] = useState<string | null>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -975,6 +976,19 @@ function EditorContent() {
     })
   }
 
+  const reorderProgressionTemplateCard = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return
+    setProgressionTemplateCards(cards => {
+      const fromIndex = cards.findIndex(card => card.id === draggedId)
+      const toIndex = cards.findIndex(card => card.id === targetId)
+      if (fromIndex < 0 || toIndex < 0) return cards
+      const reordered = [...cards]
+      const [movedCard] = reordered.splice(fromIndex, 1)
+      reordered.splice(toIndex, 0, movedCard)
+      return reordered
+    })
+  }
+
   const normalizeProgressionProfile = (
     sourceEntry: BibleEntry,
     aiProfile: Partial<CharacterProgressionProfile> | undefined,
@@ -1026,19 +1040,81 @@ function EditorContent() {
     }
   }
 
+  const createFallbackProgressionProfile = (
+    sourceEntry: BibleEntry,
+    existingProfile: CharacterProgressionProfile | undefined,
+    chapterNumber: number | null,
+    summary: string,
+    now: number
+  ): CharacterProgressionProfile => {
+    const sharedTemplate = progressionSystem.profileTemplate?.enabled ? progressionSystem.profileTemplate : DEFAULT_PROFILE_TEMPLATE
+    const historyEntry: ProgressionHistoryEntry | null = activeNote ? {
+      id: crypto.randomUUID(),
+      chapterId: activeNote.id,
+      chapterTitle: activeNote.title || "Untitled",
+      chapterNumber,
+      appliedAt: now,
+      summary,
+      levelBefore: existingProfile?.level || sharedTemplate.baseLevel || 1,
+      levelAfter: existingProfile?.level || sharedTemplate.baseLevel || 1,
+      realmBefore: existingProfile?.realm || "",
+      realmAfter: existingProfile?.realm || sharedTemplate.defaultRealm || "",
+      stageBefore: existingProfile?.stage || "",
+      stageAfter: existingProfile?.stage || sharedTemplate.defaultStage || "",
+      statChanges: {},
+      abilityChanges: [],
+      rewards: [],
+      evidence: []
+    } : null
+
+    return {
+      id: existingProfile?.id || crypto.randomUUID(),
+      loreEntryId: sourceEntry.id,
+      name: existingProfile?.name || sourceEntry.name,
+      title: existingProfile?.title || "",
+      className: existingProfile?.className || sharedTemplate.defaultClassName || "",
+      rank: existingProfile?.rank || sharedTemplate.defaultRank || "",
+      nicknames: existingProfile?.nicknames || [],
+      uniqueTrait: existingProfile?.uniqueTrait || "",
+      realm: existingProfile?.realm || sharedTemplate.defaultRealm || "",
+      stage: existingProfile?.stage || sharedTemplate.defaultStage || "",
+      cultivationPath: existingProfile?.cultivationPath || sharedTemplate.defaultCultivationPath || "",
+      level: existingProfile?.level || sharedTemplate.baseLevel || 1,
+      exp: existingProfile?.exp || sharedTemplate.baseExp || 0,
+      nextLevelExp: existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+      stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}) },
+      abilities: existingProfile?.abilities || sharedTemplate.defaultAbilities || [],
+      traits: existingProfile?.traits || sharedTemplate.defaultTraits || [],
+      customFields: {
+        ...(sharedTemplate.defaultCustomFields || {}),
+        ...(existingProfile?.customFields || {})
+      },
+      notes: existingProfile?.notes || sourceEntry.content || sharedTemplate.notes || "",
+      processedChapterIds: historyEntry
+        ? Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId]))
+        : existingProfile?.processedChapterIds || [],
+      history: historyEntry ? [historyEntry, ...(existingProfile?.history || [])] : existingProfile?.history || [],
+      createdAt: existingProfile?.createdAt || now,
+      updatedAt: now
+    }
+  }
+
   const handleProgressionUpdate = async (entryId?: string | null, selectedTextOverride?: string) => {
-    if (!activeNote || !projectId) {
-      setProgressionError("Select a chapter first.")
+    if (!projectId) {
+      setProgressionError("Open a project first.")
       return
     }
 
     const selectedText = selectedTextOverride ?? aiSelectionText
+    const selectedDropdownEntry = progressionSelectedEntryId
+      ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId)
+      : null
     const selectedProfileEntry = selectedProgressionProfile
       ? bibleEntries.find(entry => entry.id === selectedProgressionProfile.loreEntryId)
       : null
     const sourceEntry = entryId
       ? bibleEntries.find(entry => entry.id === entryId)
-      : findProgressionSourceEntry(selectedText) || selectedProfileEntry
+      : selectedDropdownEntry || findProgressionSourceEntry(selectedText) || selectedProfileEntry
 
     if (!sourceEntry && progressionProfiles.length === 0) {
       setProgressionError("Highlight a Story Bible character name or select a profile first.")
@@ -1046,6 +1122,27 @@ function EditorContent() {
     }
 
     const existingProfile = sourceEntry ? progressionProfiles.find(profile => profile.loreEntryId === sourceEntry.id) : undefined
+    if (!activeNote && sourceEntry) {
+      const now = Date.now()
+      const nextProfile = createFallbackProgressionProfile(sourceEntry, existingProfile, null, "Created a base progression profile from the selected Story Bible entry.", now)
+      const nextProfiles = existingProfile
+        ? progressionProfiles.map(profile => profile.id === existingProfile.id ? nextProfile : profile)
+        : [nextProfile, ...progressionProfiles]
+      persistProgressionProfiles(nextProfiles)
+      setSelectedProgressionProfileId(nextProfile.id)
+      setProgressionSelectedEntryId(sourceEntry.id)
+      setProgressionError("")
+      setProgressionNotice(`Created ${sourceEntry.name}'s progression profile. Select a chapter and update later for chapter-based growth.`)
+      setActiveSidebarTab("progression")
+      setIsLeftSidebarOpen(true)
+      return
+    }
+
+    if (!activeNote) {
+      setProgressionError("Select a chapter first.")
+      return
+    }
+
     if (sourceEntry && existingProfile?.processedChapterIds.includes(activeNote.id)) {
       setSelectedProgressionProfileId(existingProfile.id)
       setProgressionNotice(`${sourceEntry.name} already has a progression update recorded for this chapter.`)
@@ -1109,6 +1206,19 @@ function EditorContent() {
       })
       const data = await res.json()
       if (data.error) {
+        if (sourceEntry) {
+          const now = Date.now()
+          const chapterNumber = getNoteChapterNumber(activeNote)
+          const fallbackProfile = createFallbackProgressionProfile(sourceEntry, existingProfile, chapterNumber, "Created a base progression profile because AI progression update failed.", now)
+          const fallbackProfiles = existingProfile
+            ? progressionProfiles.map(profile => profile.id === existingProfile.id ? fallbackProfile : profile)
+            : [fallbackProfile, ...progressionProfiles]
+          persistProgressionProfiles(fallbackProfiles)
+          setSelectedProgressionProfileId(fallbackProfile.id)
+          setProgressionSelectedEntryId(sourceEntry.id)
+          setProgressionNotice(`Created ${sourceEntry.name}'s profile. AI update can be retried later.`)
+          return
+        }
         setProgressionError(data.error)
         return
       }
@@ -6516,7 +6626,31 @@ function EditorContent() {
               </div>
               <div className="progression-template-builder-list">
                 {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
-                  <div className={`progression-template-builder-card color-${templateCard.color}`} key={templateCard.id}>
+                  <div
+                    className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""}`}
+                    key={templateCard.id}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (draggedProgressionTemplateCardId) {
+                        reorderProgressionTemplateCard(draggedProgressionTemplateCardId, templateCard.id)
+                      }
+                      setDraggedProgressionTemplateCardId(null)
+                    }}
+                  >
+                    <div
+                      className="progression-template-drag-handle"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move"
+                        setDraggedProgressionTemplateCardId(templateCard.id)
+                      }}
+                      onDragEnd={() => setDraggedProgressionTemplateCardId(null)}
+                      title="Drag to reorder card"
+                    >
+                      <GripVertical size={15} />
+                      <span>Drag to reorder</span>
+                    </div>
                     <label>
                       <span>Card Name</span>
                       <input
@@ -9479,6 +9613,35 @@ function EditorContent() {
           border: 1px solid color-mix(in srgb, var(--card-accent) 34%, transparent);
           border-radius: var(--radius-md);
           background: linear-gradient(145deg, color-mix(in srgb, var(--card-accent) 12%, transparent), rgba(255, 255, 255, 0.035));
+        }
+
+        .progression-template-builder-card.dragging {
+          opacity: 0.58;
+          outline: 2px dashed color-mix(in srgb, var(--card-accent) 70%, white);
+          outline-offset: 3px;
+        }
+
+        .progression-template-drag-handle {
+          grid-column: 1 / -1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+          min-height: 30px;
+          border: 1px dashed color-mix(in srgb, var(--card-accent) 40%, transparent);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.16);
+          color: color-mix(in srgb, var(--card-accent) 58%, white);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          cursor: grab;
+          user-select: none;
+        }
+
+        .progression-template-drag-handle:active {
+          cursor: grabbing;
         }
 
         .progression-template-builder-card label {
