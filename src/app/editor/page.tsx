@@ -1261,7 +1261,10 @@ function EditorContent() {
       },
       notes: aiProfile?.notes || existingProfile?.notes || sharedTemplate.notes || "",
       processedChapterIds: Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId])),
-      history: [historyEntry, ...(existingProfile?.history || [])],
+      history: [
+        historyEntry,
+        ...(existingProfile?.history || []).filter(entry => entry.chapterId !== historyEntry.chapterId)
+      ],
       createdAt: existingProfile?.createdAt || now,
       updatedAt: now
     }
@@ -1320,7 +1323,12 @@ function EditorContent() {
       processedChapterIds: historyEntry
         ? Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId]))
         : existingProfile?.processedChapterIds || [],
-      history: historyEntry ? [historyEntry, ...(existingProfile?.history || [])] : existingProfile?.history || [],
+      history: historyEntry
+        ? [
+          historyEntry,
+          ...(existingProfile?.history || []).filter(entry => entry.chapterId !== historyEntry.chapterId)
+        ]
+        : existingProfile?.history || [],
       createdAt: existingProfile?.createdAt || now,
       updatedAt: now
     }
@@ -1372,13 +1380,6 @@ function EditorContent() {
 
     if (!activeNote) {
       setProgressionError("Select a chapter first.")
-      return
-    }
-
-    if (sourceEntry && existingProfile?.processedChapterIds.includes(activeNote.id)) {
-      setSelectedProgressionProfileId(existingProfile.id)
-      setProgressionNotice(`${sourceEntry.name} already has a progression update recorded for this chapter.`)
-      setProgressionError("")
       return
     }
 
@@ -1483,13 +1484,7 @@ function EditorContent() {
         return
       }
       const finalExistingProfile = progressionProfiles.find(profile => profile.loreEntryId === finalSourceEntry.id)
-      if (finalExistingProfile?.processedChapterIds.includes(activeNote.id)) {
-        setSelectedProgressionProfileId(finalExistingProfile.id)
-        setProgressionSelectedEntryId(finalSourceEntry.id)
-        setProgressionNotice(`${finalSourceEntry.name} already has a progression update recorded for this chapter.`)
-        setProgressionError("")
-        return
-      }
+      const wasChapterReviewed = Boolean(finalExistingProfile?.processedChapterIds.includes(activeNote.id))
       const now = Date.now()
       const aiUpdate = progression.update || {}
       const levelBefore = aiUpdate.levelBefore ?? finalExistingProfile?.level ?? 1
@@ -1520,7 +1515,9 @@ function EditorContent() {
       learnProgressionProfileShape(nextProfile)
       setSelectedProgressionProfileId(nextProfile.id)
       setProgressionSelectedEntryId(finalSourceEntry.id)
-      setProgressionNotice(aiUpdate.shouldApply === false
+      setProgressionNotice(wasChapterReviewed
+        ? `Refreshed ${finalSourceEntry.name}'s progression update for ${activeNote.title || "this chapter"}.`
+        : aiUpdate.shouldApply === false
         ? `No major progression change found, but this chapter has been marked as reviewed for ${finalSourceEntry.name}.`
         : `Updated ${finalSourceEntry.name} from ${activeNote.title || "this chapter"}.`)
     } catch (err) {
@@ -6973,120 +6970,121 @@ function EditorContent() {
                 <h2 className="modal-title">Profile Template</h2>
                 <p className="modal-description">Design the reusable status card for this novel. New and updated characters follow this shape.</p>
               </div>
-              <div className="progression-template-tool-row">
-                <span>EXP</span>
-                <span>HP / Mana / Qi</span>
-                <span>Realm / Rank</span>
-                <span>Stats</span>
-                <span>Abilities</span>
-                <button
-                  className="btn-ai-sub btn-ai-secondary"
-                  onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                >
-                  <RotateCcw size={12} />
-                  Load Simple Template
-                </button>
-              </div>
-              <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
-                <div className="progression-template-header">
-                  <div>
-                    <strong>AI Prompt Designer</strong>
-                    <span>Describe the status screen structure to design a custom template.</span>
-                  </div>
-                  <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionPromptDesignerOpen(prev => !prev)}>
-                    <ChevronDown size={12} className={isProgressionPromptDesignerOpen ? "rotate" : ""} />
-                    {isProgressionPromptDesignerOpen ? "Hide" : "Design"}
-                  </button>
-                </div>
-                {isProgressionPromptDesignerOpen && (
-                  <div className="progression-cultivation-import-body" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
-                    <textarea
-                      className="ai-textarea compact"
-                      value={progressionTemplatePrompt}
-                      onChange={(e) => setProgressionTemplatePrompt(e.target.value)}
-                      placeholder="Describe what cards, stats, affinities, or ranks you want. Example: I want a profile template with name, Cultivation (stage and rank), levels, attributes (Strength, Agility, Endurance), and Affinity (Fire, Ice, Void)..."
-                      rows={3}
-                      disabled={progressionTemplatePromptLoading}
-                    />
-                    {progressionTemplatePromptError && (
-                      <div style={{ color: "var(--error)", fontSize: "0.8rem" }}>
-                        {progressionTemplatePromptError}
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={handleDesignTemplateWithAi}
-                        disabled={!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading}
-                      >
-                        {progressionTemplatePromptLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                        Generate Template
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="progression-cultivation-import-box">
-                <div className="progression-template-header">
-                  <div>
-                    <strong>Cultivation System</strong>
-                    <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
-                  </div>
-                  <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
-                    <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
-                    {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
-                  </button>
-                </div>
-                <div className="progression-system-summary">
-                  <span>{progressionSystem.realms.length} realms</span>
-                  <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
-                </div>
-                {isProgressionCultivationImportOpen && (
-                  <div className="progression-cultivation-import-body">
-                    <div className="progression-cultivation-actions">
-                      <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
-                        <FileText size={12} />
-                        Upload TXT
-                        <input
-                          type="file"
-                          accept=".txt,text/plain"
-                          onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
-                        />
-                      </label>
-                    </div>
-                    <textarea
-                      className="ai-textarea compact progression-realm-import-textarea"
-                      value={progressionRealmImportText}
-                      onChange={(e) => setProgressionRealmImportText(e.target.value)}
-                      placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
-                    />
-                    <div className="progression-cultivation-import-footer">
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={() => handleCultivationRealmImport()}
-                        disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
-                      >
-                        {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                        Arrange Stages
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="progression-template-builder-list">
-                {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
-                  <div
-                    className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""}`}
-                    key={templateCard.id}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      if (draggedProgressionTemplateCardId) {
-                        reorderProgressionTemplateCard(draggedProgressionTemplateCardId, templateCard.id)
-                      }
-                      setDraggedProgressionTemplateCardId(null)
-                    }}
+              <div className="progression-template-modal-body">
+                <div className="progression-template-tool-row">
+                  <span>EXP</span>
+                  <span>HP / Mana / Qi</span>
+                  <span>Realm / Rank</span>
+                  <span>Stats</span>
+                  <span>Abilities</span>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary"
+                    onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
                   >
+                    <RotateCcw size={12} />
+                    Load Simple Template
+                  </button>
+                </div>
+                <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
+                  <div className="progression-template-header">
+                    <div>
+                      <strong>AI Prompt Designer</strong>
+                      <span>Describe the status screen structure to design a custom template.</span>
+                    </div>
+                    <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionPromptDesignerOpen(prev => !prev)}>
+                      <ChevronDown size={12} className={isProgressionPromptDesignerOpen ? "rotate" : ""} />
+                      {isProgressionPromptDesignerOpen ? "Hide" : "Design"}
+                    </button>
+                  </div>
+                  {isProgressionPromptDesignerOpen && (
+                    <div className="progression-cultivation-import-body" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
+                      <textarea
+                        className="ai-textarea compact"
+                        value={progressionTemplatePrompt}
+                        onChange={(e) => setProgressionTemplatePrompt(e.target.value)}
+                        placeholder="Describe what cards, stats, affinities, or ranks you want. Example: I want a profile template with name, Cultivation (stage and rank), levels, attributes (Strength, Agility, Endurance), and Affinity (Fire, Ice, Void)..."
+                        rows={3}
+                        disabled={progressionTemplatePromptLoading}
+                      />
+                      {progressionTemplatePromptError && (
+                        <div style={{ color: "var(--error)", fontSize: "0.8rem" }}>
+                          {progressionTemplatePromptError}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          className="btn-ai-sub btn-ai-primary"
+                          onClick={handleDesignTemplateWithAi}
+                          disabled={!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading}
+                        >
+                          {progressionTemplatePromptLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                          Generate Template
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="progression-cultivation-import-box">
+                  <div className="progression-template-header">
+                    <div>
+                      <strong>Cultivation System</strong>
+                      <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
+                    </div>
+                    <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
+                      <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
+                      {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
+                    </button>
+                  </div>
+                  <div className="progression-system-summary">
+                    <span>{progressionSystem.realms.length} realms</span>
+                    <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
+                  </div>
+                  {isProgressionCultivationImportOpen && (
+                    <div className="progression-cultivation-import-body">
+                      <div className="progression-cultivation-actions">
+                        <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
+                          <FileText size={12} />
+                          Upload TXT
+                          <input
+                            type="file"
+                            accept=".txt,text/plain"
+                            onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
+                          />
+                        </label>
+                      </div>
+                      <textarea
+                        className="ai-textarea compact progression-realm-import-textarea"
+                        value={progressionRealmImportText}
+                        onChange={(e) => setProgressionRealmImportText(e.target.value)}
+                        placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
+                      />
+                      <div className="progression-cultivation-import-footer">
+                        <button
+                          className="btn-ai-sub btn-ai-primary"
+                          onClick={() => handleCultivationRealmImport()}
+                          disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
+                        >
+                          {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                          Arrange Stages
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="progression-template-builder-list">
+                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
+                    <div
+                      className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""}`}
+                      key={templateCard.id}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        if (draggedProgressionTemplateCardId) {
+                          reorderProgressionTemplateCard(draggedProgressionTemplateCardId, templateCard.id)
+                        }
+                        setDraggedProgressionTemplateCardId(null)
+                      }}
+                    >
                     <div
                       className="progression-template-drag-handle"
                       draggable
@@ -7192,28 +7190,29 @@ function EditorContent() {
                         Remove
                       </button>
                     </div>
-                  </div>
-                ))}
-              </div>
-              <div className="progression-template-add-row">
-                <button
-                  className="btn-ai-sub btn-ai-primary"
-                  onClick={() => setProgressionTemplateCards(cards => [
-                    ...cards,
-                    {
-                      id: `template-${crypto.randomUUID()}`,
-                      label: "Unnamed Card",
-                      type: "compound",
-                      sourceKey: "custom",
-                      fields: ["Field"],
-                      color: getProgressionCardColor(cards.length, "compound"),
-                      enabled: true
-                    }
-                  ])}
-                >
-                  <Plus size={12} />
-                  Add Template Card
-                </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="progression-template-add-row">
+                  <button
+                    className="btn-ai-sub btn-ai-primary"
+                    onClick={() => setProgressionTemplateCards(cards => [
+                      ...cards,
+                      {
+                        id: `template-${crypto.randomUUID()}`,
+                        label: "Unnamed Card",
+                        type: "compound",
+                        sourceKey: "custom",
+                        fields: ["Field"],
+                        color: getProgressionCardColor(cards.length, "compound"),
+                        enabled: true
+                      }
+                    ])}
+                  >
+                    <Plus size={12} />
+                    Add Template Card
+                  </button>
+                </div>
               </div>
               <div className="modal-actions">
                 <button className="btn btn-primary" onClick={() => setShowProgressionTemplateModal(false)}>Done</button>
@@ -10009,8 +10008,9 @@ function EditorContent() {
           color: var(--error) !important;
         }
 
-        .progression-edit-modal {
+        .modal.progression-edit-modal {
           width: min(1080px, calc(100vw - 2rem));
+          max-width: min(1080px, calc(100vw - 2rem));
           max-height: min(90vh, 900px);
           display: flex;
           flex-direction: column;
@@ -10217,11 +10217,33 @@ function EditorContent() {
           flex-direction: column;
         }
 
-        .progression-template-modal {
-          width: min(1120px, calc(100vw - 2rem));
-          max-height: min(90vh, 900px);
+        .modal.progression-template-modal {
+          width: min(1180px, calc(100vw - 2rem));
+          max-width: min(1180px, calc(100vw - 2rem));
+          height: min(92vh, 980px);
+          max-height: calc(100vh - 2rem);
           display: flex;
           flex-direction: column;
+          overflow: hidden;
+        }
+
+        .progression-template-modal .modal-header {
+          flex-shrink: 0;
+          margin-bottom: 1rem;
+        }
+
+        .progression-template-modal-body {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          padding-right: 0.35rem;
+        }
+
+        .progression-template-modal .modal-actions {
+          flex-shrink: 0;
+          margin-top: 0.9rem;
+          padding-top: 0.85rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .progression-character-modal-list,
@@ -11911,8 +11933,16 @@ function EditorContent() {
         }
 
         @media (max-width: 1024px) {
-          .progression-edit-modal {
+          .modal.progression-edit-modal {
             width: min(900px, calc(100vw - 1.25rem));
+            max-width: min(900px, calc(100vw - 1.25rem));
+          }
+          .modal.progression-template-modal {
+            width: calc(100vw - 1rem);
+            max-width: calc(100vw - 1rem);
+            height: calc(100vh - 1rem);
+            max-height: calc(100vh - 1rem);
+            padding: 1.25rem;
           }
           .progression-edit-card-grid,
           .progression-ability-card-editor-list,
