@@ -277,7 +277,7 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   showExp: true,
   showStats: true,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
-  customFields: ["Race", "Bloodline", "Bloodline Grade", "Affiliation"],
+  customFields: ["Race", "Bloodline", "Bloodline Grade", "Affiliation", "Affinity Names", "Rank"],
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
   notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
 }
@@ -298,14 +298,23 @@ const getProgressionRankCompanionFieldName = (label: string, sourceKey: string) 
   const baseName = String(label || sourceKey || "").trim()
   const kind = getRankedProgressionFieldKind(`${label} ${sourceKey}`)
   if (!baseName || !kind) return ""
-  return kind === "bloodline" ? `${baseName} Grade` : `${baseName} Ranks`
+  if (kind === "bloodline") return `${baseName} Grade`
+  if (kind === "affinity") return "Rank"
+  return `${baseName} Ranks`
 }
 
 const getProgressionRankedTemplateFields = (label: string, sourceKey: string, fields: string[]) => {
   const initialFields = fields.length > 0 ? fields : [label]
   const kind = getRankedProgressionFieldKind(`${label} ${sourceKey} ${initialFields.join(" ")}`)
   const hasOnlyPlaceholderFields = initialFields.every(field => /^new field(?: \d+)?$/i.test(field) || /^field$/i.test(field))
-  const baseFields = kind && hasOnlyPlaceholderFields ? [label] : initialFields
+  let baseFields = kind && hasOnlyPlaceholderFields ? [label] : initialFields
+  
+  if (kind === "affinity") {
+    if (baseFields.length === 1 && (baseFields[0].toLowerCase() === "affinity" || baseFields[0].toLowerCase() === "spirit affinity" || baseFields[0].toLowerCase() === "elemental affinity")) {
+      baseFields = ["Affinity Names"]
+    }
+  }
+
   if (!kind || baseFields.some(isProgressionRankFieldName)) return baseFields
   const companionField = getProgressionRankCompanionFieldName(label, sourceKey)
   return companionField ? [...baseFields, companionField] : baseFields
@@ -992,20 +1001,36 @@ function EditorContent() {
       : rawSource
     const normalized = source
       .map((card, index) => {
-        const label = String(card.label || card.sourceKey || `Card ${index + 1}`).trim()
+        let label = String(card.label || card.sourceKey || `Card ${index + 1}`).trim()
         if (!label) return null
+        if (label === "Spirit Affinity" || label === "Elemental Affinity") {
+          label = "Affinity"
+        }
         const type = card.type && ["text", "rank", "progress", "resource", "stat", "ability", "compound"].includes(card.type)
           ? card.type
           : inferProgressionTemplateCardType(label)
+        let sourceKey = String(card.sourceKey || label).trim()
+        if (sourceKey === "Spirit Affinity" || sourceKey === "Elemental Affinity") {
+          sourceKey = "Affinity"
+        }
         const rawFields = Array.isArray(card.fields)
-          ? card.fields.map(field => String(field).trim()).filter(Boolean)
+          ? card.fields.map(field => {
+              const f = String(field).trim()
+              if (f === "Spirit Affinity" || f === "Elemental Affinity" || f === "Spirit Affinity Names" || f === "Elemental Affinity Names" || f === "Affinity") {
+                return "Affinity Names"
+              }
+              if (f === "Spirit Affinity Ranks" || f === "Elemental Affinity Ranks" || f === "Spirit Affinity Grade" || f === "Elemental Affinity Grade" || f === "Affinity Rank" || f === "Affinity Ranks" || f === "Affinity Grade") {
+                return "Rank"
+              }
+              return f
+            }).filter(Boolean)
           : []
-        const fields = getProgressionRankedTemplateFields(label, String(card.sourceKey || label).trim(), rawFields)
+        const fields = getProgressionRankedTemplateFields(label, sourceKey, rawFields)
         return {
           id: card.id || getProgressionTemplateCardId(label),
           label,
           type,
-          sourceKey: String(card.sourceKey || label).trim(),
+          sourceKey,
           fields,
           color: card.color || getProgressionCardColor(index, type),
           enabled: card.enabled !== false
@@ -1015,13 +1040,19 @@ function EditorContent() {
 
     const seen = new Set(normalized.map(card => `${card.sourceKey.toLowerCase()}::${card.label.toLowerCase()}`))
     customFields.forEach(fieldName => {
-      const cleanName = String(fieldName || "").trim()
+      let cleanName = String(fieldName || "").trim()
       if (!cleanName) return
+      if (cleanName === "Spirit Affinity" || cleanName === "Elemental Affinity") {
+        cleanName = "Affinity"
+      }
       const companionKind = getRankedProgressionFieldKind(cleanName)
-      if (companionKind && isProgressionRankFieldName(cleanName)) {
+      if (isProgressionRankFieldName(cleanName)) {
         const hasParentCard = normalized.some(card => {
           const cardKind = getRankedProgressionFieldKind(`${card.label} ${card.sourceKey} ${card.fields.join(" ")}`)
-          return cardKind === companionKind && card.fields.some(field => !isProgressionRankFieldName(field))
+          if (companionKind && cardKind === companionKind) {
+            return card.fields.some(field => !isProgressionRankFieldName(field))
+          }
+          return card.fields.some(field => field.toLowerCase() === cleanName.toLowerCase())
         })
         if (hasParentCard) return
       }
@@ -1072,8 +1103,12 @@ function EditorContent() {
       card.sourceKey,
       card.label,
       kind === "bloodline" ? "Bloodline" : "Affinity",
-      kind === "bloodline" ? "Bloodline Name" : "Elemental Affinity",
-      kind === "bloodline" ? "Bloodline Type" : "Spirit Affinity"
+      kind === "bloodline" ? "Bloodline Name" : "Affinity Names",
+      kind === "bloodline" ? "Bloodline Type" : "Elemental Affinity",
+      "Spirit Affinity",
+      "Affinity Names",
+      "Elemental Affinity",
+      "Spirit Affinity"
     ].filter(Boolean)))
     const rankCandidates = Array.from(new Set([
       fieldName,
@@ -1092,7 +1127,16 @@ function EditorContent() {
       kind === "bloodline" ? "Bloodline Quality" : "Elemental Affinity Rank",
       kind === "bloodline" ? "Bloodline Tier" : "Elemental Affinity Grade",
       kind === "bloodline" ? "Bloodline Realm" : "Spirit Affinity Ranks",
-      kind === "bloodline" ? "Bloodline Stage" : "Spirit Affinity Grade"
+      kind === "bloodline" ? "Bloodline Stage" : "Spirit Affinity Grade",
+      "Affinity Rank",
+      "Affinity Ranks",
+      "Affinity Grade",
+      "Affinity Grades",
+      "Elemental Affinity Rank",
+      "Elemental Affinity Grade",
+      "Spirit Affinity Ranks",
+      "Spirit Affinity Grade",
+      "Rank"
     ].filter(Boolean)))
 
     const candidates = isProgressionRankFieldName(fieldName) ? rankCandidates : labelCandidates
@@ -1118,6 +1162,7 @@ function EditorContent() {
     if (cleanField === "level") return String(profile.level || "")
     if (cleanField === "description") return profile.notes
     if (cleanField === "bloodline name") return getProgressionCustomFieldValue(profile, "Bloodline Name") || getProgressionCustomFieldValue(profile, "Bloodline")
+    if (cleanField === "affinity names") return getProgressionCustomFieldValue(profile, "Affinity Names") || getProgressionCustomFieldValue(profile, "Affinity") || getProgressionCustomFieldValue(profile, "Spirit Affinity") || getProgressionCustomFieldValue(profile, "Elemental Affinity")
     if (cleanField === "physique name") return getProgressionCustomFieldValue(profile, "Physique Name") || getProgressionCustomFieldValue(profile, "Physique")
     if (cleanField === "exp") return `${profile.exp}/${profile.nextLevelExp}`
 
