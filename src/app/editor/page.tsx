@@ -526,6 +526,7 @@ function EditorContent() {
   const [draggedProgressionTemplateCardId, setDraggedProgressionTemplateCardId] = useState<string | null>(null)
   const [progressionRealmImportText, setProgressionRealmImportText] = useState("")
   const [progressionRealmImportLoading, setProgressionRealmImportLoading] = useState(false)
+  const [isProgressionCultivationImportOpen, setIsProgressionCultivationImportOpen] = useState(false)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -857,6 +858,35 @@ function EditorContent() {
       await saveBibleEntryToCloud(user.uid, projectId, newEntry)
     }
     return newEntry
+  }
+
+  const buildProgressionTargetEvidence = (entry: BibleEntry, chapterContent: string, selectedText: string) => {
+    const aliases = Array.from(new Set([
+      ...getLoreAliases(entry),
+      selectedText
+    ].map(alias => normalizeProgressionLookupText(alias)).filter(alias => alias.length >= 2)))
+
+    if (aliases.length === 0 || !chapterContent.trim()) return ""
+
+    const lines = chapterContent.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const matchedIndexes = new Set<number>()
+    lines.forEach((line, index) => {
+      const cleanLine = normalizeProgressionLookupText(line)
+      if (aliases.some(alias => cleanLine.includes(alias))) {
+        for (let offset = -2; offset <= 3; offset += 1) {
+          const nearbyIndex = index + offset
+          if (nearbyIndex >= 0 && nearbyIndex < lines.length) {
+            matchedIndexes.add(nearbyIndex)
+          }
+        }
+      }
+    })
+
+    const evidenceLines = Array.from(matchedIndexes)
+      .sort((a, b) => a - b)
+      .map(index => lines[index])
+
+    return evidenceLines.join("\n").slice(0, 8000)
   }
 
   const getProgressionTemplateCardId = (label: string) => {
@@ -1283,12 +1313,38 @@ function EditorContent() {
 
     try {
       const chapterNumber = getNoteChapterNumber(activeNote)
+      const selectedTextForAi = sourceEntry && highlightedEntry?.id !== sourceEntry.id ? "" : selectedText
+      const targetEvidence = sourceEntry ? buildProgressionTargetEvidence(sourceEntry, activeNote.content, selectedTextForAi) : ""
+      const chapterContentForAi = activeNote.content.slice(0, 22000)
+      const candidateProfilesForAi = sourceEntry
+        ? progressionProfiles
+          .filter(profile => profile.loreEntryId === sourceEntry.id)
+          .map(profile => ({
+            id: profile.id,
+            loreEntryId: profile.loreEntryId,
+            name: profile.name,
+            realm: profile.realm,
+            stage: profile.stage,
+            rank: profile.rank,
+            level: profile.level,
+            processedChapterIds: profile.processedChapterIds
+          }))
+        : progressionProfiles.map(profile => ({
+          id: profile.id,
+          loreEntryId: profile.loreEntryId,
+          name: profile.name,
+          realm: profile.realm,
+          stage: profile.stage,
+          rank: profile.rank,
+          level: profile.level,
+          processedChapterIds: profile.processedChapterIds
+        }))
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "progression_update",
-          selectedText,
+          selectedText: selectedTextForAi,
           loreEntry: sourceEntry ? {
             id: sourceEntry.id,
             name: sourceEntry.name,
@@ -1302,21 +1358,13 @@ function EditorContent() {
             id: activeNote.id,
             title: activeNote.title,
             chapterNumber,
-            content: activeNote.content.slice(0, 7000)
+            content: chapterContentForAi,
+            targetEvidence
           },
           progressionSystem,
           existingProfile,
-          candidateProfiles: progressionProfiles.map(profile => ({
-            id: profile.id,
-            loreEntryId: profile.loreEntryId,
-            name: profile.name,
-            realm: profile.realm,
-            stage: profile.stage,
-            rank: profile.rank,
-            level: profile.level,
-            processedChapterIds: profile.processedChapterIds
-          })),
-          candidateLoreEntries: bibleEntries
+          candidateProfiles: candidateProfilesForAi,
+          candidateLoreEntries: sourceEntry ? [] : bibleEntries
             .filter(entry => entry.category === "character" || entry.category === "beast")
             .slice(0, 80)
             .map(entry => ({
@@ -6770,36 +6818,46 @@ function EditorContent() {
                     <strong>Cultivation System</strong>
                     <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
                   </div>
-                  <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
-                    <FileText size={12} />
-                    Upload TXT
-                    <input
-                      type="file"
-                      accept=".txt,text/plain"
-                      onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
-                    />
-                  </label>
-                </div>
-                <textarea
-                  className="ai-textarea compact progression-realm-import-textarea"
-                  value={progressionRealmImportText}
-                  onChange={(e) => setProgressionRealmImportText(e.target.value)}
-                  placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
-                />
-                <div className="progression-cultivation-import-footer">
-                  <div className="progression-system-summary">
-                    <span>{progressionSystem.realms.length} realms</span>
-                    <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
-                  </div>
-                  <button
-                    className="btn-ai-sub btn-ai-primary"
-                    onClick={() => handleCultivationRealmImport()}
-                    disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
-                  >
-                    {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                    Arrange Stages
+                  <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
+                    <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
+                    {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
                   </button>
                 </div>
+                <div className="progression-system-summary">
+                  <span>{progressionSystem.realms.length} realms</span>
+                  <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
+                </div>
+                {isProgressionCultivationImportOpen && (
+                  <div className="progression-cultivation-import-body">
+                    <div className="progression-cultivation-actions">
+                      <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
+                        <FileText size={12} />
+                        Upload TXT
+                        <input
+                          type="file"
+                          accept=".txt,text/plain"
+                          onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
+                        />
+                      </label>
+                    </div>
+                    <textarea
+                      className="ai-textarea compact progression-realm-import-textarea"
+                      value={progressionRealmImportText}
+                      onChange={(e) => setProgressionRealmImportText(e.target.value)}
+                      placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
+                    />
+                    <div className="progression-cultivation-import-footer">
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={() => handleCultivationRealmImport()}
+                        disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
+                      >
+                        {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                        Arrange Stages
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="progression-template-builder-list">
                 {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
@@ -9836,12 +9894,28 @@ function EditorContent() {
         .progression-cultivation-import-box {
           display: flex;
           flex-direction: column;
-          gap: 0.65rem;
+          gap: 0.55rem;
           padding: 0.75rem;
           margin-bottom: 0.75rem;
           border: 1px solid rgba(20, 184, 166, 0.24);
           border-radius: var(--radius-md);
           background: linear-gradient(145deg, rgba(20, 184, 166, 0.11), rgba(255, 255, 255, 0.03));
+        }
+
+        .progression-cultivation-import-box .rotate {
+          transform: rotate(180deg);
+        }
+
+        .progression-cultivation-import-body {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          padding-top: 0.2rem;
+        }
+
+        .progression-cultivation-actions {
+          display: flex;
+          justify-content: flex-start;
         }
 
         .progression-file-btn {
@@ -9859,13 +9933,14 @@ function EditorContent() {
         }
 
         .progression-realm-import-textarea {
-          min-height: 92px;
+          min-height: 86px;
+          max-height: 150px;
         }
 
         .progression-cultivation-import-footer {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-end;
           gap: 0.75rem;
         }
 

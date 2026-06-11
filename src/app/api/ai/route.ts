@@ -259,7 +259,7 @@ export async function POST(req: NextRequest) {
         ? loreEntry as { id?: string; name?: string; category?: string; content?: string; groups?: string[] }
         : null
       const chapterContext = chapter && typeof chapter === "object"
-        ? chapter as { id?: string; title?: string; chapterNumber?: number; content?: string }
+        ? chapter as { id?: string; title?: string; chapterNumber?: number; content?: string; targetEvidence?: string }
         : null
 
       if (!chapterContext?.content || (!safeLoreEntry?.name && !Array.isArray(candidateProfiles))) {
@@ -270,12 +270,12 @@ export async function POST(req: NextRequest) {
         "You are a LitRPG, xianxia, and web-novel progression system designer. " +
         "The writer wants a character status/profile that evolves only when the current chapter provides evidence.\n" +
         "Guidelines:\n" +
-        "1. Use the Story Bible entry, current chapter, existing profile, and project progression system to create or update a profile.\n" +
-        "2. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter. Return targetLoreEntryId and targetProfileId when known.\n" +
+        "1. Use the Story Bible entry, current chapter, target-specific chapter evidence, existing profile, and project progression system to create or update exactly one profile.\n" +
+        "2. If an explicit Story Bible entry is provided, that entry is the only target. Do not copy cultivation, powers, rewards, titles, bloodline, or abilities from any other character, even if those details appear nearby in the chapter. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter. Return targetLoreEntryId and targetProfileId when known.\n" +
         "3. Track level, EXP, nextLevelExp, rank, realm, stage, cultivationPath, className, title, nicknames, uniqueTrait, stats, abilities, traits, customFields, and notes, but adapt to the project's configured system.\n" +
         "4. If the project progression system contains an enabled profileTemplate, use it as the baseline shape for new profiles and preserve it unless chapter evidence contradicts a default. Treat profileTemplate.cards and each card.fields array as the writer's desired status-screen fields; fill card source fields through direct profile keys or customFields when supported by evidence.\n" +
         "4b. If the chapter reveals progression information that has no matching template card, add it to profile.customFields using a clear reusable field name, such as Artifact Grade, Beast Contract, Soul Sea, Dao Comprehension, Elemental Affinity, Bloodline Rank, Physique Type, or similar. The UI can learn these new fields as cards.\n" +
-        "5. Use configured realms and stage labels exactly when the novel uses cultivation. Examples of stage labels include Low, Middle, High, Peak.\n" +
+        "5. Use configured realms and stage labels exactly when the novel uses cultivation. The configured realm order is authoritative. If the chapter states the target is at a realm/stage/rank, extract that value even if no level-up happened. Examples of stage labels include Low, Middle, High, Peak.\n" +
         "6. Stats must use keys from the configured visible stats when possible; fallback keys are strength, agility, endurance, vitality, intelligence, sense, mana.\n" +
         "7. Only increase levels, realms, stages, stats, EXP, or ability levels when chapter evidence supports it, such as kills, breakthroughs, training, quests, rewards, system messages, or explicit skill upgrades. Update uniqueTrait when the chapter reveals something distinctive about the character, such as summoned beasts, contracted creatures, rare bloodlines, physiques, artifacts, divine powers, legions, hidden identities, or special techniques.\n" +
         "8. If the chapter has no meaningful progression, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
@@ -283,16 +283,24 @@ export async function POST(req: NextRequest) {
         "10. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, nicknames, uniqueTrait, realm, stage, cultivationPath, level, exp, nextLevelExp, stats, abilities, traits, customFields, notes. Each ability must include name, level, and a short description of the skill or technique. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, evidence."
 
       const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
+      const configuredRealms = Array.isArray((progressionSystem as { realms?: unknown[] } | undefined)?.realms)
+        ? (progressionSystem as { realms?: unknown[] }).realms?.map(item => String(item)).filter(Boolean).join(" -> ")
+        : ""
+      const configuredStages = Array.isArray((progressionSystem as { stageLabels?: unknown[] } | undefined)?.stageLabels)
+        ? (progressionSystem as { stageLabels?: unknown[] }).stageLabels?.map(item => String(item)).filter(Boolean).join(" / ")
+        : ""
       const groups = Array.isArray(safeLoreEntry?.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
       const explicitTarget = safeLoreEntry?.name
         ? `Target: ${safeLoreEntry.name}\nTarget lore id: ${safeLoreEntry.id || ""}\nHighlighted text: ${selectedText || ""}\nType: ${safeLoreEntry.category || "character"}\nGroups: ${groups}\nStory Bible Notes:\n${safeLoreEntry.content || ""}\n\n`
         : "Target: Auto-detect from candidate profiles and chapter content.\n"
       userPrompt =
         explicitTarget +
+        `Configured Cultivation Realms, weakest to strongest:\n${configuredRealms || "No realm ladder uploaded."}\nConfigured Stage Labels:\n${configuredStages || "No stage labels configured."}\n\n` +
         `Project Progression System JSON:\n${JSON.stringify(progressionSystem || {}).slice(0, 10000)}\n\n` +
         `Candidate Profiles JSON:\n${JSON.stringify(Array.isArray(candidateProfiles) ? candidateProfiles : []).slice(0, 6000)}\n\n` +
         `Candidate Lore Entries JSON:\n${JSON.stringify(Array.isArray(candidateLoreEntries) ? candidateLoreEntries : []).slice(0, 8000)}\n\n` +
         `Active Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}\n` +
+        `Target-Specific Chapter Evidence:\n${chapterContext.targetEvidence || "No target-specific excerpt found. Use the full chapter carefully and only update the target."}\n\n` +
         `Chapter Content:\n${chapterContext.content}${existing}${memoryContext}`
     } else if (action === "cultivation_realm_import") {
       const { rawText, currentSettings } = body
