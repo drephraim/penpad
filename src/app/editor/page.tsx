@@ -106,6 +106,7 @@ interface ProgressionAbility {
   id: string
   name: string
   level: number
+  rank?: string
   description: string
   evidence?: string
 }
@@ -204,10 +205,6 @@ interface ProgressionAiResponse {
     rewards?: string[]
     evidence?: string[]
   }
-}
-
-interface CultivationImportResponse {
-  settings?: Partial<ProgressionSystemSettings>
 }
 
 const MIN_LEFT_SIDEBAR_WIDTH = 280
@@ -489,16 +486,12 @@ function EditorContent() {
   const [selectedProgressionProfileId, setSelectedProgressionProfileId] = useState<string | null>(null)
   const [progressionSelectedEntryId, setProgressionSelectedEntryId] = useState<string | null>(null)
   const [progressionLoading, setProgressionLoading] = useState(false)
-  const [progressionSystemLoading, setProgressionSystemLoading] = useState(false)
   const [progressionError, setProgressionError] = useState("")
   const [progressionNotice, setProgressionNotice] = useState("")
-  const [isProgressionSystemOpen, setIsProgressionSystemOpen] = useState(false)
   const [isProgressionEditMode, setIsProgressionEditMode] = useState(false)
   const [progressionEditProfileDraft, setProgressionEditProfileDraft] = useState<CharacterProgressionProfile | null>(null)
-  const [progressionEditDraft, setProgressionEditDraft] = useState("")
   const [progressionNewFieldName, setProgressionNewFieldName] = useState("")
   const [progressionNewFieldValue, setProgressionNewFieldValue] = useState("")
-  const progressionFileInputRef = useRef<HTMLInputElement>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -805,6 +798,7 @@ function EditorContent() {
       id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       name: ability.name || `Ability ${index + 1}`,
       level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+      rank: ability.rank || "",
       description: ability.description || "",
       evidence: ability.evidence || ""
     }))
@@ -999,88 +993,7 @@ function EditorContent() {
     setSelectedProgressionProfileId(nextSelected?.id || null)
     setProgressionSelectedEntryId(nextSelected?.loreEntryId || null)
     setIsProgressionEditMode(false)
-    setProgressionEditDraft("")
     setProgressionNotice(`Deleted ${profile.name}'s progression profile.`)
-  }
-
-  const buildAbilityDraft = (profile: CharacterProgressionProfile) => {
-    return profile.abilities.map(ability => `${ability.name} | ${ability.level} | ${ability.description}`).join("\n")
-  }
-
-  const parseAbilityDraft = (draft: string): ProgressionAbility[] => {
-    return draft.split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(Boolean)
-      .map((line, index) => {
-        const parts = line.split("|").map(part => part.trim())
-        const name = parts[0] || `Ability ${index + 1}`
-        const level = Number(parts[1])
-        return {
-          id: `${name}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-          name,
-          level: Number.isFinite(level) ? level : 1,
-          description: parts.slice(2).join(" | "),
-          evidence: ""
-        }
-      })
-  }
-
-  const updateProgressionTemplate = (updates: Partial<ProgressionProfileTemplate>) => {
-    persistProgressionSystem({
-      ...progressionSystem,
-      profileTemplate: {
-        ...progressionSystem.profileTemplate,
-        ...updates
-      }
-    })
-  }
-
-  const setProgressionTemplateStat = (statKey: ProgressionStatKey, value: number) => {
-    updateProgressionTemplate({
-      defaultStats: {
-        ...(progressionSystem.profileTemplate.defaultStats || {}),
-        [statKey]: Number.isFinite(value) ? value : 0
-      }
-    })
-  }
-
-  const setProgressionTemplateCustomField = (fieldName: string, value: string) => {
-    updateProgressionTemplate({
-      defaultCustomFields: {
-        ...(progressionSystem.profileTemplate.defaultCustomFields || {}),
-        [fieldName]: value
-      }
-    })
-  }
-
-  const applyProgressionTemplateToProfiles = () => {
-    const template = progressionSystem.profileTemplate
-    if (!template.enabled || progressionProfiles.length === 0) return
-    const confirmed = window.confirm("Apply missing shared template defaults to existing progression profiles? Existing character-specific values will be kept.")
-    if (!confirmed) return
-    const now = Date.now()
-    const nextProfiles = progressionProfiles.map(profile => ({
-      ...profile,
-      className: profile.className || template.defaultClassName,
-      rank: profile.rank || template.defaultRank,
-      realm: profile.realm || template.defaultRealm,
-      stage: profile.stage || template.defaultStage,
-      cultivationPath: profile.cultivationPath || template.defaultCultivationPath,
-      level: profile.level || template.baseLevel || 1,
-      exp: profile.exp ?? template.baseExp ?? 0,
-      nextLevelExp: profile.nextLevelExp || template.nextLevelExp || 100,
-      stats: { ...DEFAULT_PROGRESSION_STATS, ...(template.defaultStats || {}), ...(profile.stats || {}) },
-      traits: profile.traits.length > 0 ? profile.traits : template.defaultTraits,
-      abilities: profile.abilities.length > 0 ? profile.abilities : template.defaultAbilities,
-      customFields: {
-        ...(template.defaultCustomFields || {}),
-        ...(profile.customFields || {})
-      },
-      notes: profile.notes || template.notes,
-      updatedAt: now
-    }))
-    persistProgressionProfiles(nextProfiles)
-    setProgressionNotice("Shared profile template applied to existing profiles.")
   }
 
   const openProgressionEditModal = (profile: CharacterProgressionProfile) => {
@@ -1094,7 +1007,6 @@ function EditorContent() {
       processedChapterIds: [...profile.processedChapterIds],
       history: [...profile.history]
     })
-    setProgressionEditDraft(buildAbilityDraft(profile))
     setProgressionNewFieldName("")
     setProgressionNewFieldValue("")
     setIsProgressionEditMode(true)
@@ -1103,23 +1015,12 @@ function EditorContent() {
   const closeProgressionEditModal = () => {
     setIsProgressionEditMode(false)
     setProgressionEditProfileDraft(null)
-    setProgressionEditDraft("")
     setProgressionNewFieldName("")
     setProgressionNewFieldValue("")
   }
 
   const setProgressionDraftField = (field: keyof CharacterProgressionProfile, value: string | number | string[]) => {
     setProgressionEditProfileDraft(prev => prev ? { ...prev, [field]: value } : prev)
-  }
-
-  const setProgressionDraftStat = (statKey: ProgressionStatKey, value: number) => {
-    setProgressionEditProfileDraft(prev => prev ? ({
-      ...prev,
-      stats: {
-        ...prev.stats,
-        [statKey]: Number.isFinite(value) ? value : 0
-      }
-    }) : prev)
   }
 
   const setProgressionDraftCustomField = (fieldName: string, value: string) => {
@@ -1147,6 +1048,37 @@ function EditorContent() {
       delete nextCustomFields[fieldName]
       return { ...prev, customFields: nextCustomFields }
     })
+  }
+
+  const setProgressionDraftAbility = (abilityId: string, updates: Partial<ProgressionAbility>) => {
+    setProgressionEditProfileDraft(prev => prev ? ({
+      ...prev,
+      abilities: prev.abilities.map(ability => ability.id === abilityId ? { ...ability, ...updates } : ability)
+    }) : prev)
+  }
+
+  const addProgressionDraftAbility = () => {
+    setProgressionEditProfileDraft(prev => prev ? ({
+      ...prev,
+      abilities: [
+        ...prev.abilities,
+        {
+          id: crypto.randomUUID(),
+          name: "New Ability",
+          level: 1,
+          rank: "Level 1",
+          description: "",
+          evidence: ""
+        }
+      ]
+    }) : prev)
+  }
+
+  const removeProgressionDraftAbility = (abilityId: string) => {
+    setProgressionEditProfileDraft(prev => prev ? ({
+      ...prev,
+      abilities: prev.abilities.filter(ability => ability.id !== abilityId)
+    }) : prev)
   }
 
   const learnProgressionProfileShape = (profile: CharacterProgressionProfile) => {
@@ -1179,7 +1111,14 @@ function EditorContent() {
     const now = Date.now()
     const updatedProfile: CharacterProgressionProfile = {
       ...progressionEditProfileDraft,
-      abilities: parseAbilityDraft(progressionEditDraft),
+      abilities: progressionEditProfileDraft.abilities.map((ability, index) => ({
+        ...ability,
+        id: ability.id || crypto.randomUUID(),
+        name: ability.name || `Ability ${index + 1}`,
+        level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+        rank: ability.rank || (Number.isFinite(Number(ability.level)) ? `Level ${ability.level}` : ""),
+        description: ability.description || ""
+      })),
       traits: Array.isArray(progressionEditProfileDraft.traits) ? progressionEditProfileDraft.traits : [],
       nicknames: Array.isArray(progressionEditProfileDraft.nicknames) ? progressionEditProfileDraft.nicknames : [],
       customFields: progressionEditProfileDraft.customFields || {},
@@ -1190,69 +1129,6 @@ function EditorContent() {
     setSelectedProgressionProfileId(updatedProfile.id)
     setProgressionNotice("Profile updated. This novel's shared progression template learned the new profile shape.")
     closeProgressionEditModal()
-  }
-
-  const updateProgressionSystemList = (field: "realms" | "stageLabels" | "customFields", value: string) => {
-    const list = value.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean)
-    persistProgressionSystem({
-      ...progressionSystem,
-      [field]: Array.from(new Set(list))
-    })
-  }
-
-  const toggleProgressionStatKey = (statKey: ProgressionStatKey) => {
-    const current = new Set(progressionSystem.statKeys)
-    if (current.has(statKey)) {
-      current.delete(statKey)
-    } else {
-      current.add(statKey)
-    }
-    persistProgressionSystem({
-      ...progressionSystem,
-      statKeys: Array.from(current)
-    })
-  }
-
-  const handleCultivationFileUpload = async (file?: File | null) => {
-    if (!file) return
-    setProgressionSystemLoading(true)
-    setProgressionError("")
-    setProgressionNotice("")
-    try {
-      const rawText = await file.text()
-      if (!rawText.trim()) {
-        setProgressionError("That cultivation-stage file is empty.")
-        return
-      }
-
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "cultivation_realm_import",
-          rawText: rawText.slice(0, 12000),
-          currentSettings: progressionSystem
-        })
-      })
-      const data = await res.json()
-      if (data.error) {
-        setProgressionError(data.error)
-        return
-      }
-      const imported = (data.imported || {}) as CultivationImportResponse
-      persistProgressionSystem(normalizeProgressionSystem({
-        ...progressionSystem,
-        ...(imported.settings || {})
-      }))
-      setProgressionNotice("Cultivation stages imported and arranged for this novel.")
-    } catch (err) {
-      setProgressionError(err instanceof Error ? err.message : "Failed to import cultivation stages")
-    } finally {
-      setProgressionSystemLoading(false)
-      if (progressionFileInputRef.current) {
-        progressionFileInputRef.current.value = ""
-      }
-    }
   }
 
   const formatProgressionStage = (profile: CharacterProgressionProfile) => {
@@ -4521,262 +4397,11 @@ function EditorContent() {
             {/* TAB 4: CHARACTER PROGRESSION */}
             {activeSidebarTab === 'progression' && (
               <div className="sidebar-tab-content progression-panel fade-in">
-                <div className="appearance-header">
-                  <span className="section-title">Progression</span>
-                  {activeNote && (
-                    <span className="appearance-chapter-chip">
-                      {getNoteChapterNumber(activeNote) ? `Chapter ${getNoteChapterNumber(activeNote)}` : "Current chapter"}
-                    </span>
-                  )}
-                </div>
-
-                <div className="progression-card glass-light">
-                  <button className="progression-system-toggle" onClick={() => setIsProgressionSystemOpen(prev => !prev)}>
-                    <span>Novel Progression System</span>
-                    <ChevronDown size={14} className={isProgressionSystemOpen ? "rotate" : ""} />
-                  </button>
-                  <div className="progression-system-summary">
-                    <span>{progressionSystem.realms.length || 0} realms</span>
-                    <span>{progressionSystem.stageLabels.join(" / ")}</span>
-                  </div>
-                  {isProgressionSystemOpen && (
-                    <div className="progression-system-editor">
-                      <input
-                        ref={progressionFileInputRef}
-                        type="file"
-                        accept=".txt,text/plain"
-                        hidden
-                        onChange={(e) => handleCultivationFileUpload(e.target.files?.[0])}
-                      />
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={() => progressionFileInputRef.current?.click()}
-                        disabled={progressionSystemLoading}
-                      >
-                        {progressionSystemLoading ? <Loader2 size={12} className="spin" /> : <FileText size={12} />}
-                        Import TXT
-                      </button>
-                      <div className="ai-form-field">
-                        <label>Cultivation Realms</label>
-                        <textarea
-                          className="ai-textarea compact"
-                          value={progressionSystem.realms.join("\n")}
-                          onChange={(e) => updateProgressionSystemList("realms", e.target.value)}
-                          placeholder={"Qi Gathering\nFoundation Establishment\nCore Formation"}
-                        />
-                      </div>
-                      <div className="ai-form-field">
-                        <label>Stages</label>
-                        <input
-                          className="ai-input"
-                          value={progressionSystem.stageLabels.join(", ")}
-                          onChange={(e) => updateProgressionSystemList("stageLabels", e.target.value)}
-                          placeholder="Low, Middle, High, Peak"
-                        />
-                      </div>
-                      <div className="progression-toggle-row">
-                        <label><input type="checkbox" checked={progressionSystem.showLevels} onChange={(e) => persistProgressionSystem({ ...progressionSystem, showLevels: e.target.checked })} /> Levels</label>
-                        <label><input type="checkbox" checked={progressionSystem.showExp} onChange={(e) => persistProgressionSystem({ ...progressionSystem, showExp: e.target.checked })} /> EXP</label>
-                        <label><input type="checkbox" checked={progressionSystem.showStats} onChange={(e) => persistProgressionSystem({ ...progressionSystem, showStats: e.target.checked })} /> Stats</label>
-                      </div>
-                      <div className="ai-form-field">
-                        <label>Visible Stats</label>
-                        <div className="progression-stat-toggles">
-                          {(Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[]).map(statKey => (
-                            <button
-                              key={statKey}
-                              className={`progression-mini-toggle ${progressionSystem.statKeys.includes(statKey) ? "active" : ""}`}
-                              onClick={() => toggleProgressionStatKey(statKey)}
-                            >
-                              {statKey}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="ai-form-field">
-                        <label>Custom Profile Fields</label>
-                        <input
-                          className="ai-input"
-                          value={progressionSystem.customFields.join(", ")}
-                          onChange={(e) => updateProgressionSystemList("customFields", e.target.value)}
-                          placeholder="Race, Bloodline, Sect, Affiliation"
-                        />
-                      </div>
-                      <div className="progression-template-box">
-                        <div className="progression-template-header">
-                          <div>
-                            <strong>Shared Profile Template</strong>
-                            <span>Baseline used when new character profiles are created for this novel.</span>
-                          </div>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={progressionSystem.profileTemplate.enabled}
-                              onChange={(e) => updateProgressionTemplate({ enabled: e.target.checked })}
-                            />
-                            Active
-                          </label>
-                        </div>
-                        <div className="progression-edit-grid">
-                          <label>
-                            Template Name
-                            <input
-                              className="ai-input"
-                              value={progressionSystem.profileTemplate.name}
-                              onChange={(e) => updateProgressionTemplate({ name: e.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Default Rank
-                            <input
-                              className="ai-input"
-                              value={progressionSystem.profileTemplate.defaultRank}
-                              onChange={(e) => updateProgressionTemplate({ defaultRank: e.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Default Class
-                            <input
-                              className="ai-input"
-                              value={progressionSystem.profileTemplate.defaultClassName}
-                              onChange={(e) => updateProgressionTemplate({ defaultClassName: e.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Default Path
-                            <input
-                              className="ai-input"
-                              value={progressionSystem.profileTemplate.defaultCultivationPath}
-                              onChange={(e) => updateProgressionTemplate({ defaultCultivationPath: e.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Default Realm
-                            <input
-                              className="ai-input"
-                              list="progression-realms"
-                              value={progressionSystem.profileTemplate.defaultRealm}
-                              onChange={(e) => updateProgressionTemplate({ defaultRealm: e.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Default Stage
-                            <input
-                              className="ai-input"
-                              list="progression-stages"
-                              value={progressionSystem.profileTemplate.defaultStage}
-                              onChange={(e) => updateProgressionTemplate({ defaultStage: e.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Base Level
-                            <input
-                              className="ai-input"
-                              type="number"
-                              value={progressionSystem.profileTemplate.baseLevel}
-                              onChange={(e) => updateProgressionTemplate({ baseLevel: Number(e.target.value) })}
-                            />
-                          </label>
-                          <label>
-                            Base EXP
-                            <input
-                              className="ai-input"
-                              type="number"
-                              value={progressionSystem.profileTemplate.baseExp}
-                              onChange={(e) => updateProgressionTemplate({ baseExp: Number(e.target.value) })}
-                            />
-                          </label>
-                          <label>
-                            Next EXP
-                            <input
-                              className="ai-input"
-                              type="number"
-                              value={progressionSystem.profileTemplate.nextLevelExp}
-                              onChange={(e) => updateProgressionTemplate({ nextLevelExp: Number(e.target.value) })}
-                            />
-                          </label>
-                        </div>
-                        {progressionSystem.showStats && (
-                          <div className="progression-edit-stat-grid">
-                            {progressionSystem.statKeys.map(statKey => (
-                              <label key={statKey}>
-                                {statKey}
-                                <input
-                                  className="ai-input"
-                                  type="number"
-                                  value={progressionSystem.profileTemplate.defaultStats[statKey] ?? DEFAULT_PROGRESSION_STATS[statKey]}
-                                  onChange={(e) => setProgressionTemplateStat(statKey, Number(e.target.value))}
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                        {progressionSystem.customFields.length > 0 && (
-                          <div className="progression-edit-grid">
-                            {progressionSystem.customFields.map(fieldName => (
-                              <label key={fieldName}>
-                                {fieldName} Default
-                                <input
-                                  className="ai-input"
-                                  value={progressionSystem.profileTemplate.defaultCustomFields[fieldName] || ""}
-                                  onChange={(e) => setProgressionTemplateCustomField(fieldName, e.target.value)}
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                        <div className="ai-form-field">
-                          <label>Default Traits</label>
-                          <textarea
-                            className="ai-textarea compact"
-                            value={progressionSystem.profileTemplate.defaultTraits.join("\n")}
-                            onChange={(e) => updateProgressionTemplate({ defaultTraits: e.target.value.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean) })}
-                            placeholder={"Cold aura\nRegenerative physique\nSword intent"}
-                          />
-                        </div>
-                        <div className="ai-form-field">
-                          <label>Default Abilities</label>
-                          <textarea
-                            className="ai-textarea compact"
-                            value={progressionSystem.profileTemplate.defaultAbilities.map(ability => `${ability.name} | ${ability.level} | ${ability.description}`).join("\n")}
-                            onChange={(e) => updateProgressionTemplate({ defaultAbilities: parseAbilityDraft(e.target.value) })}
-                            placeholder="Ability Name | 1 | Description"
-                          />
-                        </div>
-                        <div className="ai-form-field">
-                          <label>Template AI Rules</label>
-                          <textarea
-                            className="ai-textarea compact"
-                            value={progressionSystem.profileTemplate.notes}
-                            onChange={(e) => updateProgressionTemplate({ notes: e.target.value })}
-                          />
-                        </div>
-                        <button
-                          className="btn-ai-sub btn-ai-secondary progression-auto-btn"
-                          onClick={applyProgressionTemplateToProfiles}
-                          disabled={!progressionSystem.profileTemplate.enabled || progressionProfiles.length === 0}
-                        >
-                          <Layers size={12} />
-                          Apply To Existing Profiles
-                        </button>
-                      </div>
-                      <div className="ai-form-field">
-                        <label>AI Rules</label>
-                        <textarea
-                          className="ai-textarea compact"
-                          value={progressionSystem.notes}
-                          onChange={(e) => persistProgressionSystem({ ...progressionSystem, notes: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="progression-card glass-light">
+                <div className="progression-toolbar">
                   <div className="ai-form-field">
-                    <label>Character / Beast</label>
+                    <label>Character Profile</label>
                     <select
-                      className="ai-select"
+                      className="ai-select progression-profile-select"
                       value={selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || ""}
                       onChange={(e) => {
                         const existing = progressionProfiles.find(profile => profile.loreEntryId === e.target.value)
@@ -4810,36 +4435,6 @@ function EditorContent() {
                       <span>{progressionNotice}</span>
                     </div>
                   )}
-
-                  <button
-                    className="btn-ai-action"
-                    onClick={() => {
-                      const entryId = selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || null
-                      handleProgressionUpdate(entryId, aiSelectionText)
-                    }}
-                    disabled={progressionLoading || (!selectedProgressionProfile && !progressionSelectedEntryId && !aiSelectionText.trim())}
-                  >
-                    {progressionLoading ? (
-                      <>
-                        <Loader2 size={16} className="spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <TrendingUp size={16} />
-                        Update From Chapter
-                      </>
-                    )}
-                  </button>
-                  <button
-                    className="btn-ai-sub btn-ai-secondary progression-auto-btn"
-                    onClick={() => handleProgressionUpdate(null, "")}
-                    disabled={progressionLoading || progressionProfiles.length === 0}
-                    title="Let the AI choose which existing progression profile this chapter updates"
-                  >
-                    <BrainCircuit size={13} />
-                    Auto From Chapter
-                  </button>
                 </div>
 
                 <div className="progression-profile-list">
@@ -4865,10 +4460,11 @@ function EditorContent() {
                   <div className="progression-detail">
                     <div className="progression-hero">
                       <div>
-                        <span>{formatProgressionStage(selectedProgressionProfile)}</span>
+                        <span>{selectedProgressionProfile.realm || selectedProgressionProfile.rank || "Progression Profile"}</span>
                         <h3>{selectedProgressionProfile.name}</h3>
                         <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || selectedProgressionProfile.cultivationPath || "No class/title yet"}</p>
                       </div>
+                      <strong>{selectedProgressionProfile.stage || (progressionSystem.showLevels ? `Level ${selectedProgressionProfile.level}` : selectedProgressionProfile.rank || "")}</strong>
                     </div>
 
                     <div className="progression-field-grid profile-sheet">
@@ -4880,6 +4476,13 @@ function EditorContent() {
                       ))}
                     </div>
 
+                    {selectedProgressionProfile.uniqueTrait && (
+                      <div className="progression-unique-card">
+                        <span>Unique About Them</span>
+                        <p>{selectedProgressionProfile.uniqueTrait}</p>
+                      </div>
+                    )}
+
                     <div className="progression-section">
                       <span className="brain-detail-label">Abilities</span>
                       {selectedProgressionProfile.abilities.length === 0 ? (
@@ -4888,39 +4491,32 @@ function EditorContent() {
                         <div key={ability.id} className="progression-ability">
                           <div>
                             <strong>{ability.name}</strong>
-                            <span>Lv {ability.level}</span>
+                            <span>{ability.rank || `Lv ${ability.level}`}</span>
                           </div>
                           <p>{ability.description}</p>
                         </div>
                       ))}
                     </div>
 
-                    <div className="progression-section">
-                      <span className="brain-detail-label">Chapter History</span>
-                      {selectedProgressionProfile.history.length === 0 ? (
-                        <div className="empty-state-text compact">No progression history yet.</div>
-                      ) : selectedProgressionProfile.history.slice(0, 8).map(entry => (
-                        <div key={entry.id} className="progression-history-item">
-                          <div>
-                            <strong>{entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle}</strong>
-                            <span>
-                              {progressionSystem.showLevels
-                                ? `Lv ${entry.levelBefore} -> ${entry.levelAfter}`
-                                : `${entry.realmBefore || "Unranked"}${entry.stageBefore ? ` ${entry.stageBefore}` : ""} -> ${entry.realmAfter || entry.realmBefore || "Unranked"}${entry.stageAfter ? ` ${entry.stageAfter}` : ""}`}
-                            </span>
-                          </div>
-                          <p>{entry.summary}</p>
-                          {(entry.abilityChanges.length > 0 || entry.rewards.length > 0) && (
-                            <small>{[...entry.abilityChanges, ...entry.rewards].slice(0, 3).join("; ")}</small>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
                     <div className="progression-profile-footer-actions">
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={() => {
+                          const entryId = selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || null
+                          handleProgressionUpdate(entryId, aiSelectionText)
+                        }}
+                        disabled={progressionLoading}
+                      >
+                        {progressionLoading ? <Loader2 size={13} className="spin" /> : <TrendingUp size={13} />}
+                        Update Profile
+                      </button>
                       <button className="btn-ai-sub btn-ai-primary" onClick={() => openProgressionEditModal(selectedProgressionProfile)}>
                         <Edit3 size={13} />
                         Edit Profile
+                      </button>
+                      <button className="btn-ai-sub btn-ai-secondary progression-auto-btn" onClick={() => handleProgressionUpdate(null, "")} disabled={progressionLoading || progressionProfiles.length === 0}>
+                        <BrainCircuit size={13} />
+                        Auto Match
                       </button>
                       <button className="btn-ai-sub btn-ai-secondary danger-text" onClick={() => deleteProgressionProfile(selectedProgressionProfile.id)}>
                         <Trash2 size={13} />
@@ -6347,142 +5943,157 @@ function EditorContent() {
               </div>
 
               <div className="progression-edit-modal-body">
-                <div className="progression-edit-grid">
-                  <label>
-                    Name
-                    <input className="ai-input" value={progressionEditProfileDraft.name} onChange={(e) => setProgressionDraftField("name", e.target.value)} />
-                  </label>
-                  <label>
-                    Cultivation Stage
-                    <input className="ai-input" list="progression-realms" value={progressionEditProfileDraft.realm || ""} onChange={(e) => setProgressionDraftField("realm", e.target.value)} placeholder="Realm" />
-                  </label>
-                  <label>
-                    Level / Rank
-                    <input className="ai-input" value={progressionEditProfileDraft.rank || (progressionSystem.showLevels ? String(progressionEditProfileDraft.level) : progressionEditProfileDraft.stage || "")} onChange={(e) => {
-                      if (progressionSystem.showLevels && /^\d+$/.test(e.target.value.trim())) {
-                        setProgressionDraftField("level", Number(e.target.value))
-                      } else {
-                        setProgressionDraftField("rank", e.target.value)
-                      }
-                    }} />
-                  </label>
-                  <label>
-                    Stage Label
-                    <input className="ai-input" list="progression-stages" value={progressionEditProfileDraft.stage || ""} onChange={(e) => setProgressionDraftField("stage", e.target.value)} />
-                  </label>
-                  <label>
-                    Class
-                    <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} />
-                  </label>
-                  <label>
-                    Affiliation
-                    <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Affiliation || ""} onChange={(e) => setProgressionDraftCustomField("Affiliation", e.target.value)} />
-                  </label>
-                  <label>
-                    Nicknames
-                    <input className="ai-input" value={(progressionEditProfileDraft.nicknames || []).join(", ")} onChange={(e) => setProgressionDraftField("nicknames", e.target.value.split(",").map(item => item.trim()).filter(Boolean))} />
-                  </label>
-                  <label>
-                    Title
-                    <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} />
-                  </label>
-                  <label>
-                    Bloodline
-                    <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} />
-                  </label>
-                  <label>
-                    Race
-                    <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Race || ""} onChange={(e) => setProgressionDraftCustomField("Race", e.target.value)} />
-                  </label>
-                  <label>
-                    Path
-                    <input className="ai-input" value={progressionEditProfileDraft.cultivationPath || ""} onChange={(e) => setProgressionDraftField("cultivationPath", e.target.value)} />
-                  </label>
-                  {progressionSystem.showExp && (
-                    <>
-                      <label>
-                        EXP
-                        <input className="ai-input" type="number" value={progressionEditProfileDraft.exp} onChange={(e) => setProgressionDraftField("exp", Number(e.target.value))} />
-                      </label>
-                      <label>
-                        Next EXP
-                        <input className="ai-input" type="number" value={progressionEditProfileDraft.nextLevelExp} onChange={(e) => setProgressionDraftField("nextLevelExp", Number(e.target.value))} />
-                      </label>
-                    </>
-                  )}
-                </div>
-
-                <div className="ai-form-field">
-                  <label>Unique Trait</label>
-                  <textarea
-                    className="ai-textarea compact"
-                    value={progressionEditProfileDraft.uniqueTrait || ""}
-                    onChange={(e) => setProgressionDraftField("uniqueTrait", e.target.value)}
-                    placeholder="What makes this character special? Summoned beasts, rare physique, contracted legion, forbidden art, unique artifact..."
-                  />
-                </div>
-
-                {progressionSystem.showStats && (
-                  <div className="progression-edit-stat-grid">
-                    {progressionSystem.statKeys.map(statKey => (
-                      <label key={statKey}>
-                        {statKey}
-                        <input
-                          className="ai-input"
-                          type="number"
-                          value={progressionEditProfileDraft.stats[statKey]}
-                          onChange={(e) => setProgressionDraftStat(statKey, Number(e.target.value))}
-                        />
-                      </label>
-                    ))}
+                <div className="progression-card-editor-section">
+                  <div className="progression-editor-section-title">
+                    <strong>Profile Cards</strong>
+                    <span>Only active profile details are shown. Add anything else as a custom card.</span>
                   </div>
-                )}
-
-                <div className="progression-custom-editor">
-                  <span className="brain-detail-label">Other Fields</span>
-                  <div className="progression-edit-grid">
+                  <div className="progression-edit-card-grid">
+                    <div className="progression-profile-edit-card">
+                      <span>Name</span>
+                      <input className="ai-input" value={progressionEditProfileDraft.name} onChange={(e) => setProgressionDraftField("name", e.target.value)} />
+                    </div>
+                    {(progressionEditProfileDraft.realm || progressionEditProfileDraft.stage) && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("realm", ""); setProgressionDraftField("stage", "") }} title="Remove card"><X size={12} /></button>
+                        <span>Cultivation Stage</span>
+                        <input className="ai-input" list="progression-realms" value={progressionEditProfileDraft.realm || ""} onChange={(e) => setProgressionDraftField("realm", e.target.value)} placeholder="Realm" />
+                        <input className="ai-input" list="progression-stages" value={progressionEditProfileDraft.stage || ""} onChange={(e) => setProgressionDraftField("stage", e.target.value)} placeholder="Low / Middle / High / Peak" />
+                      </div>
+                    )}
+                    {(progressionEditProfileDraft.rank || progressionSystem.showLevels) && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("rank", ""); setProgressionDraftField("level", 1) }} title="Remove card"><X size={12} /></button>
+                        <span>Level / Rank</span>
+                        <input className="ai-input" value={progressionEditProfileDraft.rank || (progressionSystem.showLevels ? String(progressionEditProfileDraft.level) : "")} onChange={(e) => {
+                          if (progressionSystem.showLevels && /^\d+$/.test(e.target.value.trim())) {
+                            setProgressionDraftField("level", Number(e.target.value))
+                          } else {
+                            setProgressionDraftField("rank", e.target.value)
+                          }
+                        }} />
+                      </div>
+                    )}
+                    {progressionEditProfileDraft.className && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("className", "")} title="Remove card"><X size={12} /></button>
+                        <span>Class</span>
+                        <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} />
+                      </div>
+                    )}
+                    {(progressionEditProfileDraft.customFields || {}).Affiliation && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Affiliation")} title="Remove card"><X size={12} /></button>
+                        <span>Affiliation</span>
+                        <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Affiliation || ""} onChange={(e) => setProgressionDraftCustomField("Affiliation", e.target.value)} />
+                      </div>
+                    )}
+                    {(progressionEditProfileDraft.nicknames || []).length > 0 && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("nicknames", [])} title="Remove card"><X size={12} /></button>
+                        <span>Nicknames</span>
+                        <input className="ai-input" value={(progressionEditProfileDraft.nicknames || []).join(", ")} onChange={(e) => setProgressionDraftField("nicknames", e.target.value.split(",").map(item => item.trim()).filter(Boolean))} />
+                      </div>
+                    )}
+                    {progressionEditProfileDraft.title && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("title", "")} title="Remove card"><X size={12} /></button>
+                        <span>Title</span>
+                        <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} />
+                      </div>
+                    )}
+                    {(progressionEditProfileDraft.customFields || {}).Bloodline && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Bloodline")} title="Remove card"><X size={12} /></button>
+                        <span>Bloodline</span>
+                        <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} />
+                      </div>
+                    )}
+                    {(progressionEditProfileDraft.customFields || {}).Race && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Race")} title="Remove card"><X size={12} /></button>
+                        <span>Race</span>
+                        <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Race || ""} onChange={(e) => setProgressionDraftCustomField("Race", e.target.value)} />
+                      </div>
+                    )}
+                    {progressionEditProfileDraft.cultivationPath && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("cultivationPath", "")} title="Remove card"><X size={12} /></button>
+                        <span>Path</span>
+                        <input className="ai-input" value={progressionEditProfileDraft.cultivationPath || ""} onChange={(e) => setProgressionDraftField("cultivationPath", e.target.value)} />
+                      </div>
+                    )}
+                    {progressionEditProfileDraft.uniqueTrait && (
+                      <div className="progression-profile-edit-card wide">
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("uniqueTrait", "")} title="Remove card"><X size={12} /></button>
+                        <span>Unique Trait</span>
+                        <textarea
+                          className="ai-textarea compact"
+                          value={progressionEditProfileDraft.uniqueTrait || ""}
+                          onChange={(e) => setProgressionDraftField("uniqueTrait", e.target.value)}
+                          placeholder="Summoned beasts, rare physique, contracted legion, forbidden art..."
+                        />
+                      </div>
+                    )}
+                    {progressionSystem.showExp && (progressionEditProfileDraft.exp > 0 || progressionEditProfileDraft.nextLevelExp > 0) && (
+                      <div className="progression-profile-edit-card">
+                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("exp", 0); setProgressionDraftField("nextLevelExp", 0) }} title="Remove card"><X size={12} /></button>
+                        <span>EXP</span>
+                        <input className="ai-input" type="number" value={progressionEditProfileDraft.exp} onChange={(e) => setProgressionDraftField("exp", Number(e.target.value))} />
+                        <input className="ai-input" type="number" value={progressionEditProfileDraft.nextLevelExp} onChange={(e) => setProgressionDraftField("nextLevelExp", Number(e.target.value))} placeholder="Next EXP" />
+                      </div>
+                    )}
                     {Array.from(new Set([...progressionSystem.customFields, ...Object.keys(progressionEditProfileDraft.customFields || {})]))
-                      .filter(fieldName => !["Affiliation", "Bloodline", "Race"].includes(fieldName))
+                      .filter(fieldName => !["Affiliation", "Bloodline", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
                       .map(fieldName => (
-                        <label key={fieldName}>
-                          {fieldName}
-                          <div className="progression-field-edit-row">
-                            <input
-                              className="ai-input"
-                              value={(progressionEditProfileDraft.customFields || {})[fieldName] || ""}
-                              onChange={(e) => setProgressionDraftCustomField(fieldName, e.target.value)}
-                            />
-                            <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove field">
-                              <X size={12} />
-                            </button>
-                          </div>
-                        </label>
+                        <div className="progression-profile-edit-card" key={fieldName}>
+                          <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><X size={12} /></button>
+                          <span>{fieldName}</span>
+                          <input
+                            className="ai-input"
+                            value={(progressionEditProfileDraft.customFields || {})[fieldName] || ""}
+                            onChange={(e) => setProgressionDraftCustomField(fieldName, e.target.value)}
+                          />
+                        </div>
                       ))}
                   </div>
                   <div className="progression-add-field-row">
-                    <input className="ai-input" value={progressionNewFieldName} onChange={(e) => setProgressionNewFieldName(e.target.value)} placeholder="New field name" />
+                    <input className="ai-input" value={progressionNewFieldName} onChange={(e) => setProgressionNewFieldName(e.target.value)} placeholder="Card name, e.g. EXP, Sect, Weapon" />
                     <input className="ai-input" value={progressionNewFieldValue} onChange={(e) => setProgressionNewFieldValue(e.target.value)} placeholder="Value" />
                     <button className="btn-ai-sub btn-ai-primary" onClick={addProgressionDraftCustomField}>
                       <Plus size={12} />
-                      Add Field
+                      Add Card
                     </button>
                   </div>
                 </div>
 
-                <div className="ai-form-field">
-                  <label>Abilities</label>
-                  <textarea
-                    className="ai-textarea progression-abilities-editor"
-                    value={progressionEditDraft}
-                    onChange={(e) => setProgressionEditDraft(e.target.value)}
-                    placeholder="Skill Name | 1 | Short description of the technique"
-                  />
+                <div className="progression-card-editor-section">
+                  <div className="progression-editor-section-title">
+                    <strong>Ability Cards</strong>
+                    <span>Add techniques, powers, summons, and skills individually.</span>
+                  </div>
+                  <div className="progression-ability-card-editor-list">
+                    {progressionEditProfileDraft.abilities.map(ability => (
+                      <div className="progression-ability-edit-card" key={ability.id}>
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftAbility(ability.id)} title="Remove ability"><X size={12} /></button>
+                        <input className="ai-input" value={ability.name} onChange={(e) => setProgressionDraftAbility(ability.id, { name: e.target.value })} placeholder="Ability name" />
+                        <input className="ai-input" value={ability.rank || `Level ${ability.level}`} onChange={(e) => setProgressionDraftAbility(ability.id, { rank: e.target.value, level: Number(e.target.value.replace(/\D/g, "")) || ability.level || 1 })} placeholder="Rank or level" />
+                        <textarea className="ai-textarea compact" value={ability.description} onChange={(e) => setProgressionDraftAbility(ability.id, { description: e.target.value })} placeholder="Short description" />
+                      </div>
+                    ))}
+                  </div>
+                  <button className="btn-ai-sub btn-ai-secondary progression-auto-btn" onClick={addProgressionDraftAbility}>
+                    <Plus size={12} />
+                    Add Ability Card
+                  </button>
                 </div>
 
-                <div className="ai-form-field">
-                  <label>Notes</label>
-                  <textarea className="ai-textarea compact" value={progressionEditProfileDraft.notes} onChange={(e) => setProgressionDraftField("notes", e.target.value)} />
-                </div>
+                {progressionEditProfileDraft.notes && (
+                  <div className="ai-form-field">
+                    <label>Notes</label>
+                    <textarea className="ai-textarea compact" value={progressionEditProfileDraft.notes} onChange={(e) => setProgressionDraftField("notes", e.target.value)} />
+                  </div>
+                )}
               </div>
 
               <div className="modal-actions">
@@ -8314,8 +7925,9 @@ function EditorContent() {
         .progression-panel {
           display: flex;
           flex-direction: column;
-          gap: 0.75rem;
+          gap: 0.8rem;
           overflow-y: auto;
+          padding-bottom: 1rem;
         }
 
         .progression-card,
@@ -8326,6 +7938,21 @@ function EditorContent() {
           padding: 0.75rem;
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-md);
+        }
+
+        .progression-toolbar {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .progression-profile-select {
+          min-height: 42px;
+          font-weight: 800;
         }
 
         .progression-notice {
@@ -8345,17 +7972,20 @@ function EditorContent() {
           gap: 0.45rem;
           overflow-x: auto;
           flex-shrink: 0;
+          padding-bottom: 0.15rem;
         }
 
         .progression-profile-chip {
           display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          max-width: 210px;
-          padding: 0.42rem 0.55rem;
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-full);
-          background: rgba(255, 255, 255, 0.035);
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 0.2rem;
+          width: 150px;
+          min-height: 58px;
+          padding: 0.65rem 0.7rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
           color: var(--text-secondary);
           cursor: pointer;
           transition: var(--transition);
@@ -8364,9 +7994,10 @@ function EditorContent() {
 
         .progression-profile-chip:hover,
         .progression-profile-chip.active {
-          border-color: rgba(99, 102, 241, 0.35);
-          background: var(--primary-light);
+          border-color: rgba(244, 63, 94, 0.45);
+          background: linear-gradient(145deg, rgba(244, 63, 94, 0.18), rgba(99, 102, 241, 0.1));
           color: var(--text-primary);
+          box-shadow: 0 14px 32px rgba(244, 63, 94, 0.12);
         }
 
         .progression-profile-chip span {
@@ -8374,13 +8005,17 @@ function EditorContent() {
           text-overflow: ellipsis;
           white-space: nowrap;
           font-size: 0.76rem;
-          font-weight: 800;
+          font-weight: 900;
+          max-width: 100%;
         }
 
         .progression-profile-chip strong {
-          color: var(--primary);
-          font-size: 0.72rem;
+          color: rgb(251, 113, 133);
+          font-size: 0.68rem;
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
         }
 
         .progression-system-toggle {
@@ -8517,7 +8152,8 @@ function EditorContent() {
         }
 
         .progression-detail {
-          background: rgba(0, 0, 0, 0.12);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.18));
+          border-color: rgba(148, 163, 184, 0.16);
         }
 
         .progression-hero {
@@ -8525,10 +8161,10 @@ function EditorContent() {
           align-items: flex-start;
           justify-content: space-between;
           gap: 0.75rem;
-          padding: 0.8rem;
-          border: 1px solid rgba(99, 102, 241, 0.18);
+          padding: 1rem;
+          border: 1px solid rgba(99, 102, 241, 0.24);
           border-radius: var(--radius-md);
-          background: rgba(99, 102, 241, 0.08);
+          background: radial-gradient(circle at top left, rgba(99, 102, 241, 0.26), transparent 48%), rgba(15, 23, 42, 0.52);
         }
 
         .progression-hero h3,
@@ -8546,7 +8182,7 @@ function EditorContent() {
 
         .progression-hero h3 {
           color: var(--text-primary);
-          font-size: 1rem;
+          font-size: 1.12rem;
           line-height: 1.2;
         }
 
@@ -8557,8 +8193,13 @@ function EditorContent() {
 
         .progression-hero > strong {
           flex-shrink: 0;
+          padding: 0.28rem 0.52rem;
+          border-radius: var(--radius-full);
+          border: 1px solid rgba(252, 211, 77, 0.22);
+          background: rgba(252, 211, 77, 0.1);
           color: rgb(252, 211, 77);
-          font-size: 1.2rem;
+          font-size: 0.75rem;
+          font-weight: 900;
         }
 
         .progression-hero-actions {
@@ -8686,10 +8327,10 @@ function EditorContent() {
           display: flex;
           flex-direction: column;
           gap: 0.2rem;
-          padding: 0.55rem;
-          border: 1px solid var(--surface-border);
+          padding: 0.65rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
           border-radius: var(--radius-sm);
-          background: rgba(255, 255, 255, 0.035);
+          background: rgba(255, 255, 255, 0.045);
         }
 
         .progression-field-grid.profile-sheet {
@@ -8705,13 +8346,35 @@ function EditorContent() {
 
         .progression-field-grid strong {
           color: var(--text-primary);
-          font-size: 0.78rem;
+          font-size: 0.84rem;
           overflow-wrap: anywhere;
+        }
+
+        .progression-unique-card {
+          padding: 0.75rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(20, 184, 166, 0.08);
+        }
+
+        .progression-unique-card span {
+          color: rgb(94, 234, 212);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-unique-card p {
+          margin: 0.4rem 0 0;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          line-height: 1.5;
         }
 
         .progression-profile-footer-actions {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 0.55rem;
           padding-top: 0.25rem;
         }
@@ -8743,6 +8406,74 @@ function EditorContent() {
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-md);
           background: rgba(255, 255, 255, 0.025);
+        }
+
+        .progression-card-editor-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.7rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.025);
+        }
+
+        .progression-editor-section-title {
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+        }
+
+        .progression-editor-section-title strong {
+          color: var(--text-primary);
+          font-size: 0.84rem;
+        }
+
+        .progression-editor-section-title span {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          line-height: 1.35;
+        }
+
+        .progression-edit-card-grid,
+        .progression-ability-card-editor-list {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.6rem;
+        }
+
+        .progression-profile-edit-card,
+        .progression-ability-edit-card {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+          padding: 0.7rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.04);
+        }
+
+        .progression-profile-edit-card.wide {
+          grid-column: 1 / -1;
+        }
+
+        .progression-profile-edit-card > .btn-icon-mini,
+        .progression-ability-edit-card > .btn-icon-mini {
+          position: absolute;
+          top: 0.45rem;
+          right: 0.45rem;
+          width: 24px;
+          height: 24px;
+        }
+
+        .progression-profile-edit-card span {
+          padding-right: 1.8rem;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
 
         .progression-field-edit-row {
