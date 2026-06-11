@@ -111,6 +111,17 @@ interface ProgressionAbility {
   evidence?: string
 }
 
+type ProgressionTemplateCardType = 'text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability'
+
+interface ProgressionTemplateCard {
+  id: string
+  label: string
+  type: ProgressionTemplateCardType
+  sourceKey: string
+  color: string
+  enabled: boolean
+}
+
 interface ProgressionProfileTemplate {
   enabled: boolean
   name: string
@@ -126,6 +137,7 @@ interface ProgressionProfileTemplate {
   defaultTraits: string[]
   defaultAbilities: ProgressionAbility[]
   defaultCustomFields: Record<string, string>
+  cards: ProgressionTemplateCard[]
   notes: string
 }
 
@@ -220,6 +232,19 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
   sense: 1,
   mana: 0
 }
+const PROGRESSION_CARD_COLORS = ["rose", "violet", "cyan", "amber", "emerald", "blue", "fuchsia", "lime"]
+const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "template-name", label: "Name", type: "text", sourceKey: "name", color: "rose", enabled: true },
+  { id: "template-cultivation-stage", label: "Cultivation Stage", type: "rank", sourceKey: "cultivationStage", color: "violet", enabled: true },
+  { id: "template-level-rank", label: "Level / Rank", type: "rank", sourceKey: "levelRank", color: "amber", enabled: true },
+  { id: "template-class", label: "Class", type: "text", sourceKey: "className", color: "cyan", enabled: true },
+  { id: "template-affiliation", label: "Affiliation", type: "text", sourceKey: "Affiliation", color: "emerald", enabled: true },
+  { id: "template-bloodline", label: "Bloodline", type: "text", sourceKey: "Bloodline", color: "fuchsia", enabled: true },
+  { id: "template-race", label: "Race", type: "text", sourceKey: "Race", color: "blue", enabled: true },
+  { id: "template-exp", label: "EXP", type: "progress", sourceKey: "EXP", color: "lime", enabled: true },
+  { id: "template-unique-trait", label: "Unique Trait", type: "text", sourceKey: "uniqueTrait", color: "cyan", enabled: true },
+  { id: "template-abilities", label: "Abilities", type: "ability", sourceKey: "abilities", color: "amber", enabled: true }
+]
 const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   enabled: true,
   name: "Shared Novel Profile",
@@ -235,6 +260,7 @@ const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   defaultTraits: [],
   defaultAbilities: [],
   defaultCustomFields: {},
+  cards: DEFAULT_PROFILE_TEMPLATE_CARDS,
   notes: "Use this as the baseline profile shape for every character in this novel unless chapter evidence says otherwise."
 }
 const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
@@ -492,6 +518,9 @@ function EditorContent() {
   const [progressionEditProfileDraft, setProgressionEditProfileDraft] = useState<CharacterProgressionProfile | null>(null)
   const [progressionNewFieldName, setProgressionNewFieldName] = useState("")
   const [progressionNewFieldValue, setProgressionNewFieldValue] = useState("")
+  const [progressionNewFieldType, setProgressionNewFieldType] = useState<ProgressionTemplateCardType>("text")
+  const [showProgressionCharactersModal, setShowProgressionCharactersModal] = useState(false)
+  const [showProgressionTemplateModal, setShowProgressionTemplateModal] = useState(false)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -783,6 +812,129 @@ function EditorContent() {
     }) || null
   }
 
+  const getProgressionTemplateCardId = (label: string) => {
+    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "card"
+    return `template-${slug}`
+  }
+
+  const inferProgressionTemplateCardType = (label: string): ProgressionTemplateCardType => {
+    const cleanLabel = label.toLowerCase()
+    if (/(ability|abilities|skill|technique|summon|art)\b/.test(cleanLabel)) return "ability"
+    if (/(exp|experience|progress|points|xp)\b/.test(cleanLabel)) return "progress"
+    if (/(hp|health|mana|qi|ki|stamina|energy|spirit|aura|essence|divinity)\b/.test(cleanLabel)) return "resource"
+    if (/(realm|stage|rank|tier|grade|level|cultivation|class)\b/.test(cleanLabel)) return "rank"
+    if (Object.keys(DEFAULT_PROGRESSION_STATS).some(stat => cleanLabel === stat || cleanLabel.includes(stat))) return "stat"
+    return "text"
+  }
+
+  const getProgressionCardColor = (index: number, type?: ProgressionTemplateCardType) => {
+    if (type === "progress") return "lime"
+    if (type === "ability") return "amber"
+    if (type === "rank") return "violet"
+    if (type === "resource") return "cyan"
+    if (type === "stat") return "blue"
+    return PROGRESSION_CARD_COLORS[index % PROGRESSION_CARD_COLORS.length]
+  }
+
+  const normalizeProgressionTemplateCards = (
+    cards?: Partial<ProgressionTemplateCard>[],
+    customFields: string[] = []
+  ): ProgressionTemplateCard[] => {
+    const source = Array.isArray(cards) && cards.length > 0 ? cards : DEFAULT_PROFILE_TEMPLATE_CARDS
+    const normalized = source
+      .map((card, index) => {
+        const label = String(card.label || card.sourceKey || `Card ${index + 1}`).trim()
+        if (!label) return null
+        const type = card.type && ["text", "rank", "progress", "resource", "stat", "ability"].includes(card.type)
+          ? card.type
+          : inferProgressionTemplateCardType(label)
+        return {
+          id: card.id || getProgressionTemplateCardId(label),
+          label,
+          type,
+          sourceKey: String(card.sourceKey || label).trim(),
+          color: card.color || getProgressionCardColor(index, type),
+          enabled: card.enabled !== false
+        }
+      })
+      .filter(Boolean) as ProgressionTemplateCard[]
+
+    const seen = new Set(normalized.map(card => `${card.sourceKey.toLowerCase()}::${card.label.toLowerCase()}`))
+    customFields.forEach(fieldName => {
+      const cleanName = fieldName.trim()
+      if (!cleanName) return
+      const key = `${cleanName.toLowerCase()}::${cleanName.toLowerCase()}`
+      if (seen.has(key)) return
+      const type = inferProgressionTemplateCardType(cleanName)
+      normalized.push({
+        id: getProgressionTemplateCardId(cleanName),
+        label: cleanName,
+        type,
+        sourceKey: cleanName,
+        color: getProgressionCardColor(normalized.length, type),
+        enabled: true
+      })
+      seen.add(key)
+    })
+
+    return normalized
+  }
+
+  const parseProgressionRatio = (value: string | number | undefined) => {
+    if (typeof value === "number") return { current: value, max: 100 }
+    const cleanValue = String(value || "").trim()
+    const match = cleanValue.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/)
+    if (!match) return null
+    const current = Number(match[1])
+    const max = Number(match[2])
+    if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0) return null
+    return { current, max }
+  }
+
+  const getProgressionCustomFieldValue = (profile: CharacterProgressionProfile, key: string) => {
+    const customFields = profile.customFields || {}
+    const direct = customFields[key]
+    if (direct) return direct
+    const foundKey = Object.keys(customFields).find(fieldName => fieldName.toLowerCase() === key.toLowerCase())
+    return foundKey ? customFields[foundKey] : ""
+  }
+
+  const getProgressionTemplateCardValue = (profile: CharacterProgressionProfile, card: ProgressionTemplateCard) => {
+    const sourceKey = card.sourceKey || card.label
+    const cleanSource = sourceKey.toLowerCase()
+    if (cleanSource === "name") return profile.name
+    if (cleanSource === "cultivationstage") return [profile.realm, profile.stage].filter(Boolean).join(" - ") || profile.rank
+    if (cleanSource === "levelrank") return progressionSystem.showLevels ? `Level ${profile.level}` : profile.stage || profile.rank
+    if (cleanSource === "classname" || cleanSource === "class") return profile.className
+    if (cleanSource === "title") return profile.title
+    if (cleanSource === "nicknames") return profile.nicknames?.join(", ")
+    if (cleanSource === "uniquetrait" || cleanSource === "unique trait") return profile.uniqueTrait || getProgressionCustomFieldValue(profile, "Unique Trait")
+    if (cleanSource === "cultivationpath" || cleanSource === "path") return profile.cultivationPath
+    if (cleanSource === "exp" || cleanSource === "experience") return `${profile.exp}/${profile.nextLevelExp}`
+    if (cleanSource in profile.stats) return String(profile.stats[cleanSource as ProgressionStatKey] ?? "")
+    return getProgressionCustomFieldValue(profile, sourceKey)
+  }
+
+  const getProgressionTemplateCardsForProfile = (profile: CharacterProgressionProfile) => {
+    const configuredCards = normalizeProgressionTemplateCards(
+      progressionSystem.profileTemplate.cards,
+      Array.from(new Set([...progressionSystem.customFields, ...Object.keys(profile.customFields || {})]))
+    )
+    return configuredCards.filter(card => card.enabled)
+  }
+
+  const setProgressionTemplateCards = (updater: (cards: ProgressionTemplateCard[]) => ProgressionTemplateCard[]) => {
+    const currentCards = normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
+    const nextCards = updater(currentCards)
+    persistProgressionSystem({
+      ...progressionSystem,
+      profileTemplate: {
+        ...progressionSystem.profileTemplate,
+        cards: nextCards
+      }
+    })
+  }
+
   const normalizeProgressionProfile = (
     sourceEntry: BibleEntry,
     aiProfile: Partial<CharacterProgressionProfile> | undefined,
@@ -1009,6 +1161,7 @@ function EditorContent() {
     })
     setProgressionNewFieldName("")
     setProgressionNewFieldValue("")
+    setProgressionNewFieldType("text")
     setIsProgressionEditMode(true)
   }
 
@@ -1017,6 +1170,7 @@ function EditorContent() {
     setProgressionEditProfileDraft(null)
     setProgressionNewFieldName("")
     setProgressionNewFieldValue("")
+    setProgressionNewFieldType("text")
   }
 
   const setProgressionDraftField = (field: keyof CharacterProgressionProfile, value: string | number | string[]) => {
@@ -1037,8 +1191,26 @@ function EditorContent() {
     const cleanName = progressionNewFieldName.trim()
     if (!cleanName) return
     setProgressionDraftCustomField(cleanName, progressionNewFieldValue)
+    setProgressionTemplateCards(cards => {
+      const existingIndex = cards.findIndex(card => card.sourceKey.toLowerCase() === cleanName.toLowerCase() || card.label.toLowerCase() === cleanName.toLowerCase())
+      if (existingIndex >= 0) {
+        return cards.map((card, index) => index === existingIndex ? { ...card, type: progressionNewFieldType, enabled: true } : card)
+      }
+      return [
+        ...cards,
+        {
+          id: getProgressionTemplateCardId(cleanName),
+          label: cleanName,
+          type: progressionNewFieldType,
+          sourceKey: cleanName,
+          color: getProgressionCardColor(cards.length, progressionNewFieldType),
+          enabled: true
+        }
+      ]
+    })
     setProgressionNewFieldName("")
     setProgressionNewFieldValue("")
+    setProgressionNewFieldType("text")
   }
 
   const removeProgressionDraftCustomField = (fieldName: string) => {
@@ -1088,6 +1260,10 @@ function EditorContent() {
       acc[fieldName] = progressionSystem.profileTemplate.defaultCustomFields[fieldName] || ""
       return acc
     }, {})
+    const learnedCards = normalizeProgressionTemplateCards(
+      progressionSystem.profileTemplate.cards,
+      learnedCustomFields
+    )
     persistProgressionSystem({
       ...progressionSystem,
       customFields: learnedCustomFields,
@@ -1101,6 +1277,7 @@ function EditorContent() {
         defaultAbilities: progressionSystem.profileTemplate.defaultAbilities.length > 0
           ? progressionSystem.profileTemplate.defaultAbilities
           : profile.abilities.map(ability => ({ ...ability, evidence: "" })),
+        cards: learnedCards,
         notes: progressionSystem.profileTemplate.notes || "Use edited profile fields as the baseline shape for this novel."
       }
     })
@@ -1136,27 +1313,6 @@ function EditorContent() {
     const stage = profile.stage ? ` - ${profile.stage}` : ""
     const level = progressionSystem.showLevels ? `Lv ${profile.level}` : ""
     return [realm + stage, level].filter(Boolean).join(" | ")
-  }
-
-  const getProgressionProfileFields = (profile: CharacterProgressionProfile) => {
-    const customFields = profile.customFields || {}
-    const reservedCustomFields = new Set(["Affiliation", "Nicknames", "Bloodline", "Race", "Unique Trait", "uniqueTrait"])
-    const namedFields = [
-      { label: "Name", value: profile.name },
-      { label: "Cultivation Stage", value: [profile.realm, profile.stage].filter(Boolean).join(" - ") || profile.rank },
-      { label: "Level / Rank", value: progressionSystem.showLevels ? `Level ${profile.level}` : profile.stage || profile.rank },
-      { label: "Class", value: profile.className },
-      { label: "Affiliation", value: customFields.Affiliation || customFields.affiliation },
-      { label: "Nicknames", value: profile.nicknames?.join(", ") || customFields.Nicknames || customFields.nicknames },
-      { label: "Title", value: profile.title },
-      { label: "Bloodline", value: customFields.Bloodline || customFields.bloodline },
-      { label: "Race", value: customFields.Race || customFields.race },
-      { label: "Unique Trait", value: profile.uniqueTrait || customFields["Unique Trait"] || customFields.uniqueTrait }
-    ]
-    const custom = Object.entries(customFields)
-      .filter(([key, value]) => value && !reservedCustomFields.has(key) && !reservedCustomFields.has(key.charAt(0).toUpperCase() + key.slice(1)))
-      .map(([key, value]) => ({ label: key, value }))
-    return [...namedFields, ...custom].filter(field => field.value)
   }
 
   const getLoreAliases = useCallback((entry: BibleEntry) => {
@@ -1505,11 +1661,19 @@ function EditorContent() {
           id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
           name: ability.name || `Ability ${index + 1}`,
           level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+          rank: ability.rank || "",
           description: ability.description || "",
           evidence: ability.evidence || ""
         }))
         : [],
       defaultCustomFields: rawTemplate.defaultCustomFields && typeof rawTemplate.defaultCustomFields === "object" ? rawTemplate.defaultCustomFields : {},
+      cards: normalizeProgressionTemplateCards(
+        rawTemplate.cards,
+        Array.from(new Set([
+          ...(Array.isArray(settings?.customFields) ? settings.customFields : DEFAULT_PROGRESSION_SYSTEM.customFields),
+          ...Object.keys(rawTemplate.defaultCustomFields || {})
+        ].map(item => String(item).trim()).filter(Boolean)))
+      ),
       baseLevel: Number.isFinite(Number(rawTemplate.baseLevel)) ? Number(rawTemplate.baseLevel) : 1,
       baseExp: Number.isFinite(Number(rawTemplate.baseExp)) ? Number(rawTemplate.baseExp) : 0,
       nextLevelExp: Number.isFinite(Number(rawTemplate.nextLevelExp)) ? Number(rawTemplate.nextLevelExp) : 100,
@@ -1925,6 +2089,7 @@ function EditorContent() {
     try {
       const filtered = brainEntries.filter(e => e.id !== entryId)
       setBrainEntries(filtered)
+      setSelectedBrainEntryId(current => current === entryId ? null : current)
       localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(filtered))
       await deleteBrainEntryFromCloud(user.uid, projectId, entryId)
     } catch (e) {
@@ -4437,17 +4602,23 @@ function EditorContent() {
                   )}
                 </div>
 
-                <div className="progression-profile-list">
-                  {progressionProfiles.map(profile => (
-                    <button
-                      key={profile.id}
-                      className={`progression-profile-chip ${selectedProgressionProfileId === profile.id ? 'active' : ''}`}
-                      onClick={() => setSelectedProgressionProfileId(profile.id)}
-                    >
-                      <span>{profile.name}</span>
-                      <strong>{formatProgressionStage(profile)}</strong>
-                    </button>
-                  ))}
+                <div className="progression-library-actions">
+                  <button className="progression-library-card" onClick={() => setShowProgressionCharactersModal(true)}>
+                    <div>
+                      <User size={15} />
+                      <span>Characters</span>
+                    </div>
+                    <strong>{progressionProfiles.length}</strong>
+                    <p>{selectedProgressionProfile ? selectedProgressionProfile.name : "Open all progression profiles"}</p>
+                  </button>
+                  <button className="progression-library-card template" onClick={() => setShowProgressionTemplateModal(true)}>
+                    <div>
+                      <Layers size={15} />
+                      <span>Template</span>
+                    </div>
+                    <strong>{normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(card => card.enabled).length}</strong>
+                    <p>Set the reusable status screen for this novel</p>
+                  </button>
                 </div>
                 <datalist id="progression-realms">
                   {progressionSystem.realms.map(realm => <option key={realm} value={realm} />)}
@@ -4458,44 +4629,57 @@ function EditorContent() {
 
                 {selectedProgressionProfile ? (
                   <div className="progression-detail">
-                    <div className="progression-hero">
-                      <div>
-                        <span>{selectedProgressionProfile.realm || selectedProgressionProfile.rank || "Progression Profile"}</span>
-                        <h3>{selectedProgressionProfile.name}</h3>
-                        <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || selectedProgressionProfile.cultivationPath || "No class/title yet"}</p>
-                      </div>
-                      <strong>{selectedProgressionProfile.stage || (progressionSystem.showLevels ? `Level ${selectedProgressionProfile.level}` : selectedProgressionProfile.rank || "")}</strong>
-                    </div>
-
-                    <div className="progression-field-grid profile-sheet">
-                      {getProgressionProfileFields(selectedProgressionProfile).map(field => (
-                        <div key={field.label}>
-                          <span>{field.label}</span>
-                          <strong>{field.value}</strong>
+                    <div className="progression-profile-showcase">
+                      <div className="progression-showcase-head">
+                        <div>
+                          <span>{selectedProgressionProfile.realm || selectedProgressionProfile.rank || "Progression Profile"}</span>
+                          <h3>{selectedProgressionProfile.name}</h3>
+                          <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || selectedProgressionProfile.cultivationPath || "No class/title yet"}</p>
                         </div>
-                      ))}
-                    </div>
-
-                    {selectedProgressionProfile.uniqueTrait && (
-                      <div className="progression-unique-card">
-                        <span>Unique About Them</span>
-                        <p>{selectedProgressionProfile.uniqueTrait}</p>
+                        <strong>{selectedProgressionProfile.stage || (progressionSystem.showLevels ? `Level ${selectedProgressionProfile.level}` : selectedProgressionProfile.rank || "")}</strong>
                       </div>
-                    )}
 
-                    <div className="progression-section">
-                      <span className="brain-detail-label">Abilities</span>
-                      {selectedProgressionProfile.abilities.length === 0 ? (
-                        <div className="empty-state-text compact">No abilities tracked yet.</div>
-                      ) : selectedProgressionProfile.abilities.map(ability => (
-                        <div key={ability.id} className="progression-ability">
-                          <div>
-                            <strong>{ability.name}</strong>
-                            <span>{ability.rank || `Lv ${ability.level}`}</span>
-                          </div>
-                          <p>{ability.description}</p>
-                        </div>
-                      ))}
+                      <div className="progression-showcase-grid">
+                        {getProgressionTemplateCardsForProfile(selectedProgressionProfile).map((templateCard, cardIndex) => {
+                          const cardValue = getProgressionTemplateCardValue(selectedProgressionProfile, templateCard)
+                          const ratio = templateCard.type === "progress" || templateCard.type === "resource"
+                            ? parseProgressionRatio(cardValue)
+                            : null
+                          const progressPercent = ratio ? Math.max(0, Math.min(100, Math.round((ratio.current / ratio.max) * 100))) : 0
+
+                          if (templateCard.type === "ability") {
+                            return (
+                              <div key={templateCard.id} className={`progression-template-display-card wide color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                                <span>{templateCard.label}</span>
+                                <div className="progression-template-ability-list">
+                                  {selectedProgressionProfile.abilities.length === 0 ? (
+                                    <p>No abilities tracked yet.</p>
+                                  ) : selectedProgressionProfile.abilities.map(ability => (
+                                    <div key={ability.id}>
+                                      <strong>{ability.name}</strong>
+                                      <em>{ability.rank || `Lv ${ability.level}`}</em>
+                                      <p>{ability.description}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                              <span>{templateCard.label}</span>
+                              <strong>{cardValue || "Not set"}</strong>
+                              {ratio && (
+                                <div className="progression-template-progress">
+                                  <div><i style={{ width: `${progressPercent}%` }} /></div>
+                                  <small>{progressPercent}%</small>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
 
                     <div className="progression-profile-footer-actions">
@@ -5760,6 +5944,19 @@ function EditorContent() {
                   </div>
                 </div>
               )}
+
+              <div className="brain-detail-actions">
+                <button
+                  className="btn-ai-sub btn-ai-secondary danger-text"
+                  onClick={() => {
+                    const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
+                    if (confirmed) deleteBrainEntry(selectedBrainEntry.id)
+                  }}
+                >
+                  <Trash2 size={13} />
+                  Delete Entry
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -6059,7 +6256,20 @@ function EditorContent() {
                   </div>
                   <div className="progression-add-field-row">
                     <input className="ai-input" value={progressionNewFieldName} onChange={(e) => setProgressionNewFieldName(e.target.value)} placeholder="Card name, e.g. EXP, Sect, Weapon" />
-                    <input className="ai-input" value={progressionNewFieldValue} onChange={(e) => setProgressionNewFieldValue(e.target.value)} placeholder="Value" />
+                    <select className="ai-select" value={progressionNewFieldType} onChange={(e) => setProgressionNewFieldType(e.target.value as ProgressionTemplateCardType)}>
+                      <option value="text">Text</option>
+                      <option value="rank">Realm / Rank</option>
+                      <option value="progress">EXP / Progress</option>
+                      <option value="resource">HP / Mana / Qi</option>
+                      <option value="stat">Stat</option>
+                      <option value="ability">Ability</option>
+                    </select>
+                    <input
+                      className="ai-input"
+                      value={progressionNewFieldValue}
+                      onChange={(e) => setProgressionNewFieldValue(e.target.value)}
+                      placeholder={progressionNewFieldType === "progress" || progressionNewFieldType === "resource" ? "100/1000" : "Value"}
+                    />
                     <button className="btn-ai-sub btn-ai-primary" onClick={addProgressionDraftCustomField}>
                       <Plus size={12} />
                       Add Card
@@ -6099,6 +6309,151 @@ function EditorContent() {
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={closeProgressionEditModal}>Cancel</button>
                 <button className="btn btn-primary" onClick={saveProgressionProfileDraft}>Update Profile</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showProgressionCharactersModal && (
+          <div className="modal-overlay" onClick={() => setShowProgressionCharactersModal(false)}>
+            <div className="modal progression-characters-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Characters</h2>
+                <p className="modal-description">Open a progression profile without filling the sidebar with every character.</p>
+              </div>
+              <div className="progression-character-modal-list">
+                {progressionProfiles.length === 0 ? (
+                  <div className="empty-state-text">No progression profiles yet.</div>
+                ) : progressionProfiles.map(profile => (
+                  <button
+                    key={profile.id}
+                    className={`progression-character-row ${selectedProgressionProfileId === profile.id ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedProgressionProfileId(profile.id)
+                      setProgressionSelectedEntryId(profile.loreEntryId)
+                      setShowProgressionCharactersModal(false)
+                    }}
+                  >
+                    <div>
+                      <strong>{profile.name}</strong>
+                      <span>{profile.title || profile.className || profile.cultivationPath || "No title yet"}</span>
+                    </div>
+                    <em>{formatProgressionStage(profile)}</em>
+                  </button>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowProgressionCharactersModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showProgressionTemplateModal && (
+          <div className="modal-overlay" onClick={() => setShowProgressionTemplateModal(false)}>
+            <div className="modal progression-template-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Profile Template</h2>
+                <p className="modal-description">Design the reusable status card for this novel. New and updated characters follow this shape.</p>
+              </div>
+              <div className="progression-template-tool-row">
+                <span>EXP</span>
+                <span>HP / Mana / Qi</span>
+                <span>Realm / Rank</span>
+                <span>Stats</span>
+                <span>Abilities</span>
+              </div>
+              <div className="progression-template-builder-list">
+                {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map((templateCard, index) => (
+                  <div className={`progression-template-builder-card color-${templateCard.color}`} key={templateCard.id}>
+                    <label>
+                      <span>Card Name</span>
+                      <input
+                        className="ai-input"
+                        value={templateCard.label}
+                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? {
+                          ...card,
+                          label: e.target.value,
+                          sourceKey: card.sourceKey === card.label ? e.target.value : card.sourceKey
+                        } : card))}
+                      />
+                    </label>
+                    <label>
+                      <span>Type</span>
+                      <select
+                        className="ai-select"
+                        value={templateCard.type}
+                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, type: e.target.value as ProgressionTemplateCardType } : card))}
+                      >
+                        <option value="text">Text</option>
+                        <option value="rank">Realm / Rank</option>
+                        <option value="progress">EXP / Progress</option>
+                        <option value="resource">HP / Mana / Qi</option>
+                        <option value="stat">Stat</option>
+                        <option value="ability">Abilities</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Source Field</span>
+                      <input
+                        className="ai-input"
+                        value={templateCard.sourceKey}
+                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, sourceKey: e.target.value } : card))}
+                        placeholder="EXP, Race, Bloodline, strength..."
+                      />
+                    </label>
+                    <label>
+                      <span>Color</span>
+                      <select
+                        className="ai-select"
+                        value={templateCard.color}
+                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, color: e.target.value } : card))}
+                      >
+                        {PROGRESSION_CARD_COLORS.map(color => <option key={color} value={color}>{color}</option>)}
+                      </select>
+                    </label>
+                    <div className="progression-template-card-actions">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={templateCard.enabled}
+                          onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, enabled: e.target.checked } : card))}
+                        />
+                        Show
+                      </label>
+                      <button
+                        className="btn-ai-sub btn-ai-secondary danger-text"
+                        onClick={() => setProgressionTemplateCards(cards => cards.filter(card => card.id !== templateCard.id))}
+                        disabled={index === 0}
+                      >
+                        <Trash2 size={12} />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="progression-template-add-row">
+                <button
+                  className="btn-ai-sub btn-ai-primary"
+                  onClick={() => setProgressionTemplateCards(cards => [
+                    ...cards,
+                    {
+                      id: `template-${crypto.randomUUID()}`,
+                      label: "New Card",
+                      type: "text",
+                      sourceKey: "New Card",
+                      color: getProgressionCardColor(cards.length, "text"),
+                      enabled: true
+                    }
+                  ])}
+                >
+                  <Plus size={12} />
+                  Add Template Card
+                </button>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-primary" onClick={() => setShowProgressionTemplateModal(false)}>Done</button>
               </div>
             </div>
           </div>
@@ -7187,10 +7542,10 @@ function EditorContent() {
           max-height: 260px;
           overflow-y: auto;
           padding: 0.4rem;
-          border: 1px solid var(--surface-border);
+          border: 1px solid rgba(244, 63, 94, 0.32);
           border-radius: var(--radius-md);
-          background: var(--surface-elevated);
-          box-shadow: var(--shadow-xl);
+          background: rgb(18, 18, 23);
+          box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
           z-index: 80;
         }
 
@@ -7218,8 +7573,8 @@ function EditorContent() {
           padding: 0.55rem 0.6rem;
           border: none;
           border-radius: var(--radius-sm);
-          background: transparent;
-          color: var(--text-secondary);
+          background: rgba(255, 255, 255, 0.045);
+          color: rgb(226, 232, 240);
           font-size: 0.82rem;
           font-weight: 700;
           text-align: left;
@@ -7241,8 +7596,8 @@ function EditorContent() {
         }
 
         .selection-menu-item:hover {
-          background: var(--surface-hover);
-          color: var(--text-primary);
+          background: rgba(244, 63, 94, 0.18);
+          color: rgb(255, 255, 255);
         }
 
         .selection-menu-item.create {
@@ -8018,6 +8373,64 @@ function EditorContent() {
           max-width: 100%;
         }
 
+        .progression-library-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.55rem;
+        }
+
+        .progression-library-card {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 0.35rem;
+          min-height: 96px;
+          padding: 0.75rem;
+          border: 1px solid rgba(244, 63, 94, 0.22);
+          border-radius: var(--radius-md);
+          background: radial-gradient(circle at top left, rgba(244, 63, 94, 0.2), transparent 52%), rgba(255, 255, 255, 0.045);
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: var(--transition);
+          text-align: left;
+        }
+
+        .progression-library-card.template {
+          border-color: rgba(20, 184, 166, 0.24);
+          background: radial-gradient(circle at top left, rgba(20, 184, 166, 0.2), transparent 52%), rgba(255, 255, 255, 0.045);
+        }
+
+        .progression-library-card:hover {
+          transform: translateY(-1px);
+          border-color: rgba(244, 63, 94, 0.46);
+          box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
+        }
+
+        .progression-library-card div {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-library-card strong {
+          color: white;
+          font-size: 1.35rem;
+          line-height: 1;
+        }
+
+        .progression-library-card p {
+          margin: 0;
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+
         .progression-system-toggle {
           display: flex;
           align-items: center;
@@ -8154,6 +8567,199 @@ function EditorContent() {
         .progression-detail {
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.18));
           border-color: rgba(148, 163, 184, 0.16);
+        }
+
+        .progression-profile-showcase {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.85rem;
+          border: 1px solid rgba(99, 102, 241, 0.24);
+          border-radius: var(--radius-md);
+          background:
+            radial-gradient(circle at 8% 0%, rgba(244, 63, 94, 0.18), transparent 34%),
+            radial-gradient(circle at 100% 0%, rgba(20, 184, 166, 0.15), transparent 32%),
+            linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(13, 13, 17, 0.92));
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .progression-showcase-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 0.75rem;
+          align-items: flex-start;
+          padding-bottom: 0.65rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .progression-showcase-head h3,
+        .progression-showcase-head p {
+          margin: 0;
+        }
+
+        .progression-showcase-head span {
+          color: rgb(196, 181, 253);
+          font-size: 0.68rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .progression-showcase-head h3 {
+          color: white;
+          font-size: 1.25rem;
+          line-height: 1.12;
+        }
+
+        .progression-showcase-head p {
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          line-height: 1.4;
+        }
+
+        .progression-showcase-head > strong {
+          flex-shrink: 0;
+          padding: 0.3rem 0.55rem;
+          border: 1px solid rgba(252, 211, 77, 0.32);
+          border-radius: var(--radius-full);
+          background: rgba(252, 211, 77, 0.12);
+          color: rgb(253, 224, 71);
+          font-size: 0.75rem;
+          font-weight: 900;
+          text-align: center;
+        }
+
+        .progression-showcase-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.55rem;
+        }
+
+        .progression-template-display-card {
+          --card-accent: rgb(244, 63, 94);
+          display: flex;
+          flex-direction: column;
+          gap: 0.32rem;
+          min-height: 70px;
+          padding: 0.7rem;
+          border: 1px solid color-mix(in srgb, var(--card-accent) 44%, transparent);
+          border-radius: var(--radius-md);
+          background: linear-gradient(145deg, color-mix(in srgb, var(--card-accent) 17%, transparent), rgba(255, 255, 255, 0.035));
+        }
+
+        .progression-template-display-card.color-violet,
+        .progression-template-builder-card.color-violet {
+          --card-accent: rgb(139, 92, 246);
+        }
+
+        .progression-template-display-card.color-cyan,
+        .progression-template-builder-card.color-cyan {
+          --card-accent: rgb(6, 182, 212);
+        }
+
+        .progression-template-display-card.color-amber,
+        .progression-template-builder-card.color-amber {
+          --card-accent: rgb(245, 158, 11);
+        }
+
+        .progression-template-display-card.color-emerald,
+        .progression-template-builder-card.color-emerald {
+          --card-accent: rgb(16, 185, 129);
+        }
+
+        .progression-template-display-card.color-blue,
+        .progression-template-builder-card.color-blue {
+          --card-accent: rgb(59, 130, 246);
+        }
+
+        .progression-template-display-card.color-fuchsia,
+        .progression-template-builder-card.color-fuchsia {
+          --card-accent: rgb(217, 70, 239);
+        }
+
+        .progression-template-display-card.color-lime,
+        .progression-template-builder-card.color-lime {
+          --card-accent: rgb(132, 204, 22);
+        }
+
+        .progression-template-display-card span {
+          color: color-mix(in srgb, var(--card-accent) 64%, white);
+          font-size: 0.67rem;
+          font-weight: 950;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-template-display-card strong {
+          color: white;
+          font-size: 0.9rem;
+          line-height: 1.25;
+          overflow-wrap: anywhere;
+        }
+
+        .progression-template-display-card.wide {
+          min-height: 0;
+        }
+
+        .progression-template-progress {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 0.45rem;
+          align-items: center;
+          margin-top: 0.15rem;
+        }
+
+        .progression-template-progress div {
+          height: 7px;
+          overflow: hidden;
+          border-radius: var(--radius-full);
+          background: rgba(255, 255, 255, 0.11);
+        }
+
+        .progression-template-progress i {
+          display: block;
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, var(--card-accent), color-mix(in srgb, var(--card-accent) 45%, white));
+        }
+
+        .progression-template-progress small {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 900;
+        }
+
+        .progression-template-ability-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .progression-template-ability-list div {
+          padding: 0.55rem;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.18);
+        }
+
+        .progression-template-ability-list strong {
+          display: inline;
+          font-size: 0.82rem;
+        }
+
+        .progression-template-ability-list em {
+          float: right;
+          color: rgb(253, 224, 71);
+          font-size: 0.72rem;
+          font-style: normal;
+          font-weight: 900;
+        }
+
+        .progression-template-ability-list p {
+          margin: 0.32rem 0 0;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          line-height: 1.45;
         }
 
         .progression-hero {
@@ -8485,7 +9091,7 @@ function EditorContent() {
 
         .progression-add-field-row {
           display: grid;
-          grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) auto;
+          grid-template-columns: minmax(0, 0.9fr) minmax(112px, 0.65fr) minmax(0, 0.85fr) auto;
           gap: 0.45rem;
           align-items: center;
         }
@@ -8541,6 +9147,151 @@ function EditorContent() {
         .progression-history-item small {
           display: block;
           color: var(--text-dim);
+        }
+
+        .progression-characters-modal,
+        .progression-template-modal {
+          width: min(760px, calc(100vw - 2rem));
+          max-height: min(88vh, 860px);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .progression-character-modal-list,
+        .progression-template-builder-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+          overflow-y: auto;
+          padding-right: 0.15rem;
+        }
+
+        .progression-character-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          width: 100%;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-primary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .progression-character-row:hover,
+        .progression-character-row.active {
+          border-color: rgba(244, 63, 94, 0.42);
+          background: rgba(244, 63, 94, 0.12);
+        }
+
+        .progression-character-row div {
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+          min-width: 0;
+        }
+
+        .progression-character-row strong {
+          color: white;
+          font-size: 0.9rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .progression-character-row span {
+          color: var(--text-dim);
+          font-size: 0.74rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .progression-character-row em {
+          flex-shrink: 0;
+          color: rgb(253, 224, 71);
+          font-size: 0.72rem;
+          font-style: normal;
+          font-weight: 900;
+        }
+
+        .progression-template-tool-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.4rem;
+          margin-bottom: 0.7rem;
+        }
+
+        .progression-template-tool-row span {
+          padding: 0.28rem 0.5rem;
+          border: 1px solid rgba(99, 102, 241, 0.22);
+          border-radius: var(--radius-full);
+          background: rgba(99, 102, 241, 0.1);
+          color: rgb(199, 210, 254);
+          font-size: 0.7rem;
+          font-weight: 900;
+        }
+
+        .progression-template-builder-card {
+          --card-accent: rgb(244, 63, 94);
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.55rem;
+          padding: 0.75rem;
+          border: 1px solid color-mix(in srgb, var(--card-accent) 34%, transparent);
+          border-radius: var(--radius-md);
+          background: linear-gradient(145deg, color-mix(in srgb, var(--card-accent) 12%, transparent), rgba(255, 255, 255, 0.035));
+        }
+
+        .progression-template-builder-card label {
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
+        }
+
+        .progression-template-builder-card label span {
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-template-card-actions {
+          grid-column: 1 / -1;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .progression-template-card-actions label {
+          flex-direction: row;
+          align-items: center;
+          color: var(--text-secondary);
+          font-size: 0.76rem;
+          font-weight: 900;
+        }
+
+        .progression-template-card-actions input {
+          accent-color: var(--primary);
+        }
+
+        .progression-template-add-row {
+          display: flex;
+          justify-content: flex-start;
+          margin-top: 0.75rem;
+        }
+
+        .brain-detail-actions {
+          display: flex;
+          justify-content: flex-end;
+          padding-top: 0.3rem;
+          border-top: 1px solid var(--surface-border);
         }
 
         /* Brain Map Styles */
@@ -10491,6 +11242,18 @@ function EditorContent() {
           .export-format-grid,
           .brain-detail-controls {
             grid-template-columns: 1fr;
+          }
+          .progression-library-actions,
+          .progression-template-builder-card,
+          .progression-add-field-row,
+          .progression-edit-card-grid,
+          .progression-ability-card-editor-list {
+            grid-template-columns: 1fr;
+          }
+          .progression-showcase-head,
+          .progression-character-row {
+            flex-direction: column;
+            align-items: stretch;
           }
           .version-item {
             flex-direction: column;
