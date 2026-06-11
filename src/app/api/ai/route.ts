@@ -457,11 +457,29 @@ export async function POST(req: NextRequest) {
       }).join("\n")
 
       userPrompt = `Brain Map entries:\n${memory || "No entries yet."}\n\nQuestion: ${question}`
+    } else if (action === "progression_template_design") {
+      const { prompt, currentSettings } = body
+      if (!prompt || typeof prompt !== "string") {
+        return NextResponse.json({ error: "Prompt is required for progression_template_design." }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a professional LitRPG, xianxia, and web-novel progression system designer.\n" +
+        "The user is describing their novel's character status screen / progression structure (e.g. realms, stats, affinities, levels, class, rank).\n" +
+        "Your task is to generate a comprehensive profile template matching their requirements.\n" +
+        "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, notes, and profileTemplate.\n" +
+        "profileTemplate must contain: enabled (true), name, defaultRealm, defaultStage, defaultRank, defaultClassName, defaultCultivationPath, baseLevel, baseExp, nextLevelExp, defaultStats, defaultTraits, defaultAbilities, defaultCustomFields, cards, and notes.\n" +
+        "Each card in profileTemplate.cards must have id (starts with 'template-'), label, type ('text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound'), sourceKey (the variable name like 'name', 'cultivation', 'abilities', or a custom field name like 'Affinity'), fields (array of sub-field names displayed in the card), color (rose, violet, cyan, amber, emerald, blue, fuchsia, or lime), and enabled (true).\n" +
+        "Ensure all requested categories (like Name, Cultivation, Levels, Attributes, Affinity/Element) are mapped to appropriate template cards. For attributes, create a 'stat' or 'compound' card and ensure the used stats are in settings.statKeys and set defaults in profileTemplate.defaultStats. For elemental affinity, create a 'compound' card or 'text' card and map it to a customField."
+
+      userPrompt =
+        `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
+        `User Prompt for Template Design:\n${prompt}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, or brain_ask." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, or progression_template_design." }, { status: 400 })
     }
 
-    const jsonActions = new Set(["appearance_prompts", "progression_update", "cultivation_realm_import", "brain_analyze"])
+    const jsonActions = new Set(["appearance_prompts", "progression_update", "cultivation_realm_import", "brain_analyze", "progression_template_design"])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
       text = JSON.stringify({ settings: parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings })
@@ -589,6 +607,18 @@ export async function POST(req: NextRequest) {
           settings: imported.settings && Array.isArray(imported.settings.realms) && imported.settings.realms.length > 0
             ? imported.settings
             : parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings
+        }
+      })
+    }
+
+    if (action === "progression_template_design") {
+      const design = parseJsonObject<CultivationImportResponse>(text)
+      if (!design || !design.settings) {
+        return NextResponse.json({ error: "Could not parse designed template JSON from AI response." }, { status: 500 })
+      }
+      return NextResponse.json({
+        imported: {
+          settings: design.settings
         }
       })
     }

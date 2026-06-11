@@ -531,6 +531,10 @@ function EditorContent() {
   const [progressionRealmImportText, setProgressionRealmImportText] = useState("")
   const [progressionRealmImportLoading, setProgressionRealmImportLoading] = useState(false)
   const [isProgressionCultivationImportOpen, setIsProgressionCultivationImportOpen] = useState(false)
+  const [progressionTemplatePrompt, setProgressionTemplatePrompt] = useState("")
+  const [progressionTemplatePromptLoading, setProgressionTemplatePromptLoading] = useState(false)
+  const [progressionTemplatePromptError, setProgressionTemplatePromptError] = useState("")
+  const [isProgressionPromptDesignerOpen, setIsProgressionPromptDesignerOpen] = useState(false)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -1171,6 +1175,45 @@ function EditorContent() {
     const text = await file.text()
     setProgressionRealmImportText(text)
     await handleCultivationRealmImport(text)
+  }
+
+  const handleDesignTemplateWithAi = async () => {
+    if (!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading) return
+    setProgressionTemplatePromptLoading(true)
+    setProgressionTemplatePromptError("")
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "progression_template_design",
+          prompt: progressionTemplatePrompt,
+          currentSettings: progressionSystem
+        })
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Could not design the profile template.")
+      }
+
+      const importedSettings = data.imported?.settings || {}
+      persistProgressionSystem({
+        ...progressionSystem,
+        ...importedSettings,
+        profileTemplate: {
+          ...progressionSystem.profileTemplate,
+          ...(importedSettings.profileTemplate || {}),
+          enabled: true
+        }
+      })
+      setProgressionTemplatePrompt("")
+      setIsProgressionPromptDesignerOpen(false)
+      setProgressionNotice("Profile template successfully redesigned by AI.")
+    } catch (err) {
+      setProgressionTemplatePromptError(err instanceof Error ? err.message : "Failed to design the template.")
+    } finally {
+      setProgressionTemplatePromptLoading(false)
+    }
   }
 
   const normalizeProgressionProfile = (
@@ -6943,6 +6986,45 @@ function EditorContent() {
                   <RotateCcw size={12} />
                   Load Simple Template
                 </button>
+              </div>
+              <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
+                <div className="progression-template-header">
+                  <div>
+                    <strong>AI Prompt Designer</strong>
+                    <span>Describe the status screen structure to design a custom template.</span>
+                  </div>
+                  <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionPromptDesignerOpen(prev => !prev)}>
+                    <ChevronDown size={12} className={isProgressionPromptDesignerOpen ? "rotate" : ""} />
+                    {isProgressionPromptDesignerOpen ? "Hide" : "Design"}
+                  </button>
+                </div>
+                {isProgressionPromptDesignerOpen && (
+                  <div className="progression-cultivation-import-body" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
+                    <textarea
+                      className="ai-textarea compact"
+                      value={progressionTemplatePrompt}
+                      onChange={(e) => setProgressionTemplatePrompt(e.target.value)}
+                      placeholder="Describe what cards, stats, affinities, or ranks you want. Example: I want a profile template with name, Cultivation (stage and rank), levels, attributes (Strength, Agility, Endurance), and Affinity (Fire, Ice, Void)..."
+                      rows={3}
+                      disabled={progressionTemplatePromptLoading}
+                    />
+                    {progressionTemplatePromptError && (
+                      <div style={{ color: "var(--error)", fontSize: "0.8rem" }}>
+                        {progressionTemplatePromptError}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={handleDesignTemplateWithAi}
+                        disabled={!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading}
+                      >
+                        {progressionTemplatePromptLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                        Generate Template
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="progression-cultivation-import-box">
                 <div className="progression-template-header">
