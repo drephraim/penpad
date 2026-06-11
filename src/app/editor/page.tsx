@@ -1316,14 +1316,19 @@ function EditorContent() {
     const rawAbilities = Array.isArray(aiProfile?.abilities)
       ? aiProfile?.abilities || []
       : existingProfile?.abilities || sharedTemplate.defaultAbilities || []
-    const abilities = rawAbilities.map((ability, index) => ({
-      id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-      name: ability.name || `Ability ${index + 1}`,
-      level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
-      rank: ability.rank || "",
-      description: ability.description || "",
-      evidence: ability.evidence || ""
-    }))
+    const abilities = rawAbilities.map((abilityItem, index) => {
+      const ability = typeof abilityItem === "object" && abilityItem !== null
+        ? abilityItem as unknown as Record<string, unknown>
+        : { name: String(abilityItem) }
+      return {
+        id: String(ability.id || `${ability.name || "ability"}-${index}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        name: String(ability.name || `Ability ${index + 1}`),
+        level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+        rank: String(ability.rank || ""),
+        description: String(ability.description || ""),
+        evidence: String(ability.evidence || "")
+      }
+    })
 
     return {
       id: existingProfile?.id || crypto.randomUUID(),
@@ -2205,14 +2210,19 @@ function EditorContent() {
       },
       defaultTraits: Array.isArray(rawTemplate.defaultTraits) ? rawTemplate.defaultTraits.map(item => String(item).trim()).filter(Boolean) : [],
       defaultAbilities: Array.isArray(rawTemplate.defaultAbilities)
-        ? rawTemplate.defaultAbilities.map((ability, index) => ({
-          id: ability.id || `${ability.name || "ability"}-${index}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-          name: ability.name || `Ability ${index + 1}`,
-          level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
-          rank: ability.rank || "",
-          description: ability.description || "",
-          evidence: ability.evidence || ""
-        }))
+        ? rawTemplate.defaultAbilities.map((abilityItem, index) => {
+          const ability = typeof abilityItem === "object" && abilityItem !== null
+            ? abilityItem as unknown as Record<string, unknown>
+            : { name: String(abilityItem) }
+          return {
+            id: String(ability.id || `${ability.name || "ability"}-${index}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            name: String(ability.name || `Ability ${index + 1}`),
+            level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
+            rank: String(ability.rank || ""),
+            description: String(ability.description || ""),
+            evidence: String(ability.evidence || "")
+          }
+        })
         : [],
       defaultCustomFields: rawTemplate.defaultCustomFields && typeof rawTemplate.defaultCustomFields === "object" ? rawTemplate.defaultCustomFields : {},
       cards: normalizeProgressionTemplateCards(
@@ -5221,12 +5231,12 @@ function EditorContent() {
                                   {cardFields.map(field => (
                                     <div key={field.label}>
                                       <small>{field.label}</small>
-                                      <strong>{field.value || "Not set"}</strong>
+                                      <strong>{typeof field.value === "object" ? JSON.stringify(field.value) : (field.value || "Not set")}</strong>
                                     </div>
                                   ))}
                                 </div>
                               ) : (
-                                <strong>{cardValue || "Not set"}</strong>
+                                <strong>{typeof cardValue === "object" ? JSON.stringify(cardValue) : (cardValue || "Not set")}</strong>
                               )}
                               {ratio && (
                                 <div className="progression-template-progress">
@@ -5333,7 +5343,20 @@ function EditorContent() {
                                       <div className="progression-growth-detail-block">
                                         <span>Abilities</span>
                                         <ul>
-                                          {abilityChanges.map((item, index) => <li key={`${historyEntry.id}-ability-${index}`}>{item}</li>)}
+                                          {abilityChanges.map((item, index) => {
+                                            if (!item) return null
+                                            if (typeof item === "object") {
+                                              const obj = item as { name?: string; level?: string | number; rank?: string; description?: string }
+                                              const levelStr = obj.rank || (obj.level ? `Lv ${obj.level}` : "")
+                                              return (
+                                                <li key={`${historyEntry.id}-ability-${index}`}>
+                                                  <strong>{obj.name || "Ability"}</strong> {levelStr && `(${levelStr})`}
+                                                  {obj.description && ` - ${obj.description}`}
+                                                </li>
+                                              )
+                                            }
+                                            return <li key={`${historyEntry.id}-ability-${index}`}>{String(item)}</li>
+                                          })}
                                         </ul>
                                       </div>
                                     )}
@@ -5342,7 +5365,11 @@ function EditorContent() {
                                       <div className="progression-growth-detail-block">
                                         <span>Rewards</span>
                                         <ul>
-                                          {rewards.map((item, index) => <li key={`${historyEntry.id}-reward-${index}`}>{item}</li>)}
+                                          {rewards.map((item, index) => (
+                                            <li key={`${historyEntry.id}-reward-${index}`}>
+                                              {typeof item === "object" ? JSON.stringify(item) : String(item)}
+                                            </li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
@@ -5351,7 +5378,11 @@ function EditorContent() {
                                       <div className="progression-growth-detail-block evidence">
                                         <span>Canon Evidence</span>
                                         <ul>
-                                          {evidence.map((item, index) => <li key={`${historyEntry.id}-evidence-${index}`}>{item}</li>)}
+                                          {evidence.map((item, index) => (
+                                            <li key={`${historyEntry.id}-evidence-${index}`}>
+                                              {typeof item === "object" ? JSON.stringify(item) : String(item)}
+                                            </li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
