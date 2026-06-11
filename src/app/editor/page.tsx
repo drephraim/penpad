@@ -9317,8 +9317,8 @@ function EditorContent() {
         }
 
         .progression-edit-modal {
-          width: min(760px, calc(100vw - 2rem));
-          max-height: min(88vh, 860px);
+          width: min(1080px, calc(100vw - 2rem));
+          max-height: min(90vh, 900px);
           display: flex;
           flex-direction: column;
         }
@@ -9328,7 +9328,7 @@ function EditorContent() {
           flex-direction: column;
           gap: 0.85rem;
           overflow-y: auto;
-          padding-right: 0.15rem;
+          padding-right: 0.35rem;
         }
 
         .progression-custom-editor {
@@ -9372,7 +9372,7 @@ function EditorContent() {
         .progression-ability-card-editor-list,
         .progression-template-value-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 0.6rem;
         }
 
@@ -11146,6 +11146,14 @@ function EditorContent() {
         }
 
         @media (max-width: 1024px) {
+          .progression-edit-modal {
+            width: min(900px, calc(100vw - 1.25rem));
+          }
+          .progression-edit-card-grid,
+          .progression-ability-card-editor-list,
+          .progression-template-value-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
           .editor-ai-sidebar {
             width: 100%;
             position: absolute;
