@@ -289,6 +289,52 @@ const getRankedProgressionFieldKind = (value: unknown) => {
   return ""
 }
 
+const getAffinitiesList = (namesStr: string, ranksStr: string) => {
+  const names = String(namesStr || "").split(",").map(s => s.trim()).filter(Boolean)
+  if (names.length === 0) return []
+  
+  const ranksList = String(ranksStr || "").split(",").map(s => s.trim()).filter(Boolean)
+  
+  const elementRankMap: Record<string, string> = {}
+  ranksList.forEach(rankPart => {
+    const match = rankPart.match(/^([^(]+)(?:\(([^)]+)\)|-\s*(.+))$/)
+    if (match) {
+      const elementName = match[1].trim().toLowerCase()
+      const rankValue = (match[2] || match[3] || "").trim()
+      if (elementName && rankValue) {
+        elementRankMap[elementName] = rankValue
+      }
+    }
+  })
+
+  return names.map((name, index) => {
+    const lowerName = name.toLowerCase()
+    if (elementRankMap[lowerName]) {
+      return { name, rank: elementRankMap[lowerName] }
+    }
+    
+    const matchingRank = ranksList.find(r => r.toLowerCase().includes(lowerName))
+    if (matchingRank) {
+      const cleanR = matchingRank.replace(new RegExp(`^${name}\\s*[(-]?`, "i"), "").replace(/[)]$/, "").trim()
+      return { name, rank: cleanR || matchingRank }
+    }
+    
+    if (ranksList.length === names.length) {
+      const r = ranksList[index]
+      const cleanR = r.replace(new RegExp(`^${name}\\s*[(-]?`, "i"), "").replace(/[)]$/, "").trim()
+      return { name, rank: cleanR || r }
+    }
+    
+    if (ranksList.length === 1) {
+      const r = ranksList[0]
+      const cleanR = r.replace(new RegExp(`^${name}\\s*[(-]?`, "i"), "").replace(/[)]$/, "").trim()
+      return { name, rank: cleanR || r }
+    }
+    
+    return { name, rank: "Not set" }
+  })
+}
+
 const isProgressionRankFieldName = (value: unknown) => {
   const cleanValue = String(value || "").toLowerCase()
   return RANKED_PROGRESSION_RANK_WORDS.some(word => new RegExp(`\\b${word}\\b`).test(cleanValue))
@@ -5264,6 +5310,41 @@ function EditorContent() {
                                     </div>
                                   ))}
                                 </div>
+                              </div>
+                            )
+                          }
+
+                          const isAffinityCard = templateCard.label.toLowerCase() === "affinity" || templateCard.sourceKey.toLowerCase() === "affinity";
+                          const namesField = cardFields.find(f => f.label === "Affinity Names");
+                          const rankField = cardFields.find(f => f.label === "Rank");
+                          const namesVal = (namesField && namesField.value) ? String(namesField.value) : "";
+                          const rankVal = (rankField && rankField.value) ? String(rankField.value) : "";
+                          const affinitiesList = isAffinityCard ? getAffinitiesList(namesVal, rankVal) : [];
+
+                          if (isAffinityCard && affinitiesList.length > 0) {
+                            return (
+                              <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                                <span>{templateCard.label}</span>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                                  {affinitiesList.map((aff, affIdx) => (
+                                    <div className="progression-template-field-list" key={affIdx}>
+                                      <div>
+                                        <small>Affinity</small>
+                                        <strong>{aff.name}</strong>
+                                      </div>
+                                      <div>
+                                        <small>Rank</small>
+                                        <strong>{aff.rank}</strong>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {ratio && (
+                                  <div className="progression-template-progress">
+                                    <div><i style={{ width: `${progressPercent}%` }} /></div>
+                                    <small>{progressPercent}%</small>
+                                  </div>
+                                )}
                               </div>
                             )
                           }
