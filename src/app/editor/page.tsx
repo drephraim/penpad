@@ -1065,7 +1065,7 @@ function EditorContent() {
     const rawCards = Array.isArray(cards)
       ? cards.filter((card): card is Partial<ProgressionTemplateCard> => Boolean(card) && typeof card === "object")
       : []
-    const source = rawCards.length > 0 ? rawCards : DEFAULT_PROFILE_TEMPLATE_CARDS
+    const source = cards === undefined ? DEFAULT_PROFILE_TEMPLATE_CARDS : rawCards
     const normalized = source
       .map((card, index) => {
         let label = String(card.label || card.sourceKey || `Card ${index + 1}`).trim()
@@ -5553,20 +5553,27 @@ function EditorContent() {
                     <strong>{normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(card => card.enabled).length}</strong>
                     <p>Set the reusable status screen for this novel</p>
                   </button>
-                  <button 
-                    className="progression-library-card auto-update" 
-                    onClick={handleProgressionBulkUpdate} 
-                    disabled={progressionBulkUpdating || progressionLoading}
-                    title="Scan 5 recent chapters and update character profiles"
-                  >
-                    <div>
-                      {progressionBulkUpdating ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
-                      <span>Update Profiles</span>
-                    </div>
-                    <strong>Scan</strong>
-                    <p>{progressionBulkUpdating ? progressionBulkUpdateStatus : "Scan 5 recent chapters for updates"}</p>
-                  </button>
                 </div>
+
+                <button 
+                  className={`progression-action-banner ${progressionBulkUpdating ? 'scanning' : ''}`}
+                  onClick={handleProgressionBulkUpdate} 
+                  disabled={progressionBulkUpdating || progressionLoading}
+                  title="Scan 5 recent chapters and update character profiles"
+                >
+                  <div className="progression-banner-icon-container">
+                    {progressionBulkUpdating ? (
+                      <Loader2 className="progression-banner-icon spin" size={20} />
+                    ) : (
+                      <RefreshCw className="progression-banner-icon" size={20} />
+                    )}
+                  </div>
+                  <div className="progression-banner-content">
+                    <h4>Update Character Profiles</h4>
+                    <p>{progressionBulkUpdating ? progressionBulkUpdateStatus : "Scan the 5 recent chapters to detect and apply character growth automatically."}</p>
+                  </div>
+                  {!progressionBulkUpdating && <span className="progression-banner-badge">Scan</span>}
+                </button>
                 <datalist id="progression-realms">
                   {progressionSystem.realms.map(realm => <option key={realm} value={realm} />)}
                 </datalist>
@@ -9710,8 +9717,9 @@ function EditorContent() {
 
         .progression-library-actions {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 0.55rem;
+          margin-bottom: 0.55rem;
         }
 
         .progression-library-card {
@@ -9735,11 +9743,6 @@ function EditorContent() {
           background: radial-gradient(circle at top left, rgba(20, 184, 166, 0.2), transparent 52%), rgba(255, 255, 255, 0.045);
         }
 
-        .progression-library-card.auto-update {
-          border-color: rgba(139, 92, 246, 0.24);
-          background: radial-gradient(circle at top left, rgba(139, 92, 246, 0.2), transparent 52%), rgba(255, 255, 255, 0.045);
-        }
-
         .progression-library-card:hover {
           transform: translateY(-1px);
           border-color: rgba(244, 63, 94, 0.46);
@@ -9750,8 +9753,132 @@ function EditorContent() {
           border-color: rgba(20, 184, 166, 0.46);
         }
 
-        .progression-library-card.auto-update:hover {
-          border-color: rgba(139, 92, 246, 0.46);
+        .progression-action-banner {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 0.85rem;
+          padding: 0.85rem;
+          border: 1px solid rgba(139, 92, 246, 0.28);
+          border-radius: var(--radius-md);
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.05)), rgba(255, 255, 255, 0.03);
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          text-align: left;
+          position: relative;
+          overflow: hidden;
+          margin-bottom: 0.75rem;
+        }
+
+        .progression-action-banner::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(99, 102, 241, 0.15));
+          opacity: 0;
+          transition: opacity 0.25s ease;
+          z-index: 0;
+        }
+
+        .progression-action-banner:hover::before {
+          opacity: 1;
+        }
+
+        .progression-action-banner:hover {
+          transform: translateY(-1px);
+          border-color: rgba(139, 92, 246, 0.48);
+          box-shadow: 0 8px 20px rgba(139, 92, 246, 0.12);
+        }
+
+        .progression-action-banner.scanning {
+          border-color: rgba(139, 92, 246, 0.48);
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.1)), rgba(255, 255, 255, 0.05);
+          cursor: not-allowed;
+        }
+
+        .progression-action-banner.scanning::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 50%;
+          height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.15), transparent);
+          animation: progression-scan-shine 2s infinite;
+          z-index: 1;
+        }
+
+        @keyframes progression-scan-shine {
+          0% { left: -100%; }
+          100% { left: 200%; }
+        }
+
+        .progression-banner-icon-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: rgba(139, 92, 246, 0.15);
+          color: rgb(167, 139, 250);
+          flex-shrink: 0;
+          z-index: 2;
+          border: 1px solid rgba(139, 92, 246, 0.25);
+        }
+
+        .progression-action-banner:hover .progression-banner-icon-container {
+          background: rgba(139, 92, 246, 0.25);
+          color: white;
+          transform: scale(1.05);
+          transition: all 0.2s ease;
+        }
+
+        .progression-banner-icon {
+          z-index: 2;
+        }
+
+        .progression-banner-content {
+          display: flex;
+          flex-direction: column;
+          gap: 0.15rem;
+          flex-grow: 1;
+          z-index: 2;
+        }
+
+        .progression-banner-content h4 {
+          margin: 0;
+          color: white;
+          font-size: 0.85rem;
+          font-weight: 600;
+          letter-spacing: -0.01em;
+        }
+
+        .progression-banner-content p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          line-height: 1.35;
+        }
+
+        .progression-banner-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.15rem 0.45rem;
+          border-radius: 4px;
+          background: rgba(139, 92, 246, 0.2);
+          color: rgb(196, 181, 253);
+          font-size: 0.65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border: 1px solid rgba(139, 92, 246, 0.25);
+          z-index: 2;
+          flex-shrink: 0;
         }
 
         .progression-library-card div {
