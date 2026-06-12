@@ -10,7 +10,7 @@ import {
   Feather, X, Check, AlertCircle, Trash2,
   Download, Save, BookOpen,
   Play, Pause, RotateCcw,
-  Sparkles, Wand2, Copy,
+  Sparkles, Wand2, Copy, Clipboard,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical
@@ -1550,7 +1550,7 @@ function EditorContent() {
 
   const getProgressionTemplateCardsForProfile = (profile: CharacterProgressionProfile) => {
     const configuredCards = normalizeProgressionTemplateCards(
-      progressionSystem?.profileTemplate?.cards || [],
+      progressionSystem?.profileTemplate?.cards,
       Array.from(new Set([...(progressionSystem?.customFields || []), ...Object.keys(profile.customFields || {})]))
     )
     return configuredCards.filter(card => card.enabled)
@@ -1574,16 +1574,43 @@ function EditorContent() {
   }
 
   const setProgressionTemplateCards = (updater: (cards: ProgressionTemplateCard[]) => ProgressionTemplateCard[]) => {
-    const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards || [], progressionSystem?.customFields || [])
+    const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards, progressionSystem?.customFields || [])
     const nextCards = updater(currentCards)
     const enabledCards = nextCards.filter(card => card.enabled)
     const nextCustomFields = getProgressionCustomFieldsFromTemplateCards(enabledCards)
+
+    // Clean up defaultCustomFields to remove keys that are no longer in nextCustomFields
+    const nextDefaultCustomFields = { ...(progressionSystem?.profileTemplate?.defaultCustomFields || {}) }
+    Object.keys(nextDefaultCustomFields).forEach(key => {
+      if (!nextCustomFields.includes(key)) {
+        delete nextDefaultCustomFields[key]
+      }
+    })
+
+    // Also clean up all character profiles to remove custom fields that are no longer in nextCustomFields
+    const updatedProfiles = progressionProfiles.map(profile => {
+      const nextProfileCustomFields = { ...(profile.customFields || {}) }
+      let changed = false
+      Object.keys(nextProfileCustomFields).forEach(key => {
+        if (!nextCustomFields.includes(key) && !["Affiliation", "Bloodline", "Race"].includes(key)) {
+          delete nextProfileCustomFields[key]
+          changed = true
+        }
+      })
+      return changed ? { ...profile, customFields: nextProfileCustomFields, updatedAt: Date.now() } : profile
+    })
+
+    const hasChanges = updatedProfiles.some((p, idx) => p !== progressionProfiles[idx])
+    if (hasChanges) {
+      persistProgressionProfiles(updatedProfiles)
+    }
 
     persistProgressionSystem({
       ...progressionSystem,
       customFields: nextCustomFields,
       profileTemplate: {
         ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
+        defaultCustomFields: nextDefaultCustomFields,
         cards: nextCards
       }
     })
@@ -1593,8 +1620,95 @@ function EditorContent() {
     setProgressionTemplateCards(cards => cards.filter(card => card.id !== cardId))
   }
 
+  const deleteEntireTemplate = () => {
+    // Clean up all character profiles
+    const updatedProfiles = progressionProfiles.map(profile => {
+      return {
+        ...profile,
+        realm: "",
+        stage: "",
+        level: 1,
+        rank: "",
+        exp: 0,
+        nextLevelExp: 100,
+        stats: {} as Record<ProgressionStatKey, number>,
+        customFields: {},
+        abilities: [],
+        traits: [],
+        updatedAt: Date.now()
+      }
+    })
+    persistProgressionProfiles(updatedProfiles)
+
+    // Reset progression settings to a completely empty template
+    const emptySystem: ProgressionSystemSettings = {
+      realms: [],
+      stageLabels: [],
+      showLevels: false,
+      showExp: false,
+      showStats: false,
+      statKeys: [],
+      customFields: [],
+      profileTemplate: {
+        baseLevel: 1,
+        baseExp: 0,
+        nextLevelExp: 100,
+        defaultStats: {} as Record<ProgressionStatKey, number>,
+        defaultTraits: [],
+        defaultAbilities: [],
+        defaultCustomFields: {},
+        cards: [],
+        notes: "Template cleared.",
+        enabled: true
+      },
+      notes: ""
+    }
+
+    persistProgressionSystem(emptySystem)
+    setProgressionNotice("The progression template and all character stats have been completely deleted/reset.")
+  }
+
+  const copyProgressionTemplateToClipboard = () => {
+    try {
+      const exportData = {
+        realms: progressionSystem.realms,
+        stageLabels: progressionSystem.stageLabels,
+        showLevels: progressionSystem.showLevels,
+        showExp: progressionSystem.showExp,
+        showStats: progressionSystem.showStats,
+        statKeys: progressionSystem.statKeys,
+        customFields: progressionSystem.customFields,
+        profileTemplate: progressionSystem.profileTemplate,
+        notes: progressionSystem.notes
+      }
+      navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
+      setProgressionNotice("Template settings copied to clipboard! You can now paste this into another novel.")
+    } catch (e) {
+      console.error(e)
+      setProgressionError("Failed to copy template to clipboard.")
+    }
+  }
+
+  const pasteProgressionTemplateFromClipboard = () => {
+    const jsonStr = window.prompt("Paste the progression template JSON here:")
+    if (!jsonStr) return
+    try {
+      const parsed = JSON.parse(jsonStr)
+      if (typeof parsed !== "object" || parsed === null) {
+        throw new Error("Invalid template format: Must be an object")
+      }
+      
+      const newSystem = normalizeProgressionSystem(parsed)
+      persistProgressionSystem(newSystem)
+      setProgressionNotice("Progression template successfully imported from clipboard!")
+    } catch (e) {
+      console.error(e)
+      setProgressionError(e instanceof Error ? `Import failed: ${e.message}` : "Failed to import template.")
+    }
+  }
+
   const addProgressionPresetCard = (preset: ProgressionTemplateCard) => {
-    const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards || [], progressionSystem?.customFields || [])
+    const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards, progressionSystem?.customFields || [])
     const presetMatchKey = `${normalizeProgressionTemplateLookupKey(preset.sourceKey)}::${normalizeProgressionTemplateLookupKey(preset.label)}`
     let matched = false
     const nextCards = currentCards.map(card => {
@@ -2436,7 +2550,7 @@ function EditorContent() {
       return acc
     }, {})
     const learnedCards = normalizeProgressionTemplateCards(
-      progressionSystem?.profileTemplate?.cards || [],
+      progressionSystem?.profileTemplate?.cards,
       learnedCustomFields
     )
     persistProgressionSystem({
@@ -7676,7 +7790,7 @@ function EditorContent() {
                     </div>
                     {(progressionEditProfileDraft.realm || progressionEditProfileDraft.stage) && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("realm", ""); setProgressionDraftField("stage", "") }} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("realm", ""); setProgressionDraftField("stage", "") }} title="Remove card"><Trash2 size={12} /></button>
                         <span>Cultivation Stage</span>
                         <input className="ai-input" list="progression-realms" value={progressionEditProfileDraft.realm || ""} onChange={(e) => setProgressionDraftField("realm", e.target.value)} placeholder="Realm" />
                         <input className="ai-input" list="progression-stages" value={progressionEditProfileDraft.stage || ""} onChange={(e) => setProgressionDraftField("stage", e.target.value)} placeholder="Low / Middle / High / Peak" />
@@ -7684,7 +7798,7 @@ function EditorContent() {
                     )}
                     {(progressionEditProfileDraft.rank || progressionSystem.showLevels) && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("rank", ""); setProgressionDraftField("level", 1) }} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("rank", ""); setProgressionDraftField("level", 1) }} title="Remove card"><Trash2 size={12} /></button>
                         <span>Level / Rank</span>
                         <input className="ai-input" value={progressionEditProfileDraft.rank || (progressionSystem.showLevels ? String(progressionEditProfileDraft.level) : "")} onChange={(e) => {
                           if (progressionSystem.showLevels && /^\d+$/.test(e.target.value.trim())) {
@@ -7697,56 +7811,56 @@ function EditorContent() {
                     )}
                     {progressionEditProfileDraft.className && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("className", "")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("className", "")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Class</span>
                         <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} />
                       </div>
                     )}
                     {(progressionEditProfileDraft.customFields || {}).Affiliation && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Affiliation")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Affiliation")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Affiliation</span>
                         <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Affiliation || ""} onChange={(e) => setProgressionDraftCustomField("Affiliation", e.target.value)} />
                       </div>
                     )}
                     {(progressionEditProfileDraft.nicknames || []).length > 0 && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("nicknames", [])} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("nicknames", [])} title="Remove card"><Trash2 size={12} /></button>
                         <span>Nicknames</span>
                         <input className="ai-input" value={(progressionEditProfileDraft.nicknames || []).join(", ")} onChange={(e) => setProgressionDraftField("nicknames", e.target.value.split(",").map(item => item.trim()).filter(Boolean))} />
                       </div>
                     )}
                     {progressionEditProfileDraft.title && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("title", "")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("title", "")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Title</span>
                         <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} />
                       </div>
                     )}
                     {(progressionEditProfileDraft.customFields || {}).Bloodline && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Bloodline")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Bloodline")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Bloodline</span>
                         <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} />
                       </div>
                     )}
                     {(progressionEditProfileDraft.customFields || {}).Race && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Race")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Race")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Race</span>
                         <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Race || ""} onChange={(e) => setProgressionDraftCustomField("Race", e.target.value)} />
                       </div>
                     )}
                     {progressionEditProfileDraft.cultivationPath && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("cultivationPath", "")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("cultivationPath", "")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Path</span>
                         <input className="ai-input" value={progressionEditProfileDraft.cultivationPath || ""} onChange={(e) => setProgressionDraftField("cultivationPath", e.target.value)} />
                       </div>
                     )}
                     {progressionEditProfileDraft.uniqueTrait && (
                       <div className="progression-profile-edit-card wide">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("uniqueTrait", "")} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("uniqueTrait", "")} title="Remove card"><Trash2 size={12} /></button>
                         <span>Unique Trait</span>
                         <textarea
                           className="ai-textarea compact"
@@ -7758,7 +7872,7 @@ function EditorContent() {
                     )}
                     {progressionSystem.showExp && (progressionEditProfileDraft.exp > 0 || progressionEditProfileDraft.nextLevelExp > 0) && (
                       <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("exp", 0); setProgressionDraftField("nextLevelExp", 0) }} title="Remove card"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("exp", 0); setProgressionDraftField("nextLevelExp", 0) }} title="Remove card"><Trash2 size={12} /></button>
                         <span>EXP</span>
                         <input className="ai-input" type="number" value={progressionEditProfileDraft.exp} onChange={(e) => setProgressionDraftField("exp", Number(e.target.value))} />
                         <input className="ai-input" type="number" value={progressionEditProfileDraft.nextLevelExp} onChange={(e) => setProgressionDraftField("nextLevelExp", Number(e.target.value))} placeholder="Next EXP" />
@@ -7768,7 +7882,7 @@ function EditorContent() {
                       .filter(fieldName => !["Affiliation", "Bloodline", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
                       .map(fieldName => (
                         <div className="progression-profile-edit-card" key={fieldName}>
-                          <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><X size={12} /></button>
+                          <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><Trash2 size={12} /></button>
                           <span>{fieldName}</span>
                           <input
                             className="ai-input"
@@ -7815,7 +7929,7 @@ function EditorContent() {
                         const fields = templateCard.fields.length > 0 ? templateCard.fields : [templateCard.label]
                         return (
                           <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
-                            <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><X size={12} /></button>
+                            <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><Trash2 size={12} /></button>
                             <span>{templateCard.label}</span>
                             <div className="progression-template-value-fields">
                               {fields.map(fieldName => (
@@ -7845,7 +7959,7 @@ function EditorContent() {
                   <div className="progression-ability-card-editor-list">
                     {progressionEditProfileDraft.abilities.map(ability => (
                       <div className="progression-ability-edit-card" key={ability.id}>
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftAbility(ability.id)} title="Remove ability"><X size={12} /></button>
+                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftAbility(ability.id)} title="Remove ability"><Trash2 size={12} /></button>
                         <input className="ai-input" value={ability.name} onChange={(e) => setProgressionDraftAbility(ability.id, { name: e.target.value })} placeholder="Ability name" />
                         <input className="ai-input" value={ability.rank || `Level ${ability.level}`} onChange={(e) => setProgressionDraftAbility(ability.id, { rank: e.target.value, level: Number(e.target.value.replace(/\D/g, "")) || ability.level || 1 })} placeholder="Rank or level" />
                         <textarea className="ai-textarea compact" value={ability.description} onChange={(e) => setProgressionDraftAbility(ability.id, { description: e.target.value })} placeholder="Short description" />
@@ -7918,18 +8032,41 @@ function EditorContent() {
               </div>
               <div className="progression-template-modal-body">
                 <div className="progression-template-tool-row">
-                  <span>EXP</span>
-                  <span>HP / Mana / Qi</span>
-                  <span>Realm / Rank</span>
-                  <span>Level Up</span>
-                  <span>Stats</span>
-                  <span>Abilities</span>
+                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
+                    .filter(card => card.enabled)
+                    .map(card => (
+                      <span key={card.id}>{card.label}</span>
+                    ))}
                   <button
                     className="btn-ai-sub btn-ai-secondary"
                     onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
                   >
                     <RotateCcw size={12} />
                     Load Simple Template
+                  </button>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary danger-text"
+                    onClick={() => {
+                      const confirmed = window.confirm("Are you sure you want to clear all template cards? This will reset your status screen layout.");
+                      if (confirmed) {
+                        setProgressionTemplateCards(() => []);
+                      }
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    Clear Template
+                  </button>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary danger-text"
+                    onClick={() => {
+                      const confirmed = window.confirm("Are you sure you want to delete the entire template? This will completely clear all realms, stats, custom fields, and reset the template to a blank slate.");
+                      if (confirmed) {
+                        deleteEntireTemplate();
+                      }
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    Delete Entire Template
                   </button>
                 </div>
                 <div className="progression-theme-library">
@@ -7981,6 +8118,32 @@ function EditorContent() {
                       onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
                     >
                       📄 Simple Baseline
+                    </button>
+                  </div>
+                </div>
+                <div className="progression-theme-library" style={{ marginTop: "1rem" }}>
+                  <div className="progression-template-header">
+                    <div>
+                      <strong>Import / Export Template</strong>
+                      <span>Share your progression status card layout across novels.</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                    <button
+                      type="button"
+                      className="btn-ai-sub btn-ai-secondary"
+                      onClick={copyProgressionTemplateToClipboard}
+                    >
+                      <Copy size={12} />
+                      Copy Template settings
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ai-sub btn-ai-secondary"
+                      onClick={pasteProgressionTemplateFromClipboard}
+                    >
+                      <Clipboard size={12} />
+                      Paste & Import Template
                     </button>
                   </div>
                 </div>
@@ -8092,9 +8255,9 @@ function EditorContent() {
                   )}
                 </div>
                 <div className="progression-template-builder-list">
-                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(templateCard => templateCard.enabled).map(templateCard => (
+                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
                     <div
-                      className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""}`}
+                      className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""} ${!templateCard.enabled ? "disabled-card" : ""}`}
                       key={templateCard.id}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => {
@@ -8184,7 +8347,7 @@ function EditorContent() {
                               onClick={() => removeProgressionTemplateField(templateCard.id, fieldIndex)}
                               title="Remove field"
                             >
-                              <X size={12} />
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         ))}
@@ -11718,6 +11881,13 @@ function EditorContent() {
           opacity: 0.58;
           outline: 2px dashed color-mix(in srgb, var(--card-accent) 70%, white);
           outline-offset: 3px;
+        }
+
+        .progression-template-builder-card.disabled-card {
+          opacity: 0.5;
+          filter: grayscale(40%);
+          border: 1px dashed color-mix(in srgb, var(--card-accent) 24%, transparent);
+          background: linear-gradient(145deg, color-mix(in srgb, var(--card-accent) 4%, transparent), rgba(255, 255, 255, 0.01));
         }
 
         .progression-template-drag-handle {
