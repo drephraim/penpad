@@ -275,6 +275,7 @@ const DEFAULT_PROGRESSION_STATS: Record<ProgressionStatKey, number> = {
   sense: 1,
   mana: 0
 }
+const PROGRESSION_AI_CHAPTER_CHAR_LIMIT = 60000
 const PROGRESSION_CARD_COLORS = ["rose", "violet", "cyan", "amber", "emerald", "blue", "fuchsia", "lime"]
 const RANKED_PROGRESSION_RANK_WORDS = ["rank", "ranks", "grade", "grades", "tier", "tiers", "quality", "qualities"]
 const DIRECT_PROGRESSION_TEMPLATE_KEYS = new Set([
@@ -326,6 +327,8 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "bloodline grade": "Bloodline Rank",
   "bloodline quality": "Bloodline Rank",
   "bloodline tier": "Bloodline Rank",
+  "main bloodline": "Bloodline",
+  "bloodline name/rank": "Bloodline",
   affinity: "Affinity Names",
   affinities: "Affinity Names",
   "affinity name": "Affinity Names",
@@ -344,10 +347,13 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "elemental affinity grade": "Affinity Rank",
   "spirit affinity rank": "Affinity Rank",
   "spirit affinity grade": "Affinity Rank",
+  "affinity name/rank": "Affinity Names",
   "secondary class": "Secondary Class",
   "second class": "Secondary Class",
   subclass: "Secondary Class",
   "sub class": "Secondary Class",
+  "secondary job": "Secondary Class",
+  "second job": "Secondary Class",
   race: "Race",
   affiliation: "Affiliation"
 }
@@ -437,12 +443,44 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   notes: "Simple character progression tracks Name, Title, Bloodline, Bloodline Rank, Affinities, Class, Skills, Lore, Race, and Affiliation."
 }
 
+const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string): string => {
+  if (value === null || value === undefined) return ""
+  if (Array.isArray(value)) {
+    const formatted = value.map(item => {
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>
+        const name = String(record.name || record.affinity || record.value || record.title || "").trim()
+        const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
+        if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
+        if (canonicalKey === "Affinity Names" && name) return name
+        if (name && rank) return `${name} (${rank})`
+        return name || rank || ""
+      }
+      return String(item || "").trim()
+    }).filter(Boolean)
+    return formatted.join(", ")
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>
+    const name = String(record.name || record.affinity || record.value || record.title || "").trim()
+    const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
+    if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
+    if (canonicalKey === "Affinity Names" && name) return name
+    if (name && rank) return `${name} (${rank})`
+    return Object.entries(record)
+      .map(([key, item]) => `${key}: ${String(item || "").trim()}`)
+      .filter(item => !item.endsWith(":"))
+      .join(", ")
+  }
+  return String(value || "").trim()
+}
+
 const sanitizeSimpleProgressionCustomFields = (fields?: Record<string, unknown>) => {
   const cleaned: Record<string, string> = {}
   Object.entries(fields || {}).forEach(([key, value]) => {
     const canonicalKey = SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES[key.trim().toLowerCase()]
     if (!canonicalKey) return
-    const cleanValue = String(value || "").trim()
+    const cleanValue = formatSimpleProgressionFieldValue(value, canonicalKey)
     if (cleanValue || !cleaned[canonicalKey]) {
       cleaned[canonicalKey] = cleanValue
     }
@@ -1746,12 +1784,18 @@ function EditorContent() {
 
     if (aliases.length === 0 || !chapterContent.trim()) return ""
 
-    const lines = chapterContent.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const lineSegments = chapterContent.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const sentenceSegments = chapterContent
+      .replace(/([.!?。！？])/g, "$1\n")
+      .split(/\n+/)
+      .map(line => line.trim())
+      .filter(Boolean)
+    const lines = lineSegments.length >= 5 ? lineSegments : sentenceSegments
     const matchedIndexes = new Set<number>()
     lines.forEach((line, index) => {
       const cleanLine = normalizeProgressionLookupText(line)
       if (aliases.some(alias => cleanLine.includes(alias))) {
-        for (let offset = -2; offset <= 3; offset += 1) {
+        for (let offset = -4; offset <= 6; offset += 1) {
           const nearbyIndex = index + offset
           if (nearbyIndex >= 0 && nearbyIndex < lines.length) {
             matchedIndexes.add(nearbyIndex)
@@ -1764,7 +1808,7 @@ function EditorContent() {
       .sort((a, b) => a - b)
       .map(index => lines[index])
 
-    return evidenceLines.join("\n").slice(0, 8000)
+    return evidenceLines.join("\n").slice(0, 18000)
   }
 
   const getProgressionTemplateCardId = useCallback((label: string) => {
@@ -2365,8 +2409,14 @@ function EditorContent() {
     now: number
   ): CharacterProgressionProfile => {
     const sharedTemplate = progressionSystem.profileTemplate?.enabled ? progressionSystem.profileTemplate : DEFAULT_PROFILE_TEMPLATE
+    const aiCustomFields = aiProfile?.customFields && typeof aiProfile.customFields === "object" ? aiProfile.customFields as Record<string, unknown> : {}
+    const rawSkillFallback = aiCustomFields.Skills || aiCustomFields.Skill || aiCustomFields.Techniques || aiCustomFields.Abilities
     const rawAbilities = Array.isArray(aiProfile?.abilities)
       ? aiProfile?.abilities || []
+      : Array.isArray(rawSkillFallback)
+      ? rawSkillFallback as unknown[]
+      : typeof rawSkillFallback === "string" && rawSkillFallback.trim()
+      ? rawSkillFallback.split(/[,;\n]+/).map(item => item.trim()).filter(Boolean)
       : existingProfile?.abilities || sharedTemplate.defaultAbilities || []
     const abilities = rawAbilities.map((abilityItem, index) => {
       const ability = typeof abilityItem === "object" && abilityItem !== null
@@ -2385,13 +2435,21 @@ function EditorContent() {
       ...(existingProfile?.customFields || {}),
       ...(aiProfile?.customFields || {})
     })
+    const inferredClassName = String(
+      aiProfile?.className ||
+      aiCustomFields["Main Class"] ||
+      aiCustomFields.mainClass ||
+      aiCustomFields.Class ||
+      aiCustomFields.class ||
+      ""
+    ).trim()
 
     return {
       id: existingProfile?.id || crypto.randomUUID(),
       loreEntryId: sourceEntry.id,
       name: aiProfile?.name || existingProfile?.name || sourceEntry.name,
       title: aiProfile?.title || existingProfile?.title || "",
-      className: aiProfile?.className || existingProfile?.className || sharedTemplate.defaultClassName || "",
+      className: inferredClassName || existingProfile?.className || sharedTemplate.defaultClassName || "",
       rank: aiProfile?.rank || existingProfile?.rank || sharedTemplate.defaultRank || "",
       nicknames: Array.isArray(aiProfile?.nicknames) ? aiProfile.nicknames : existingProfile?.nicknames || [],
       uniqueTrait: aiProfile?.uniqueTrait || existingProfile?.uniqueTrait || "",
@@ -2549,7 +2607,7 @@ function EditorContent() {
       const chapterNumber = getNoteChapterNumber(activeNote)
       const selectedTextForAi = sourceEntry && highlightedEntry?.id !== sourceEntry.id ? "" : selectedText
       const targetEvidence = sourceEntry ? buildProgressionTargetEvidence(sourceEntry, activeNote.content, selectedTextForAi) : ""
-      const chapterContentForAi = activeNote.content.slice(0, 22000)
+      const chapterContentForAi = activeNote.content.slice(0, PROGRESSION_AI_CHAPTER_CHAR_LIMIT)
       const candidateProfilesForAi = sourceEntry
         ? progressionProfiles
           .filter(profile => profile.loreEntryId === sourceEntry.id)
@@ -2709,7 +2767,8 @@ function EditorContent() {
     note: Note
   ): Promise<CharacterProgressionProfile> => {
     const chapterNumber = getNoteChapterNumber(note)
-    const chapterContentForAi = note.content.slice(0, 22000)
+    const chapterContentForAi = note.content.slice(0, PROGRESSION_AI_CHAPTER_CHAR_LIMIT)
+    const targetEvidence = buildProgressionTargetEvidence(entry, note.content, "")
     const candidateProfilesForAi = [{
       id: profile.id,
       loreEntryId: profile.loreEntryId,
@@ -2750,7 +2809,7 @@ function EditorContent() {
           title: note.title,
           chapterNumber,
           content: chapterContentForAi,
-          targetEvidence: ""
+          targetEvidence
         },
         progressionSystem,
         existingProfile: profile,
