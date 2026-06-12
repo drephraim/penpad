@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useAuth } from "@/components/Providers"
@@ -187,6 +188,9 @@ interface ProgressionSystemSettings {
   customFields: string[]
   profileTemplate: ProgressionProfileTemplate
   notes: string
+  useCustomJsonTemplate?: boolean
+  customJsonTemplate?: string
+  jsonCardOrder?: string[]
   updatedAt?: number
 }
 
@@ -207,6 +211,8 @@ interface ProgressionHistoryEntry {
   abilityChanges: string[]
   rewards: string[]
   evidence: string[]
+  customJsonDataBefore?: Record<string, any>
+  customJsonDataAfter?: Record<string, any>
 }
 
 interface CharacterProgressionProfile {
@@ -228,6 +234,7 @@ interface CharacterProgressionProfile {
   abilities: ProgressionAbility[]
   traits: string[]
   customFields?: Record<string, string>
+  customJsonData?: Record<string, any>
   notes: string
   processedChapterIds: string[]
   history: ProgressionHistoryEntry[]
@@ -379,6 +386,21 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
   customFields: ["Race", "Affiliation"],
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
+  useCustomJsonTemplate: true,
+  customJsonTemplate: JSON.stringify({
+    "title": "Mortal",
+    "cultivation": {
+      "realm": "Body Tempering",
+      "stage": "Low"
+    },
+    "class": "None",
+    "race": "Human",
+    "weapon": "Iron Sword",
+    "skills": ["Slash"],
+    "affiliation": "Seven Stars Sect",
+    "relations": []
+  }, null, 2),
+  jsonCardOrder: ["title", "cultivation", "class", "race", "weapon", "skills", "affiliation", "relations"],
   notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
 }
 
@@ -949,6 +971,8 @@ function EditorContent() {
   const [progressionLoading, setProgressionLoading] = useState(false)
   const [progressionError, setProgressionError] = useState("")
   const [progressionNotice, setProgressionNotice] = useState("")
+  const [characterProfileSubTab, setCharacterProfileSubTab] = useState<'cards' | 'json'>('cards')
+  const [characterJsonText, setCharacterJsonText] = useState("")
   const [isProgressionEditMode, setIsProgressionEditMode] = useState(false)
   const [progressionEditProfileDraft, setProgressionEditProfileDraft] = useState<CharacterProgressionProfile | null>(null)
   const [progressionNewFieldName, setProgressionNewFieldName] = useState("")
@@ -1254,6 +1278,104 @@ function EditorContent() {
     ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId) || null
     : null
 
+  useEffect(() => {
+    if (selectedProgressionProfile) {
+      setCharacterJsonText(JSON.stringify(selectedProgressionProfile.customJsonData || {}, null, 2))
+    } else {
+      setCharacterJsonText("")
+    }
+  }, [selectedProgressionProfileId, selectedProgressionProfile])
+
+  const getNumericKeysOfJson = useCallback((obj: any, prefix = ""): string[] => {
+    if (!obj || typeof obj !== "object") return []
+    let keys: string[] = []
+    Object.keys(obj).forEach(k => {
+      const val = obj[k]
+      const path = prefix ? `${prefix}.${k}` : k
+      if (typeof val === "number") {
+        keys.push(path)
+      } else if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+        keys = [...keys, ...getNumericKeysOfJson(val, path)]
+      }
+    })
+    return keys
+  }, [])
+
+  useEffect(() => {
+    if (progressionSystem.useCustomJsonTemplate && selectedProgressionProfile) {
+      const keys = getNumericKeysOfJson(selectedProgressionProfile.customJsonData || {})
+      if (keys.length > 0 && !keys.includes(selectedGraphStat)) {
+        setSelectedGraphStat(keys[0])
+      }
+    }
+  }, [progressionSystem.useCustomJsonTemplate, selectedProgressionProfileId, selectedProgressionProfile, getNumericKeysOfJson, selectedGraphStat])
+
+  const getValueByPath = useCallback((obj: any, path: string): number => {
+    const parts = path.split(".")
+    let curr = obj
+    for (const part of parts) {
+      if (curr && typeof curr === "object" && part in curr) {
+        curr = curr[part]
+      } else {
+        return 0
+      }
+    }
+    return typeof curr === "number" ? curr : 0
+  }, [])
+
+  const saveCharacterJsonData = () => {
+    if (!selectedProgressionProfile) return
+    try {
+      const parsed = JSON.parse(characterJsonText)
+      if (parsed === null || typeof parsed !== "object") {
+        throw new Error("Value must be a JSON object")
+      }
+      updateProgressionProfile(selectedProgressionProfile.id, (p) => ({
+        ...p,
+        customJsonData: parsed,
+        updatedAt: Date.now()
+      }))
+      setProgressionNotice("Character JSON status updated!")
+      setCharacterProfileSubTab('cards')
+    } catch (err) {
+      alert(`JSON Error: ${(err as Error).message}`)
+    }
+  }
+
+
+  const renderCustomJsonValue = (val: any): React.ReactNode => {
+    if (val === null || val === undefined) {
+      return <span style={{ color: "var(--text-dim)", fontSize: "0.75rem", fontStyle: "italic" }}>Empty</span>
+    }
+    if (Array.isArray(val)) {
+      if (val.length === 0) return <span style={{ color: "var(--text-dim)", fontSize: "0.75rem", fontStyle: "italic" }}>No entries</span>
+      return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.35rem" }}>
+          {val.map((item, idx) => (
+            <span key={idx} className="badge-skill-tag" style={{ background: "rgba(99, 102, 241, 0.12)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.25)", borderRadius: "4px", padding: "0.15rem 0.4rem", fontSize: "0.75rem" }}>
+              {typeof item === "object" ? JSON.stringify(item) : String(item)}
+            </span>
+          ))}
+        </div>
+      )
+    }
+    if (typeof val === "object") {
+      const subKeys = Object.keys(val)
+      if (subKeys.length === 0) return <span style={{ color: "var(--text-dim)", fontSize: "0.75rem", fontStyle: "italic" }}>Empty object</span>
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.35rem" }}>
+          {subKeys.map(subKey => (
+            <div key={subKey} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", borderBottom: "1px solid rgba(255, 255, 255, 0.03)", paddingBottom: "0.15rem" }}>
+              <span style={{ color: "var(--text-dim)", textTransform: "capitalize" }}>{subKey}:</span>
+              <strong style={{ color: "var(--text-primary)" }}>{typeof val[subKey] === "object" ? JSON.stringify(val[subKey]) : String(val[subKey])}</strong>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    return <strong style={{ fontSize: "0.9rem", color: "var(--text-primary)", display: "block", marginTop: "0.2rem" }}>{String(val)}</strong>
+  }
+
   const formatProgressionStatLabel = useCallback((key: string) => {
     return key
       .replace(/([A-Z])/g, " $1")
@@ -1276,6 +1398,34 @@ function EditorContent() {
     if (!selectedProgressionProfile) return []
     const history = [...selectedProgressionProfile.history].sort((a, b) => (a.appliedAt || 0) - (b.appliedAt || 0))
     
+    if (progressionSystem.useCustomJsonTemplate) {
+      const points: { chapterNumber: number; chapterTitle: string; value: number; label: string }[] = []
+      
+      for (let i = history.length - 1; i >= 0; i--) {
+        const entry = history[i]
+        const val = getValueByPath(entry.customJsonDataAfter || {}, selectedGraphStat)
+        points.unshift({
+          chapterNumber: entry.chapterNumber || 0,
+          chapterTitle: entry.chapterTitle || "Untitled",
+          value: val,
+          label: `${selectedGraphStat.split('.').pop()}: ${val}`
+        })
+      }
+      
+      if (history.length > 0) {
+        const firstEntry = history[0]
+        const val = getValueByPath(firstEntry.customJsonDataBefore || {}, selectedGraphStat)
+        points.unshift({
+          chapterNumber: Math.max(0, (firstEntry.chapterNumber || 1) - 1),
+          chapterTitle: "Before updates",
+          value: val,
+          label: `${selectedGraphStat.split('.').pop()}: ${val}`
+        })
+      }
+      
+      return points
+    }
+
     let currentVal = 0
     if (selectedGraphStat === "level") {
       currentVal = selectedProgressionProfile.level || 0
@@ -1338,7 +1488,7 @@ function EditorContent() {
     }
     
     return points
-  }, [selectedProgressionProfile, selectedGraphStat, getCultivationValue, formatProgressionStatLabel])
+  }, [selectedProgressionProfile, selectedGraphStat, getCultivationValue, formatProgressionStatLabel, progressionSystem.useCustomJsonTemplate, getValueByPath])
 
   const diffLines = useMemo(() => {
     if (!activeNote || !selectedVersionForDiff) return { oldLines: [], newLines: [] }
@@ -2200,6 +2350,18 @@ function EditorContent() {
         ...(aiProfile?.customFields || {})
       },
       notes: aiProfile?.notes || existingProfile?.notes || sharedTemplate.notes || "",
+      customJsonData: {
+        ...(() => {
+          if (progressionSystem.useCustomJsonTemplate && progressionSystem.customJsonTemplate) {
+            try {
+              return JSON.parse(progressionSystem.customJsonTemplate)
+            } catch {}
+          }
+          return {}
+        })(),
+        ...(existingProfile?.customJsonData || {}),
+        ...(aiProfile?.customJsonData || {})
+      },
       processedChapterIds: Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId])),
       history: [
         historyEntry,
@@ -2445,7 +2607,9 @@ function EditorContent() {
         statChanges: aiUpdate.statChanges || {},
         abilityChanges: Array.isArray(aiUpdate.abilityChanges) ? aiUpdate.abilityChanges : [],
         rewards: Array.isArray(aiUpdate.rewards) ? aiUpdate.rewards : [],
-        evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : []
+        evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : [],
+        customJsonDataBefore: finalExistingProfile?.customJsonData || {},
+        customJsonDataAfter: progression.profile?.customJsonData || {}
       }
       const nextProfile = normalizeProgressionProfile(finalSourceEntry, progression.profile, finalExistingProfile, historyEntry, now)
       const nextProfiles = finalExistingProfile
@@ -2542,7 +2706,9 @@ function EditorContent() {
       statChanges: aiUpdate.statChanges || {},
       abilityChanges: Array.isArray(aiUpdate.abilityChanges) ? aiUpdate.abilityChanges : [],
       rewards: Array.isArray(aiUpdate.rewards) ? aiUpdate.rewards : [],
-      evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : []
+      evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : [],
+      customJsonDataBefore: profile.customJsonData || {},
+      customJsonDataAfter: progression.profile?.customJsonData || {}
     }
 
     return normalizeProgressionProfile(entry, progression.profile, profile, historyEntry, now)
@@ -3267,6 +3433,9 @@ function EditorContent() {
         : DEFAULT_PROGRESSION_SYSTEM.customFields,
       profileTemplate: normalizedTemplate,
       notes: settings?.notes || DEFAULT_PROGRESSION_SYSTEM.notes,
+      useCustomJsonTemplate: settings?.useCustomJsonTemplate ?? DEFAULT_PROGRESSION_SYSTEM.useCustomJsonTemplate,
+      customJsonTemplate: settings?.customJsonTemplate || DEFAULT_PROGRESSION_SYSTEM.customJsonTemplate,
+      jsonCardOrder: settings?.jsonCardOrder || DEFAULT_PROGRESSION_SYSTEM.jsonCardOrder,
       showLevels: settings?.showLevels !== false,
       showExp: settings?.showExp !== false,
       showStats: settings?.showStats !== false
@@ -3280,6 +3449,45 @@ function EditorContent() {
     localStorage.setItem(key, JSON.stringify(normalized))
     setProgressionSystem(normalized)
   }, [getProgressionSystemStorageKey, normalizeProgressionSystem])
+
+  const moveJsonCard = useCallback((key: string, direction: 'up' | 'down') => {
+    const currentOrder = progressionSystem.jsonCardOrder || []
+    const nextOrder = [...currentOrder]
+    
+    let templateKeys: string[] = []
+    if (progressionSystem.customJsonTemplate) {
+      try {
+        const parsed = JSON.parse(progressionSystem.customJsonTemplate)
+        if (parsed && typeof parsed === "object") {
+          templateKeys = Object.keys(parsed)
+        }
+      } catch {}
+    }
+    
+    templateKeys.forEach(k => {
+      if (!nextOrder.includes(k)) {
+        nextOrder.push(k)
+      }
+    })
+    
+    const index = nextOrder.indexOf(key)
+    if (index === -1) return
+    
+    if (direction === 'up' && index > 0) {
+      const temp = nextOrder[index]
+      nextOrder[index] = nextOrder[index - 1]
+      nextOrder[index - 1] = temp
+    } else if (direction === 'down' && index < nextOrder.length - 1) {
+      const temp = nextOrder[index]
+      nextOrder[index] = nextOrder[index + 1]
+      nextOrder[index + 1] = temp
+    }
+    
+    persistProgressionSystem({
+      ...progressionSystem,
+      jsonCardOrder: nextOrder
+    })
+  }, [progressionSystem, persistProgressionSystem])
 
   const fetchProgressionSystem = useCallback(() => {
     if (!projectId) return
@@ -6453,94 +6661,225 @@ ${navPoints}  </navMap>
                         <strong>{selectedProgressionProfile.stage || (progressionSystem.showLevels ? `Level ${selectedProgressionProfile.level}` : selectedProgressionProfile.rank || "")}</strong>
                       </div>
 
-                      <div className="progression-showcase-grid">
-                        {getProgressionTemplateCardsForProfile(selectedProgressionProfile).map((templateCard, cardIndex) => {
-                          const cardValue = getProgressionTemplateCardValue(selectedProgressionProfile, templateCard)
-                          const cardFields = getProgressionTemplateCardFields(selectedProgressionProfile, templateCard)
-                          const ratio = templateCard.type === "progress" || templateCard.type === "resource"
-                            ? parseProgressionRatio(cardValue)
-                            : null
-                          const progressPercent = ratio ? Math.max(0, Math.min(100, Math.round((ratio.current / ratio.max) * 100))) : 0
+                      {progressionSystem.useCustomJsonTemplate && (
+                        <div className="json-subtabs" style={{ display: "flex", gap: "0.5rem", padding: "0.25rem 0.5rem", background: "rgba(255, 255, 255, 0.03)", borderRadius: "var(--radius-md)", marginBottom: "1rem" }}>
+                          <button
+                            type="button"
+                            className={`json-subtab-btn ${characterProfileSubTab === 'cards' ? 'active' : ''}`}
+                            onClick={() => setCharacterProfileSubTab('cards')}
+                            style={{
+                              flex: 1,
+                              padding: "0.3rem",
+                              borderRadius: "4px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              background: characterProfileSubTab === 'cards' ? 'var(--indigo-600)' : 'transparent',
+                              color: characterProfileSubTab === 'cards' ? '#fff' : 'var(--text-dim)',
+                              transition: "all 0.15s ease"
+                            }}
+                          >
+                            Status Cards
+                          </button>
+                          <button
+                            type="button"
+                            className={`json-subtab-btn ${characterProfileSubTab === 'json' ? 'active' : ''}`}
+                            onClick={() => {
+                              setCharacterProfileSubTab('json')
+                              setCharacterJsonText(JSON.stringify(selectedProgressionProfile.customJsonData || {}, null, 2))
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "0.3rem",
+                              borderRadius: "4px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              background: characterProfileSubTab === 'json' ? 'var(--indigo-600)' : 'transparent',
+                              color: characterProfileSubTab === 'json' ? '#fff' : 'var(--text-dim)',
+                              transition: "all 0.15s ease"
+                            }}
+                          >
+                            JSON Editor
+                          </button>
+                        </div>
+                      )}
 
-                          if (templateCard.type === "ability") {
-                            return (
-                              <div key={templateCard.id} className={`progression-template-display-card wide color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
-                                <span>{templateCard.label}</span>
-                                <div className="progression-template-ability-list">
-                                  {selectedProgressionProfile.abilities.length === 0 ? (
-                                    <p>No abilities tracked yet.</p>
-                                  ) : selectedProgressionProfile.abilities.map(ability => (
-                                    <div key={ability.id}>
-                                      <strong>{ability.name}</strong>
-                                      <em>{ability.rank || `Lv ${ability.level}`}</em>
-                                      <p>{ability.description}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )
-                          }
-
-                          const isAffinityCard = templateCard.label.toLowerCase() === "affinity" || templateCard.sourceKey.toLowerCase() === "affinity";
-                          const namesField = cardFields.find(f => f.label === "Affinity Names");
-                          const rankField = cardFields.find(f => f.label === "Rank");
-                          const namesVal = (namesField && namesField.value) ? String(namesField.value) : "";
-                          const rankVal = (rankField && rankField.value) ? String(rankField.value) : "";
-                          const affinitiesList = isAffinityCard ? getAffinitiesList(namesVal, rankVal) : [];
-
-                          if (isAffinityCard && affinitiesList.length > 0) {
-                            return (
-                              <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
-                                <span>{templateCard.label}</span>
-                                <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
-                                  {affinitiesList.map((aff, affIdx) => (
-                                    <div className="progression-template-field-list" key={affIdx}>
-                                      <div>
-                                        <small>Affinity</small>
-                                        <strong>{aff.name}</strong>
-                                      </div>
-                                      <div>
-                                        <small>Rank</small>
-                                        <strong>{aff.rank}</strong>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                                {ratio && (
-                                  <div className="progression-template-progress">
-                                    <div><i style={{ width: `${progressPercent}%` }} /></div>
-                                    <small>{progressPercent}%</small>
+                      {progressionSystem.useCustomJsonTemplate && characterProfileSubTab === 'json' ? (
+                        <div className="json-profile-raw-editor" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "1.2rem" }}>
+                          <textarea
+                            className="ai-textarea font-mono text-xs scrollbar"
+                            value={characterJsonText}
+                            onChange={(e) => setCharacterJsonText(e.target.value)}
+                            placeholder="{}"
+                            rows={15}
+                            style={{ width: "100%", padding: "0.6rem", background: "rgba(0,0,0,0.2)", border: "1px solid var(--surface-border)", borderRadius: "var(--radius-sm)", color: "#fff" }}
+                          />
+                          <button
+                            type="button"
+                            className="btn-ai-sub btn-ai-primary"
+                            onClick={saveCharacterJsonData}
+                            style={{ alignSelf: "flex-end" }}
+                          >
+                            Save JSON Status
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="progression-showcase-grid">
+                          {progressionSystem.useCustomJsonTemplate ? (
+                            (() => {
+                              const customJsonData = selectedProgressionProfile.customJsonData || {}
+                              const templateKeys = Object.keys(customJsonData)
+                              const cardOrder = progressionSystem.jsonCardOrder || []
+                              
+                              const sortedKeys = [...templateKeys].sort((a, b) => {
+                                const aIdx = cardOrder.indexOf(a)
+                                const bIdx = cardOrder.indexOf(b)
+                                if (aIdx === -1 && bIdx === -1) return 0
+                                if (aIdx === -1) return 1
+                                if (bIdx === -1) return -1
+                                return aIdx - bIdx
+                              })
+                              
+                              if (sortedKeys.length === 0) {
+                                return (
+                                  <div className="progression-growth-empty" style={{ gridColumn: "span 2" }}>
+                                    <p>No JSON data defined yet.</p>
+                                    <small>Switch to JSON Editor tab to define the status attributes or run Profile Update.</small>
                                   </div>
-                                )}
-                              </div>
-                            )
-                          }
-
-                          return (
-                            <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
-                              <span>{templateCard.label}</span>
-                              {templateCard.fields.length > 1 || templateCard.type === "compound" || templateCard.type === "stat" || templateCard.type === "rank" ? (
-                                <div className="progression-template-field-list">
-                                  {cardFields.map(field => (
-                                    <div key={field.label}>
-                                      <small>{field.label}</small>
-                                      <strong>{typeof field.value === "object" ? JSON.stringify(field.value) : (field.value || "Not set")}</strong>
+                                )
+                              }
+                              
+                              return sortedKeys.map((key, index) => {
+                                const value = customJsonData[key]
+                                const colorClass = getProgressionCardColor(index, "compound")
+                                
+                                return (
+                                  <div key={key} className={`progression-template-display-card color-${colorClass}`} style={{ position: "relative" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                                      <span style={{ textTransform: "uppercase", fontSize: "0.7rem", fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>{key}</span>
+                                      <div style={{ display: "flex", gap: "2px" }}>
+                                        <button
+                                          type="button"
+                                          className="btn-icon-mini"
+                                          onClick={() => moveJsonCard(key, 'up')}
+                                          disabled={index === 0}
+                                          style={{ background: "transparent", border: "none", color: "var(--text-dim)", padding: "1px", cursor: index === 0 ? "not-allowed" : "pointer" }}
+                                          title="Move Up"
+                                        >
+                                          <ChevronDown size={12} style={{ transform: "rotate(180deg)" }} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn-icon-mini"
+                                          onClick={() => moveJsonCard(key, 'down')}
+                                          disabled={index === sortedKeys.length - 1}
+                                          style={{ background: "transparent", border: "none", color: "var(--text-dim)", padding: "1px", cursor: index === sortedKeys.length - 1 ? "not-allowed" : "pointer" }}
+                                          title="Move Down"
+                                        >
+                                          <ChevronDown size={12} />
+                                        </button>
+                                      </div>
                                     </div>
-                                  ))}
+                                    <div className="json-card-body">
+                                      {renderCustomJsonValue(value)}
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            })()
+                          ) : (
+                            getProgressionTemplateCardsForProfile(selectedProgressionProfile).map((templateCard, cardIndex) => {
+                              const cardValue = getProgressionTemplateCardValue(selectedProgressionProfile, templateCard)
+                              const cardFields = getProgressionTemplateCardFields(selectedProgressionProfile, templateCard)
+                              const ratio = templateCard.type === "progress" || templateCard.type === "resource"
+                                ? parseProgressionRatio(cardValue)
+                                : null
+                              const progressPercent = ratio ? Math.max(0, Math.min(100, Math.round((ratio.current / ratio.max) * 100))) : 0
+
+                              if (templateCard.type === "ability") {
+                                return (
+                                  <div key={templateCard.id} className={`progression-template-display-card wide color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                                    <span>{templateCard.label}</span>
+                                    <div className="progression-template-ability-list">
+                                      {selectedProgressionProfile.abilities.length === 0 ? (
+                                        <p>No abilities tracked yet.</p>
+                                      ) : selectedProgressionProfile.abilities.map(ability => (
+                                        <div key={ability.id}>
+                                          <strong>{ability.name}</strong>
+                                          <em>{ability.rank || `Lv ${ability.level}`}</em>
+                                          <p>{ability.description}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              }
+
+                              const isAffinityCard = templateCard.label.toLowerCase() === "affinity" || templateCard.sourceKey.toLowerCase() === "affinity";
+                              const namesField = cardFields.find(f => f.label === "Affinity Names");
+                              const rankField = cardFields.find(f => f.label === "Rank");
+                              const namesVal = (namesField && namesField.value) ? String(namesField.value) : "";
+                              const rankVal = (rankField && rankField.value) ? String(rankField.value) : "";
+                              const affinitiesList = isAffinityCard ? getAffinitiesList(namesVal, rankVal) : [];
+
+                              if (isAffinityCard && affinitiesList.length > 0) {
+                                return (
+                                  <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                                    <span>{templateCard.label}</span>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                                      {affinitiesList.map((aff, affIdx) => (
+                                        <div className="progression-template-field-list" key={affIdx}>
+                                          <div>
+                                            <small>Affinity</small>
+                                            <strong>{aff.name}</strong>
+                                          </div>
+                                          <div>
+                                            <small>Rank</small>
+                                            <strong>{aff.rank}</strong>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {ratio && (
+                                      <div className="progression-template-progress">
+                                        <div><i style={{ width: `${progressPercent}%` }} /></div>
+                                        <small>{progressPercent}%</small>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              }
+
+                              return (
+                                <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                                  <span>{templateCard.label}</span>
+                                  {templateCard.fields.length > 1 || templateCard.type === "compound" || templateCard.type === "stat" || templateCard.type === "rank" ? (
+                                    <div className="progression-template-field-list">
+                                      {cardFields.map(field => (
+                                        <div key={field.label}>
+                                          <small>{field.label}</small>
+                                          <strong>{typeof field.value === "object" ? JSON.stringify(field.value) : (field.value || "Not set")}</strong>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <strong>{typeof cardValue === "object" ? JSON.stringify(cardValue) : (cardValue || "Not set")}</strong>
+                                  )}
+                                  {ratio && (
+                                    <div className="progression-template-progress">
+                                      <div><i style={{ width: `${progressPercent}%` }} /></div>
+                                      <small>{progressPercent}%</small>
+                                    </div>
+                                  )}
                                 </div>
-                              ) : (
-                                <strong>{typeof cardValue === "object" ? JSON.stringify(cardValue) : (cardValue || "Not set")}</strong>
-                              )}
-                              {ratio && (
-                                <div className="progression-template-progress">
-                                  <div><i style={{ width: `${progressPercent}%` }} /></div>
-                                  <small>{progressPercent}%</small>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="progression-profile-footer-actions">
@@ -6604,11 +6943,25 @@ ${navPoints}  </navMap>
                                 setHoveredGraphPoint(null)
                               }}
                             >
-                              <option value="level">Level</option>
-                              {progressionSystem.realms.length > 0 && <option value="cultivation">Cultivation Rank</option>}
-                              {progressionSystem.statKeys.map(key => (
-                                <option key={key} value={key}>{formatProgressionStatLabel(key)}</option>
-                              ))}
+                              {progressionSystem.useCustomJsonTemplate ? (
+                                (() => {
+                                  const numericKeys = getNumericKeysOfJson(selectedProgressionProfile?.customJsonData || {})
+                                  if (numericKeys.length === 0) {
+                                    return <option value="">No numeric attributes</option>
+                                  }
+                                  return numericKeys.map(key => (
+                                    <option key={key} value={key}>{key.replace(/\./g, " > ")}</option>
+                                  ))
+                                })()
+                              ) : (
+                                <>
+                                  <option value="level">Level</option>
+                                  {progressionSystem.realms.length > 0 && <option value="cultivation">Cultivation Rank</option>}
+                                  {progressionSystem.statKeys.map(key => (
+                                    <option key={key} value={key}>{formatProgressionStatLabel(key)}</option>
+                                  ))}
+                                </>
+                              )}
                             </select>
                           </div>
 
@@ -8738,372 +9091,481 @@ ${navPoints}  </navMap>
                 <p className="modal-description">Design the reusable status card for this novel. New and updated characters follow this shape.</p>
               </div>
               <div className="progression-template-modal-body">
-                <div className="progression-template-tool-row">
-                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
-                    .filter(card => card.enabled)
-                    .map(card => (
-                      <span key={card.id}>{card.label}</span>
-                    ))}
-                  <button
-                    className="btn-ai-sub btn-ai-secondary"
-                    onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                  >
-                    <RotateCcw size={12} />
-                    Load Simple Template
-                  </button>
-                  <button
-                    className="btn-ai-sub btn-ai-secondary danger-text"
-                    onClick={() => {
-                      const confirmed = window.confirm("Are you sure you want to clear all template cards? This will reset your status screen layout.");
-                      if (confirmed) {
-                        setProgressionTemplateCards(() => []);
-                      }
+                <div className="json-template-mode-toggle" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    id="useCustomJsonTemplate"
+                    checked={progressionSystem.useCustomJsonTemplate || false}
+                    onChange={(e) => {
+                      persistProgressionSystem({
+                        ...progressionSystem,
+                        useCustomJsonTemplate: e.target.checked
+                      })
                     }}
-                  >
-                    <Trash2 size={12} />
-                    Clear Template
-                  </button>
-                  <button
-                    className="btn-ai-sub btn-ai-secondary danger-text"
-                    onClick={() => {
-                      const confirmed = window.confirm("Are you sure you want to delete the entire template? This will completely clear all realms, stats, custom fields, and reset the template to a blank slate.");
-                      if (confirmed) {
-                        deleteEntireTemplate();
+                  />
+                  <label htmlFor="useCustomJsonTemplate" style={{ fontWeight: 800, fontSize: "0.85rem", cursor: "pointer", color: "var(--text-primary)" }}>
+                    Enable Custom JSON Template Mode (AI-optimized dynamic status cards)
+                  </label>
+                </div>
+
+                {progressionSystem.useCustomJsonTemplate ? (
+                  <div className="json-template-editor-section">
+                    <div className="progression-template-header" style={{ marginBottom: "0.5rem" }}>
+                      <div>
+                        <strong>Custom JSON Status Template</strong>
+                        <span>Define the JSON structure you want the AI to extract and update for characters. Must be valid JSON.</span>
+                      </div>
+                    </div>
+                    <textarea
+                      className="ai-textarea progression-json-template-textarea font-mono text-sm scrollbar"
+                      value={progressionSystem.customJsonTemplate || ""}
+                      onChange={(e) => {
+                        const nextVal = e.target.value
+                        let parsedKeys: string[] = []
+                        try {
+                          const parsed = JSON.parse(nextVal)
+                          if (parsed && typeof parsed === "object") {
+                            parsedKeys = Object.keys(parsed)
+                          }
+                        } catch {}
+                        persistProgressionSystem({
+                          ...progressionSystem,
+                          customJsonTemplate: nextVal,
+                          jsonCardOrder: parsedKeys.length > 0 ? parsedKeys : progressionSystem.jsonCardOrder
+                        })
+                      }}
+                      placeholder={`{\n  "class": "Warrior",\n  "cultivation": {\n    "realm": "Body Tempering"\n  }\n}`}
+                      rows={12}
+                      style={{ width: "100%", padding: "0.75rem", background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--surface-border)", borderRadius: "var(--radius-md)", color: "#fff" }}
+                    />
+                    {(() => {
+                      try {
+                        if (progressionSystem.customJsonTemplate) {
+                          const parsed = JSON.parse(progressionSystem.customJsonTemplate)
+                          const keys = Object.keys(parsed)
+                          return (
+                            <div className="json-validation-success" style={{ color: "#4ade80", fontSize: "0.75rem", marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "4px" }}>
+                              <Check size={12} />
+                              Valid JSON! Top-level keys: {keys.join(", ")} (these will render as status cards)
+                            </div>
+                          )
+                        }
+                      } catch (err) {
+                        return (
+                          <div className="json-validation-error" style={{ color: "var(--error)", fontSize: "0.75rem", marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "4px" }}>
+                            <AlertCircle size={12} />
+                            Invalid JSON format: {(err as Error).message}
+                          </div>
+                        )
                       }
-                    }}
-                  >
-                    <Trash2 size={12} />
-                    Delete Entire Template
-                  </button>
-                </div>
-                <div className="progression-theme-library">
-                  <div className="progression-template-header">
-                    <div>
-                      <strong>Novel Status Themes</strong>
-                      <span>Instantly load a specialized status card preset for your genre.</span>
+                      return null
+                    })()}
+
+                    <div className="progression-theme-library" style={{ marginTop: "1.5rem" }}>
+                      <div className="progression-template-header">
+                        <div>
+                          <strong>Import / Export Template settings</strong>
+                          <span>Share your JSON layout settings across different novels.</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                        <button
+                          type="button"
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={copyProgressionTemplateToClipboard}
+                        >
+                          <Copy size={12} />
+                          Copy Template settings
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={pasteProgressionTemplateFromClipboard}
+                        >
+                          <Clipboard size={12} />
+                          Paste & Import Template
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="progression-theme-grid">
-                    <button
-                      type="button"
-                      className="theme-btn-premium"
-                      onClick={() => setProgressionTemplateCards(() => LITRPG_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                    >
-                      🛡️ LitRPG / System
-                    </button>
-                    <button
-                      type="button"
-                      className="theme-btn-premium"
-                      onClick={() => setProgressionTemplateCards(() => XIANXIA_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                    >
-                      ☯️ Xianxia / Cultivation
-                    </button>
-                    <button
-                      type="button"
-                      className="theme-btn-premium"
-                      onClick={() => setProgressionTemplateCards(() => SHADOW_SLAVE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                    >
-                      🖤 Shadow Slave Style
-                    </button>
-                    <button
-                      type="button"
-                      className="theme-btn-premium"
-                      onClick={() => setProgressionTemplateCards(() => TALENT_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                    >
-                      ✨ Supreme Talent
-                    </button>
-                    <button
-                      type="button"
-                      className="theme-btn-premium"
-                      onClick={() => setProgressionTemplateCards(() => SOLO_LEVELING_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                    >
-                      ⚡ Solo Leveling Style
-                    </button>
-                    <button
-                      type="button"
-                      className="theme-btn-premium"
-                      onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                    >
-                      📄 Simple Baseline
-                    </button>
-                  </div>
-                </div>
-                <div className="progression-theme-library" style={{ marginTop: "1rem" }}>
-                  <div className="progression-template-header">
-                    <div>
-                      <strong>Import / Export Template</strong>
-                      <span>Share your progression status card layout across novels.</span>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-                    <button
-                      type="button"
-                      className="btn-ai-sub btn-ai-secondary"
-                      onClick={copyProgressionTemplateToClipboard}
-                    >
-                      <Copy size={12} />
-                      Copy Template settings
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ai-sub btn-ai-secondary"
-                      onClick={pasteProgressionTemplateFromClipboard}
-                    >
-                      <Clipboard size={12} />
-                      Paste & Import Template
-                    </button>
-                  </div>
-                </div>
-                <div className="progression-preset-library">
-                  <div className="progression-template-header">
-                    <div>
-                      <strong>Preset Cards</strong>
-                      <span>Add optional status cards, then drag them into the order you want.</span>
-                    </div>
-                  </div>
-                  <div className="progression-preset-grid">
-                    {PROGRESSION_PRESET_TEMPLATE_CARDS.map(preset => (
+                ) : (
+                  <>
+                    <div className="progression-template-tool-row">
+                      {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
+                        .filter(card => card.enabled)
+                        .map(card => (
+                          <span key={card.id}>{card.label}</span>
+                        ))}
                       <button
-                        key={preset.id}
-                        className={`progression-preset-card color-${preset.color}`}
-                        onClick={() => addProgressionPresetCard(preset)}
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
                         type="button"
                       >
-                        <strong>{preset.label}</strong>
-                        <span>{preset.fields.join(" / ")}</span>
+                        <RotateCcw size={12} />
+                        Load Simple Template
                       </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
-                  <div className="progression-template-header">
-                    <div>
-                      <strong>AI Prompt Designer</strong>
-                      <span>Describe the status screen structure to design a custom template.</span>
-                    </div>
-                    <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionPromptDesignerOpen(prev => !prev)}>
-                      <ChevronDown size={12} className={isProgressionPromptDesignerOpen ? "rotate" : ""} />
-                      {isProgressionPromptDesignerOpen ? "Hide" : "Design"}
-                    </button>
-                  </div>
-                  {isProgressionPromptDesignerOpen && (
-                    <div className="progression-cultivation-import-body" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
-                      <textarea
-                        className="ai-textarea compact"
-                        value={progressionTemplatePrompt}
-                        onChange={(e) => setProgressionTemplatePrompt(e.target.value)}
-                        placeholder="Describe what cards, stats, affinities, or ranks you want. Example: I want a profile template with name, Cultivation (stage and rank), levels, attributes (Strength, Agility, Endurance), and Affinity (Fire, Ice, Void)..."
-                        rows={3}
-                        disabled={progressionTemplatePromptLoading}
-                      />
-                      {progressionTemplatePromptError && (
-                        <div style={{ color: "var(--error)", fontSize: "0.8rem" }}>
-                          {progressionTemplatePromptError}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <button
-                          className="btn-ai-sub btn-ai-primary"
-                          onClick={handleDesignTemplateWithAi}
-                          disabled={!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading}
-                        >
-                          {progressionTemplatePromptLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                          Generate Template
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="progression-cultivation-import-box">
-                  <div className="progression-template-header">
-                    <div>
-                      <strong>Cultivation System</strong>
-                      <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
-                    </div>
-                    <button className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
-                      <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
-                      {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
-                    </button>
-                  </div>
-                  <div className="progression-system-summary">
-                    <span>{progressionSystem.realms.length} realms</span>
-                    <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
-                  </div>
-                  {isProgressionCultivationImportOpen && (
-                    <div className="progression-cultivation-import-body">
-                      <div className="progression-cultivation-actions">
-                        <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
-                          <FileText size={12} />
-                          Upload TXT
-                          <input
-                            type="file"
-                            accept=".txt,text/plain"
-                            onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
-                          />
-                        </label>
-                      </div>
-                      <textarea
-                        className="ai-textarea compact progression-realm-import-textarea"
-                        value={progressionRealmImportText}
-                        onChange={(e) => setProgressionRealmImportText(e.target.value)}
-                        placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
-                      />
-                      <div className="progression-cultivation-import-footer">
-                        <button
-                          className="btn-ai-sub btn-ai-primary"
-                          onClick={() => handleCultivationRealmImport()}
-                          disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
-                        >
-                          {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                          Arrange Stages
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="progression-template-builder-list">
-                  {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
-                    <div
-                      className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""} ${!templateCard.enabled ? "disabled-card" : ""}`}
-                      key={templateCard.id}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        if (draggedProgressionTemplateCardId) {
-                          reorderProgressionTemplateCard(draggedProgressionTemplateCardId, templateCard.id)
-                        }
-                        setDraggedProgressionTemplateCardId(null)
-                      }}
-                    >
-                    <div
-                      className="progression-template-drag-handle"
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = "move"
-                        setDraggedProgressionTemplateCardId(templateCard.id)
-                      }}
-                      onDragEnd={() => setDraggedProgressionTemplateCardId(null)}
-                      title="Drag to reorder card"
-                    >
-                      <GripVertical size={15} />
-                      <span>Drag to reorder</span>
-                    </div>
-                    <label>
-                      <span>Card Name</span>
-                      <input
-                        className="ai-input"
-                        value={templateCard.label}
-                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? {
-                          ...card,
-                          label: e.target.value,
-                          sourceKey: card.sourceKey === card.label ? e.target.value : card.sourceKey
-                        } : card))}
-                      />
-                    </label>
-                    <label>
-                      <span>Type</span>
-                      <select
-                        className="ai-select"
-                        value={templateCard.type}
-                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, type: e.target.value as ProgressionTemplateCardType } : card))}
-                      >
-                        <option value="text">Text</option>
-                        <option value="rank">Realm / Rank</option>
-                        <option value="compound">Multi-field Card</option>
-                        <option value="progress">EXP / Progress</option>
-                        <option value="resource">HP / Mana / Qi</option>
-                        <option value="counter">Counter</option>
-                        <option value="stat">Stat</option>
-                        <option value="ability">Abilities</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>Source Field</span>
-                      <input
-                        className="ai-input"
-                        value={templateCard.sourceKey}
-                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, sourceKey: e.target.value } : card))}
-                        placeholder="EXP, Race, Bloodline, strength..."
-                      />
-                    </label>
-                    <label>
-                      <span>Color</span>
-                      <select
-                        className="ai-select"
-                        value={templateCard.color}
-                        onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, color: e.target.value } : card))}
-                      >
-                        {PROGRESSION_CARD_COLORS.map(color => <option key={color} value={color}>{color}</option>)}
-                      </select>
-                    </label>
-                    <label className="progression-template-fields-editor">
-                      <span>Fields</span>
-                      <div className="progression-template-field-editor-list">
-                        {templateCard.fields.length === 0 ? (
-                          <div className="empty-state-text compact">No fields yet.</div>
-                        ) : templateCard.fields.map((fieldName, fieldIndex) => (
-                          <div className="progression-template-field-editor-row" key={`${templateCard.id}-${fieldIndex}`}>
-                            <input
-                              className="ai-input"
-                              value={fieldName}
-                              onChange={(e) => updateProgressionTemplateField(templateCard.id, fieldIndex, e.target.value)}
-                              placeholder="Field name"
-                            />
-                            <button
-                              className="btn-icon-mini danger"
-                              onClick={() => removeProgressionTemplateField(templateCard.id, fieldIndex)}
-                              title="Remove field"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <button className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addProgressionTemplateField(templateCard.id)}>
-                        <Plus size={12} />
-                        Add Field
-                      </button>
-                    </label>
-                    <div className="progression-template-card-actions">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={templateCard.enabled}
-                          onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, enabled: e.target.checked } : card))}
-                        />
-                        Show
-                      </label>
                       <button
                         className="btn-ai-sub btn-ai-secondary danger-text"
-                        onClick={() => removeProgressionTemplateCard(templateCard.id)}
+                        onClick={() => {
+                          const confirmed = window.confirm("Are you sure you want to clear all template cards? This will reset your status screen layout.");
+                          if (confirmed) {
+                            setProgressionTemplateCards(() => []);
+                          }
+                        }}
+                        type="button"
                       >
                         <Trash2 size={12} />
-                        Remove
+                        Clear Template
+                      </button>
+                      <button
+                        className="btn-ai-sub btn-ai-secondary danger-text"
+                        onClick={() => {
+                          const confirmed = window.confirm("Are you sure you want to delete the entire template? This will completely clear all realms, stats, custom fields, and reset the template to a blank slate.");
+                          if (confirmed) {
+                            deleteEntireTemplate();
+                          }
+                        }}
+                        type="button"
+                      >
+                        <Trash2 size={12} />
+                        Delete Entire Template
                       </button>
                     </div>
+                    <div className="progression-theme-library">
+                      <div className="progression-template-header">
+                        <div>
+                          <strong>Novel Status Themes</strong>
+                          <span>Instantly load a specialized status card preset for your genre.</span>
+                        </div>
+                      </div>
+                      <div className="progression-theme-grid">
+                        <button
+                          type="button"
+                          className="theme-btn-premium"
+                          onClick={() => setProgressionTemplateCards(() => LITRPG_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                        >
+                          🛡️ LitRPG / System
+                        </button>
+                        <button
+                          type="button"
+                          className="theme-btn-premium"
+                          onClick={() => setProgressionTemplateCards(() => XIANXIA_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                        >
+                          ☯️ Xianxia / Cultivation
+                        </button>
+                        <button
+                          type="button"
+                          className="theme-btn-premium"
+                          onClick={() => setProgressionTemplateCards(() => SHADOW_SLAVE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                        >
+                          🖤 Shadow Slave Style
+                        </button>
+                        <button
+                          type="button"
+                          className="theme-btn-premium"
+                          onClick={() => setProgressionTemplateCards(() => TALENT_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                        >
+                          ✨ Supreme Talent
+                        </button>
+                        <button
+                          type="button"
+                          className="theme-btn-premium"
+                          onClick={() => setProgressionTemplateCards(() => SOLO_LEVELING_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                        >
+                          ⚡ Solo Leveling Style
+                        </button>
+                        <button
+                          type="button"
+                          className="theme-btn-premium"
+                          onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                        >
+                          📄 Simple Baseline
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-                <div className="progression-template-add-row">
-                  <button
-                    className="btn-ai-sub btn-ai-primary"
-                    onClick={() => setProgressionTemplateCards(cards => [
-                      ...cards,
-                      {
-                        id: `template-${crypto.randomUUID()}`,
-                        label: "Unnamed Card",
-                        type: "compound",
-                        sourceKey: "custom",
-                        fields: ["Field"],
-                        color: getProgressionCardColor(cards.length, "compound"),
-                        enabled: true
-                      }
-                    ])}
-                  >
-                    <Plus size={12} />
-                    Add Template Card
-                  </button>
-                </div>
+                    <div className="progression-theme-library" style={{ marginTop: "1rem" }}>
+                      <div className="progression-template-header">
+                        <div>
+                          <strong>Import / Export Template</strong>
+                          <span>Share your progression status card layout across novels.</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                        <button
+                          type="button"
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={copyProgressionTemplateToClipboard}
+                        >
+                          <Copy size={12} />
+                          Copy Template settings
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={pasteProgressionTemplateFromClipboard}
+                        >
+                          <Clipboard size={12} />
+                          Paste & Import Template
+                        </button>
+                      </div>
+                    </div>
+                    <div className="progression-preset-library">
+                      <div className="progression-template-header">
+                        <div>
+                          <strong>Preset Cards</strong>
+                          <span>Add optional status cards, then drag them into the order you want.</span>
+                        </div>
+                      </div>
+                      <div className="progression-preset-grid">
+                        {PROGRESSION_PRESET_TEMPLATE_CARDS.map(preset => (
+                          <button
+                            key={preset.id}
+                            className={`progression-preset-card color-${preset.color}`}
+                            onClick={() => addProgressionPresetCard(preset)}
+                            type="button"
+                          >
+                            <strong>{preset.label}</strong>
+                            <span>{preset.fields.join(" / ")}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
+                      <div className="progression-template-header">
+                        <div>
+                          <strong>AI Prompt Designer</strong>
+                          <span>Describe the status screen structure to design a custom template.</span>
+                        </div>
+                        <button type="button" className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionPromptDesignerOpen(prev => !prev)}>
+                          <ChevronDown size={12} className={isProgressionPromptDesignerOpen ? "rotate" : ""} />
+                          {isProgressionPromptDesignerOpen ? "Hide" : "Design"}
+                        </button>
+                      </div>
+                      {isProgressionPromptDesignerOpen && (
+                        <div className="progression-cultivation-import-body" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
+                          <textarea
+                            className="ai-textarea compact"
+                            value={progressionTemplatePrompt}
+                            onChange={(e) => setProgressionTemplatePrompt(e.target.value)}
+                            placeholder="Describe what cards, stats, affinities, or ranks you want. Example: I want a profile template with name, Cultivation (stage and rank), levels, attributes (Strength, Agility, Endurance), and Affinity (Fire, Ice, Void)..."
+                            rows={3}
+                            disabled={progressionTemplatePromptLoading}
+                          />
+                          {progressionTemplatePromptError && (
+                            <div style={{ color: "var(--error)", fontSize: "0.8rem" }}>
+                              {progressionTemplatePromptError}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="btn-ai-sub btn-ai-primary"
+                              onClick={handleDesignTemplateWithAi}
+                              disabled={!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading}
+                            >
+                              {progressionTemplatePromptLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                              Generate Template
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="progression-cultivation-import-box">
+                      <div className="progression-template-header">
+                        <div>
+                          <strong>Cultivation System</strong>
+                          <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
+                        </div>
+                        <button type="button" className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
+                          <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
+                          {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
+                        </button>
+                      </div>
+                      <div className="progression-system-summary">
+                        <span>{progressionSystem.realms.length} realms</span>
+                        <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
+                      </div>
+                      {isProgressionCultivationImportOpen && (
+                        <div className="progression-cultivation-import-body">
+                          <div className="progression-cultivation-actions">
+                            <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
+                              <FileText size={12} />
+                              Upload TXT
+                              <input
+                                type="file"
+                                accept=".txt,text/plain"
+                                onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
+                              />
+                            </label>
+                          </div>
+                          <textarea
+                            className="ai-textarea compact progression-realm-import-textarea"
+                            value={progressionRealmImportText}
+                            onChange={(e) => setProgressionRealmImportText(e.target.value)}
+                            placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
+                          />
+                          <div className="progression-cultivation-import-footer">
+                            <button
+                              type="button"
+                              className="btn-ai-sub btn-ai-primary"
+                              onClick={() => handleCultivationRealmImport()}
+                              disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
+                            >
+                              {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                              Arrange Stages
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="progression-template-builder-list">
+                      {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
+                        <div
+                          className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""} ${!templateCard.enabled ? "disabled-card" : ""}`}
+                          key={templateCard.id}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            if (draggedProgressionTemplateCardId) {
+                              reorderProgressionTemplateCard(draggedProgressionTemplateCardId, templateCard.id)
+                            }
+                            setDraggedProgressionTemplateCardId(null)
+                          }}
+                        >
+                        <div
+                          className="progression-template-drag-handle"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = "move"
+                            setDraggedProgressionTemplateCardId(templateCard.id)
+                          }}
+                          onDragEnd={() => setDraggedProgressionTemplateCardId(null)}
+                          title="Drag to reorder card"
+                        >
+                          <GripVertical size={15} />
+                          <span>Drag to reorder</span>
+                        </div>
+                        <label>
+                          <span>Card Name</span>
+                          <input
+                            className="ai-input"
+                            value={templateCard.label}
+                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? {
+                              ...card,
+                              label: e.target.value,
+                              sourceKey: card.sourceKey === card.label ? e.target.value : card.sourceKey
+                            } : card))}
+                          />
+                        </label>
+                        <label>
+                          <span>Type</span>
+                          <select
+                            className="ai-select"
+                            value={templateCard.type}
+                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, type: e.target.value as ProgressionTemplateCardType } : card))}
+                          >
+                            <option value="text">Text</option>
+                            <option value="rank">Realm / Rank</option>
+                            <option value="compound">Multi-field Card</option>
+                            <option value="progress">EXP / Progress</option>
+                            <option value="resource">HP / Mana / Qi</option>
+                            <option value="counter">Counter</option>
+                            <option value="stat">Stat</option>
+                            <option value="ability">Abilities</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Source Field</span>
+                          <input
+                            className="ai-input"
+                            value={templateCard.sourceKey}
+                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, sourceKey: e.target.value } : card))}
+                            placeholder="EXP, Race, Bloodline, strength..."
+                          />
+                        </label>
+                        <label>
+                          <span>Color</span>
+                          <select
+                            className="ai-select"
+                            value={templateCard.color}
+                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, color: e.target.value } : card))}
+                          >
+                            {PROGRESSION_CARD_COLORS.map(color => <option key={color} value={color}>{color}</option>)}
+                          </select>
+                        </label>
+                        <label className="progression-template-fields-editor">
+                          <span>Fields</span>
+                          <div className="progression-template-field-editor-list">
+                            {templateCard.fields.length === 0 ? (
+                              <div className="empty-state-text compact">No fields yet.</div>
+                            ) : templateCard.fields.map((fieldName, fieldIndex) => (
+                              <div className="progression-template-field-editor-row" key={`${templateCard.id}-${fieldIndex}`}>
+                                <input
+                                  className="ai-input"
+                                  value={fieldName}
+                                  onChange={(e) => updateProgressionTemplateField(templateCard.id, fieldIndex, e.target.value)}
+                                  placeholder="Field name"
+                                />
+                                <button
+                                  className="btn-icon-mini danger"
+                                  onClick={() => removeProgressionTemplateField(templateCard.id, fieldIndex)}
+                                  title="Remove field"
+                                  type="button"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addProgressionTemplateField(templateCard.id)}>
+                            <Plus size={12} />
+                            Add Field
+                          </button>
+                        </label>
+                        <div className="progression-template-card-actions">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={templateCard.enabled}
+                              onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, enabled: e.target.checked } : card))}
+                            />
+                            Show
+                          </label>
+                          <button
+                            className="btn-ai-sub btn-ai-secondary danger-text"
+                            onClick={() => removeProgressionTemplateCard(templateCard.id)}
+                            type="button"
+                          >
+                            <Trash2 size={12} />
+                            Remove
+                          </button>
+                        </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="progression-template-add-row">
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={() => setProgressionTemplateCards(cards => [
+                          ...cards,
+                          {
+                            id: `template-${crypto.randomUUID()}`,
+                            label: "Unnamed Card",
+                            type: "compound",
+                            sourceKey: "custom",
+                            fields: ["Field"],
+                            color: getProgressionCardColor(cards.length, "compound"),
+                            enabled: true
+                          }
+                        ])}
+                        type="button"
+                      >
+                        <Plus size={12} />
+                        Add Template Card
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="modal-actions">
                 <button className="btn btn-primary" onClick={() => setShowProgressionTemplateModal(false)}>Done</button>
