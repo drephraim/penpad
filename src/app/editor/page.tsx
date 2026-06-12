@@ -1650,9 +1650,7 @@ function EditorContent() {
       statKeys: [],
       customFields: [],
       profileTemplate: {
-        baseLevel: 1,
-        baseExp: 0,
-        nextLevelExp: 100,
+        ...DEFAULT_PROFILE_TEMPLATE,
         defaultStats: {} as Record<ProgressionStatKey, number>,
         defaultTraits: [],
         defaultAbilities: [],
