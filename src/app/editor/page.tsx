@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/components/Providers"
 import { useRouter, useSearchParams } from "next/navigation"
-import React, { useState, useEffect, useCallback, Suspense, useRef } from "react"
+import React, { useState, useEffect, useCallback, Suspense, useRef, useMemo } from "react"
 import { 
   Plus, Search, Type,
   Eye, Edit3, Maximize2, Minimize2,
@@ -43,6 +43,22 @@ interface Note {
   volumeId?: string | null
   sortOrder?: number
 }
+
+interface Milestone {
+  id: string
+  title: string
+  reqWords: number
+  description: string
+  badge: string
+}
+
+const MILESTONES: Milestone[] = [
+  { id: "scribe", title: "Novice Scribe", reqWords: 1000, description: "Wrote your first 1,000 words.", badge: "📜" },
+  { id: "disciple", title: "Sect Disciple", reqWords: 5000, description: "Amassed 5,000 words of lore.", badge: "🔮" },
+  { id: "elder", title: "Grand Elder", reqWords: 10000, description: "Reached 10,000 words of manuscript.", badge: "⚡" },
+  { id: "immortal", title: "Ascended Immortal", reqWords: 25000, description: "Achieved 25,000 words.", badge: "🌌" },
+  { id: "sovereign", title: "Heavenly Sovereign", reqWords: 50000, description: "Penned a grand epic of 50,000 words.", badge: "👑" }
+]
 
 type ViewMode = 'edit' | 'preview'
 type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain'
@@ -538,7 +554,32 @@ class AudioFocusSynthesizer {
     }
     this.cafeInterval = setTimeout(triggerClink, 2000)
   }
+
+  playChime() {
+    this.init()
+    if (!this.ctx) return
+    const ctx = this.ctx
+    const now = ctx.currentTime
+    const freqs = [523.25, 659.25, 783.99, 1046.50] // C5, E5, G5, C6 (C Major Chord)
+    freqs.forEach((freq, idx) => {
+      try {
+        const osc = ctx.createOscillator()
+        const gainNode = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, now)
+        gainNode.gain.setValueAtTime(0, now)
+        gainNode.gain.linearRampToValueAtTime(0.12 * this.volume, now + 0.05 + idx * 0.015)
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.2 + idx * 0.08)
+        osc.connect(gainNode)
+        gainNode.connect(ctx.destination)
+        osc.start(now)
+        osc.stop(now + 2.0)
+      } catch {}
+    })
+  }
 }
+
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
 
 function EditorContent() {
   const { user, loading } = useAuth()
@@ -628,6 +669,199 @@ function EditorContent() {
   const [brainAskAnswer, setBrainAskAnswer] = useState('')
   const [brainAskLoading, setBrainAskLoading] = useState(false)
   const [brainAskError, setBrainAskError] = useState('')
+
+  // Focus Sprints & Gamified Focus Tracker States
+  const [sprintDuration, setSprintDuration] = useState(1500)
+  const [sprintTimeRemaining, setSprintTimeRemaining] = useState(1500)
+  const [sprintActive, setSprintActive] = useState(false)
+  const [sprintStartTotalWords, setSprintStartTotalWords] = useState(0)
+  const [sprintWordsWritten, setSprintWordsWritten] = useState(0)
+  const [showSprintCompleteModal, setShowSprintCompleteModal] = useState(false)
+  const [sprintCompleteWords, setSprintCompleteWords] = useState(0)
+
+  const [dailyWordLog, setDailyWordLog] = useState<Record<string, number>>({})
+  const [unlockedMilestones, setUnlockedMilestones] = useState<Set<string>>(new Set())
+  const [showMilestoneAlert, setShowMilestoneAlert] = useState<Milestone | null>(null)
+
+  const currentTotalWords = useMemo(() => {
+    return notes.reduce((total, note) => total + countWords(note?.content || ""), 0)
+  }, [notes])
+
+  const last28Days = useMemo(() => {
+    const days: { date: Date; dateStr: string; count: number }[] = []
+    const now = new Date()
+    for (let i = 27; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(now.getDate() - i)
+      const dateStr = d.toLocaleDateString('en-CA') // YYYY-MM-DD
+      days.push({
+        date: d,
+        dateStr,
+        count: dailyWordLog[dateStr] || 0
+      })
+    }
+    return days
+  }, [dailyWordLog])
+
+  // Timer countdown loop
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    if (sprintActive && sprintTimeRemaining > 0) {
+      interval = setInterval(() => {
+        setSprintTimeRemaining(prev => {
+          if (prev <= 1) {
+            setSprintActive(false)
+            if (interval) clearInterval(interval)
+            
+            const finalWords = Math.max(0, currentTotalWords - sprintStartTotalWords)
+            setSprintCompleteWords(finalWords)
+            setShowSprintCompleteModal(true)
+            
+            if (synthRef.current) {
+              synthRef.current.playChime()
+            }
+            
+            const todayStr = new Date().toLocaleDateString('en-CA')
+            setDailyWordLog(prevLog => {
+              const currentTodayVal = prevLog[todayStr] || 0
+              const nextLog = {
+                ...prevLog,
+                [todayStr]: currentTodayVal + finalWords
+              }
+              if (projectId) {
+                localStorage.setItem(`penpad_daily_word_log_${projectId}`, JSON.stringify(nextLog))
+              }
+              return nextLog
+            })
+            
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [sprintActive, sprintTimeRemaining, currentTotalWords, sprintStartTotalWords, projectId])
+
+  // Track words written in active sprint
+  useEffect(() => {
+    if (sprintActive) {
+      setSprintWordsWritten(Math.max(0, currentTotalWords - sprintStartTotalWords))
+    }
+  }, [currentTotalWords, sprintStartTotalWords, sprintActive])
+
+  // Initial load daily word log and milestones
+  useEffect(() => {
+    if (!projectId) return
+    
+    const storedLog = localStorage.getItem(`penpad_daily_word_log_${projectId}`)
+    if (storedLog) {
+      try {
+        setDailyWordLog(JSON.parse(storedLog))
+      } catch {}
+    }
+    
+    const storedMilestones = localStorage.getItem(`penpad_unlocked_milestones_${projectId}`)
+    if (storedMilestones) {
+      try {
+        setUnlockedMilestones(new Set(JSON.parse(storedMilestones)))
+      } catch {}
+    } else if (notes.length > 0) {
+      const initialUnlocked = new Set<string>()
+      MILESTONES.forEach(m => {
+        if (currentTotalWords >= m.reqWords) {
+          initialUnlocked.add(m.id)
+        }
+      })
+      if (initialUnlocked.size > 0) {
+        setUnlockedMilestones(initialUnlocked)
+        localStorage.setItem(`penpad_unlocked_milestones_${projectId}`, JSON.stringify(Array.from(initialUnlocked)))
+      }
+    }
+  }, [projectId, notes.length, currentTotalWords])
+
+  // Track daily start words for daily progress calculation
+  useEffect(() => {
+    if (!projectId || notes.length === 0) return
+    const todayStr = new Date().toLocaleDateString('en-CA')
+    const storedStartMeta = localStorage.getItem(`penpad_daily_start_words_${projectId}`)
+    
+    let dailyStart = currentTotalWords
+    if (storedStartMeta) {
+      try {
+        const parsed = JSON.parse(storedStartMeta)
+        if (parsed.dateString === todayStr) {
+          dailyStart = parsed.count
+        } else {
+          localStorage.setItem(`penpad_daily_start_words_${projectId}`, JSON.stringify({
+            dateString: todayStr,
+            count: currentTotalWords
+          }))
+        }
+      } catch {}
+    } else {
+      localStorage.setItem(`penpad_daily_start_words_${projectId}`, JSON.stringify({
+        dateString: todayStr,
+        count: currentTotalWords
+      }))
+    }
+    
+    const writtenToday = Math.max(0, currentTotalWords - dailyStart)
+    setDailyWordLog(prevLog => {
+      if (prevLog[todayStr] === writtenToday) return prevLog
+      const nextLog = {
+        ...prevLog,
+        [todayStr]: writtenToday
+      }
+      localStorage.setItem(`penpad_daily_word_log_${projectId}`, JSON.stringify(nextLog))
+      return nextLog
+    })
+  }, [currentTotalWords, projectId, notes.length])
+
+  // Check and trigger milestones
+  useEffect(() => {
+    if (!projectId || notes.length === 0) return
+    
+    MILESTONES.forEach(m => {
+      if (currentTotalWords >= m.reqWords && !unlockedMilestones.has(m.id)) {
+        setUnlockedMilestones(prev => {
+          const next = new Set(prev)
+          next.add(m.id)
+          localStorage.setItem(`penpad_unlocked_milestones_${projectId}`, JSON.stringify(Array.from(next)))
+          return next
+        })
+        
+        setShowMilestoneAlert(m)
+        if (synthRef.current) {
+          synthRef.current.playChime()
+        }
+      }
+    })
+  }, [currentTotalWords, unlockedMilestones, projectId, notes.length])
+
+  const startSprint = (durationSec: number) => {
+    setSprintDuration(durationSec)
+    setSprintTimeRemaining(durationSec)
+    setSprintStartTotalWords(currentTotalWords)
+    setSprintWordsWritten(0)
+    setSprintActive(true)
+  }
+
+  const pauseSprint = () => {
+    setSprintActive(false)
+  }
+
+  const resumeSprint = () => {
+    setSprintActive(true)
+  }
+
+  const resetSprint = () => {
+    setSprintActive(false)
+    setSprintTimeRemaining(sprintDuration)
+    setSprintWordsWritten(0)
+  }
 
   // Character Progression States
   const [progressionProfiles, setProgressionProfiles] = useState<CharacterProgressionProfile[]>([])
@@ -3076,8 +3310,6 @@ function EditorContent() {
     }
   }
 
-  const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
-
   const getVersionKey = useCallback((noteId: string) => {
     return projectId ? `penpad_versions_${projectId}_${noteId}` : ""
   }, [projectId])
@@ -5309,6 +5541,78 @@ function EditorContent() {
                     })}
                   </div>
                 )}
+
+                {/* Daily Progress Heatmap Section */}
+                <div className="heatmap-section">
+                  <div className="insights-section-header">
+                    <span>Daily Progress Heatmap</span>
+                  </div>
+                  <div className="heatmap-grid">
+                    {last28Days.map((day: { date: Date; dateStr: string; count: number }) => {
+                      let colorClass = 'intensity-0';
+                      if (day.count > 0 && day.count <= 200) colorClass = 'intensity-1';
+                      else if (day.count > 200 && day.count <= 500) colorClass = 'intensity-2';
+                      else if (day.count > 500 && day.count <= 1000) colorClass = 'intensity-3';
+                      else if (day.count > 1000) colorClass = 'intensity-4';
+                      
+                      const dayLabel = day.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                      return (
+                        <div 
+                          key={day.dateStr} 
+                          className={`heatmap-cell ${colorClass}`}
+                          title={`${dayLabel}: ${day.count} words`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="heatmap-legend">
+                    <span>Less</span>
+                    <div className="heatmap-cell intensity-0" style={{ width: '8px', height: '8px' }} />
+                    <div className="heatmap-cell intensity-1" style={{ width: '8px', height: '8px' }} />
+                    <div className="heatmap-cell intensity-2" style={{ width: '8px', height: '8px' }} />
+                    <div className="heatmap-cell intensity-3" style={{ width: '8px', height: '8px' }} />
+                    <div className="heatmap-cell intensity-4" style={{ width: '8px', height: '8px' }} />
+                    <span>More</span>
+                  </div>
+                </div>
+
+                {/* Cultivation Milestones Section */}
+                <div className="milestones-section">
+                  <div className="insights-section-header">
+                    <span>Cultivation Milestones</span>
+                    <span className="milestones-progress-text">
+                      {unlockedMilestones.size} / {MILESTONES.length} Unlocked
+                    </span>
+                  </div>
+                  
+                  <div className="milestones-list">
+                    {MILESTONES.map(m => {
+                      const isUnlocked = unlockedMilestones.has(m.id);
+                      const percent = Math.min(100, Math.round((currentTotalWords / m.reqWords) * 100));
+                      return (
+                        <div key={m.id} className={`milestone-card glass-light ${isUnlocked ? 'unlocked' : 'locked'}`}>
+                          <div className="milestone-badge-container">
+                            <span className="milestone-badge">{m.badge}</span>
+                            {!isUnlocked && <span className="lock-icon">🔒</span>}
+                          </div>
+                          <div className="milestone-info">
+                            <div className="milestone-title-row">
+                              <span className="milestone-title">{m.title}</span>
+                              <span className="milestone-req">{m.reqWords.toLocaleString()} words</span>
+                            </div>
+                            <p className="milestone-desc">{m.description}</p>
+                            {!isUnlocked && (
+                              <div className="milestone-progress-bar-container">
+                                <div className="milestone-progress-bar" style={{ width: `${percent}%` }} />
+                                <span className="milestone-progress-label">{percent}%</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -6163,6 +6467,84 @@ function EditorContent() {
                     <Maximize2 size={16} />
                     Enter Zen Mode
                   </button>
+                </div>
+
+                {/* Focus Sprint Timer Section */}
+                <div className="focus-sprint-section glass-light">
+                  <span className="section-title">Focus Sprint</span>
+                  <p className="ai-instructions">Set a time-box to write. Completing plays a C Major chime.</p>
+                  
+                  <div className="timer-display">
+                    {Math.floor(sprintTimeRemaining / 60)}:
+                    {String(sprintTimeRemaining % 60).padStart(2, '0')}
+                  </div>
+
+                  {(sprintActive || sprintTimeRemaining < sprintDuration) && (
+                    <div className="timer-progress-container" style={{ marginBottom: '8px' }}>
+                      <div 
+                        className="timer-progress-bar" 
+                        style={{ width: `${(1 - sprintTimeRemaining / sprintDuration) * 100}%` }}
+                      />
+                      <div className="sprint-stats">
+                        <span>Words: <strong>{sprintWordsWritten}</strong></span>
+                        <span>Status: <strong>{sprintActive ? 'Active' : 'Paused'}</strong></span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="timer-presets">
+                    <button 
+                      className={`preset-btn ${sprintDuration === 900 && !sprintActive ? 'active' : ''}`}
+                      disabled={sprintActive}
+                      onClick={() => startSprint(900)}
+                    >
+                      15m
+                    </button>
+                    <button 
+                      className={`preset-btn ${sprintDuration === 1500 && !sprintActive ? 'active' : ''}`}
+                      disabled={sprintActive}
+                      onClick={() => startSprint(1500)}
+                    >
+                      25m
+                    </button>
+                    <button 
+                      className={`preset-btn ${sprintDuration === 2700 && !sprintActive ? 'active' : ''}`}
+                      disabled={sprintActive}
+                      onClick={() => startSprint(2700)}
+                    >
+                      45m
+                    </button>
+                    <button 
+                      className={`preset-btn ${sprintDuration === 3600 && !sprintActive ? 'active' : ''}`}
+                      disabled={sprintActive}
+                      onClick={() => startSprint(3600)}
+                    >
+                      60m
+                    </button>
+                  </div>
+
+                  <div className="timer-controls">
+                    {!sprintActive && sprintTimeRemaining === sprintDuration ? (
+                      <button className="btn-new w-full justify-center" onClick={() => startSprint(sprintDuration)}>
+                        <Play size={14} /> Start Sprint
+                      </button>
+                    ) : (
+                      <div className="flex gap-2 w-full">
+                        {sprintActive ? (
+                          <button className="btn-secondary flex-1 justify-center" onClick={pauseSprint}>
+                            <Pause size={14} /> Pause
+                          </button>
+                        ) : (
+                          <button className="btn-new flex-1 justify-center" onClick={resumeSprint}>
+                            <Play size={14} /> Resume
+                          </button>
+                        )}
+                        <button className="btn-danger justify-center px-3" onClick={resetSprint}>
+                          <RotateCcw size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -8008,6 +8390,69 @@ function EditorContent() {
             </div>
             <div className="hover-card-footer">
               <span>Click to view details</span>
+            </div>
+          </div>
+        )}
+
+        {/* Focus Sprint Complete Modal */}
+        {showSprintCompleteModal && (
+          <div className="sprint-modal-overlay">
+            <div className="sprint-modal-content glass">
+              <div className="sprint-modal-header">
+                <span className="sprint-modal-icon">🎉</span>
+                <h3>Sprint Complete!</h3>
+              </div>
+              <div className="sprint-modal-body">
+                <p>Congratulations! You have completed your focus writing sprint.</p>
+                <div className="sprint-stats-summary">
+                  <div className="stat-box">
+                    <span className="stat-val">{sprintCompleteWords.toLocaleString()}</span>
+                    <span className="stat-lbl">Words Written</span>
+                  </div>
+                  <div className="stat-box">
+                    <span className="stat-val">{Math.round(sprintDuration / 60)}m</span>
+                    <span className="stat-lbl">Time Focused</span>
+                  </div>
+                </div>
+                <p className="sprint-modal-quote">&ldquo;A journey of a thousand miles begins with a single step.&rdquo;</p>
+              </div>
+              <div className="sprint-modal-actions">
+                <button className="btn-new" onClick={() => setShowSprintCompleteModal(false)}>
+                  Keep Writing
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Milestone Achievement Alert Modal */}
+        {showMilestoneAlert && (
+          <div className="sprint-modal-overlay milestone-overlay">
+            <div className="sprint-modal-content milestone-content glass-light pulse-glow">
+              <div className="sprint-modal-header">
+                <span className="sprint-modal-icon animate-bounce">{showMilestoneAlert.badge}</span>
+                <h3 className="milestone-achieved-title">Cultivation Rank Unlocked!</h3>
+              </div>
+              <div className="sprint-modal-body">
+                <p className="milestone-unlock-subtitle">You have ascended to the realm of:</p>
+                <h2 className="milestone-unlocked-rank">{showMilestoneAlert.title}</h2>
+                <p className="milestone-unlock-desc">&ldquo;{showMilestoneAlert.description}&rdquo;</p>
+                <div className="milestone-unlocked-details text-left">
+                  <div className="flex justify-between">
+                    <span>Requirement:</span>
+                    <strong>{showMilestoneAlert.reqWords.toLocaleString()} words</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Current total:</span>
+                    <strong>{currentTotalWords.toLocaleString()} words</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="sprint-modal-actions">
+                <button className="btn-new milestone-btn w-full justify-center" onClick={() => setShowMilestoneAlert(null)}>
+                  Claim Realm Rank
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -13376,6 +13821,486 @@ function EditorContent() {
             padding: 2rem;
             color: var(--text-dim);
           }
+        }
+
+        /* Focus Sprint Timer Styles */
+        .focus-sprint-section {
+          margin-top: 1.5rem;
+          padding: 1.25rem;
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.02);
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .timer-display {
+          font-family: monospace;
+          font-size: 2.25rem;
+          font-weight: 700;
+          text-align: center;
+          color: var(--primary);
+          text-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+          letter-spacing: 0.05em;
+          padding: 0.5rem 0;
+        }
+
+        .timer-progress-container {
+          background: rgba(255, 255, 255, 0.05);
+          height: 6px;
+          border-radius: 3px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        .timer-progress-bar {
+          background: linear-gradient(90deg, var(--primary), var(--accent));
+          height: 100%;
+          border-radius: 3px;
+          transition: width 0.3s ease;
+        }
+
+        .sprint-stats {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          margin-top: 4px;
+        }
+
+        .timer-presets {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
+          margin-bottom: 4px;
+        }
+
+        .preset-btn {
+          padding: 6px 0;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+          background: transparent;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .preset-btn:hover:not(:disabled) {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
+
+        .preset-btn.active {
+          background: var(--primary);
+          color: white;
+          border-color: var(--primary);
+        }
+
+        .preset-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .timer-controls {
+          display: flex;
+          gap: 8px;
+        }
+
+        /* Daily Progress Heatmap Styles */
+        .heatmap-section {
+          margin-top: 1.5rem;
+          border-top: 1px solid var(--surface-border);
+          padding-top: 1.5rem;
+        }
+
+        .heatmap-grid {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 6px;
+          margin-top: 0.75rem;
+          padding: 0.5rem;
+          background: rgba(255, 255, 255, 0.01);
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+        }
+
+        .heatmap-cell {
+          aspect-ratio: 1;
+          border-radius: 3px;
+          background: rgba(255, 255, 255, 0.05);
+          transition: var(--transition);
+          cursor: pointer;
+          position: relative;
+        }
+
+        .heatmap-cell:hover {
+          transform: scale(1.15);
+          box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+          z-index: 10;
+        }
+
+        .heatmap-cell.intensity-0 {
+          background: rgba(255, 255, 255, 0.04);
+        }
+
+        .heatmap-cell.intensity-1 {
+          background: rgba(99, 102, 241, 0.25);
+          border: 1px solid rgba(99, 102, 241, 0.4);
+        }
+
+        .heatmap-cell.intensity-2 {
+          background: rgba(99, 102, 241, 0.5);
+          border: 1px solid rgba(99, 102, 241, 0.6);
+        }
+
+        .heatmap-cell.intensity-3 {
+          background: rgba(99, 102, 241, 0.75);
+          border: 1px solid rgba(99, 102, 241, 0.85);
+        }
+
+        .heatmap-cell.intensity-4 {
+          background: var(--primary);
+          border: 1px solid var(--primary);
+          box-shadow: 0 0 6px rgba(99, 102, 241, 0.4);
+        }
+
+        .heatmap-legend {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 4px;
+          font-size: 0.7rem;
+          color: var(--text-dim);
+          margin-top: 6px;
+        }
+
+        .heatmap-legend .heatmap-cell {
+          width: 8px;
+          height: 8px;
+          cursor: default;
+        }
+
+        .heatmap-legend .heatmap-cell:hover {
+          transform: none;
+        }
+
+        /* Cultivation Milestones Styles */
+        .milestones-section {
+          margin-top: 1.5rem;
+          border-top: 1px solid var(--surface-border);
+          padding-top: 1.5rem;
+        }
+
+        .milestones-progress-text {
+          font-size: 0.75rem;
+          color: var(--primary);
+          font-weight: 600;
+        }
+
+        .milestones-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          margin-top: 0.75rem;
+        }
+
+        .milestone-card {
+          display: flex;
+          gap: 12px;
+          padding: 10px 12px;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+          transition: var(--transition);
+        }
+
+        .milestone-card.unlocked {
+          background: rgba(99, 102, 241, 0.03);
+          border-color: rgba(99, 102, 241, 0.15);
+        }
+
+        .milestone-card.locked {
+          opacity: 0.6;
+          background: rgba(255, 255, 255, 0.01);
+        }
+
+        .milestone-badge-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.04);
+          font-size: 1.25rem;
+        }
+
+        .milestone-card.unlocked .milestone-badge-container {
+          background: rgba(99, 102, 241, 0.1);
+          box-shadow: 0 0 10px rgba(99, 102, 241, 0.15);
+        }
+
+        .lock-icon {
+          position: absolute;
+          bottom: -2px;
+          right: -2px;
+          font-size: 0.65rem;
+          background: var(--surface);
+          border-radius: 50%;
+          padding: 2px;
+        }
+
+        .milestone-info {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .milestone-title-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .milestone-title {
+          font-size: 0.85rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .milestone-card.unlocked .milestone-title {
+          color: var(--primary);
+        }
+
+        .milestone-req {
+          font-size: 0.7rem;
+          font-weight: 600;
+          color: var(--text-dim);
+        }
+
+        .milestone-desc {
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          line-height: 1.25;
+        }
+
+        .milestone-progress-bar-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 2px;
+        }
+
+        .milestone-progress-bar {
+          flex: 1;
+          height: 4px;
+          border-radius: 2px;
+          background: rgba(255, 255, 255, 0.08);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .milestone-progress-bar::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          height: 100%;
+          background: var(--text-dim);
+          width: 100%;
+          transform-origin: left;
+          transform: scaleX(0);
+        }
+
+        /* Overlay Modals for Sprints & Milestones */
+        .sprint-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(8px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          animation: fadeIn 0.25s ease;
+        }
+
+        .sprint-modal-content {
+          background: var(--surface);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-lg);
+          padding: 2rem;
+          width: 90%;
+          max-width: 440px;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+          box-shadow: var(--shadow-lg), 0 0 30px rgba(99, 102, 241, 0.15);
+          animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .sprint-modal-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.75rem;
+          text-align: center;
+        }
+
+        .sprint-modal-icon {
+          font-size: 3rem;
+        }
+
+        .sprint-modal-header h3 {
+          font-size: 1.5rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, var(--text-primary), var(--primary));
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .sprint-modal-body {
+          text-align: center;
+          color: var(--text-secondary);
+          font-size: 0.95rem;
+        }
+
+        .sprint-stats-summary {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          margin: 1.25rem 0;
+        }
+
+        .stat-box {
+          flex: 1;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--surface-border);
+          padding: 1rem;
+          border-radius: var(--radius-md);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .stat-val {
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: var(--primary);
+        }
+
+        .stat-lbl {
+          font-size: 0.75rem;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-top: 4px;
+        }
+
+        .sprint-modal-quote {
+          font-style: italic;
+          font-size: 0.85rem;
+          color: var(--text-dim);
+          margin-top: 0.5rem;
+        }
+
+        .sprint-modal-actions {
+          display: flex;
+          justify-content: center;
+        }
+
+        .milestone-overlay {
+          background: rgba(0, 0, 0, 0.8);
+        }
+
+        .milestone-content {
+          border-color: rgba(99, 102, 241, 0.3);
+          box-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
+        }
+
+        .pulse-glow {
+          position: relative;
+        }
+
+        .pulse-glow::before {
+          content: '';
+          position: absolute;
+          top: -2px;
+          left: -2px;
+          right: -2px;
+          bottom: -2px;
+          background: linear-gradient(135deg, var(--primary), var(--accent));
+          border-radius: calc(var(--radius-lg) + 2px);
+          z-index: -1;
+          opacity: 0.6;
+          animation: pulseGlow 2s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+          from { filter: blur(4px); opacity: 0.4; }
+          to { filter: blur(12px); opacity: 0.8; }
+        }
+
+        .milestone-achieved-title {
+          background: linear-gradient(135deg, var(--primary), var(--accent)) !important;
+          -webkit-background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+        }
+
+        .milestone-unlocked-rank {
+          font-size: 1.85rem;
+          font-weight: 900;
+          color: var(--text-primary);
+          margin: 0.5rem 0;
+          letter-spacing: 0.02em;
+          text-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .milestone-unlock-subtitle {
+          font-size: 0.85rem;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .milestone-unlock-desc {
+          font-size: 0.95rem;
+          font-style: italic;
+          color: var(--text-secondary);
+          margin-bottom: 1rem;
+        }
+
+        .milestone-unlocked-details {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          font-size: 0.85rem;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 0.75rem;
+          margin-top: 0.5rem;
+        }
+
+        .milestone-unlocked-details strong {
+          color: var(--primary);
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes scaleUp {
+          from { transform: scale(0.9); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
         }
       `}</style>
     </div>
