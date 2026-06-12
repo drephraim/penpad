@@ -2542,21 +2542,6 @@ function EditorContent() {
     return node
   }
 
-  // Scan activeNote.content for bibleEntries
-  const getMentionedLore = useCallback(() => {
-    if (!activeNote || !activeNote.content || !bibleEntries.length) return []
-    
-    return bibleEntries.filter(entry => {
-      if (!entry.name || entry.name.trim().length <= 1) return false
-      return getLoreAliases(entry).some(alias => {
-        const escaped = alias.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
-        const regex = new RegExp(`\\b${escaped}\\b`, 'i')
-        return regex.test(activeNote.content)
-      })
-    })
-  }, [activeNote, bibleEntries, getLoreAliases])
-
-  const mentionedLore = getMentionedLore()
 
   const saveFolderHandleToProject = useCallback(async (handle: FileSystemDirectoryHandle) => {
     if (!projectId) return
@@ -6474,7 +6459,7 @@ function EditorContent() {
                   <span className="section-title">Focus Sprint</span>
                   <p className="ai-instructions">Set a time-box to write. Completing plays a C Major chime.</p>
                   
-                  <div className="timer-display">
+                  <div className="sprint-timer-display">
                     {Math.floor(sprintTimeRemaining / 60)}:
                     {String(sprintTimeRemaining % 60).padStart(2, '0')}
                   </div>
@@ -6868,26 +6853,7 @@ function EditorContent() {
                     </button>
                   </div>
 
-                  {mentionedLore.length > 0 && (
-                    <div className="mentioned-lore-container glass-light">
-                      <span className="mentioned-label">Mentions:</span>
-                      <div className="mentioned-chips-row">
-                        {mentionedLore.map(entry => (
-                          <button 
-                            key={entry.id} 
-                            className={`mentioned-lore-chip ${entry.category}`}
-                            onClick={() => handleLoreClick(entry)}
-                            title={`View ${entry.name}`}
-                          >
-                            <span>{entry.category === 'character' ? '👤' : 
-                                   entry.category === 'beast' ? '🐾' : 
-                                   entry.category === 'place' ? '📍' : '🗺️'}</span>
-                            <span className="chip-name">{entry.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )}
 
@@ -13835,7 +13801,7 @@ function EditorContent() {
           gap: 0.75rem;
         }
 
-        .timer-display {
+        .sprint-timer-display {
           font-family: monospace;
           font-size: 2.25rem;
           font-weight: 700;
