@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback, Suspense, useRef } from "react
 import { 
   Plus, Search, Type,
   Eye, Edit3, Maximize2, Minimize2,
-  ArrowLeft, Loader2, FileText,
+  ArrowLeft, Loader2, FileText, RefreshCw,
   Feather, X, Check, AlertCircle, Trash2,
   Download, Save, BookOpen,
   Play, Pause, RotateCcw,
@@ -661,6 +661,8 @@ function EditorContent() {
   const [progressionTemplatePromptLoading, setProgressionTemplatePromptLoading] = useState(false)
   const [progressionTemplatePromptError, setProgressionTemplatePromptError] = useState("")
   const [isProgressionPromptDesignerOpen, setIsProgressionPromptDesignerOpen] = useState(false)
+  const [progressionBulkUpdating, setProgressionBulkUpdating] = useState(false)
+  const [progressionBulkUpdateStatus, setProgressionBulkUpdateStatus] = useState("")
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -1072,22 +1074,7 @@ function EditorContent() {
     const rawCards = Array.isArray(cards)
       ? cards.filter((card): card is Partial<ProgressionTemplateCard> => Boolean(card) && typeof card === "object")
       : []
-    const rawSource = rawCards.length > 0 ? rawCards : DEFAULT_PROFILE_TEMPLATE_CARDS
-    const hasOverbuiltDefaults = rawSource.some(card => {
-      const cardId = String(card.id || "")
-      return Boolean(cardId) && OVERBUILT_DEFAULT_TEMPLATE_IDS.has(cardId)
-    })
-    const preservedCustomCards = hasOverbuiltDefaults
-      ? rawSource.filter(card => {
-        const cardId = String(card.id || "")
-        if (!cardId) return true
-        if (OVERBUILT_DEFAULT_TEMPLATE_IDS.has(cardId)) return false
-        return !DEFAULT_PROFILE_TEMPLATE_CARDS.some(defaultCard => defaultCard.id === card.id)
-      })
-      : []
-    const source = hasOverbuiltDefaults
-      ? [...DEFAULT_PROFILE_TEMPLATE_CARDS, ...preservedCustomCards]
-      : rawSource
+    const source = rawCards.length > 0 ? rawCards : DEFAULT_PROFILE_TEMPLATE_CARDS
     const normalized = source
       .map((card, index) => {
         let label = String(card.label || card.sourceKey || `Card ${index + 1}`).trim()
@@ -1323,12 +1310,12 @@ function EditorContent() {
   const setProgressionTemplateCards = (updater: (cards: ProgressionTemplateCard[]) => ProgressionTemplateCard[]) => {
     const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards || [], progressionSystem?.customFields || [])
     const nextCards = updater(currentCards)
+    const enabledCards = nextCards.filter(card => card.enabled)
+    const nextCustomFields = getProgressionCustomFieldsFromTemplateCards(enabledCards)
+
     persistProgressionSystem({
       ...progressionSystem,
-      customFields: Array.from(new Set([
-        ...(progressionSystem?.customFields || []),
-        ...getProgressionCustomFieldsFromTemplateCards(nextCards)
-      ])),
+      customFields: nextCustomFields,
       profileTemplate: {
         ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         cards: nextCards
@@ -1337,7 +1324,7 @@ function EditorContent() {
   }
 
   const removeProgressionTemplateCard = (cardId: string) => {
-    setProgressionTemplateCards(cards => cards.map(card => card.id === cardId ? { ...card, enabled: false } : card))
+    setProgressionTemplateCards(cards => cards.filter(card => card.id !== cardId))
   }
 
   const addProgressionPresetCard = (preset: ProgressionTemplateCard) => {
@@ -1837,6 +1824,159 @@ function EditorContent() {
     }
   }
 
+  const runSingleProfileUpdate = async (
+    profile: CharacterProgressionProfile,
+    entry: BibleEntry,
+    note: Note
+  ): Promise<CharacterProgressionProfile> => {
+    const chapterNumber = getNoteChapterNumber(note)
+    const chapterContentForAi = note.content.slice(0, 22000)
+    const candidateProfilesForAi = [{
+      id: profile.id,
+      loreEntryId: profile.loreEntryId,
+      name: profile.name,
+      realm: profile.realm,
+      stage: profile.stage,
+      rank: profile.rank,
+      level: profile.level,
+      processedChapterIds: profile.processedChapterIds
+    }]
+    
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "progression_update",
+        selectedText: "",
+        loreEntry: {
+          id: entry.id,
+          name: entry.name,
+          category: entry.category,
+          content: entry.content,
+          groups: (entry.groupIds || [])
+            .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
+            .filter(Boolean)
+        },
+        chapter: {
+          id: note.id,
+          title: note.title,
+          chapterNumber,
+          content: chapterContentForAi,
+          targetEvidence: ""
+        },
+        progressionSystem,
+        existingProfile: profile,
+        candidateProfiles: candidateProfilesForAi,
+        candidateLoreEntries: [],
+        memory: buildStoryMemoryContext()
+      })
+    })
+
+    const data = await res.json()
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    const progression = (data.progression || {}) as ProgressionAiResponse
+    const now = Date.now()
+    const aiUpdate = progression.update || {}
+    const levelBefore = aiUpdate.levelBefore ?? profile.level ?? 1
+    const levelAfter = aiUpdate.levelAfter ?? progression.profile?.level ?? levelBefore
+    
+    const historyEntry: ProgressionHistoryEntry = {
+      id: crypto.randomUUID(),
+      chapterId: note.id,
+      chapterTitle: note.title || "Untitled",
+      chapterNumber,
+      appliedAt: now,
+      summary: aiUpdate.summary || "Progression profile reviewed from this chapter.",
+      levelBefore,
+      levelAfter,
+      realmBefore: aiUpdate.realmBefore ?? profile.realm ?? "",
+      realmAfter: aiUpdate.realmAfter ?? progression.profile?.realm ?? profile.realm ?? "",
+      stageBefore: aiUpdate.stageBefore ?? profile.stage ?? "",
+      stageAfter: aiUpdate.stageAfter ?? progression.profile?.stage ?? profile.stage ?? "",
+      statChanges: aiUpdate.statChanges || {},
+      abilityChanges: Array.isArray(aiUpdate.abilityChanges) ? aiUpdate.abilityChanges : [],
+      rewards: Array.isArray(aiUpdate.rewards) ? aiUpdate.rewards : [],
+      evidence: Array.isArray(aiUpdate.evidence) ? aiUpdate.evidence : []
+    }
+
+    return normalizeProgressionProfile(entry, progression.profile, profile, historyEntry, now)
+  }
+
+  const handleProgressionBulkUpdate = async () => {
+    if (!projectId) {
+      setProgressionError("Open a project first.")
+      return
+    }
+    if (notes.length === 0) {
+      setProgressionError("No chapters found in this project.")
+      return
+    }
+    if (progressionProfiles.length === 0) {
+      setProgressionError("No character profiles found. Create at least one character profile first.")
+      return
+    }
+
+    setProgressionBulkUpdating(true)
+    setProgressionError("")
+    setProgressionNotice("")
+    setProgressionBulkUpdateStatus("Scanning chapters...")
+
+    try {
+      const recentChapters = getManuscriptNotesList(notes).slice(-5)
+      let currentProfiles = [...progressionProfiles]
+      const updatesQueue: { note: Note; profileId: string; entry: BibleEntry }[] = []
+      
+      for (const note of recentChapters) {
+        for (const profile of currentProfiles) {
+          const entry = bibleEntries.find(e => e.id === profile.loreEntryId)
+          if (!entry) continue
+
+          const isProcessed = profile.processedChapterIds?.includes(note.id)
+          if (isProcessed) continue
+
+          const appears = doesCharacterAppearInChapter(profile, note.content)
+          if (appears) {
+            updatesQueue.push({ note, profileId: profile.id, entry })
+          }
+        }
+      }
+
+      if (updatesQueue.length === 0) {
+        setProgressionNotice("All profiles are already up-to-date for the 5 recent chapters.")
+        return
+      }
+
+      setProgressionBulkUpdateStatus(`Found ${updatesQueue.length} updates. Starting processing...`)
+
+      for (let i = 0; i < updatesQueue.length; i++) {
+        const { note, profileId, entry } = updatesQueue[i]
+        const latestProfile = currentProfiles.find(p => p.id === profileId)
+        if (!latestProfile) continue
+
+        setProgressionBulkUpdateStatus(`Updating ${latestProfile.name} (${i + 1}/${updatesQueue.length})...`)
+
+        try {
+          const updatedProfile = await runSingleProfileUpdate(latestProfile, entry, note)
+          currentProfiles = currentProfiles.map(p => p.id === profileId ? updatedProfile : p)
+          persistProgressionProfiles(currentProfiles)
+          learnProgressionProfileShape(updatedProfile)
+        } catch (err) {
+          console.error(`Failed to update ${latestProfile.name} in chapter ${note.title || note.id}:`, err)
+        }
+      }
+
+      setProgressionNotice(`Successfully processed ${updatesQueue.length} character profile updates.`)
+    } catch (err) {
+      setProgressionError(err instanceof Error ? err.message : "Failed to run bulk update")
+    } finally {
+      setProgressionBulkUpdating(false)
+      setProgressionBulkUpdateStatus("")
+    }
+  }
+
   const updateProgressionProfile = (profileId: string, updater: (profile: CharacterProgressionProfile) => CharacterProgressionProfile) => {
     const nextProfiles = progressionProfiles.map(profile => profile.id === profileId ? updater(profile) : profile)
     persistProgressionProfiles(nextProfiles)
@@ -2094,6 +2234,37 @@ function EditorContent() {
       .map(alias => alias.trim())
       .filter(alias => alias.length > 1)))
   }, [])
+
+  const doesCharacterAppearInChapter = useCallback((
+    profile: CharacterProgressionProfile,
+    chapterContent: string
+  ) => {
+    const entry = bibleEntries.find(e => e.id === profile.loreEntryId)
+    const searchTerms = new Set<string>()
+    
+    if (profile.name) searchTerms.add(profile.name.trim())
+    if (Array.isArray(profile.nicknames)) {
+      profile.nicknames.forEach(n => {
+        if (n) searchTerms.add(n.trim())
+      })
+    }
+    if (entry) {
+      if (entry.name) searchTerms.add(entry.name.trim())
+      getLoreAliases(entry).forEach(alias => {
+        if (alias) searchTerms.add(alias.trim())
+      })
+    }
+
+    const terms = Array.from(searchTerms)
+      .map(t => t.trim())
+      .filter(t => t.length > 1)
+      
+    if (terms.length === 0) return false
+
+    const escapedTerms = terms.map(term => term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
+    const regex = new RegExp(`\\b(${escapedTerms.join('|')})\\b`, 'i')
+    return regex.test(chapterContent)
+  }, [bibleEntries, getLoreAliases])
 
   const highlightBibleEntries = (text: string) => {
     if (!bibleEntries.length || !text) return text
@@ -5390,6 +5561,19 @@ function EditorContent() {
                     </div>
                     <strong>{normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(card => card.enabled).length}</strong>
                     <p>Set the reusable status screen for this novel</p>
+                  </button>
+                  <button 
+                    className="progression-library-card auto-update" 
+                    onClick={handleProgressionBulkUpdate} 
+                    disabled={progressionBulkUpdating || progressionLoading}
+                    title="Scan 5 recent chapters and update character profiles"
+                  >
+                    <div>
+                      {progressionBulkUpdating ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
+                      <span>Update Profiles</span>
+                    </div>
+                    <strong>Scan</strong>
+                    <p>{progressionBulkUpdating ? progressionBulkUpdateStatus : "Scan 5 recent chapters for updates"}</p>
                   </button>
                 </div>
                 <datalist id="progression-realms">
@@ -9535,7 +9719,7 @@ function EditorContent() {
 
         .progression-library-actions {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 0.55rem;
         }
 
@@ -9560,10 +9744,23 @@ function EditorContent() {
           background: radial-gradient(circle at top left, rgba(20, 184, 166, 0.2), transparent 52%), rgba(255, 255, 255, 0.045);
         }
 
+        .progression-library-card.auto-update {
+          border-color: rgba(139, 92, 246, 0.24);
+          background: radial-gradient(circle at top left, rgba(139, 92, 246, 0.2), transparent 52%), rgba(255, 255, 255, 0.045);
+        }
+
         .progression-library-card:hover {
           transform: translateY(-1px);
           border-color: rgba(244, 63, 94, 0.46);
           box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
+        }
+
+        .progression-library-card.template:hover {
+          border-color: rgba(20, 184, 166, 0.46);
+        }
+
+        .progression-library-card.auto-update:hover {
+          border-color: rgba(139, 92, 246, 0.46);
         }
 
         .progression-library-card div {
