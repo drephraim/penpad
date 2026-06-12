@@ -318,6 +318,17 @@ const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true },
   { id: "template-lore", label: "Lore", type: "text", sourceKey: "notes", fields: ["Lore"], color: "blue", enabled: true }
 ]
+const SIMPLE_PROGRESSION_CUSTOM_FIELDS = ["Bloodline", "Bloodline Rank", "Race", "Affiliation"]
+const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
+  bloodline: "Bloodline",
+  "bloodline name": "Bloodline",
+  "bloodline rank": "Bloodline Rank",
+  "bloodline grade": "Bloodline Rank",
+  "bloodline quality": "Bloodline Rank",
+  "bloodline tier": "Bloodline Rank",
+  race: "Race",
+  affiliation: "Affiliation"
+}
 const LITRPG_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "litrpg-name", label: "Character Profile", type: "text", sourceKey: "name", fields: ["Name", "Race", "Class"], color: "rose", enabled: true },
   { id: "litrpg-level", label: "Level & EXP", type: "rank", sourceKey: "level", fields: ["Level", "EXP"], color: "lime", enabled: true },
@@ -384,7 +395,7 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   showExp: false,
   showStats: false,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
-  customFields: ["Bloodline", "Bloodline Rank"],
+  customFields: SIMPLE_PROGRESSION_CUSTOM_FIELDS,
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
   useCustomJsonTemplate: false,
   customJsonTemplate: JSON.stringify({
@@ -402,6 +413,19 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   }, null, 2),
   jsonCardOrder: ["title", "cultivation", "class", "race", "weapon", "skills", "affiliation", "relations"],
   notes: "Simple character progression tracks Name, Title, Cultivation Stage, Rank, Bloodline, Bloodline Rank, Class, Skills, and Lore."
+}
+
+const sanitizeSimpleProgressionCustomFields = (fields?: Record<string, unknown>) => {
+  const cleaned: Record<string, string> = {}
+  Object.entries(fields || {}).forEach(([key, value]) => {
+    const canonicalKey = SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES[key.trim().toLowerCase()]
+    if (!canonicalKey) return
+    const cleanValue = String(value || "").trim()
+    if (cleanValue || !cleaned[canonicalKey]) {
+      cleaned[canonicalKey] = cleanValue
+    }
+  })
+  return cleaned
 }
 
 const getRankedProgressionFieldKind = (value: unknown) => {
@@ -1965,10 +1989,10 @@ function EditorContent() {
     return getProgressionCustomFieldValue(profile, sourceKey)
   }
 
-  const getProgressionTemplateCardsForProfile = (profile: CharacterProgressionProfile) => {
+  const getProgressionTemplateCardsForProfile = () => {
     const configuredCards = normalizeProgressionTemplateCards(
       progressionSystem?.profileTemplate?.cards,
-      Array.from(new Set([...(progressionSystem?.customFields || []), ...Object.keys(profile.customFields || {})]))
+      SIMPLE_PROGRESSION_CUSTOM_FIELDS
     )
     return configuredCards.filter(card => card.enabled)
   }
@@ -2327,12 +2351,10 @@ function EditorContent() {
         evidence: String(ability.evidence || "")
       }
     })
-    const customFields = {
+    const customFields = sanitizeSimpleProgressionCustomFields({
       ...(existingProfile?.customFields || {}),
       ...(aiProfile?.customFields || {})
-    }
-    customFields.Bloodline = customFields.Bloodline || customFields["Bloodline Name"] || ""
-    customFields["Bloodline Rank"] = customFields["Bloodline Rank"] || customFields["Bloodline Grade"] || customFields["Bloodline Quality"] || ""
+    })
 
     return {
       id: existingProfile?.id || crypto.randomUUID(),
@@ -2402,9 +2424,7 @@ function EditorContent() {
       rewards: [],
       evidence: []
     } : null
-    const customFields = { ...(existingProfile?.customFields || {}) }
-    customFields.Bloodline = customFields.Bloodline || customFields["Bloodline Name"] || ""
-    customFields["Bloodline Rank"] = customFields["Bloodline Rank"] || customFields["Bloodline Grade"] || customFields["Bloodline Quality"] || ""
+    const customFields = sanitizeSimpleProgressionCustomFields(existingProfile?.customFields || {})
 
     return {
       id: existingProfile?.id || crypto.randomUUID(),
@@ -2834,7 +2854,7 @@ function EditorContent() {
       abilities: [...profile.abilities],
       traits: [...profile.traits],
       nicknames: [...(profile.nicknames || [])],
-      customFields: { ...(profile.customFields || {}) },
+      customFields: sanitizeSimpleProgressionCustomFields(profile.customFields || {}),
       processedChapterIds: [...profile.processedChapterIds],
       history: [...profile.history]
     })
@@ -2993,8 +3013,7 @@ function EditorContent() {
   }
 
   const learnProgressionProfileShape = (profile: CharacterProgressionProfile) => {
-    const customFieldNames = Object.keys(profile.customFields || {}).map(item => item.trim()).filter(Boolean)
-    const learnedCustomFields = Array.from(new Set([...(progressionSystem?.customFields || []), ...customFieldNames]))
+    const learnedCustomFields = SIMPLE_PROGRESSION_CUSTOM_FIELDS
     const learnedDefaultCustomFields = learnedCustomFields.reduce<Record<string, string>>((acc, fieldName) => {
       const defaultCustomFields = progressionSystem?.profileTemplate?.defaultCustomFields || {}
       acc[fieldName] = defaultCustomFields[fieldName] || ""
@@ -3038,7 +3057,7 @@ function EditorContent() {
       })),
       traits: Array.isArray(progressionEditProfileDraft.traits) ? progressionEditProfileDraft.traits : [],
       nicknames: Array.isArray(progressionEditProfileDraft.nicknames) ? progressionEditProfileDraft.nicknames : [],
-      customFields: progressionEditProfileDraft.customFields || {},
+      customFields: sanitizeSimpleProgressionCustomFields(progressionEditProfileDraft.customFields || {}),
       updatedAt: now
     }
     updateProgressionProfile(updatedProfile.id, () => updatedProfile)
@@ -3530,9 +3549,13 @@ function EditorContent() {
       const normalized = profiles.map(profile => {
         const jsonData = profile.customJsonData && typeof profile.customJsonData === "object" ? profile.customJsonData as Record<string, any> : {}
         const jsonCultivation = jsonData.cultivation && typeof jsonData.cultivation === "object" ? jsonData.cultivation as Record<string, any> : {}
-        const customFields = profile.customFields && typeof profile.customFields === "object" ? { ...profile.customFields } : {}
-        customFields.Bloodline = customFields.Bloodline || String(jsonData.bloodline || jsonData.Bloodline || customFields["Bloodline Name"] || "")
-        customFields["Bloodline Rank"] = customFields["Bloodline Rank"] || String(jsonData.bloodlineRank || jsonData["Bloodline Rank"] || jsonData.bloodlineGrade || customFields["Bloodline Grade"] || "")
+        const customFields = sanitizeSimpleProgressionCustomFields({
+          Bloodline: jsonData.bloodline || jsonData.Bloodline || "",
+          "Bloodline Rank": jsonData.bloodlineRank || jsonData["Bloodline Rank"] || jsonData.bloodlineGrade || "",
+          Race: jsonData.race || jsonData.Race || "",
+          Affiliation: jsonData.affiliation || jsonData.Affiliation || "",
+          ...(profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {})
+        })
         const jsonSkills = Array.isArray(jsonData.skills) ? jsonData.skills : []
         const existingAbilities = Array.isArray(profile.abilities) ? profile.abilities : []
         const migratedAbilities = existingAbilities.length > 0
@@ -6840,7 +6863,7 @@ ${navPoints}  </navMap>
                               })
                             })()
                           ) : (
-                            getProgressionTemplateCardsForProfile(selectedProgressionProfile).map((templateCard, cardIndex) => {
+                            getProgressionTemplateCardsForProfile().map((templateCard, cardIndex) => {
                               const cardValue = getProgressionTemplateCardValue(selectedProgressionProfile, templateCard)
                               const cardFields = getProgressionTemplateCardFields(selectedProgressionProfile, templateCard)
                               const ratio = templateCard.type === "progress" || templateCard.type === "resource"
