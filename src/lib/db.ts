@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { openDB, IDBPDatabase } from 'idb';
 
 export interface PenPadDB {
@@ -24,13 +25,45 @@ export interface PenPadDB {
     key: string;
     value: FileSystemDirectoryHandle;
   };
+  'manuscripts': {
+    key: string;
+    value: {
+      projectId: string;
+      data: any[];
+      updatedAt: number;
+    };
+  };
+  'story_bible': {
+    key: string;
+    value: {
+      projectId: string;
+      data: any[];
+      updatedAt: number;
+    };
+  };
+  'story_brain': {
+    key: string;
+    value: {
+      projectId: string;
+      data: any[];
+      updatedAt: number;
+    };
+  };
+  'version_history': {
+    key: string;
+    value: {
+      noteId: string;
+      data: any[];
+      updatedAt: number;
+    };
+  };
 }
 
 const DB_NAME = 'penpad_engine_db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
-export async function getDB(): Promise<IDBPDatabase<PenPadDB>> {
-  return openDB<PenPadDB>(DB_NAME, DB_VERSION, {
+export async function getDB(): Promise<IDBPDatabase<any>> {
+  return openDB<any>(DB_NAME, DB_VERSION, {
     upgrade(db) {
       if (!db.objectStoreNames.contains('stylometry')) {
         db.createObjectStore('stylometry', { keyPath: 'id' });
@@ -41,11 +74,21 @@ export async function getDB(): Promise<IDBPDatabase<PenPadDB>> {
       if (!db.objectStoreNames.contains('directory_handles')) {
         db.createObjectStore('directory_handles', { keyPath: 'key' });
       }
+      if (!db.objectStoreNames.contains('manuscripts')) {
+        db.createObjectStore('manuscripts', { keyPath: 'projectId' });
+      }
+      if (!db.objectStoreNames.contains('story_bible')) {
+        db.createObjectStore('story_bible', { keyPath: 'projectId' });
+      }
+      if (!db.objectStoreNames.contains('story_brain')) {
+        db.createObjectStore('story_brain', { keyPath: 'projectId' });
+      }
+      if (!db.objectStoreNames.contains('version_history')) {
+        db.createObjectStore('version_history', { keyPath: 'noteId' });
+      }
     },
   });
 }
-
-
 
 export async function saveDirectoryHandleForProject(projectId: string, handle: FileSystemDirectoryHandle | null) {
   const db = await getDB();
@@ -85,4 +128,49 @@ export async function restoreDirectoryHandleForProject(projectId: string): Promi
   }
   
   return null;
+}
+
+// IndexedDB Helper CRUD functions for Manuscripts, Bible, Brain, and Versions
+export async function saveManuscriptLocal(projectId: string, data: any[]) {
+  const db = await getDB();
+  await db.put('manuscripts', { projectId, data, updatedAt: Date.now() });
+}
+
+export async function getManuscriptLocal(projectId: string): Promise<any[] | null> {
+  const db = await getDB();
+  const res = await db.get('manuscripts', projectId);
+  return res ? res.data : null;
+}
+
+export async function saveStoryBibleLocal(projectId: string, data: any[]) {
+  const db = await getDB();
+  await db.put('story_bible', { projectId, data, updatedAt: Date.now() });
+}
+
+export async function getStoryBibleLocal(projectId: string): Promise<any[] | null> {
+  const db = await getDB();
+  const res = await db.get('story_bible', projectId);
+  return res ? res.data : null;
+}
+
+export async function saveStoryBrainLocal(projectId: string, data: any[]) {
+  const db = await getDB();
+  await db.put('story_brain', { projectId, data, updatedAt: Date.now() });
+}
+
+export async function getStoryBrainLocal(projectId: string): Promise<any[] | null> {
+  const db = await getDB();
+  const res = await db.get('story_brain', projectId);
+  return res ? res.data : null;
+}
+
+export async function saveChapterVersionsLocal(noteId: string, data: any[]) {
+  const db = await getDB();
+  await db.put('version_history', { noteId, data, updatedAt: Date.now() });
+}
+
+export async function getChapterVersionsLocal(noteId: string): Promise<any[] | null> {
+  const db = await getDB();
+  const res = await db.get('version_history', noteId);
+  return res ? res.data : null;
 }

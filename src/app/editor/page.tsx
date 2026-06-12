@@ -10,12 +10,23 @@ import {
   Feather, X, Check, AlertCircle, Trash2,
   Download, Save, BookOpen,
   Play, Pause, RotateCcw,
-  Sparkles, Wand2, Copy, Clipboard,
+  Sparkles, Wand2, Copy, Clipboard, BarChart3,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical
 } from "lucide-react"
-import { saveDirectoryHandleForProject, getDirectoryHandleForProject } from '@/lib/db'
+import { 
+  saveDirectoryHandleForProject, 
+  getDirectoryHandleForProject,
+  saveManuscriptLocal,
+  getManuscriptLocal,
+  saveStoryBibleLocal,
+  getStoryBibleLocal,
+  saveStoryBrainLocal,
+  getStoryBrainLocal,
+  saveChapterVersionsLocal,
+  getChapterVersionsLocal
+} from '@/lib/db'
 import { 
   syncChaptersWithCloud, 
   saveChapterToCloud, 
@@ -31,6 +42,7 @@ import {
 } from '@/lib/sync'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import JSZip from 'jszip'
 
 interface Note {
   id: string
@@ -52,6 +64,13 @@ interface Milestone {
   badge: string
 }
 
+interface SprintRecord {
+  id: string
+  duration: number
+  wordsWritten: number
+  completedAt: number
+}
+
 const MILESTONES: Milestone[] = [
   { id: "scribe", title: "Novice Scribe", reqWords: 1000, description: "Wrote your first 1,000 words.", badge: "📜" },
   { id: "disciple", title: "Sect Disciple", reqWords: 5000, description: "Amassed 5,000 words of lore.", badge: "🔮" },
@@ -61,11 +80,11 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain' | 'analytics'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
-type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf'
+type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'lore'
 type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
@@ -656,6 +675,7 @@ function EditorContent() {
   const [showTimelinePanel, setShowTimelinePanel] = useState(true)
   const [showVersionsModal, setShowVersionsModal] = useState(false)
   const [chapterVersions, setChapterVersions] = useState<ChapterVersion[]>([])
+  const [selectedVersionForDiff, setSelectedVersionForDiff] = useState<ChapterVersion | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
 
@@ -719,6 +739,11 @@ function EditorContent() {
   const [sprintWordsWritten, setSprintWordsWritten] = useState(0)
   const [showSprintCompleteModal, setShowSprintCompleteModal] = useState(false)
   const [sprintCompleteWords, setSprintCompleteWords] = useState(0)
+  const [sprintHistory, setSprintHistory] = useState<SprintRecord[]>(() => {
+    if (typeof window === "undefined") return []
+    const stored = localStorage.getItem("penpad_sprint_history")
+    return stored ? JSON.parse(stored) : []
+  })
 
   const [dailyWordLog, setDailyWordLog] = useState<Record<string, number>>({})
   const [unlockedMilestones, setUnlockedMilestones] = useState<Set<string>>(new Set())
@@ -758,6 +783,18 @@ function EditorContent() {
             setSprintCompleteWords(finalWords)
             setShowSprintCompleteModal(true)
             
+            const newSprint: SprintRecord = {
+              id: crypto.randomUUID(),
+              duration: sprintDuration,
+              wordsWritten: finalWords,
+              completedAt: Date.now()
+            }
+            setSprintHistory(prev => {
+              const updated = [newSprint, ...prev].slice(0, 10)
+              localStorage.setItem("penpad_sprint_history", JSON.stringify(updated))
+              return updated
+            })
+            
             if (synthRef.current) {
               synthRef.current.playChime()
             }
@@ -784,7 +821,7 @@ function EditorContent() {
     return () => {
       if (interval) clearInterval(interval)
     }
-  }, [sprintActive, sprintTimeRemaining, currentTotalWords, sprintStartTotalWords, projectId])
+  }, [sprintActive, sprintTimeRemaining, currentTotalWords, sprintStartTotalWords, projectId, sprintDuration])
 
   // Track words written in active sprint
   useEffect(() => {
@@ -929,6 +966,9 @@ function EditorContent() {
   const [isProgressionPromptDesignerOpen, setIsProgressionPromptDesignerOpen] = useState(false)
   const [progressionBulkUpdating, setProgressionBulkUpdating] = useState(false)
   const [progressionBulkUpdateStatus, setProgressionBulkUpdateStatus] = useState("")
+  const [showStatsChart, setShowStatsChart] = useState(false)
+  const [selectedGraphStat, setSelectedGraphStat] = useState<string>("level")
+  const [hoveredGraphPoint, setHoveredGraphPoint] = useState<{ x: number; y: number; value: string | number; label: string; index: number } | null>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -1060,7 +1100,7 @@ function EditorContent() {
         }
         const updated = [newEntry, ...bibleEntries]
         setBibleEntries(updated)
-        localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+        await saveStoryBibleLocal(projectId, updated)
         
         await saveBibleEntryToCloud(user.uid, projectId, newEntry)
 
@@ -1200,7 +1240,7 @@ function EditorContent() {
 
     const updated = bibleEntries.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry)
     setBibleEntries(updated)
-    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+    await saveStoryBibleLocal(projectId, updated)
     await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
 
     setActiveSidebarTab("bible")
@@ -1214,6 +1254,235 @@ function EditorContent() {
     ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId) || null
     : null
 
+  const formatProgressionStatLabel = useCallback((key: string) => {
+    return key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, char => char.toUpperCase())
+  }, [])
+
+  const getCultivationValue = useCallback((realm?: string, stage?: string) => {
+    const realms = progressionSystem.realms || []
+    const stages = progressionSystem.stageLabels || []
+    const rIdx = realm ? realms.indexOf(realm) : -1
+    const sIdx = stage ? stages.indexOf(stage) : -1
+    
+    if (rIdx === -1) return 0
+    const stagesCount = stages.length || 1
+    const stageVal = sIdx >= 0 ? sIdx : 0
+    return rIdx * stagesCount + stageVal
+  }, [progressionSystem])
+
+  const growthChartData = useMemo(() => {
+    if (!selectedProgressionProfile) return []
+    const history = [...selectedProgressionProfile.history].sort((a, b) => (a.appliedAt || 0) - (b.appliedAt || 0))
+    
+    let currentVal = 0
+    if (selectedGraphStat === "level") {
+      currentVal = selectedProgressionProfile.level || 0
+    } else if (selectedGraphStat === "cultivation") {
+      currentVal = getCultivationValue(selectedProgressionProfile.realm, selectedProgressionProfile.stage)
+    } else {
+      currentVal = selectedProgressionProfile.stats?.[selectedGraphStat as ProgressionStatKey] || 0
+    }
+    
+    const points: { chapterNumber: number; chapterTitle: string; value: number; label: string }[] = []
+    let runningStatVal = currentVal
+    
+    for (let i = history.length - 1; i >= 0; i--) {
+      const entry = history[i]
+      let val = 0
+      let label = ""
+      
+      if (selectedGraphStat === "level") {
+        val = entry.levelAfter || 0
+        label = `Lv ${val}`
+      } else if (selectedGraphStat === "cultivation") {
+        val = getCultivationValue(entry.realmAfter, entry.stageAfter)
+        label = entry.realmAfter && entry.stageAfter ? `${entry.realmAfter} (${entry.stageAfter})` : entry.realmAfter || entry.stageAfter || "Mortal"
+      } else {
+        val = runningStatVal
+        label = `${formatProgressionStatLabel(selectedGraphStat)}: ${val}`
+        const delta = entry.statChanges?.[selectedGraphStat as ProgressionStatKey] || 0
+        runningStatVal -= delta
+      }
+      
+      points.unshift({
+        chapterNumber: entry.chapterNumber || 0,
+        chapterTitle: entry.chapterTitle || "Untitled",
+        value: val,
+        label: label
+      })
+    }
+    
+    if (history.length > 0) {
+      const firstEntry = history[0]
+      let val = 0
+      let label = ""
+      if (selectedGraphStat === "level") {
+        val = firstEntry.levelBefore || 0
+        label = `Lv ${val}`
+      } else if (selectedGraphStat === "cultivation") {
+        val = getCultivationValue(firstEntry.realmBefore, firstEntry.stageBefore)
+        label = firstEntry.realmBefore && firstEntry.stageBefore ? `${firstEntry.realmBefore} (${firstEntry.stageBefore})` : firstEntry.realmBefore || firstEntry.stageBefore || "Mortal"
+      } else {
+        const delta = firstEntry.statChanges?.[selectedGraphStat as ProgressionStatKey] || 0
+        val = runningStatVal - delta
+        label = `${formatProgressionStatLabel(selectedGraphStat)}: ${val}`
+      }
+      points.unshift({
+        chapterNumber: Math.max(0, (firstEntry.chapterNumber || 1) - 1),
+        chapterTitle: "Before updates",
+        value: val,
+        label: label
+      })
+    }
+    
+    return points
+  }, [selectedProgressionProfile, selectedGraphStat, getCultivationValue, formatProgressionStatLabel])
+
+  const diffLines = useMemo(() => {
+    if (!activeNote || !selectedVersionForDiff) return { oldLines: [], newLines: [] }
+    
+    const oldStr = selectedVersionForDiff.content
+    const newStr = activeNote.content
+    
+    const oldArr = oldStr.split('\n')
+    const newArr = newStr.split('\n')
+    
+    const m = oldArr.length
+    const n = newArr.length
+    const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+    
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (oldArr[i - 1] === newArr[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+        }
+      }
+    }
+    
+    const oldLines: { text: string; type: 'unchanged' | 'removed' | 'empty' }[] = []
+    const newLines: { text: string; type: 'unchanged' | 'added' | 'empty' }[] = []
+    
+    let i = m, j = n
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && oldArr[i - 1] === newArr[j - 1]) {
+        oldLines.unshift({ text: oldArr[i - 1], type: 'unchanged' })
+        newLines.unshift({ text: newArr[j - 1], type: 'unchanged' })
+        i--
+        j--
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        oldLines.unshift({ text: '', type: 'empty' })
+        newLines.unshift({ text: newArr[j - 1], type: 'added' })
+        j--
+      } else {
+        oldLines.unshift({ text: oldArr[i - 1], type: 'removed' })
+        newLines.unshift({ text: '', type: 'empty' })
+        i--
+      }
+    }
+    
+    return { oldLines, newLines }
+  }, [activeNote, selectedVersionForDiff])
+
+  const [dailyWritingGoal, setDailyWritingGoal] = useState(() => {
+    if (typeof window === "undefined") return 1000
+    const stored = localStorage.getItem("penpad_daily_writing_goal")
+    return stored ? Number(stored) : 1000
+  })
+
+  const handleDailyGoalChange = (val: number) => {
+    setDailyWritingGoal(val)
+    localStorage.setItem("penpad_daily_writing_goal", String(val))
+  }
+
+  const streaks = useMemo(() => {
+    const dates = Object.keys(dailyWordLog)
+      .filter(dateStr => dailyWordLog[dateStr] > 0)
+      .map(dateStr => new Date(dateStr + "T00:00:00"))
+      .sort((a, b) => a.getTime() - b.getTime())
+
+    if (dates.length === 0) return { currentStreak: 0, longestStreak: 0 }
+
+    let longest = 0
+    let current = 0
+    let tempStreak = 0
+    let prevDate: Date | null = null
+
+    for (let idx = 0; idx < dates.length; idx++) {
+      const d = dates[idx]
+      if (prevDate === null) {
+        tempStreak = 1
+      } else {
+        const diffTime = Math.abs(d.getTime() - prevDate.getTime())
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        
+        if (diffDays <= 1) {
+          tempStreak++
+        } else {
+          if (tempStreak > longest) longest = tempStreak
+          tempStreak = 1
+        }
+      }
+      prevDate = d
+    }
+    if (tempStreak > longest) longest = tempStreak
+
+    const todayStr = new Date().toLocaleDateString('en-CA')
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = yesterday.toLocaleDateString('en-CA')
+
+    const hasWrittenToday = (dailyWordLog[todayStr] || 0) > 0
+    const hasWrittenYesterday = (dailyWordLog[yesterdayStr] || 0) > 0
+
+    if (!hasWrittenToday && !hasWrittenYesterday) {
+      current = 0
+    } else {
+      let runningStreak = 0
+      const checkDate = hasWrittenToday ? new Date() : yesterday
+      
+      while (true) {
+        const checkStr = checkDate.toLocaleDateString('en-CA')
+        if ((dailyWordLog[checkStr] || 0) > 0) {
+          runningStreak++
+          checkDate.setDate(checkDate.getDate() - 1)
+        } else {
+          break
+        }
+      }
+      current = runningStreak
+    }
+
+    return { currentStreak: current, longestStreak: longest }
+  }, [dailyWordLog])
+
+  const contributionGridDays = useMemo(() => {
+    const days = []
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const endDate = new Date(today)
+    endDate.setDate(today.getDate() + (6 - dayOfWeek))
+    
+    const startDate = new Date(endDate)
+    startDate.setDate(endDate.getDate() - 111) // 16 weeks * 7 - 1
+    
+    const curr = new Date(startDate)
+    while (curr <= endDate) {
+      const dateStr = curr.toLocaleDateString('en-CA')
+      const count = dailyWordLog[dateStr] || 0
+      days.push({
+        date: new Date(curr),
+        dateStr,
+        count
+      })
+      curr.setDate(curr.getDate() + 1)
+    }
+    return days
+  }, [dailyWordLog])
+
   const formatProgressionDate = (timestamp?: number) => {
     if (!timestamp) return ""
     return new Date(timestamp).toLocaleDateString(undefined, {
@@ -1223,11 +1492,7 @@ function EditorContent() {
     })
   }
 
-  const formatProgressionStatLabel = (key: string) => {
-    return key
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, char => char.toUpperCase())
-  }
+
 
   const normalizeProgressionLookupText = (value: string) => {
     return value
@@ -1270,7 +1535,7 @@ function EditorContent() {
     }
     const updated = [newEntry, ...bibleEntries]
     setBibleEntries(updated)
-    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+    await saveStoryBibleLocal(projectId, updated)
     if (user) {
       await saveBibleEntryToCloud(user.uid, projectId, newEntry)
     }
@@ -3058,8 +3323,16 @@ function EditorContent() {
     if (!user || !projectId) return
     setIsLoadingNotes(true)
     try {
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      let noteList: Note[] = (await getManuscriptLocal(projectId)) || []
+      if (noteList.length === 0) {
+        const stored = localStorage.getItem(`penpad_notes_${projectId}`)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          noteList = parsed
+          await saveManuscriptLocal(projectId, parsed)
+          localStorage.removeItem(`penpad_notes_${projectId}`)
+        }
+      }
       noteList.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(noteList)
       if (noteList.length > 0 && !activeNoteId) {
@@ -3096,8 +3369,16 @@ function EditorContent() {
       const groupList: StoryBibleGroup[] = storedGroups ? JSON.parse(storedGroups) : []
       setBibleGroups(groupList.sort((a, b) => a.sortOrder - b.sortOrder))
 
-      const stored = localStorage.getItem(`penpad_bible_${projectId}`)
-      const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+      let entryList: BibleEntry[] = (await getStoryBibleLocal(projectId)) || []
+      if (entryList.length === 0) {
+        const stored = localStorage.getItem(`penpad_bible_${projectId}`)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          entryList = parsed
+          await saveStoryBibleLocal(projectId, parsed)
+          localStorage.removeItem(`penpad_bible_${projectId}`)
+        }
+      }
       setBibleEntries(entryList)
 
       const synced = await syncBibleWithCloud(user.uid, projectId, entryList)
@@ -3124,8 +3405,8 @@ function EditorContent() {
   const saveBibleEntry = useCallback(async (entry: BibleEntry) => {
     if (!user || !projectId) return
     try {
-      const stored = localStorage.getItem(`penpad_bible_${projectId}`)
-      const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+      let entryList = await getStoryBibleLocal(projectId)
+      if (!entryList) entryList = []
       const existingIdx = entryList.findIndex(e => e.id === entry.id)
       const now = Date.now()
       const updatedEntry = { ...entry, updatedAt: now }
@@ -3136,7 +3417,7 @@ function EditorContent() {
         entryList.push(updatedEntry)
       }
 
-      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(entryList))
+      await saveStoryBibleLocal(projectId, entryList)
       setBibleEntries(entryList)
 
       await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
@@ -3159,7 +3440,7 @@ function EditorContent() {
       }
       const updated = [newEntry, ...bibleEntries]
       setBibleEntries(updated)
-      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(updated))
+      await saveStoryBibleLocal(projectId, updated)
       setActiveBibleEntryId(newEntry.id)
       setIsBibleDrawerOpen(true)
       
@@ -3174,7 +3455,7 @@ function EditorContent() {
     try {
       const filtered = bibleEntries.filter(e => e.id !== entryId)
       setBibleEntries(filtered)
-      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(filtered))
+      await saveStoryBibleLocal(projectId, filtered)
 
       await deleteBibleEntryFromCloud(user.uid, projectId, entryId)
 
@@ -3229,7 +3510,7 @@ function EditorContent() {
   const saveBibleEntriesList = async (nextEntries: BibleEntry[]) => {
     if (!projectId) return
     setBibleEntries(nextEntries)
-    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(nextEntries))
+    await saveStoryBibleLocal(projectId, nextEntries)
   }
 
   const addBibleEntriesToGroup = async (entryIds: string[], groupId: string) => {
@@ -3272,8 +3553,16 @@ function EditorContent() {
   const fetchBrain = useCallback(async () => {
     if (!user || !projectId) return
     try {
-      const stored = localStorage.getItem(`penpad_brain_${projectId}`)
-      const entryList: BrainEntry[] = stored ? JSON.parse(stored) : []
+      let entryList: BrainEntry[] = (await getStoryBrainLocal(projectId)) || []
+      if (entryList.length === 0) {
+        const stored = localStorage.getItem(`penpad_brain_${projectId}`)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          entryList = parsed
+          await saveStoryBrainLocal(projectId, parsed)
+          localStorage.removeItem(`penpad_brain_${projectId}`)
+        }
+      }
       setBrainEntries(entryList)
 
       const synced = await syncBrainWithCloud(user.uid, projectId, entryList)
@@ -3339,7 +3628,7 @@ function EditorContent() {
     // Immediately add with placeholder — zero lag
     const updated = [newEntry, ...brainEntries]
     setBrainEntries(updated)
-    localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(updated))
+    await saveStoryBrainLocal(projectId, updated)
 
     // Clear selection
     setAiSelectionText("")
@@ -3362,7 +3651,7 @@ function EditorContent() {
       })
     })
       .then(res => res.json())
-      .then(data => {
+      .then(async data => {
         const summary = data.text || data.error || "Could not analyze."
         const finalEntry: BrainEntry = {
           ...newEntry,
@@ -3376,7 +3665,7 @@ function EditorContent() {
 
         setBrainEntries(prev => {
           const list = prev.map(e => e.id === newEntry.id ? finalEntry : e)
-          localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(list))
+          saveStoryBrainLocal(projectId, list)
           return list
         })
 
@@ -3386,7 +3675,7 @@ function EditorContent() {
         const errorEntry = { ...newEntry, aiSummary: "Analysis failed. Try again.", updatedAt: Date.now() }
         setBrainEntries(prev => {
           const list = prev.map(e => e.id === newEntry.id ? errorEntry : e)
-          localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(list))
+          saveStoryBrainLocal(projectId, list)
           return list
         })
       })
@@ -3398,14 +3687,14 @@ function EditorContent() {
       const filtered = brainEntries.filter(e => e.id !== entryId)
       setBrainEntries(filtered)
       setSelectedBrainEntryId(current => current === entryId ? null : current)
-      localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(filtered))
+      await saveStoryBrainLocal(projectId, filtered)
       await deleteBrainEntryFromCloud(user.uid, projectId, entryId)
     } catch (e) {
       console.error("Failed to delete brain entry:", e)
     }
   }
 
-  const updateBrainEntry = (entryId: string, updates: Partial<BrainEntry>) => {
+  const updateBrainEntry = async (entryId: string, updates: Partial<BrainEntry>) => {
     if (!projectId || !user) return
 
     const updatedEntry = brainEntries.find(entry => entry.id === entryId)
@@ -3415,7 +3704,7 @@ function EditorContent() {
     const updatedList = brainEntries.map(entry => entry.id === entryId ? finalEntry : entry)
 
     setBrainEntries(updatedList)
-    localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(updatedList))
+    await saveStoryBrainLocal(projectId, updatedList)
     saveBrainEntryToCloud(user.uid, projectId, finalEntry)
   }
 
@@ -3452,22 +3741,32 @@ function EditorContent() {
     return projectId ? `penpad_versions_${projectId}_${noteId}` : ""
   }, [projectId])
 
-  const loadChapterVersions = useCallback((noteId: string) => {
+  const loadChapterVersions = useCallback(async (noteId: string) => {
     const key = getVersionKey(noteId)
     if (!key) return []
     try {
-      const stored = localStorage.getItem(key)
-      return stored ? JSON.parse(stored) as ChapterVersion[] : []
+      let versions = await getChapterVersionsLocal(noteId)
+      if (!versions) {
+        const stored = localStorage.getItem(key)
+        if (stored) {
+          versions = JSON.parse(stored) as ChapterVersion[]
+          await saveChapterVersionsLocal(noteId, versions)
+          localStorage.removeItem(key)
+        } else {
+          versions = []
+        }
+      }
+      return versions
     } catch {
       return []
     }
   }, [getVersionKey])
 
-  const saveChapterVersion = useCallback((note: Note, timestamp: number) => {
+  const saveChapterVersion = useCallback(async (note: Note, timestamp: number) => {
     const key = getVersionKey(note.id)
     if (!key || !note.content.trim()) return
 
-    const versions = loadChapterVersions(note.id)
+    const versions = await loadChapterVersions(note.id)
     const latest = versions[0]
     if (latest && latest.content === note.content) return
     if (latest && timestamp - latest.savedAt < 1000 * 60 * 5) return
@@ -3483,7 +3782,7 @@ function EditorContent() {
       ...versions
     ].slice(0, 12)
 
-    localStorage.setItem(key, JSON.stringify(nextVersions))
+    await saveChapterVersionsLocal(note.id, nextVersions)
     if (note.id === activeNoteId) setChapterVersions(nextVersions)
   }, [activeNoteId, getVersionKey, loadChapterVersions])
 
@@ -3497,11 +3796,8 @@ function EditorContent() {
     if (!user || !projectId) return
     setSyncStatus('saving')
     try {
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      let noteList: Note[] = []
-      if (stored) {
-        noteList = JSON.parse(stored)
-      }
+      let noteList = await getManuscriptLocal(projectId)
+      if (!noteList) noteList = []
       
       const existingIdx = noteList.findIndex(n => n.id === note.id)
       const now = Date.now()
@@ -3513,7 +3809,7 @@ function EditorContent() {
         noteList.push(updatedNote)
       }
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(noteList))
+      await saveManuscriptLocal(projectId, noteList)
       
       const storedProjects = localStorage.getItem(`penpad_projects_${user.uid}`)
       if (storedProjects) {
@@ -3525,7 +3821,7 @@ function EditorContent() {
         }
       }
 
-      saveChapterVersion(updatedNote, now)
+      await saveChapterVersion(updatedNote, now)
       await saveChapterToCloud(user.uid, projectId, updatedNote)
       setLastSavedAt(now)
       setSyncStatus('saved')
@@ -3556,11 +3852,15 @@ function EditorContent() {
   }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain, fetchProgressionSystem, fetchProgressionProfiles])
 
   useEffect(() => {
+    let active = true
     if (activeNoteId) {
-      setChapterVersions(loadChapterVersions(activeNoteId))
+      loadChapterVersions(activeNoteId).then(versions => {
+        if (active) setChapterVersions(versions)
+      })
     } else {
       setChapterVersions([])
     }
+    return () => { active = false }
   }, [activeNoteId, loadChapterVersions])
 
   useEffect(() => {
@@ -3798,7 +4098,7 @@ function EditorContent() {
       .replace(/'/g, "&#039;")
   }
 
-  const buildExportContent = (format: Exclude<ExportFormat, 'folder' | 'pdf'>) => {
+  const buildExportContent = (format: Exclude<ExportFormat, 'folder' | 'pdf' | 'epub'>) => {
     const chapters = getExportChapters()
     if (format === 'md') {
       return `# ${projectName}\n\n${chapters.map(note => `## ${note.title || "Untitled"}\n\n${note.content || ""}`).join("\n\n")}`
@@ -3861,6 +4161,109 @@ function EditorContent() {
       printWindow.focus()
       printWindow.print()
       setExportModal(false)
+      return
+    }
+
+    if (exportFormat === 'epub') {
+      try {
+        const chapters = getExportChapters()
+        const zip = new JSZip()
+        
+        // mimetype (must be STORED/uncompressed)
+        zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' })
+        
+        // META-INF/container.xml
+        zip.file('META-INF/container.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`)
+
+        // OEBPS/styles.css
+        zip.file('OEBPS/styles.css', `body { font-family: sans-serif; padding: 1em; line-height: 1.5; }
+h1 { text-align: center; }
+h2 { margin-top: 1.5em; text-align: left; }
+p { margin-bottom: 1em; text-indent: 1.5em; margin-top: 0; }`)
+
+        let manifestItems = ''
+        let spineItems = ''
+        let navPoints = ''
+        
+        chapters.forEach((chapter, idx) => {
+          const fileName = `chapter_${idx + 1}.html`
+          const id = `chapter_${idx + 1}`
+          const title = chapter.title || `Chapter ${idx + 1}`
+          
+          zip.file(`OEBPS/${fileName}`, `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>${escapeHtml(title)}</title>
+  <link rel="stylesheet" href="styles.css" type="text/css"/>
+</head>
+<body>
+  <h2>${escapeHtml(title)}</h2>
+  ${(chapter.content || '').split('\n').map(line => line.trim() ? `<p>${escapeHtml(line)}</p>` : '').join('\n')}
+</body>
+</html>`)
+
+          manifestItems += `    <item id="${id}" href="${fileName}" media-type="application/xhtml+xml" />\n`
+          spineItems += `    <itemref idref="${id}" />\n`
+          navPoints += `    <navPoint id="${id}" playOrder="${idx + 1}">
+      <navLabel><text>${escapeHtml(title)}</text></navLabel>
+      <content src="${fileName}"/>
+    </navPoint>\n`
+        })
+
+        // OEBPS/content.opf
+        zip.file('OEBPS/content.opf', `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookID" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>${escapeHtml(projectName)}</dc:title>
+    <dc:language>en</dc:language>
+    <dc:identifier id="BookID" opf:scheme="UUID">urn:uuid:${crypto.randomUUID()}</dc:identifier>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />
+    <item id="style" href="styles.css" media-type="text/css" />
+${manifestItems}  </manifest>
+  <spine toc="ncx">
+${spineItems}  </spine>
+</package>`)
+
+        // OEBPS/toc.ncx
+        zip.file('OEBPS/toc.ncx', `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD NCX//EN" "http://www.daisy.org/z3986/2005/ncx-1.0.dtd">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:12345"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle>
+    <text>${escapeHtml(projectName)}</text>
+  </docTitle>
+  <navMap>
+${navPoints}  </navMap>
+</ncx>`)
+
+        const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${projectName || "manuscript"}.epub`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+        
+        setExportModal(false)
+      } catch (err) {
+        console.error("Failed to generate EPUB:", err)
+        alert("Failed to generate EPUB file.")
+      }
       return
     }
 
@@ -3973,8 +4376,8 @@ function EditorContent() {
     if (!name || !user || !projectId) return
     
     try {
-      const stored = localStorage.getItem(`penpad_bible_${projectId}`)
-      const entryList: BibleEntry[] = stored ? JSON.parse(stored) : []
+      let entryList = await getStoryBibleLocal(projectId)
+      if (!entryList) entryList = []
       
       const exists = entryList.some(e => e.name.toLowerCase() === name.toLowerCase())
       if (exists) {
@@ -3991,7 +4394,7 @@ function EditorContent() {
       }
 
       entryList.unshift(newEntry)
-      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(entryList))
+      await saveStoryBibleLocal(projectId, entryList)
       setBibleEntries(entryList)
       
       await saveBibleEntryToCloud(user.uid, projectId, newEntry)
@@ -4280,11 +4683,11 @@ function EditorContent() {
         sortOrder: getNextChapterSortOrder(notes),
       }
       
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      let noteList = await getManuscriptLocal(projectId)
+      if (!noteList) noteList = []
       const updatedNotes = getOrderedNotesList([...noteList, newNote])
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(updatedNotes))
+      await saveManuscriptLocal(projectId, updatedNotes)
       setNotes(updatedNotes)
       setActiveNoteId(newNote.id)
       setViewMode('edit')
@@ -4445,11 +4848,11 @@ function EditorContent() {
         sortOrder: getNextChapterSortOrder(notes),
       }
       
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      let noteList = await getManuscriptLocal(projectId)
+      if (!noteList) noteList = []
       const updatedNotes = getOrderedNotesList([...noteList, newNote])
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(updatedNotes))
+      await saveManuscriptLocal(projectId, updatedNotes)
       setNotes(updatedNotes)
       setActiveNoteId(newNote.id)
       setViewMode('edit')
@@ -4478,7 +4881,7 @@ function EditorContent() {
     }
     const updatedNotes = getOrderedNotesList(notes.map(note => note.id === noteId ? updatedNote : note))
     setNotes(updatedNotes)
-    localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(updatedNotes))
+    await saveManuscriptLocal(projectId, updatedNotes)
     setChapterMoveMenu(null)
     setDraggedChapterId(null)
 
@@ -4490,11 +4893,11 @@ function EditorContent() {
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
     try {
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      let noteList = await getManuscriptLocal(projectId)
+      if (!noteList) noteList = []
       const filtered = noteList.filter((n: Note) => n && n.id !== deleteModal.noteId)
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
+      await saveManuscriptLocal(projectId, filtered)
       setNotes(filtered)
       
       if (user) {
@@ -4553,11 +4956,11 @@ function EditorContent() {
   const deleteSelectedNotes = async () => {
     if (!projectId || selectedNoteIds.size === 0) return
     try {
-      const stored = localStorage.getItem(`penpad_notes_${projectId}`)
-      const noteList: Note[] = stored ? JSON.parse(stored) : []
+      let noteList = await getManuscriptLocal(projectId)
+      if (!noteList) noteList = []
       const filtered = noteList.filter((n: Note) => n && !selectedNoteIds.has(n.id))
       
-      localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(filtered))
+      await saveManuscriptLocal(projectId, filtered)
       setNotes(filtered)
       
       if (user) {
@@ -4887,7 +5290,7 @@ function EditorContent() {
     try {
       const filtered = bibleEntries.filter(e => !selectedBibleIds.has(e.id))
       setBibleEntries(filtered)
-      localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(filtered))
+      await saveStoryBibleLocal(projectId, filtered)
 
       if (user) {
         await Promise.all(
@@ -5304,6 +5707,21 @@ function EditorContent() {
                 title="Brain Map"
               >
                 <BrainCircuit size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'analytics' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'analytics' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('analytics')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Writing Goals & Analytics"
+              >
+                <BarChart3 size={20} />
               </button>
             </div>
             
@@ -6153,119 +6571,266 @@ function EditorContent() {
 
                     <div className="progression-growth-timeline">
                       <div className="progression-growth-header">
-                        <div>
+                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                           <History size={14} />
                           <strong>Recent Growth</strong>
                         </div>
-                        <span>{selectedProgressionProfile.processedChapterIds.length} reviewed</span>
+                        <div className="growth-toggle-buttons">
+                          <button
+                            className={`btn-toggle-growth ${!showStatsChart ? 'active' : ''}`}
+                            onClick={() => setShowStatsChart(false)}
+                          >
+                            Timeline
+                          </button>
+                          <button
+                            className={`btn-toggle-growth ${showStatsChart ? 'active' : ''}`}
+                            onClick={() => setShowStatsChart(true)}
+                          >
+                            Chart
+                          </button>
+                        </div>
                       </div>
 
-                      {selectedProgressionProfile.history.length === 0 ? (
-                        <div className="progression-growth-empty">
-                          <p>No chapter updates recorded yet.</p>
-                          <small>Run Update Profile from a chapter to build a canon-backed trail of changes.</small>
-                        </div>
-                      ) : (
-                        <div className="progression-growth-list">
-                          {[...selectedProgressionProfile.history]
-                            .sort((a, b) => (b.appliedAt || 0) - (a.appliedAt || 0))
-                            .slice(0, 6)
-                            .map(historyEntry => {
-                              const statEntries = Object.entries(historyEntry.statChanges || {})
-                                .filter(([, value]) => typeof value === "number" && value !== 0)
-                              const levelChanged = historyEntry.levelBefore !== historyEntry.levelAfter
-                              const realmChanged = Boolean(historyEntry.realmBefore || historyEntry.realmAfter)
-                                && (historyEntry.realmBefore || "") !== (historyEntry.realmAfter || "")
-                              const stageChanged = Boolean(historyEntry.stageBefore || historyEntry.stageAfter)
-                                && (historyEntry.stageBefore || "") !== (historyEntry.stageAfter || "")
-                              const abilityChanges = historyEntry.abilityChanges || []
-                              const rewards = historyEntry.rewards || []
-                              const evidence = historyEntry.evidence || []
+                      {showStatsChart ? (
+                        <div className="growth-chart-container" style={{ position: "relative" }}>
+                          <div className="growth-chart-selector" style={{ margin: "0.5rem 0 0.75rem 0", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>Stat to plot:</span>
+                            <select
+                              className="ai-select"
+                              style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", width: "auto", height: "auto" }}
+                              value={selectedGraphStat}
+                              onChange={(e) => {
+                                setSelectedGraphStat(e.target.value)
+                                setHoveredGraphPoint(null)
+                              }}
+                            >
+                              <option value="level">Level</option>
+                              {progressionSystem.realms.length > 0 && <option value="cultivation">Cultivation Rank</option>}
+                              {progressionSystem.statKeys.map(key => (
+                                <option key={key} value={key}>{formatProgressionStatLabel(key)}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                              return (
-                                <details className="progression-growth-item" key={historyEntry.id}>
-                                  <summary>
-                                    <div className="progression-growth-summary-main">
-                                      <span>Chapter {historyEntry.chapterNumber ?? "?"}</span>
-                                      <strong>{historyEntry.chapterTitle || "Untitled chapter"}</strong>
-                                      {formatProgressionDate(historyEntry.appliedAt) && (
-                                        <small>{formatProgressionDate(historyEntry.appliedAt)}</small>
-                                      )}
-                                    </div>
-                                    <div className="progression-growth-deltas">
-                                      {levelChanged && <em>Lv {historyEntry.levelBefore} -&gt; {historyEntry.levelAfter}</em>}
-                                      {realmChanged && <em>{historyEntry.realmBefore || "Unknown"} -&gt; {historyEntry.realmAfter || "Unknown"}</em>}
-                                      {stageChanged && <em>{historyEntry.stageBefore || "Unknown"} -&gt; {historyEntry.stageAfter || "Unknown"}</em>}
-                                      {!levelChanged && !realmChanged && !stageChanged && <em>Reviewed</em>}
-                                    </div>
-                                  </summary>
+                          {growthChartData.length < 2 ? (
+                            <div className="progression-growth-empty" style={{ minHeight: "150px" }}>
+                              <p>Not enough points to plot a chart.</p>
+                              <small>You need at least 2 updates in character history to render a growth graph.</small>
+                            </div>
+                          ) : (
+                            <div style={{ position: "relative", width: "100%" }}>
+                              {/* SVG Chart */}
+                              {(() => {
+                                const width = 300
+                                const height = 150
+                                const paddingX = 35
+                                const paddingY = 20
+                                const values = growthChartData.map(d => d.value)
+                                const minVal = Math.min(...values)
+                                const maxVal = Math.max(...values)
+                                const yMin = minVal === maxVal ? minVal - 1 : minVal
+                                const yMax = minVal === maxVal ? maxVal + 1 : maxVal
+                                const yRange = yMax - yMin
 
-                                  <div className="progression-growth-body">
-                                    <p>{historyEntry.summary || "Progression reviewed for this chapter."}</p>
+                                const points = growthChartData.map((d, idx) => {
+                                  const x = paddingX + (idx / (growthChartData.length - 1)) * (width - 2 * paddingX)
+                                  const y = (height - paddingY) - ((d.value - yMin) / yRange) * (height - 2 * paddingY)
+                                  return { x, y, ...d }
+                                })
 
-                                    {statEntries.length > 0 && (
-                                      <div className="progression-growth-detail-block">
-                                        <span>Stat Changes</span>
-                                        <div className="progression-growth-chip-list">
-                                          {statEntries.map(([key, value]) => (
-                                            <em key={key}>{formatProgressionStatLabel(key)} {Number(value) > 0 ? "+" : ""}{value}</em>
-                                          ))}
+                                const pathD = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+                                const areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`
+
+                                return (
+                                  <>
+                                    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} style={{ overflow: "visible" }}>
+                                      <defs>
+                                        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                          <stop offset="0%" stopColor="var(--color-primary, #6366f1)" stopOpacity="0.3"/>
+                                          <stop offset="100%" stopColor="var(--color-primary, #6366f1)" stopOpacity="0.0"/>
+                                        </linearGradient>
+                                      </defs>
+                                      
+                                      {/* Grid Lines */}
+                                      <line x1={paddingX} y1={paddingY} x2={width - paddingX} y2={paddingY} stroke="var(--color-border, #313244)" strokeDasharray="3,3" />
+                                      <line x1={paddingX} y1={height / 2} x2={width - paddingX} y2={height / 2} stroke="var(--color-border, #313244)" strokeDasharray="3,3" />
+                                      <line x1={paddingX} y1={height - paddingY} x2={width - paddingX} y2={height - paddingY} stroke="var(--color-border, #313244)" strokeDasharray="3,3" />
+
+                                      {/* Y-Axis Label Indicators */}
+                                      <text x={paddingX - 5} y={paddingY + 3} textAnchor="end" fill="var(--color-text-muted, #a6adc8)" fontSize="8px">
+                                        {selectedGraphStat === "cultivation" ? "Max" : yMax}
+                                      </text>
+                                      <text x={paddingX - 5} y={height - paddingY + 3} textAnchor="end" fill="var(--color-text-muted, #a6adc8)" fontSize="8px">
+                                        {selectedGraphStat === "cultivation" ? "Min" : yMin}
+                                      </text>
+
+                                      {/* Area Fill */}
+                                      <path d={areaD} fill="url(#chartGradient)" />
+
+                                      {/* Line */}
+                                      <path d={pathD} fill="none" stroke="var(--color-primary, #6366f1)" strokeWidth={2} />
+
+                                      {/* Points */}
+                                      {points.map((p, idx) => (
+                                        <g key={idx}>
+                                          <circle
+                                            cx={p.x}
+                                            cy={p.y}
+                                            r={hoveredGraphPoint?.index === idx ? 5 : 3}
+                                            fill="var(--color-primary, #6366f1)"
+                                            stroke="var(--color-bg, #1e1e2e)"
+                                            strokeWidth={1.5}
+                                            style={{ transition: "all 0.15s ease" }}
+                                          />
+                                          {/* Invisible larger hover circle */}
+                                          <circle
+                                            cx={p.x}
+                                            cy={p.y}
+                                            r={12}
+                                            fill="transparent"
+                                            style={{ cursor: "pointer" }}
+                                            onMouseEnter={() => setHoveredGraphPoint({ x: p.x, y: p.y, value: p.value, label: p.label, index: idx })}
+                                            onMouseLeave={() => setHoveredGraphPoint(null)}
+                                          />
+                                        </g>
+                                      ))}
+                                    </svg>
+
+                                    {/* Tooltip */}
+                                    {hoveredGraphPoint && (
+                                      <div
+                                        className="growth-chart-tooltip"
+                                        style={{
+                                          position: "absolute",
+                                          left: `${(hoveredGraphPoint.x / width) * 100}%`,
+                                          top: `${hoveredGraphPoint.y - 12}px`,
+                                          transform: "translate(-50%, -100%)",
+                                          pointerEvents: "none",
+                                          zIndex: 100
+                                        }}
+                                      >
+                                        <div className="growth-tooltip-content">
+                                          <strong>{hoveredGraphPoint.label}</strong>
+                                          <span>Ch {hoveredGraphPoint.chapterNumber || "?"}: {growthChartData[hoveredGraphPoint.index]?.chapterTitle}</span>
                                         </div>
                                       </div>
                                     )}
-
-                                    {abilityChanges.length > 0 && (
-                                      <div className="progression-growth-detail-block">
-                                        <span>Abilities</span>
-                                        <ul>
-                                          {abilityChanges.map((item, index) => {
-                                            if (!item) return null
-                                            if (typeof item === "object") {
-                                              const obj = item as { name?: string; level?: string | number; rank?: string; description?: string }
-                                              const levelStr = obj.rank || (obj.level ? `Lv ${obj.level}` : "")
-                                              return (
-                                                <li key={`${historyEntry.id}-ability-${index}`}>
-                                                  <strong>{obj.name || "Ability"}</strong> {levelStr && `(${levelStr})`}
-                                                  {obj.description && ` - ${obj.description}`}
-                                                </li>
-                                              )
-                                            }
-                                            return <li key={`${historyEntry.id}-ability-${index}`}>{String(item)}</li>
-                                          })}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {rewards.length > 0 && (
-                                      <div className="progression-growth-detail-block">
-                                        <span>Rewards</span>
-                                        <ul>
-                                          {rewards.map((item, index) => (
-                                            <li key={`${historyEntry.id}-reward-${index}`}>
-                                              {typeof item === "object" ? JSON.stringify(item) : String(item)}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {evidence.length > 0 && (
-                                      <div className="progression-growth-detail-block evidence">
-                                        <span>Canon Evidence</span>
-                                        <ul>
-                                          {evidence.map((item, index) => (
-                                            <li key={`${historyEntry.id}-evidence-${index}`}>
-                                              {typeof item === "object" ? JSON.stringify(item) : String(item)}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                </details>
-                              )
-                            })}
+                                  </>
+                                )
+                              })()}
+                            </div>
+                          )}
                         </div>
+                      ) : (
+                        <>
+                          {selectedProgressionProfile.history.length === 0 ? (
+                            <div className="progression-growth-empty">
+                              <p>No chapter updates recorded yet.</p>
+                              <small>Run Update Profile from a chapter to build a canon-backed trail of changes.</small>
+                            </div>
+                          ) : (
+                            <div className="progression-growth-list">
+                              {[...selectedProgressionProfile.history]
+                                .sort((a, b) => (b.appliedAt || 0) - (a.appliedAt || 0))
+                                .slice(0, 6)
+                                .map(historyEntry => {
+                                  const statEntries = Object.entries(historyEntry.statChanges || {})
+                                    .filter(([, value]) => typeof value === "number" && value !== 0)
+                                  const levelChanged = historyEntry.levelBefore !== historyEntry.levelAfter
+                                  const realmChanged = Boolean(historyEntry.realmBefore || historyEntry.realmAfter)
+                                    && (historyEntry.realmBefore || "") !== (historyEntry.realmAfter || "")
+                                  const stageChanged = Boolean(historyEntry.stageBefore || historyEntry.stageAfter)
+                                    && (historyEntry.stageBefore || "") !== (historyEntry.stageAfter || "")
+                                  const abilityChanges = historyEntry.abilityChanges || []
+                                  const rewards = historyEntry.rewards || []
+                                  const evidence = historyEntry.evidence || []
+
+                                  return (
+                                    <details className="progression-growth-item" key={historyEntry.id}>
+                                      <summary>
+                                        <div className="progression-growth-summary-main">
+                                          <span>Chapter {historyEntry.chapterNumber ?? "?"}</span>
+                                          <strong>{historyEntry.chapterTitle || "Untitled chapter"}</strong>
+                                          {formatProgressionDate(historyEntry.appliedAt) && (
+                                            <small>{formatProgressionDate(historyEntry.appliedAt)}</small>
+                                          )}
+                                        </div>
+                                        <div className="progression-growth-deltas">
+                                          {levelChanged && <em>Lv {historyEntry.levelBefore} -&gt; {historyEntry.levelAfter}</em>}
+                                          {realmChanged && <em>{historyEntry.realmBefore || "Unknown"} -&gt; {historyEntry.realmAfter || "Unknown"}</em>}
+                                          {stageChanged && <em>{historyEntry.stageBefore || "Unknown"} -&gt; {historyEntry.stageAfter || "Unknown"}</em>}
+                                          {!levelChanged && !realmChanged && !stageChanged && <em>Reviewed</em>}
+                                        </div>
+                                      </summary>
+
+                                      <div className="progression-growth-body">
+                                        <p>{historyEntry.summary || "Progression reviewed for this chapter."}</p>
+
+                                        {statEntries.length > 0 && (
+                                          <div className="progression-growth-detail-block">
+                                            <span>Stat Changes</span>
+                                            <div className="progression-growth-chip-list">
+                                              {statEntries.map(([key, value]) => (
+                                                <em key={key}>{formatProgressionStatLabel(key)} {Number(value) > 0 ? "+" : ""}{value}</em>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {abilityChanges.length > 0 && (
+                                          <div className="progression-growth-detail-block">
+                                            <span>Abilities</span>
+                                            <ul>
+                                              {abilityChanges.map((item, index) => {
+                                                if (!item) return null
+                                                if (typeof item === "object") {
+                                                  const obj = item as { name?: string; level?: string | number; rank?: string; description?: string }
+                                                  const levelStr = obj.rank || (obj.level ? `Lv ${obj.level}` : "")
+                                                  return (
+                                                    <li key={`${historyEntry.id}-ability-${index}`}>
+                                                      <strong>{obj.name || "Ability"}</strong> {levelStr && `(${levelStr})`}
+                                                      {obj.description && ` - ${obj.description}`}
+                                                    </li>
+                                                  )
+                                                }
+                                                return <li key={`${historyEntry.id}-ability-${index}`}>{String(item)}</li>
+                                              })}
+                                            </ul>
+                                          </div>
+                                        )}
+
+                                        {rewards.length > 0 && (
+                                          <div className="progression-growth-detail-block">
+                                            <span>Rewards</span>
+                                            <ul>
+                                              {rewards.map((item, index) => (
+                                                <li key={`${historyEntry.id}-reward-${index}`}>
+                                                  {typeof item === "object" ? JSON.stringify(item) : String(item)}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+
+                                        {evidence.length > 0 && (
+                                          <div className="progression-growth-detail-block evidence">
+                                            <span>Canon Evidence</span>
+                                            <ul>
+                                              {evidence.map((item, index) => (
+                                                <li key={`${historyEntry.id}-evidence-${index}`}>
+                                                  {typeof item === "object" ? JSON.stringify(item) : String(item)}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </details>
+                                  )
+                                })}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -6863,6 +7428,150 @@ function EditorContent() {
                       )
                     })
                   })()}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: WRITING GOALS & ANALYTICS */}
+            {activeSidebarTab === 'analytics' && (
+              <div className="sidebar-tab-content analytics-panel fade-in">
+                <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Analytics</span>
+                
+                {/* Streak counters */}
+                <div className="analytics-streak-cards">
+                  <div className="streak-card current">
+                    <span className="streak-badge">🔥</span>
+                    <div>
+                      <strong>{streaks.currentStreak} Days</strong>
+                      <span>Current Streak</span>
+                    </div>
+                  </div>
+                  <div className="streak-card longest">
+                    <span className="streak-badge">🏆</span>
+                    <div>
+                      <strong>{streaks.longestStreak} Days</strong>
+                      <span>Longest Streak</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Daily Writing Goal Card */}
+                <div className="analytics-goal-card glass-light">
+                  <div className="goal-card-header">
+                    <h4>Daily Writing Goal</h4>
+                    <div className="goal-input-wrapper">
+                      <input
+                        type="number"
+                        min="100"
+                        step="100"
+                        value={dailyWritingGoal}
+                        onChange={(e) => handleDailyGoalChange(Math.max(100, Number(e.target.value)))}
+                      />
+                      <span>words</span>
+                    </div>
+                  </div>
+                  {(() => {
+                    const todayStr = new Date().toLocaleDateString('en-CA')
+                    const writtenToday = dailyWordLog[todayStr] || 0
+                    const percent = Math.min(100, Math.round((writtenToday / dailyWritingGoal) * 100))
+                    return (
+                      <div className="goal-progress-section">
+                        <div className="goal-progress-bar">
+                          <div className="goal-progress-fill" style={{ width: `${percent}%` }} />
+                        </div>
+                        <div className="goal-progress-labels">
+                          <span>{writtenToday.toLocaleString()} / {dailyWritingGoal.toLocaleString()} words</span>
+                          <strong>{percent}%</strong>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* Heatmap Grid */}
+                <div className="analytics-section">
+                  <h5>Activity Map</h5>
+                  <div className="contribution-grid-container scrollbar">
+                    <div className="contribution-grid">
+                      {Array.from({ length: 16 }).map((_, colIdx) => (
+                        <div key={colIdx} className="contribution-column">
+                          {contributionGridDays.slice(colIdx * 7, (colIdx + 1) * 7).map(day => {
+                            let level = 0
+                            if (day.count > 0 && day.count < 100) level = 1
+                            else if (day.count >= 100 && day.count < 500) level = 2
+                            else if (day.count >= 500 && day.count < 1000) level = 3
+                            else if (day.count >= 1000) level = 4
+
+                            return (
+                              <div
+                                key={day.dateStr}
+                                className={`contribution-square level-${level}`}
+                                title={`${day.count.toLocaleString()} words on ${day.date.toLocaleDateString()}`}
+                              />
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="contribution-legend">
+                    <span>Less</span>
+                    <div className="legend-squares">
+                      <div className="contribution-square level-0" />
+                      <div className="contribution-square level-1" />
+                      <div className="contribution-square level-2" />
+                      <div className="contribution-square level-3" />
+                      <div className="contribution-square level-4" />
+                    </div>
+                    <span>More</span>
+                  </div>
+                </div>
+
+                {/* Focus Sprint records */}
+                <div className="analytics-section">
+                  <h5>Recent Sprints</h5>
+                  {sprintHistory.length === 0 ? (
+                    <div className="sprint-history-empty">
+                      <p>No focus sprints logged yet.</p>
+                      <small>Start a sprint in Focus Mode (timer button in top right) to log focused sessions.</small>
+                    </div>
+                  ) : (
+                    <div className="sprint-history-list">
+                      {sprintHistory.map(sprint => (
+                        <div key={sprint.id} className="sprint-history-item">
+                          <div>
+                            <strong>{sprint.wordsWritten.toLocaleString()} words</strong>
+                            <span>{Math.round(sprint.duration / 60)} min sprint</span>
+                          </div>
+                          <small>{new Date(sprint.completedAt).toLocaleDateString()} {new Date(sprint.completedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Milestones Checklist */}
+                <div className="analytics-section">
+                  <h5>Writing Milestones</h5>
+                  <div className="milestones-analytics-list">
+                    {MILESTONES.map(m => {
+                      const isUnlocked = unlockedMilestones.has(m.id)
+                      return (
+                        <div key={m.id} className={`milestone-analytics-item ${isUnlocked ? 'unlocked' : ''}`}>
+                          <span className="milestone-item-badge">{m.badge}</span>
+                          <div className="milestone-item-details">
+                            <strong>{m.title}</strong>
+                            <p>{m.description}</p>
+                          </div>
+                          {isUnlocked ? (
+                            <span className="milestone-status unlocked">Unlocked</span>
+                          ) : (
+                            <span className="milestone-status locked">Locked</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -8404,33 +9113,84 @@ function EditorContent() {
         )}
 
         {showVersionsModal && activeNote && (
-          <div className="modal-overlay" onClick={() => setShowVersionsModal(false)}>
-            <div className="modal versions-modal" onClick={e => e.stopPropagation()}>
+          <div className="modal-overlay" onClick={() => { setShowVersionsModal(false); setSelectedVersionForDiff(null); }}>
+            <div className={`modal versions-modal ${selectedVersionForDiff ? 'diff-mode' : ''}`} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h2 className="modal-title">Chapter History</h2>
                 <p className="modal-description">
-                  Recent autosaved versions of &ldquo;{activeNote.title || 'Untitled'}&rdquo;.
+                  {selectedVersionForDiff 
+                    ? `Comparing Snapshot (${new Date(selectedVersionForDiff.savedAt).toLocaleString()}) with Live Draft` 
+                    : `Recent autosaved versions of "${activeNote.title || 'Untitled'}"`}
                 </p>
               </div>
-              <div className="version-list">
-                {chapterVersions.length === 0 ? (
-                  <div className="empty-state-text">No history yet. Versions appear after autosaves.</div>
-                ) : chapterVersions.map(version => (
-                  <div key={version.id} className="version-item">
-                    <div>
-                      <strong>{new Date(version.savedAt).toLocaleString()}</strong>
-                      <span>{version.wordCount.toLocaleString()} words</span>
-                      <p>{version.content.slice(0, 180) || "Empty chapter"}</p>
+              
+              {selectedVersionForDiff ? (
+                <div className="diff-view-container">
+                  <div className="diff-split-pane">
+                    <div className="diff-pane-column">
+                      <h4>Historic Snapshot ({selectedVersionForDiff.wordCount.toLocaleString()} words)</h4>
+                      <div className="diff-pane-scroll scrollbar">
+                        {diffLines.oldLines.map((line, idx) => (
+                          <div key={idx} className={`diff-line-row line-${line.type}`}>
+                            <span className="diff-line-number">{line.type !== 'empty' ? idx + 1 : ''}</span>
+                            <pre className="diff-line-content">{line.text || ' '}</pre>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <button className="btn-ai-sub btn-ai-primary" onClick={() => restoreChapterVersion(version)}>
-                      Restore
+                    <div className="diff-pane-column">
+                      <h4>Live Draft ({countWords(activeNote.content).toLocaleString()} words)</h4>
+                      <div className="diff-pane-scroll scrollbar">
+                        {diffLines.newLines.map((line, idx) => (
+                          <div key={idx} className={`diff-line-row line-${line.type}`}>
+                            <span className="diff-line-number">{line.type !== 'empty' ? idx + 1 : ''}</span>
+                            <pre className="diff-line-content">{line.text || ' '}</pre>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="modal-actions diff-actions" style={{ marginTop: "1rem" }}>
+                    <button className="btn btn-ghost" onClick={() => setSelectedVersionForDiff(null)}>
+                      &larr; Back to History
+                    </button>
+                    <button className="btn btn-primary" onClick={() => { restoreChapterVersion(selectedVersionForDiff); setSelectedVersionForDiff(null); }}>
+                      Restore This Version
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => { setShowVersionsModal(false); setSelectedVersionForDiff(null); }}>
+                      Close
                     </button>
                   </div>
-                ))}
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-ghost" onClick={() => setShowVersionsModal(false)}>Close</button>
-              </div>
+                </div>
+              ) : (
+                <>
+                  <div className="version-list">
+                    {chapterVersions.length === 0 ? (
+                      <div className="empty-state-text">No history yet. Versions appear after autosaves.</div>
+                    ) : chapterVersions.map(version => (
+                      <div key={version.id} className="version-item" style={{ cursor: "pointer" }} onClick={() => setSelectedVersionForDiff(version)}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <strong>{new Date(version.savedAt).toLocaleString()}</strong>
+                          <span>{version.wordCount.toLocaleString()} words</span>
+                          <p>{version.content.slice(0, 180) || "Empty chapter"}</p>
+                        </div>
+                        <div style={{ display: "flex", gap: "0.45rem", marginLeft: "1rem", flexShrink: 0 }}>
+                          <button className="btn-ai-sub btn-ai-secondary" onClick={(e) => { e.stopPropagation(); setSelectedVersionForDiff(version); }}>
+                            Compare
+                          </button>
+                          <button className="btn-ai-sub btn-ai-primary" onClick={(e) => { e.stopPropagation(); restoreChapterVersion(version); }}>
+                            Restore
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="modal-actions">
+                    <button className="btn btn-ghost" onClick={() => { setShowVersionsModal(false); setSelectedVersionForDiff(null); }}>Close</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -8454,6 +9214,7 @@ function EditorContent() {
                     { value: 'folder', label: 'Folder', hint: 'Separate .txt files' },
                     { value: 'txt', label: 'TXT', hint: 'Plain manuscript' },
                     { value: 'md', label: 'Markdown', hint: 'Headings preserved' },
+                    { value: 'epub', label: 'EPUB', hint: 'eBook format' },
                     { value: 'html', label: 'HTML', hint: 'Styled web file' },
                     { value: 'doc', label: 'Word', hint: 'Opens in Word' },
                     { value: 'pdf', label: 'PDF', hint: 'Print/save dialog' }
@@ -11190,6 +11951,72 @@ function EditorContent() {
           padding-top: 0.25rem;
         }
 
+        .growth-toggle-buttons {
+          display: flex;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 0.15rem;
+          border-radius: var(--radius-sm, 4px);
+          border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .btn-toggle-growth {
+          background: transparent;
+          border: none;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 800;
+          padding: 0.2rem 0.45rem;
+          border-radius: 3px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-toggle-growth:hover {
+          color: var(--text-primary);
+        }
+
+        .btn-toggle-growth.active {
+          background: var(--color-primary, #6366f1);
+          color: #fff;
+        }
+
+        .growth-chart-container {
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(148, 163, 184, 0.12);
+          border-radius: var(--radius-md);
+          padding: 0.6rem;
+        }
+
+        .growth-chart-tooltip {
+          pointer-events: none;
+          transition: left 0.1s ease, top 0.1s ease;
+        }
+
+        .growth-tooltip-content {
+          background: #0f0f1b;
+          border: 1px solid var(--color-primary, #6366f1);
+          border-radius: 4px;
+          padding: 0.35rem 0.5rem;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+          display: flex;
+          flex-direction: column;
+          gap: 0.15rem;
+          min-width: 100px;
+        }
+
+        .growth-tooltip-content strong {
+          color: var(--color-primary, #6366f1);
+          font-size: 0.72rem;
+          font-weight: 900;
+        }
+
+        .growth-tooltip-content span {
+          color: #cdd6f4;
+          font-size: 0.65rem;
+          opacity: 0.85;
+          white-space: nowrap;
+        }
+
         .progression-growth-timeline {
           display: flex;
           flex-direction: column;
@@ -13425,6 +14252,337 @@ function EditorContent() {
           background: var(--surface-hover);
         }
 
+        .analytics-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 1.2rem;
+          padding-bottom: 2rem;
+        }
+
+        .analytics-streak-cards {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.6rem;
+        }
+
+        .streak-card {
+          display: flex;
+          align-items: center;
+          gap: 0.55rem;
+          background: rgba(255, 255, 255, 0.025);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 0.55rem;
+        }
+
+        .streak-badge {
+          font-size: 1.3rem;
+          line-height: 1;
+        }
+
+        .streak-card div {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+
+        .streak-card strong {
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          font-weight: 800;
+        }
+
+        .streak-card span {
+          color: var(--text-dim);
+          font-size: 0.65rem;
+          font-weight: 600;
+        }
+
+        .analytics-goal-card {
+          padding: 0.8rem;
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--surface-border);
+        }
+
+        .goal-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 0.65rem;
+          gap: 0.5rem;
+        }
+
+        .goal-card-header h4 {
+          margin: 0;
+          font-size: 0.8rem;
+          color: var(--text-primary);
+          font-weight: 800;
+        }
+
+        .goal-input-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+        }
+
+        .goal-input-wrapper input {
+          width: 3.5rem;
+          background: rgba(0, 0, 0, 0.25);
+          border: 1px solid var(--surface-border);
+          border-radius: 4px;
+          color: #fff;
+          font-size: 0.75rem;
+          padding: 0.15rem 0.25rem;
+          text-align: right;
+        }
+
+        .goal-input-wrapper span {
+          font-size: 0.68rem;
+          color: var(--text-dim);
+        }
+
+        .goal-progress-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .goal-progress-bar {
+          height: 6px;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 3px;
+          overflow: hidden;
+        }
+
+        .goal-progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, var(--color-primary, #6366f1) 0%, #a855f7 100%);
+          border-radius: 3px;
+        }
+
+        .goal-progress-labels {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 0.7rem;
+          color: var(--text-dim);
+        }
+
+        .analytics-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+        }
+
+        .analytics-section h5 {
+          margin: 0;
+          font-size: 0.72rem;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          font-weight: 900;
+          letter-spacing: 0.05em;
+        }
+
+        .contribution-grid-container {
+          width: 100%;
+          overflow-x: auto;
+          padding: 0.25rem 0;
+          background: rgba(0, 0, 0, 0.12);
+          border-radius: var(--radius-md);
+          border: 1px solid var(--surface-border);
+          display: flex;
+          justify-content: center;
+        }
+
+        .contribution-grid {
+          display: flex;
+          gap: 3px;
+          padding: 0.5rem;
+        }
+
+        .contribution-column {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .contribution-square {
+          width: 9px;
+          height: 9px;
+          border-radius: 1.5px;
+          transition: all 0.15s ease;
+        }
+
+        .contribution-square.level-0 {
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .contribution-square.level-1 {
+          background: rgba(99, 102, 241, 0.25);
+        }
+
+        .contribution-square.level-2 {
+          background: rgba(99, 102, 241, 0.5);
+        }
+
+        .contribution-square.level-3 {
+          background: rgba(99, 102, 241, 0.75);
+        }
+
+        .contribution-square.level-4 {
+          background: rgba(99, 102, 241, 1);
+          box-shadow: 0 0 6px rgba(99, 102, 241, 0.4);
+        }
+
+        .contribution-legend {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          font-size: 0.65rem;
+          color: var(--text-dim);
+          align-self: flex-end;
+          margin-top: -0.25rem;
+        }
+
+        .legend-squares {
+          display: flex;
+          gap: 2px;
+        }
+
+        .sprint-history-empty {
+          padding: 0.8rem;
+          text-align: center;
+          border: 1px dashed var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.01);
+        }
+
+        .sprint-history-empty p {
+          margin: 0;
+          font-size: 0.76rem;
+          font-weight: 800;
+          color: var(--text-primary);
+        }
+
+        .sprint-history-empty small {
+          font-size: 0.68rem;
+          color: var(--text-dim);
+          display: block;
+          margin-top: 0.25rem;
+          line-height: 1.4;
+        }
+
+        .sprint-history-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .sprint-history-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: rgba(255, 255, 255, 0.025);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 0.5rem 0.65rem;
+          gap: 0.5rem;
+        }
+
+        .sprint-history-item div {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+
+        .sprint-history-item strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .sprint-history-item span {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+        }
+
+        .sprint-history-item small {
+          color: var(--text-dim);
+          font-size: 0.65rem;
+          text-align: right;
+          flex-shrink: 0;
+        }
+
+        .milestones-analytics-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .milestone-analytics-item {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+          background: rgba(255, 255, 255, 0.015);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 0.5rem 0.65rem;
+          opacity: 0.5;
+          transition: all 0.2s ease;
+        }
+
+        .milestone-analytics-item.unlocked {
+          opacity: 1;
+          border-color: rgba(99, 102, 241, 0.35);
+          background: rgba(99, 102, 241, 0.03);
+        }
+
+        .milestone-item-badge {
+          font-size: 1.3rem;
+          line-height: 1;
+          flex-shrink: 0;
+        }
+
+        .milestone-item-details {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .milestone-item-details strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .milestone-item-details p {
+          margin: 0;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+        }
+
+        .milestone-status {
+          font-size: 0.65rem;
+          font-weight: 900;
+          padding: 0.1rem 0.35rem;
+          border-radius: 4px;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          flex-shrink: 0;
+        }
+
+        .milestone-status.unlocked {
+          background: rgba(34, 197, 94, 0.12);
+          color: #4ade80;
+        }
+
+        .milestone-status.locked {
+          background: rgba(255, 255, 255, 0.05);
+          color: var(--text-dim);
+        }
+
         @media (max-width: 1024px) {
           .modal.progression-edit-modal {
             width: min(900px, calc(100vw - 1.25rem));
@@ -13501,6 +14659,103 @@ function EditorContent() {
 
         .versions-modal {
           max-width: 640px;
+          transition: max-width 0.2s ease;
+        }
+
+        .versions-modal.diff-mode {
+          max-width: 960px;
+          width: 92vw;
+        }
+
+        .diff-split-pane {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1rem;
+          height: 52vh;
+          min-height: 380px;
+          overflow: hidden;
+          margin: 0.8rem 0;
+        }
+
+        .diff-pane-column {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-width: 0;
+        }
+
+        .diff-pane-column h4 {
+          margin: 0 0 0.45rem 0;
+          font-size: 0.75rem;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          font-weight: 900;
+          letter-spacing: 0.05em;
+        }
+
+        .diff-pane-scroll {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: auto;
+          background: #09090f;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 0.5rem 0;
+        }
+
+        .diff-line-row {
+          display: flex;
+          min-height: 1.3rem;
+          align-items: flex-start;
+          font-family: var(--font-mono, monospace);
+          font-size: 0.75rem;
+          line-height: 1.35;
+          padding: 0.05rem 0;
+        }
+
+        .diff-line-number {
+          width: 2.5rem;
+          text-align: right;
+          padding-right: 0.5rem;
+          color: rgba(255, 255, 255, 0.2);
+          user-select: none;
+          border-right: 1px solid rgba(255, 255, 255, 0.05);
+          margin-right: 0.5rem;
+          font-size: 0.7rem;
+        }
+
+        .diff-line-content {
+          margin: 0;
+          padding: 0;
+          white-space: pre-wrap;
+          word-break: break-all;
+          color: #cdd6f4;
+          font-family: inherit;
+          font-size: inherit;
+          flex: 1;
+        }
+
+        .diff-line-row.line-added {
+          background: rgba(46, 160, 67, 0.12);
+          border-left: 2px solid #2ea043;
+        }
+
+        .diff-line-row.line-added .diff-line-content {
+          color: #aff5b4;
+        }
+
+        .diff-line-row.line-removed {
+          background: rgba(248, 81, 73, 0.12);
+          border-left: 2px solid #f85149;
+        }
+
+        .diff-line-row.line-removed .diff-line-content {
+          color: #ffd8d6;
+        }
+
+        .diff-line-row.line-empty {
+          background: rgba(255, 255, 255, 0.005);
+          opacity: 0.25;
         }
 
         .version-list {

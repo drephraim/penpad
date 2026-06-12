@@ -1,3 +1,5 @@
+import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal } from "./db"
+
 export interface Project {
   id: string
   name: string
@@ -121,7 +123,7 @@ export async function syncChaptersWithCloud(userId: string, projectId: string, l
     const merged = (data.chapters || []) as Note[]
 
     // Cache the reconciled chapters locally
-    localStorage.setItem(`penpad_notes_${projectId}`, JSON.stringify(merged))
+    await saveManuscriptLocal(projectId, merged)
     return merged
   } catch (error) {
     console.error("Failed to sync chapters with cloud, falling back to local:", error)
@@ -245,7 +247,7 @@ export async function syncBibleWithCloud(userId: string, projectId: string, loca
     const merged = (data.entries || []) as BibleEntry[]
 
     // Cache the reconciled bible entries locally
-    localStorage.setItem(`penpad_bible_${projectId}`, JSON.stringify(merged))
+    await saveStoryBibleLocal(projectId, merged)
     return merged
   } catch (error) {
     console.error("Failed to sync bible with cloud, falling back to local:", error)
@@ -322,7 +324,7 @@ export async function syncBrainWithCloud(userId: string, projectId: string, loca
     const data = await response.json()
     const merged = (data.entries || []) as BrainEntry[]
 
-    localStorage.setItem(`penpad_brain_${projectId}`, JSON.stringify(merged))
+    await saveStoryBrainLocal(projectId, merged)
     return merged
   } catch (error) {
     console.error("Failed to sync brain with cloud, falling back to local:", error)
