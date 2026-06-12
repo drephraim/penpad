@@ -292,6 +292,47 @@ const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-skills-techniques", label: "Skills & Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Grade", "Type", "Description", "Level"], color: "amber", enabled: true },
   { id: "template-affiliation", label: "Affiliation", type: "text", sourceKey: "Affiliation", fields: ["Affiliation"], color: "emerald", enabled: true }
 ]
+const LITRPG_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "litrpg-name", label: "Character Profile", type: "text", sourceKey: "name", fields: ["Name", "Race", "Class"], color: "rose", enabled: true },
+  { id: "litrpg-level", label: "Level & EXP", type: "rank", sourceKey: "level", fields: ["Level", "EXP"], color: "lime", enabled: true },
+  { id: "litrpg-resources", label: "Vital Pools", type: "resource", sourceKey: "Resources", fields: ["HP", "MP", "SP"], color: "blue", enabled: true },
+  { id: "litrpg-stats", label: "Core Attributes", type: "stat", sourceKey: "stats", fields: ["STR", "AGI", "VIT", "INT", "DEX", "WIS"], color: "cyan", enabled: true },
+  { id: "litrpg-titles", label: "Acquired Titles", type: "compound", sourceKey: "Titles", fields: ["Title", "Effect"], color: "amber", enabled: true },
+  { id: "litrpg-skills", label: "Active & Passive Skills", type: "ability", sourceKey: "abilities", fields: ["Skill Name", "Rank", "Description"], color: "violet", enabled: true },
+  { id: "litrpg-inventory", label: "Equipment & Wealth", type: "compound", sourceKey: "Inventory", fields: ["Equipment", "Gold"], color: "emerald", enabled: true }
+]
+const SOLO_LEVELING_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "sl-identity", label: "Hunter Status", type: "text", sourceKey: "name", fields: ["Name", "Class"], color: "rose", enabled: true },
+  { id: "sl-level", label: "Hunter Level", type: "rank", sourceKey: "level", fields: ["Level"], color: "lime", enabled: true },
+  { id: "sl-resources", label: "Combat Pools", type: "resource", sourceKey: "Resources", fields: ["HP", "MP"], color: "blue", enabled: true },
+  { id: "sl-stats", label: "Attributes", type: "stat", sourceKey: "stats", fields: ["Strength", "Agility", "Stamina", "Intelligence", "Perception"], color: "cyan", enabled: true },
+  { id: "sl-skills", label: "Monarch Skills", type: "ability", sourceKey: "abilities", fields: ["Skill Name", "Type", "Description"], color: "violet", enabled: true },
+  { id: "sl-shadows", label: "Shadow Army", type: "compound", sourceKey: "Shadows", fields: ["Current Soldiers", "Max Soldiers"], color: "fuchsia", enabled: true }
+]
+const XIANXIA_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "xianxia-profile", label: "Daoist Profile", type: "text", sourceKey: "name", fields: ["Name", "Dao Title", "Faction"], color: "rose", enabled: true },
+  { id: "xianxia-cultivation", label: "Cultivation Realm", type: "rank", sourceKey: "cultivation", fields: ["Realm", "Stage", "Foundation"], color: "violet", enabled: true },
+  { id: "xianxia-qi", label: "Qi Capacity & Lifespan", type: "resource", sourceKey: "Resources", fields: ["Qi Capacity", "Lifespan"], color: "blue", enabled: true },
+  { id: "xianxia-lineage", label: "Bloodline & Physique", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Physique"], color: "emerald", enabled: true },
+  { id: "xianxia-laws", label: "Elements & Intents", type: "compound", sourceKey: "Affinities", fields: ["Elements", "Comprehensions / Intents"], color: "cyan", enabled: true },
+  { id: "xianxia-techniques", label: "Cultivation Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Layer/Rank", "Description"], color: "amber", enabled: true },
+  { id: "xianxia-treasures", label: "Spiritual Treasures", type: "compound", sourceKey: "Artifacts", fields: ["Spiritual Weapon", "Grade"], color: "lime", enabled: true }
+]
+const SHADOW_SLAVE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "ss-identity", label: "Soul Profile", type: "text", sourceKey: "name", fields: ["Name", "True Name"], color: "rose", enabled: true },
+  { id: "ss-rank", label: "Ascension Rank & Class", type: "rank", sourceKey: "rank", fields: ["Rank", "Class"], color: "violet", enabled: true },
+  { id: "ss-cores", label: "Shadow Fragments", type: "progress", sourceKey: "Shadow Fragments", fields: ["Shadow Cores", "Fragments"], color: "fuchsia", enabled: true },
+  { id: "ss-aspect", label: "Aspect & Legacy", type: "compound", sourceKey: "Aspect", fields: ["Aspect Name", "Aspect Legacy"], color: "cyan", enabled: true },
+  { id: "ss-attributes", label: "Aspect Attributes", type: "compound", sourceKey: "Attributes", fields: ["Aspect Attributes"], color: "amber", enabled: true },
+  { id: "ss-memories", label: "Memories & Echoes", type: "ability", sourceKey: "abilities", fields: ["Memory/Echo Name", "Rank", "Type", "Description"], color: "blue", enabled: true }
+]
+const TALENT_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "talent-profile", label: "Fate Profile", type: "text", sourceKey: "name", fields: ["Name", "Destiny", "Karma"], color: "rose", enabled: true },
+  { id: "talent-cultivation", label: "Cultivation Realm", type: "rank", sourceKey: "cultivation", fields: ["Cultivation Realm", "Potential"], color: "violet", enabled: true },
+  { id: "talent-talents", label: "Innate Talents", type: "compound", sourceKey: "Talents", fields: ["Primary Talent", "SSS Grades"], color: "cyan", enabled: true },
+  { id: "talent-luck", label: "Luck & Karma", type: "counter", sourceKey: "Luck", fields: ["Luck Value", "Karma State"], color: "amber", enabled: true },
+  { id: "talent-comprehension", label: "Comprehension", type: "progress", sourceKey: "Comprehension", fields: ["Comprehension Multiplier"], color: "lime", enabled: true }
+]
 const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   enabled: true,
   name: "Shared Novel Profile",
@@ -7891,6 +7932,58 @@ function EditorContent() {
                     Load Simple Template
                   </button>
                 </div>
+                <div className="progression-theme-library">
+                  <div className="progression-template-header">
+                    <div>
+                      <strong>Novel Status Themes</strong>
+                      <span>Instantly load a specialized status card preset for your genre.</span>
+                    </div>
+                  </div>
+                  <div className="progression-theme-grid">
+                    <button
+                      type="button"
+                      className="theme-btn-premium"
+                      onClick={() => setProgressionTemplateCards(() => LITRPG_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                    >
+                      🛡️ LitRPG / System
+                    </button>
+                    <button
+                      type="button"
+                      className="theme-btn-premium"
+                      onClick={() => setProgressionTemplateCards(() => XIANXIA_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                    >
+                      ☯️ Xianxia / Cultivation
+                    </button>
+                    <button
+                      type="button"
+                      className="theme-btn-premium"
+                      onClick={() => setProgressionTemplateCards(() => SHADOW_SLAVE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                    >
+                      🖤 Shadow Slave Style
+                    </button>
+                    <button
+                      type="button"
+                      className="theme-btn-premium"
+                      onClick={() => setProgressionTemplateCards(() => TALENT_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                    >
+                      ✨ Supreme Talent
+                    </button>
+                    <button
+                      type="button"
+                      className="theme-btn-premium"
+                      onClick={() => setProgressionTemplateCards(() => SOLO_LEVELING_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                    >
+                      ⚡ Solo Leveling Style
+                    </button>
+                    <button
+                      type="button"
+                      className="theme-btn-premium"
+                      onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
+                    >
+                      📄 Simple Baseline
+                    </button>
+                  </div>
+                </div>
                 <div className="progression-preset-library">
                   <div className="progression-template-header">
                     <div>
@@ -11464,6 +11557,50 @@ function EditorContent() {
           font-weight: 900;
         }
 
+        .progression-theme-library {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+          padding: 0.75rem;
+          margin-bottom: 0.75rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.025);
+        }
+
+        .progression-theme-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 0.5rem;
+        }
+
+        .theme-btn-premium {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.45rem;
+          padding: 0.6rem;
+          border: 1px solid rgba(99, 102, 241, 0.25);
+          border-radius: var(--radius-sm);
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+          color: rgb(224, 231, 255);
+          font-weight: 600;
+          font-size: 0.75rem;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: pointer;
+        }
+
+        .theme-btn-premium:hover {
+          transform: translateY(-1px);
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(168, 85, 247, 0.18) 100%);
+          border-color: rgba(168, 85, 247, 0.5);
+          box-shadow: 0 4px 12px rgba(168, 85, 247, 0.15);
+        }
+
+        .theme-btn-premium:active {
+          transform: translateY(1px);
+        }
+
         .progression-preset-library {
           display: flex;
           flex-direction: column;
@@ -13137,6 +13274,7 @@ function EditorContent() {
           .progression-template-value-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+          .progression-theme-grid,
           .progression-preset-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
