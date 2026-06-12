@@ -6711,7 +6711,7 @@ ${navPoints}  </navMap>
                                       >
                                         <div className="growth-tooltip-content">
                                           <strong>{hoveredGraphPoint.label}</strong>
-                                          <span>Ch {hoveredGraphPoint.chapterNumber || "?"}: {growthChartData[hoveredGraphPoint.index]?.chapterTitle}</span>
+                                          <span>Ch {growthChartData[hoveredGraphPoint.index]?.chapterNumber ?? "?"}: {growthChartData[hoveredGraphPoint.index]?.chapterTitle}</span>
                                         </div>
                                       </div>
                                     )}
