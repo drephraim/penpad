@@ -312,13 +312,13 @@ const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
 ]
 const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name", "Title"], color: "rose", enabled: true },
-  { id: "template-cultivation", label: "Cultivation Stage", type: "rank", sourceKey: "cultivation", fields: ["Cultivation Stage", "Rank"], color: "violet", enabled: true },
   { id: "template-bloodline", label: "Bloodline", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Bloodline Rank"], color: "emerald", enabled: true },
-  { id: "template-class", label: "Class", type: "text", sourceKey: "className", fields: ["Class"], color: "cyan", enabled: true },
+  { id: "template-affinity", label: "Affinity", type: "compound", sourceKey: "Affinity", fields: ["Affinity Names", "Rank"], color: "cyan", enabled: true },
+  { id: "template-class", label: "Class", type: "compound", sourceKey: "className", fields: ["Main Class", "Secondary Class"], color: "fuchsia", enabled: true },
   { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true },
   { id: "template-lore", label: "Lore", type: "text", sourceKey: "notes", fields: ["Lore"], color: "blue", enabled: true }
 ]
-const SIMPLE_PROGRESSION_CUSTOM_FIELDS = ["Bloodline", "Bloodline Rank", "Race", "Affiliation"]
+const SIMPLE_PROGRESSION_CUSTOM_FIELDS = ["Bloodline", "Bloodline Rank", "Affinity Names", "Affinity Rank", "Secondary Class", "Race", "Affiliation"]
 const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   bloodline: "Bloodline",
   "bloodline name": "Bloodline",
@@ -326,6 +326,28 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "bloodline grade": "Bloodline Rank",
   "bloodline quality": "Bloodline Rank",
   "bloodline tier": "Bloodline Rank",
+  affinity: "Affinity Names",
+  affinities: "Affinity Names",
+  "affinity name": "Affinity Names",
+  "affinity names": "Affinity Names",
+  "elemental affinity": "Affinity Names",
+  "elemental affinity names": "Affinity Names",
+  "spirit affinity": "Affinity Names",
+  "spirit affinity names": "Affinity Names",
+  "affinity rank": "Affinity Rank",
+  "affinity ranks": "Affinity Rank",
+  "affinity grade": "Affinity Rank",
+  "affinity grades": "Affinity Rank",
+  "affinity tier": "Affinity Rank",
+  "affinity tiers": "Affinity Rank",
+  "elemental affinity rank": "Affinity Rank",
+  "elemental affinity grade": "Affinity Rank",
+  "spirit affinity rank": "Affinity Rank",
+  "spirit affinity grade": "Affinity Rank",
+  "secondary class": "Secondary Class",
+  "second class": "Secondary Class",
+  subclass: "Secondary Class",
+  "sub class": "Secondary Class",
   race: "Race",
   affiliation: "Affiliation"
 }
@@ -412,7 +434,7 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
     "relations": []
   }, null, 2),
   jsonCardOrder: ["title", "cultivation", "class", "race", "weapon", "skills", "affiliation", "relations"],
-  notes: "Simple character progression tracks Name, Title, Cultivation Stage, Rank, Bloodline, Bloodline Rank, Class, Skills, and Lore."
+  notes: "Simple character progression tracks Name, Title, Bloodline, Bloodline Rank, Affinities, Class, Skills, Lore, Race, and Affiliation."
 }
 
 const sanitizeSimpleProgressionCustomFields = (fields?: Record<string, unknown>) => {
@@ -1832,6 +1854,12 @@ function EditorContent() {
       if (cleanName === "Spirit Affinity" || cleanName === "Elemental Affinity") {
         cleanName = "Affinity"
       }
+      const belongsToExistingCard = uniqueCards.some(card => {
+        const cardKeys = [card.label, card.sourceKey, ...card.fields]
+          .map(item => normalizeProgressionTemplateLookupKey(item))
+        return cardKeys.includes(normalizeProgressionTemplateLookupKey(cleanName))
+      })
+      if (belongsToExistingCard) return
       const companionKind = getRankedProgressionFieldKind(cleanName)
       if (isProgressionRankFieldName(cleanName)) {
         const hasParentCard = uniqueCards.some(card => {
@@ -1946,6 +1974,8 @@ function EditorContent() {
     if (cleanField === "rank") return profile.stage || profile.rank || getProgressionCustomFieldValue(profile, "Rank")
     if (cleanField === "realm") return profile.realm
     if (cleanField === "class" || cleanField === "job class") return profile.className
+    if (cleanField === "main class" || cleanField === "primary class") return profile.className
+    if (cleanField === "secondary class" || cleanField === "second class" || cleanField === "subclass" || cleanField === "sub class") return getProgressionCustomFieldValue(profile, "Secondary Class")
     if (cleanField === "lore" || cleanField === "notes") return profile.notes
     if (cleanField === "level") return String(profile.level || "")
     if (cleanField === "description") return profile.notes
@@ -2533,7 +2563,10 @@ function EditorContent() {
             rank: profile.rank,
             bloodline: profile.customFields?.Bloodline || "",
             bloodlineRank: profile.customFields?.["Bloodline Rank"] || profile.customFields?.["Bloodline Grade"] || "",
+            affinityNames: profile.customFields?.["Affinity Names"] || profile.customFields?.Affinity || "",
+            affinityRank: profile.customFields?.["Affinity Rank"] || "",
             className: profile.className,
+            secondaryClass: profile.customFields?.["Secondary Class"] || "",
             skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
             lore: profile.notes,
             level: profile.level,
@@ -2549,7 +2582,10 @@ function EditorContent() {
           rank: profile.rank,
           bloodline: profile.customFields?.Bloodline || "",
           bloodlineRank: profile.customFields?.["Bloodline Rank"] || profile.customFields?.["Bloodline Grade"] || "",
+          affinityNames: profile.customFields?.["Affinity Names"] || profile.customFields?.Affinity || "",
+          affinityRank: profile.customFields?.["Affinity Rank"] || "",
           className: profile.className,
+          secondaryClass: profile.customFields?.["Secondary Class"] || "",
           skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
           lore: profile.notes,
           level: profile.level,
@@ -2684,7 +2720,10 @@ function EditorContent() {
       rank: profile.rank,
       bloodline: profile.customFields?.Bloodline || "",
       bloodlineRank: profile.customFields?.["Bloodline Rank"] || profile.customFields?.["Bloodline Grade"] || "",
+      affinityNames: profile.customFields?.["Affinity Names"] || profile.customFields?.Affinity || "",
+      affinityRank: profile.customFields?.["Affinity Rank"] || "",
       className: profile.className,
+      secondaryClass: profile.customFields?.["Secondary Class"] || "",
       skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
       lore: profile.notes,
       level: profile.level,
@@ -3552,6 +3591,9 @@ function EditorContent() {
         const customFields = sanitizeSimpleProgressionCustomFields({
           Bloodline: jsonData.bloodline || jsonData.Bloodline || "",
           "Bloodline Rank": jsonData.bloodlineRank || jsonData["Bloodline Rank"] || jsonData.bloodlineGrade || "",
+          "Affinity Names": jsonData.affinity || jsonData.affinities || jsonData["Affinity Names"] || "",
+          "Affinity Rank": jsonData.affinityRank || jsonData["Affinity Rank"] || jsonData.affinityGrade || "",
+          "Secondary Class": jsonData.secondaryClass || jsonData["Secondary Class"] || jsonData.subclass || "",
           Race: jsonData.race || jsonData.Race || "",
           Affiliation: jsonData.affiliation || jsonData.Affiliation || "",
           ...(profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {})
@@ -3574,7 +3616,7 @@ function EditorContent() {
         return {
           ...profile,
           title: profile.title || String(jsonData.title || ""),
-          className: profile.className || String(jsonData.class || jsonData.className || ""),
+          className: profile.className || String(jsonData.mainClass || jsonData["Main Class"] || jsonData.class || jsonData.className || ""),
           realm: profile.realm || String(jsonCultivation.realm || jsonCultivation.stage || jsonData.realm || ""),
           stage: profile.stage || String(jsonCultivation.rank || jsonCultivation.subRank || jsonData.stage || jsonData.rank || ""),
           stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
@@ -8925,18 +8967,19 @@ ${navPoints}  </navMap>
                       <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} placeholder="Dao Lord, Saintess, Tyrant..." />
                     </div>
                     <div className="progression-profile-edit-card">
-                      <span>Cultivation Stage</span>
-                      <input className="ai-input" list="progression-realms" value={progressionEditProfileDraft.realm || ""} onChange={(e) => setProgressionDraftField("realm", e.target.value)} placeholder="Immortal, Demigod, God..." />
-                      <input className="ai-input" list="progression-stages" value={progressionEditProfileDraft.stage || ""} onChange={(e) => setProgressionDraftField("stage", e.target.value)} placeholder="Low / Medium / High / Peak" />
-                    </div>
-                    <div className="progression-profile-edit-card">
                       <span>Bloodline</span>
                       <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} placeholder="Ancient Phoenix Bloodline" />
                       <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Bloodline Rank"] || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline Rank", e.target.value)} placeholder="Supreme / Celestial" />
                     </div>
                     <div className="progression-profile-edit-card">
+                      <span>Affinity</span>
+                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Affinity Names"] || ""} onChange={(e) => setProgressionDraftCustomField("Affinity Names", e.target.value)} placeholder="Fire, Ice, Void" />
+                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Affinity Rank"] || ""} onChange={(e) => setProgressionDraftCustomField("Affinity Rank", e.target.value)} placeholder="Fire (High), Ice (Celestial), Void (Supreme)" />
+                    </div>
+                    <div className="progression-profile-edit-card">
                       <span>Class</span>
-                      <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} placeholder="Sword Saint, Alchemist..." />
+                      <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} placeholder="Main class" />
+                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Secondary Class"] || ""} onChange={(e) => setProgressionDraftCustomField("Secondary Class", e.target.value)} placeholder="Secondary class" />
                     </div>
                     {(progressionEditProfileDraft.customFields || {}).Affiliation && (
                       <div className="progression-profile-edit-card">
@@ -8987,7 +9030,7 @@ ${navPoints}  </navMap>
                       </div>
                     )}
                     {Array.from(new Set([...progressionSystem.customFields, ...Object.keys(progressionEditProfileDraft.customFields || {})]))
-                      .filter(fieldName => !["Affiliation", "Bloodline", "Bloodline Rank", "Bloodline Grade", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
+                      .filter(fieldName => !["Affiliation", "Bloodline", "Bloodline Rank", "Bloodline Grade", "Affinity", "Affinity Names", "Affinity Rank", "Affinity Grade", "Rank", "Secondary Class", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
                       .map(fieldName => (
                         <div className="progression-profile-edit-card" key={fieldName}>
                           <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><Trash2 size={12} /></button>
