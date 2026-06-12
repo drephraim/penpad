@@ -313,10 +313,10 @@ const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
 const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name", "Title"], color: "rose", enabled: true },
   { id: "template-cultivation", label: "Cultivation Stage", type: "rank", sourceKey: "cultivation", fields: ["Cultivation Stage", "Rank"], color: "violet", enabled: true },
-  { id: "template-job-class", label: "Job Class", type: "text", sourceKey: "className", fields: ["Class"], color: "cyan", enabled: true },
-  { id: "template-race", label: "Race", type: "text", sourceKey: "Race", fields: ["Race"], color: "blue", enabled: true },
-  { id: "template-skills-techniques", label: "Skills & Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Grade", "Type", "Description", "Level"], color: "amber", enabled: true },
-  { id: "template-affiliation", label: "Affiliation", type: "text", sourceKey: "Affiliation", fields: ["Affiliation"], color: "emerald", enabled: true }
+  { id: "template-bloodline", label: "Bloodline", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Bloodline Rank"], color: "emerald", enabled: true },
+  { id: "template-class", label: "Class", type: "text", sourceKey: "className", fields: ["Class"], color: "cyan", enabled: true },
+  { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true },
+  { id: "template-lore", label: "Lore", type: "text", sourceKey: "notes", fields: ["Lore"], color: "blue", enabled: true }
 ]
 const LITRPG_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "litrpg-name", label: "Character Profile", type: "text", sourceKey: "name", fields: ["Name", "Race", "Class"], color: "rose", enabled: true },
@@ -361,7 +361,7 @@ const TALENT_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
 ]
 const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   enabled: true,
-  name: "Shared Novel Profile",
+  name: "Simple Character Progression",
   defaultRealm: "",
   defaultStage: "",
   defaultRank: "",
@@ -375,18 +375,18 @@ const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   defaultAbilities: [],
   defaultCustomFields: {},
   cards: DEFAULT_PROFILE_TEMPLATE_CARDS,
-  notes: "Use this as the baseline profile shape for every character in this novel unless chapter evidence says otherwise."
+  notes: ""
 }
 const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   realms: [],
   stageLabels: ["Low", "Medium", "High", "Peak"],
-  showLevels: true,
-  showExp: true,
-  showStats: true,
+  showLevels: false,
+  showExp: false,
+  showStats: false,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
-  customFields: ["Race", "Affiliation"],
+  customFields: ["Bloodline", "Bloodline Rank"],
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
-  useCustomJsonTemplate: true,
+  useCustomJsonTemplate: false,
   customJsonTemplate: JSON.stringify({
     "title": "Mortal",
     "cultivation": {
@@ -401,7 +401,7 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
     "relations": []
   }, null, 2),
   jsonCardOrder: ["title", "cultivation", "class", "race", "weapon", "skills", "affiliation", "relations"],
-  notes: "Adapt the profile to this novel's progression language. Use realms/stages when the story uses cultivation instead of numeric levels."
+  notes: "Simple character progression tracks Name, Title, Cultivation Stage, Rank, Bloodline, Bloodline Rank, Class, Skills, and Lore."
 }
 
 const getRankedProgressionFieldKind = (value: unknown) => {
@@ -1918,10 +1918,11 @@ function EditorContent() {
     if (cleanField === "name") return profile.name
     if (cleanField === "title") return profile.title
     if (cleanField === "cultivation stage" || cleanField === "realm") return profile.realm || getProgressionCustomFieldValue(profile, "Cultivation Stage")
-    if (cleanField === "stage") return profile.realm || profile.stage || getProgressionCustomFieldValue(profile, "Stage")
+    if (cleanField === "stage") return profile.stage || getProgressionCustomFieldValue(profile, "Stage")
     if (cleanField === "rank") return profile.stage || profile.rank || getProgressionCustomFieldValue(profile, "Rank")
     if (cleanField === "realm") return profile.realm
     if (cleanField === "class" || cleanField === "job class") return profile.className
+    if (cleanField === "lore" || cleanField === "notes") return profile.notes
     if (cleanField === "level") return String(profile.level || "")
     if (cleanField === "description") return profile.notes
     if (cleanField === "bloodline name") return getProgressionCustomFieldValue(profile, "Bloodline Name") || getProgressionCustomFieldValue(profile, "Bloodline")
@@ -1955,6 +1956,7 @@ function EditorContent() {
     if (cleanSource === "levelrank") return progressionSystem.showLevels ? `Level ${profile.level}` : profile.stage || profile.rank
     if (cleanSource === "classname" || cleanSource === "class") return profile.className
     if (cleanSource === "title") return profile.title
+    if (cleanSource === "notes" || cleanSource === "lore") return profile.notes
     if (cleanSource === "nicknames") return profile.nicknames?.join(", ")
     if (cleanSource === "uniquetrait" || cleanSource === "unique trait") return profile.uniqueTrait || getProgressionCustomFieldValue(profile, "Unique Trait")
     if (cleanSource === "cultivationpath" || cleanSource === "path") return profile.cultivationPath
@@ -2325,6 +2327,12 @@ function EditorContent() {
         evidence: String(ability.evidence || "")
       }
     })
+    const customFields = {
+      ...(existingProfile?.customFields || {}),
+      ...(aiProfile?.customFields || {})
+    }
+    customFields.Bloodline = customFields.Bloodline || customFields["Bloodline Name"] || ""
+    customFields["Bloodline Rank"] = customFields["Bloodline Rank"] || customFields["Bloodline Grade"] || customFields["Bloodline Quality"] || ""
 
     return {
       id: existingProfile?.id || crypto.randomUUID(),
@@ -2344,11 +2352,7 @@ function EditorContent() {
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) },
       abilities,
       traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || sharedTemplate.defaultTraits || [],
-      customFields: {
-        ...(sharedTemplate.defaultCustomFields || {}),
-        ...(existingProfile?.customFields || {}),
-        ...(aiProfile?.customFields || {})
-      },
+      customFields,
       notes: aiProfile?.notes || existingProfile?.notes || sharedTemplate.notes || "",
       customJsonData: {
         ...(() => {
@@ -2398,6 +2402,9 @@ function EditorContent() {
       rewards: [],
       evidence: []
     } : null
+    const customFields = { ...(existingProfile?.customFields || {}) }
+    customFields.Bloodline = customFields.Bloodline || customFields["Bloodline Name"] || ""
+    customFields["Bloodline Rank"] = customFields["Bloodline Rank"] || customFields["Bloodline Grade"] || customFields["Bloodline Quality"] || ""
 
     return {
       id: existingProfile?.id || crypto.randomUUID(),
@@ -2417,10 +2424,7 @@ function EditorContent() {
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}) },
       abilities: existingProfile?.abilities || sharedTemplate.defaultAbilities || [],
       traits: existingProfile?.traits || sharedTemplate.defaultTraits || [],
-      customFields: {
-        ...(sharedTemplate.defaultCustomFields || {}),
-        ...(existingProfile?.customFields || {})
-      },
+      customFields,
       notes: existingProfile?.notes || sourceEntry.content || sharedTemplate.notes || "",
       processedChapterIds: historyEntry
         ? Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId]))
@@ -2503,9 +2507,15 @@ function EditorContent() {
             id: profile.id,
             loreEntryId: profile.loreEntryId,
             name: profile.name,
+            title: profile.title,
             realm: profile.realm,
             stage: profile.stage,
             rank: profile.rank,
+            bloodline: profile.customFields?.Bloodline || "",
+            bloodlineRank: profile.customFields?.["Bloodline Rank"] || profile.customFields?.["Bloodline Grade"] || "",
+            className: profile.className,
+            skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
+            lore: profile.notes,
             level: profile.level,
             processedChapterIds: profile.processedChapterIds
           }))
@@ -2513,9 +2523,15 @@ function EditorContent() {
           id: profile.id,
           loreEntryId: profile.loreEntryId,
           name: profile.name,
+          title: profile.title,
           realm: profile.realm,
           stage: profile.stage,
           rank: profile.rank,
+          bloodline: profile.customFields?.Bloodline || "",
+          bloodlineRank: profile.customFields?.["Bloodline Rank"] || profile.customFields?.["Bloodline Grade"] || "",
+          className: profile.className,
+          skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
+          lore: profile.notes,
           level: profile.level,
           processedChapterIds: profile.processedChapterIds
         }))
@@ -2642,9 +2658,15 @@ function EditorContent() {
       id: profile.id,
       loreEntryId: profile.loreEntryId,
       name: profile.name,
+      title: profile.title,
       realm: profile.realm,
       stage: profile.stage,
       rank: profile.rank,
+      bloodline: profile.customFields?.Bloodline || "",
+      bloodlineRank: profile.customFields?.["Bloodline Rank"] || profile.customFields?.["Bloodline Grade"] || "",
+      className: profile.className,
+      skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
+      lore: profile.notes,
       level: profile.level,
       processedChapterIds: profile.processedChapterIds
     }]
@@ -3381,7 +3403,12 @@ function EditorContent() {
 
   const normalizeProgressionSystem = useCallback((settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
     const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
-    const rawTemplate = settings?.profileTemplate || DEFAULT_PROFILE_TEMPLATE
+    const rawTemplate = {
+      ...DEFAULT_PROFILE_TEMPLATE,
+      ...(settings?.profileTemplate || {}),
+      cards: DEFAULT_PROFILE_TEMPLATE_CARDS
+    }
+    const simpleCustomFields = DEFAULT_PROGRESSION_SYSTEM.customFields
     const normalizedTemplate: ProgressionProfileTemplate = {
       ...DEFAULT_PROFILE_TEMPLATE,
       ...rawTemplate,
@@ -3407,11 +3434,8 @@ function EditorContent() {
         : [],
       defaultCustomFields: rawTemplate.defaultCustomFields && typeof rawTemplate.defaultCustomFields === "object" ? rawTemplate.defaultCustomFields : {},
       cards: normalizeProgressionTemplateCards(
-        rawTemplate.cards,
-        Array.from(new Set([
-          ...(Array.isArray(settings?.customFields) ? settings.customFields : DEFAULT_PROGRESSION_SYSTEM.customFields),
-          ...Object.keys(rawTemplate.defaultCustomFields || {})
-        ].map(item => String(item).trim()).filter(Boolean)))
+        DEFAULT_PROFILE_TEMPLATE_CARDS,
+        simpleCustomFields
       ),
       baseLevel: Number.isFinite(Number(rawTemplate.baseLevel)) ? Number(rawTemplate.baseLevel) : 1,
       baseExp: Number.isFinite(Number(rawTemplate.baseExp)) ? Number(rawTemplate.baseExp) : 0,
@@ -3428,17 +3452,15 @@ function EditorContent() {
       statKeys: Array.isArray(settings?.statKeys) && settings.statKeys.length > 0
         ? settings.statKeys.filter(item => validStatKeys.has(item))
         : DEFAULT_PROGRESSION_SYSTEM.statKeys,
-      customFields: Array.isArray(settings?.customFields)
-        ? Array.from(new Set(settings.customFields.map(item => String(item).trim()).filter(Boolean)))
-        : DEFAULT_PROGRESSION_SYSTEM.customFields,
+      customFields: simpleCustomFields,
       profileTemplate: normalizedTemplate,
       notes: settings?.notes || DEFAULT_PROGRESSION_SYSTEM.notes,
-      useCustomJsonTemplate: settings?.useCustomJsonTemplate ?? DEFAULT_PROGRESSION_SYSTEM.useCustomJsonTemplate,
+      useCustomJsonTemplate: false,
       customJsonTemplate: settings?.customJsonTemplate || DEFAULT_PROGRESSION_SYSTEM.customJsonTemplate,
       jsonCardOrder: settings?.jsonCardOrder || DEFAULT_PROGRESSION_SYSTEM.jsonCardOrder,
-      showLevels: settings?.showLevels !== false,
-      showExp: settings?.showExp !== false,
-      showStats: settings?.showStats !== false
+      showLevels: false,
+      showExp: false,
+      showStats: false
     }
   }, [normalizeProgressionTemplateCards])
 
@@ -3505,17 +3527,44 @@ function EditorContent() {
     try {
       const stored = localStorage.getItem(getProgressionStorageKey())
       const profiles: CharacterProgressionProfile[] = stored ? JSON.parse(stored) : []
-      const normalized = profiles.map(profile => ({
-        ...profile,
-        stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
-        abilities: Array.isArray(profile.abilities) ? profile.abilities : [],
-        traits: Array.isArray(profile.traits) ? profile.traits : [],
-        nicknames: Array.isArray(profile.nicknames) ? profile.nicknames : [],
-        uniqueTrait: profile.uniqueTrait || "",
-        customFields: profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {},
-        processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
-        history: Array.isArray(profile.history) ? profile.history : []
-      })).sort((a, b) => b.updatedAt - a.updatedAt)
+      const normalized = profiles.map(profile => {
+        const jsonData = profile.customJsonData && typeof profile.customJsonData === "object" ? profile.customJsonData as Record<string, any> : {}
+        const jsonCultivation = jsonData.cultivation && typeof jsonData.cultivation === "object" ? jsonData.cultivation as Record<string, any> : {}
+        const customFields = profile.customFields && typeof profile.customFields === "object" ? { ...profile.customFields } : {}
+        customFields.Bloodline = customFields.Bloodline || String(jsonData.bloodline || jsonData.Bloodline || customFields["Bloodline Name"] || "")
+        customFields["Bloodline Rank"] = customFields["Bloodline Rank"] || String(jsonData.bloodlineRank || jsonData["Bloodline Rank"] || jsonData.bloodlineGrade || customFields["Bloodline Grade"] || "")
+        const jsonSkills = Array.isArray(jsonData.skills) ? jsonData.skills : []
+        const existingAbilities = Array.isArray(profile.abilities) ? profile.abilities : []
+        const migratedAbilities = existingAbilities.length > 0
+          ? existingAbilities
+          : jsonSkills.map((item, index) => {
+            const skill = typeof item === "object" && item !== null ? item as Record<string, any> : { name: String(item) }
+            return {
+              id: String(skill.id || skill.name || `skill-${index}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+              name: String(skill.name || skill.title || `Skill ${index + 1}`),
+              level: Number.isFinite(Number(skill.level)) ? Number(skill.level) : 1,
+              rank: String(skill.rank || skill.grade || ""),
+              description: String(skill.description || skill.effect || ""),
+              evidence: String(skill.evidence || "")
+            }
+          })
+        return {
+          ...profile,
+          title: profile.title || String(jsonData.title || ""),
+          className: profile.className || String(jsonData.class || jsonData.className || ""),
+          realm: profile.realm || String(jsonCultivation.realm || jsonCultivation.stage || jsonData.realm || ""),
+          stage: profile.stage || String(jsonCultivation.rank || jsonCultivation.subRank || jsonData.stage || jsonData.rank || ""),
+          stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
+          abilities: migratedAbilities,
+          traits: Array.isArray(profile.traits) ? profile.traits : [],
+          nicknames: Array.isArray(profile.nicknames) ? profile.nicknames : [],
+          uniqueTrait: profile.uniqueTrait || "",
+          customFields,
+          notes: profile.notes || String(jsonData.lore || jsonData.notes || ""),
+          processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
+          history: Array.isArray(profile.history) ? profile.history : []
+        }
+      }).sort((a, b) => b.updatedAt - a.updatedAt)
       setProgressionProfiles(normalized)
       if (normalized.length > 0 && !selectedProgressionProfileId) {
         setSelectedProgressionProfileId(normalized[0].id)
@@ -8848,34 +8897,24 @@ ${navPoints}  </navMap>
                       <span>Name</span>
                       <input className="ai-input" value={progressionEditProfileDraft.name} onChange={(e) => setProgressionDraftField("name", e.target.value)} />
                     </div>
-                    {(progressionEditProfileDraft.realm || progressionEditProfileDraft.stage) && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("realm", ""); setProgressionDraftField("stage", "") }} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Cultivation Stage</span>
-                        <input className="ai-input" list="progression-realms" value={progressionEditProfileDraft.realm || ""} onChange={(e) => setProgressionDraftField("realm", e.target.value)} placeholder="Realm" />
-                        <input className="ai-input" list="progression-stages" value={progressionEditProfileDraft.stage || ""} onChange={(e) => setProgressionDraftField("stage", e.target.value)} placeholder="Low / Middle / High / Peak" />
-                      </div>
-                    )}
-                    {(progressionEditProfileDraft.rank || progressionSystem.showLevels) && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("rank", ""); setProgressionDraftField("level", 1) }} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Level / Rank</span>
-                        <input className="ai-input" value={progressionEditProfileDraft.rank || (progressionSystem.showLevels ? String(progressionEditProfileDraft.level) : "")} onChange={(e) => {
-                          if (progressionSystem.showLevels && /^\d+$/.test(e.target.value.trim())) {
-                            setProgressionDraftField("level", Number(e.target.value))
-                          } else {
-                            setProgressionDraftField("rank", e.target.value)
-                          }
-                        }} />
-                      </div>
-                    )}
-                    {progressionEditProfileDraft.className && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("className", "")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Class</span>
-                        <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} />
-                      </div>
-                    )}
+                    <div className="progression-profile-edit-card">
+                      <span>Title</span>
+                      <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} placeholder="Dao Lord, Saintess, Tyrant..." />
+                    </div>
+                    <div className="progression-profile-edit-card">
+                      <span>Cultivation Stage</span>
+                      <input className="ai-input" list="progression-realms" value={progressionEditProfileDraft.realm || ""} onChange={(e) => setProgressionDraftField("realm", e.target.value)} placeholder="Immortal, Demigod, God..." />
+                      <input className="ai-input" list="progression-stages" value={progressionEditProfileDraft.stage || ""} onChange={(e) => setProgressionDraftField("stage", e.target.value)} placeholder="Low / Medium / High / Peak" />
+                    </div>
+                    <div className="progression-profile-edit-card">
+                      <span>Bloodline</span>
+                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} placeholder="Ancient Phoenix Bloodline" />
+                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Bloodline Rank"] || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline Rank", e.target.value)} placeholder="Supreme / Celestial" />
+                    </div>
+                    <div className="progression-profile-edit-card">
+                      <span>Class</span>
+                      <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} placeholder="Sword Saint, Alchemist..." />
+                    </div>
                     {(progressionEditProfileDraft.customFields || {}).Affiliation && (
                       <div className="progression-profile-edit-card">
                         <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Affiliation")} title="Remove card"><Trash2 size={12} /></button>
@@ -8888,20 +8927,6 @@ ${navPoints}  </navMap>
                         <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("nicknames", [])} title="Remove card"><Trash2 size={12} /></button>
                         <span>Nicknames</span>
                         <input className="ai-input" value={(progressionEditProfileDraft.nicknames || []).join(", ")} onChange={(e) => setProgressionDraftField("nicknames", e.target.value.split(",").map(item => item.trim()).filter(Boolean))} />
-                      </div>
-                    )}
-                    {progressionEditProfileDraft.title && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("title", "")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Title</span>
-                        <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} />
-                      </div>
-                    )}
-                    {(progressionEditProfileDraft.customFields || {}).Bloodline && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Bloodline")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Bloodline</span>
-                        <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} />
                       </div>
                     )}
                     {(progressionEditProfileDraft.customFields || {}).Race && (
@@ -8939,7 +8964,7 @@ ${navPoints}  </navMap>
                       </div>
                     )}
                     {Array.from(new Set([...progressionSystem.customFields, ...Object.keys(progressionEditProfileDraft.customFields || {})]))
-                      .filter(fieldName => !["Affiliation", "Bloodline", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
+                      .filter(fieldName => !["Affiliation", "Bloodline", "Bloodline Rank", "Bloodline Grade", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
                       .map(fieldName => (
                         <div className="progression-profile-edit-card" key={fieldName}>
                           <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><Trash2 size={12} /></button>
@@ -9034,8 +9059,14 @@ ${navPoints}  </navMap>
 
                 {progressionEditProfileDraft.notes && (
                   <div className="ai-form-field">
-                    <label>Notes</label>
+                    <label>Lore</label>
                     <textarea className="ai-textarea compact" value={progressionEditProfileDraft.notes} onChange={(e) => setProgressionDraftField("notes", e.target.value)} />
+                  </div>
+                )}
+                {!progressionEditProfileDraft.notes && (
+                  <div className="ai-form-field">
+                    <label>Lore</label>
+                    <textarea className="ai-textarea compact" value={progressionEditProfileDraft.notes || ""} onChange={(e) => setProgressionDraftField("notes", e.target.value)} placeholder="A memorable detail, rumor, reputation, prophecy, weakness, or relationship to reference later." />
                   </div>
                 )}
               </div>
@@ -9091,7 +9122,7 @@ ${navPoints}  </navMap>
                 <p className="modal-description">Design the reusable status card for this novel. New and updated characters follow this shape.</p>
               </div>
               <div className="progression-template-modal-body">
-                <div className="json-template-mode-toggle" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div className="json-template-mode-toggle" style={{ display: "none" }}>
                   <input
                     type="checkbox"
                     id="useCustomJsonTemplate"
