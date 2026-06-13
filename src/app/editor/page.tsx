@@ -882,6 +882,11 @@ function EditorContent() {
   const [brainEntries, setBrainEntries] = useState<BrainEntry[]>([])
   const [brainSearchQuery, setBrainSearchQuery] = useState('')
   const [selectedBrainEntryId, setSelectedBrainEntryId] = useState<string | null>(null)
+  const [mergeTargetId, setMergeTargetId] = useState<string>("")
+
+  useEffect(() => {
+    setMergeTargetId("")
+  }, [selectedBrainEntryId])
   const [brainTypeFilter, setBrainTypeFilter] = useState<BrainTypeFilter>('all')
   const [selectedBrainEntityName, setSelectedBrainEntityName] = useState<string | null>(null)
   const [brainAskQuestion, setBrainAskQuestion] = useState('')
@@ -4615,6 +4620,51 @@ function EditorContent() {
     } catch (e) {
       console.error("Failed to delete brain entry:", e)
     }
+  }
+
+  const handleManualMerge = async (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || !user || !projectId) return
+    const sourceEntry = brainEntries.find(e => e.id === sourceId)
+    const targetEntry = brainEntries.find(e => e.id === targetId)
+    if (!sourceEntry || !targetEntry) return
+
+    const confirmed = window.confirm(`Are you sure you want to merge "${sourceEntry.entityName || sourceEntry.highlightedText}" into "${targetEntry.entityName || targetEntry.highlightedText}"?\n\nThis will append all summaries, merge connections, and delete "${sourceEntry.entityName || sourceEntry.highlightedText}".`)
+    if (!confirmed) return
+
+    const chapterLabel = sourceEntry.chapterNumber ? `Chapter ${sourceEntry.chapterNumber}` : sourceEntry.chapterTitle || "Unknown Chapter"
+    const appendedSummary = `${targetEntry.aiSummary}\n\n***\n\n### 🔗 Manually Merged: ${sourceEntry.entityName || sourceEntry.highlightedText} (${chapterLabel})\n${sourceEntry.aiSummary}`
+
+    const importanceOrder = { minor: 1, major: 2, critical: 3 }
+    const targetImportanceVal = importanceOrder[targetEntry.importance || 'minor'] || 1
+    const sourceImportanceVal = importanceOrder[sourceEntry.importance || 'minor'] || 1
+    const finalImportance = (sourceImportanceVal > targetImportanceVal ? sourceEntry.importance : targetEntry.importance) || 'minor'
+
+    const mergedConnections = Array.from(new Set([
+      ...(targetEntry.connections || []), 
+      sourceEntry.entityName || sourceEntry.highlightedText, 
+      ...(sourceEntry.connections || [])
+    ].filter(Boolean)))
+
+    const updatedTarget = {
+      ...targetEntry,
+      aiSummary: appendedSummary,
+      importance: finalImportance,
+      connections: mergedConnections,
+      updatedAt: Date.now()
+    }
+
+    setBrainEntries(prev => {
+      const list = prev.filter(e => e.id !== sourceId && e.id !== targetId)
+      const updatedList = [updatedTarget, ...list]
+      saveStoryBrainLocal(projectId, updatedList)
+      return updatedList
+    })
+
+    await saveBrainEntryToCloud(user.uid, projectId, updatedTarget)
+    await deleteBrainEntryFromCloud(user.uid, projectId, sourceId)
+
+    setSelectedBrainEntryId(targetId)
+    setMergeTargetId("")
   }
 
   const updateBrainEntry = async (entryId: string, updates: Partial<BrainEntry>) => {
@@ -9686,14 +9736,76 @@ ${navPoints}  </navMap>
                   <span className="brain-detail-label">Connections</span>
                   <div className="brain-connection-list">
                     {selectedBrainEntry.connections?.map(connection => (
-                      <div key={connection} className="brain-connection-item">
+                      <div 
+                        key={connection} 
+                        className="brain-connection-item clickable"
+                        style={{ cursor: 'pointer', opacity: 0.85, transition: 'opacity 0.2s' }}
+                        onClick={() => {
+                          const found = brainEntries.find(e => e.entityName && e.entityName.trim().toLowerCase() === connection.trim().toLowerCase());
+                          if (found) {
+                            setSelectedBrainEntryId(found.id);
+                          } else {
+                            const foundAlt = brainEntries.find(e => e.highlightedText && e.highlightedText.trim().toLowerCase() === connection.trim().toLowerCase());
+                            if (foundAlt) {
+                              setSelectedBrainEntryId(foundAlt.id);
+                            }
+                          }
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.85'}
+                      >
                         <Link2 size={12} />
-                        <span>{connection}</span>
+                        <span style={{ textDecoration: 'underline', color: 'var(--text-accent)' }}>{connection}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
+              <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                <span className="brain-detail-label" style={{ fontSize: '0.7rem' }}>Manual Merge Options</span>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', width: '100%' }}>
+                  <select 
+                    value={mergeTargetId}
+                    onChange={(e) => setMergeTargetId(e.target.value)}
+                    style={{ 
+                      flex: 1, 
+                      fontSize: '0.74rem', 
+                      padding: '0.4rem 0.5rem', 
+                      background: 'rgba(255,255,255,0.04)', 
+                      border: '1px solid var(--surface-border)', 
+                      borderRadius: 'var(--radius-md)', 
+                      color: 'var(--text-primary)',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="" style={{ background: '#0a0a0f' }}>-- Select Entry to Merge Into --</option>
+                    {brainEntries
+                      .filter(e => e.id !== selectedBrainEntry.id)
+                      .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
+                      .map(e => (
+                        <option key={e.id} value={e.id} style={{ background: '#0a0a0f' }}>
+                          {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
+                        </option>
+                      ))
+                    }
+                  </select>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary"
+                    disabled={!mergeTargetId}
+                    onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
+                    style={{ 
+                      fontSize: '0.72rem', 
+                      padding: '0.42rem 0.8rem', 
+                      whiteSpace: 'nowrap', 
+                      cursor: mergeTargetId ? 'pointer' : 'not-allowed',
+                      opacity: mergeTargetId ? 1 : 0.5
+                    }}
+                  >
+                    Merge Into
+                  </button>
+                </div>
+              </div>
 
               <div className="brain-detail-actions">
                 <button
