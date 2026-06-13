@@ -191,6 +191,7 @@ interface ProgressionSystemSettings {
   useCustomJsonTemplate?: boolean
   customJsonTemplate?: string
   jsonCardOrder?: string[]
+  allowEmptyTemplate?: boolean
   updatedAt?: number
 }
 
@@ -2123,6 +2124,7 @@ function EditorContent() {
     persistProgressionSystem({
       ...progressionSystem,
       customFields: nextCustomFields,
+      allowEmptyTemplate: nextCards.length === 0,
       profileTemplate: {
         ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         defaultCustomFields: nextDefaultCustomFields,
@@ -2174,7 +2176,8 @@ function EditorContent() {
         notes: "Template cleared.",
         enabled: true
       },
-      notes: ""
+      notes: "",
+      allowEmptyTemplate: true
     }
 
     persistProgressionSystem(emptySystem)
@@ -2192,7 +2195,8 @@ function EditorContent() {
         statKeys: progressionSystem.statKeys,
         customFields: progressionSystem.customFields,
         profileTemplate: progressionSystem.profileTemplate,
-        notes: progressionSystem.notes
+        notes: progressionSystem.notes,
+        allowEmptyTemplate: progressionSystem.allowEmptyTemplate === true
       }
       navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
       setProgressionNotice("Template settings copied to clipboard! You can now paste this into another novel.")
@@ -2249,6 +2253,7 @@ function EditorContent() {
         ...(progressionSystem?.customFields || []),
         ...getProgressionCustomFieldsFromTemplateCards(nextCards)
       ])),
+      allowEmptyTemplate: false,
       profileTemplate: {
         ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         cards: nextCards
@@ -2384,6 +2389,7 @@ function EditorContent() {
         ...progressionSystem,
         ...importedSettings,
         customFields: designedCustomFields,
+        allowEmptyTemplate: false,
         profileTemplate: {
           ...DEFAULT_PROFILE_TEMPLATE,
           ...importedTemplate,
@@ -3111,6 +3117,10 @@ function EditorContent() {
   }
 
   const learnProgressionProfileShape = (profile: CharacterProgressionProfile) => {
+    const existingCards = progressionSystem?.profileTemplate?.cards || []
+    if (progressionSystem?.allowEmptyTemplate === true && existingCards.length === 0) {
+      return
+    }
     const learnedCustomFields = SIMPLE_PROGRESSION_CUSTOM_FIELDS
     const learnedDefaultCustomFields = learnedCustomFields.reduce<Record<string, string>>((acc, fieldName) => {
       const defaultCustomFields = progressionSystem?.profileTemplate?.defaultCustomFields || {}
@@ -3124,6 +3134,7 @@ function EditorContent() {
     persistProgressionSystem({
       ...progressionSystem,
       customFields: learnedCustomFields,
+      allowEmptyTemplate: false,
       profileTemplate: {
         ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
         defaultStats: {
@@ -3520,12 +3531,26 @@ function EditorContent() {
 
   const normalizeProgressionSystem = useCallback((settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
     const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
+    const allowEmptyTemplate = settings?.allowEmptyTemplate === true
+    const incomingCards = Array.isArray(settings?.profileTemplate?.cards)
+      ? settings.profileTemplate.cards
+      : DEFAULT_PROFILE_TEMPLATE_CARDS
+    const templateCards = allowEmptyTemplate && incomingCards.length === 0
+      ? []
+      : incomingCards.length > 0
+      ? incomingCards
+      : DEFAULT_PROFILE_TEMPLATE_CARDS
     const rawTemplate = {
       ...DEFAULT_PROFILE_TEMPLATE,
       ...(settings?.profileTemplate || {}),
-      cards: DEFAULT_PROFILE_TEMPLATE_CARDS
+      cards: templateCards
     }
-    const simpleCustomFields = DEFAULT_PROGRESSION_SYSTEM.customFields
+    const normalizedCustomFields = Array.isArray(settings?.customFields)
+      ? Array.from(new Set(settings.customFields.map(item => String(item).trim()).filter(Boolean)))
+      : DEFAULT_PROGRESSION_SYSTEM.customFields
+    const templateCustomFields = allowEmptyTemplate && templateCards.length === 0
+      ? []
+      : normalizedCustomFields
     const normalizedTemplate: ProgressionProfileTemplate = {
       ...DEFAULT_PROFILE_TEMPLATE,
       ...rawTemplate,
@@ -3551,8 +3576,8 @@ function EditorContent() {
         : [],
       defaultCustomFields: rawTemplate.defaultCustomFields && typeof rawTemplate.defaultCustomFields === "object" ? rawTemplate.defaultCustomFields : {},
       cards: normalizeProgressionTemplateCards(
-        DEFAULT_PROFILE_TEMPLATE_CARDS,
-        simpleCustomFields
+        rawTemplate.cards,
+        templateCustomFields
       ),
       baseLevel: Number.isFinite(Number(rawTemplate.baseLevel)) ? Number(rawTemplate.baseLevel) : 1,
       baseExp: Number.isFinite(Number(rawTemplate.baseExp)) ? Number(rawTemplate.baseExp) : 0,
@@ -3569,12 +3594,13 @@ function EditorContent() {
       statKeys: Array.isArray(settings?.statKeys) && settings.statKeys.length > 0
         ? settings.statKeys.filter(item => validStatKeys.has(item))
         : DEFAULT_PROGRESSION_SYSTEM.statKeys,
-      customFields: simpleCustomFields,
+      customFields: templateCustomFields,
       profileTemplate: normalizedTemplate,
       notes: settings?.notes || DEFAULT_PROGRESSION_SYSTEM.notes,
       useCustomJsonTemplate: false,
       customJsonTemplate: settings?.customJsonTemplate || DEFAULT_PROGRESSION_SYSTEM.customJsonTemplate,
       jsonCardOrder: settings?.jsonCardOrder || DEFAULT_PROGRESSION_SYSTEM.jsonCardOrder,
+      allowEmptyTemplate,
       showLevels: false,
       showExp: false,
       showStats: false
