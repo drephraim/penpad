@@ -9,7 +9,7 @@ import {
   Eye, Edit3, Maximize2, Minimize2,
   ArrowLeft, Loader2, FileText, RefreshCw,
   Feather, X, Check, AlertCircle, Trash2,
-  Download, Save, BookOpen,
+  Download, Save, BookOpen, Send,
   Play, Pause, RotateCcw,
   Sparkles, Wand2, Copy, Clipboard, BarChart3,
   Book, Volume2, VolumeX, Headphones,
@@ -794,6 +794,43 @@ function EditorContent() {
   const [selectedVersionForDiff, setSelectedVersionForDiff] = useState<ChapterVersion | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
+
+  const [isBuffering, setIsBuffering] = useState(false)
+  const [bufferStatus, setBufferStatus] = useState<'idle' | 'success' | 'error'>('idle')
+
+  const handleSendToBuffer = async () => {
+    if (!activeNote || !projectName) return
+
+    setIsBuffering(true)
+    setBufferStatus('idle')
+
+    try {
+      const response = await fetch('/api/sync/buffer-chapter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          novelName: projectName,
+          chapterTitle: activeNote.title || 'Untitled Chapter',
+          chapterContent: activeNote.content || '',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to send to buffer')
+      }
+
+      setBufferStatus('success')
+      setTimeout(() => setBufferStatus('idle'), 3000)
+    } catch (error) {
+      console.error('Error buffering chapter:', error)
+      setBufferStatus('error')
+      setTimeout(() => setBufferStatus('idle'), 5000)
+    } finally {
+      setIsBuffering(false)
+    }
+  }
 
   // Redesign States
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab>('manuscript')
@@ -6276,6 +6313,57 @@ ${navPoints}  </navMap>
         </div>
 
         <div className="header-right">
+          {activeNote && (
+            <button
+              className={`btn-buffer ${bufferStatus}`}
+              onClick={handleSendToBuffer}
+              disabled={isBuffering}
+              title={
+                bufferStatus === 'success'
+                  ? "Sent to ChapterBuffer!"
+                  : bufferStatus === 'error'
+                  ? "Failed to send to ChapterBuffer"
+                  : "Send current chapter to ChapterBuffer"
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '0 10px',
+                height: '32px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: bufferStatus === 'success' ? '#10B981' : bufferStatus === 'error' ? '#EF4444' : 'var(--text-secondary)',
+                border: '1px solid var(--border-light, rgba(255, 255, 255, 0.1))',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                transition: 'all 0.2s',
+                cursor: isBuffering ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isBuffering ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Buffering...</span>
+                </>
+              ) : bufferStatus === 'success' ? (
+                <>
+                  <Check size={14} />
+                  <span>Buffered!</span>
+                </>
+              ) : bufferStatus === 'error' ? (
+                <>
+                  <AlertCircle size={14} />
+                  <span>Failed</span>
+                </>
+              ) : (
+                <>
+                  <Send size={14} />
+                  <span>Send to Buffer</span>
+                </>
+              )}
+            </button>
+          )}
           <button
             className="btn-icon"
             onClick={() => setShowGlobalSearch(true)}
