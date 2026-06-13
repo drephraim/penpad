@@ -148,6 +148,7 @@ interface ProgressionAbility {
 }
 
 type ProgressionTemplateCardType = 'text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound' | 'counter'
+type ProgressionJsonTemplateFieldKind = 'text' | 'number' | 'boolean' | 'list' | 'object'
 
 interface ProgressionTemplateCard {
   id: string
@@ -1073,6 +1074,8 @@ function EditorContent() {
   const [progressionTemplatePromptLoading, setProgressionTemplatePromptLoading] = useState(false)
   const [progressionTemplatePromptError, setProgressionTemplatePromptError] = useState("")
   const [isProgressionPromptDesignerOpen, setIsProgressionPromptDesignerOpen] = useState(false)
+  const [progressionJsonNewKey, setProgressionJsonNewKey] = useState("")
+  const [progressionJsonNewKind, setProgressionJsonNewKind] = useState<ProgressionJsonTemplateFieldKind>("text")
   const [progressionBulkUpdating, setProgressionBulkUpdating] = useState(false)
   const [progressionBulkUpdateStatus, setProgressionBulkUpdateStatus] = useState("")
   const [showStatsChart, setShowStatsChart] = useState(false)
@@ -3597,7 +3600,7 @@ function EditorContent() {
       customFields: templateCustomFields,
       profileTemplate: normalizedTemplate,
       notes: settings?.notes || DEFAULT_PROGRESSION_SYSTEM.notes,
-      useCustomJsonTemplate: false,
+      useCustomJsonTemplate: settings?.useCustomJsonTemplate === true,
       customJsonTemplate: settings?.customJsonTemplate || DEFAULT_PROGRESSION_SYSTEM.customJsonTemplate,
       jsonCardOrder: settings?.jsonCardOrder || DEFAULT_PROGRESSION_SYSTEM.jsonCardOrder,
       allowEmptyTemplate,
@@ -3653,6 +3656,258 @@ function EditorContent() {
       jsonCardOrder: nextOrder
     })
   }, [progressionSystem, persistProgressionSystem])
+
+  const getJsonBuilderKey = useCallback((label: string) => {
+    const words = String(label || "field")
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, " ")
+      .split(" ")
+      .filter(Boolean)
+    if (words.length === 0) return "field"
+    return words
+      .map((word, index) => {
+        const clean = word.toLowerCase()
+        return index === 0 ? clean : `${clean.charAt(0).toUpperCase()}${clean.slice(1)}`
+      })
+      .join("")
+  }, [])
+
+  const getUniqueJsonBuilderKey = useCallback((label: string, usedKeys: Set<string>) => {
+    const baseKey = getJsonBuilderKey(label)
+    let candidate = baseKey
+    let suffix = 2
+    while (usedKeys.has(candidate)) {
+      candidate = `${baseKey}${suffix}`
+      suffix += 1
+    }
+    usedKeys.add(candidate)
+    return candidate
+  }, [getJsonBuilderKey])
+
+  const getJsonTemplateFieldKind = useCallback((value: any): ProgressionJsonTemplateFieldKind => {
+    if (Array.isArray(value)) return "list"
+    if (value && typeof value === "object") return "object"
+    if (typeof value === "number") return "number"
+    if (typeof value === "boolean") return "boolean"
+    return "text"
+  }, [])
+
+  const getJsonTemplateDefaultValue = useCallback((kind: ProgressionJsonTemplateFieldKind, label = ""): any => {
+    if (kind === "number") return 0
+    if (kind === "boolean") return false
+    if (kind === "list") return label ? [label] : []
+    if (kind === "object") return { value: "" }
+    return ""
+  }, [])
+
+  const getJsonTemplateValueForCard = useCallback((card: ProgressionTemplateCard) => {
+    const fieldNames = card.fields.length > 0 ? card.fields : [card.label]
+    const fieldObject = fieldNames.reduce<Record<string, any>>((acc, fieldName) => {
+      const fieldKey = getJsonBuilderKey(fieldName)
+      acc[fieldKey] = card.type === "counter" || card.type === "stat" ? 0 : ""
+      return acc
+    }, {})
+
+    if (card.type === "ability") {
+      return [{
+        name: "",
+        rank: "",
+        description: ""
+      }]
+    }
+    if (card.type === "counter" || card.type === "stat") return fieldNames.length > 1 ? fieldObject : 0
+    if (card.type === "progress" || card.type === "resource") {
+      return {
+        ...fieldObject,
+        current: 0,
+        max: 100
+      }
+    }
+    if (card.type === "rank" || card.type === "compound" || fieldNames.length > 1) return fieldObject
+    return ""
+  }, [getJsonBuilderKey])
+
+  const parseProgressionJsonTemplate = useCallback((): Record<string, any> => {
+    if (!progressionSystem.customJsonTemplate?.trim()) return {}
+    try {
+      const parsed = JSON.parse(progressionSystem.customJsonTemplate)
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }, [progressionSystem.customJsonTemplate])
+
+  const getOrderedJsonTemplateKeys = useCallback((template: Record<string, any>) => {
+    const keys = Object.keys(template)
+    const order = progressionSystem.jsonCardOrder || []
+    return [
+      ...order.filter(key => keys.includes(key)),
+      ...keys.filter(key => !order.includes(key))
+    ]
+  }, [progressionSystem.jsonCardOrder])
+
+  const persistJsonTemplateBuilder = useCallback((template: Record<string, any>, order?: string[]) => {
+    const nextKeys = Object.keys(template)
+    const nextOrder = order
+      ? order.filter(key => nextKeys.includes(key))
+      : getOrderedJsonTemplateKeys(template)
+    nextKeys.forEach(key => {
+      if (!nextOrder.includes(key)) nextOrder.push(key)
+    })
+    persistProgressionSystem({
+      ...progressionSystem,
+      useCustomJsonTemplate: true,
+      customJsonTemplate: JSON.stringify(template, null, 2),
+      jsonCardOrder: nextOrder
+    })
+  }, [getOrderedJsonTemplateKeys, persistProgressionSystem, progressionSystem])
+
+  const convertProgressionCardsToJsonTemplate = useCallback(() => {
+    const cards = normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
+      .filter(card => card.enabled)
+    const usedKeys = new Set<string>()
+    const starterTemplate: Record<string, any> = {}
+    const cardOrder: string[] = []
+
+    cards.forEach(card => {
+      const key = getUniqueJsonBuilderKey(card.sourceKey || card.label, usedKeys)
+      starterTemplate[key] = getJsonTemplateValueForCard(card)
+      cardOrder.push(key)
+    })
+
+    persistProgressionSystem({
+      ...progressionSystem,
+      useCustomJsonTemplate: true,
+      customJsonTemplate: JSON.stringify(starterTemplate, null, 2),
+      jsonCardOrder: cardOrder
+    })
+    setProgressionNotice(`Converted ${cardOrder.length} profile template cards into a starter JSON template.`)
+  }, [getJsonTemplateValueForCard, getUniqueJsonBuilderKey, normalizeProgressionTemplateCards, persistProgressionSystem, progressionSystem])
+
+  const addJsonTemplateField = useCallback(() => {
+    const template = parseProgressionJsonTemplate()
+    const usedKeys = new Set(Object.keys(template))
+    const key = getUniqueJsonBuilderKey(progressionJsonNewKey || "newField", usedKeys)
+    const order = getOrderedJsonTemplateKeys(template)
+    template[key] = getJsonTemplateDefaultValue(progressionJsonNewKind, progressionJsonNewKey)
+    persistJsonTemplateBuilder(template, [...order, key])
+    setProgressionJsonNewKey("")
+  }, [getJsonTemplateDefaultValue, getOrderedJsonTemplateKeys, getUniqueJsonBuilderKey, parseProgressionJsonTemplate, persistJsonTemplateBuilder, progressionJsonNewKey, progressionJsonNewKind])
+
+  const renameJsonTemplateField = useCallback((oldKey: string, rawKey: string) => {
+    const nextKey = getJsonBuilderKey(rawKey)
+    if (!nextKey || nextKey === oldKey) return
+    const template = parseProgressionJsonTemplate()
+    if (!(oldKey in template) || nextKey in template) return
+    const order = getOrderedJsonTemplateKeys(template).map(key => key === oldKey ? nextKey : key)
+    const nextTemplate: Record<string, any> = {}
+    Object.keys(template).forEach(key => {
+      nextTemplate[key === oldKey ? nextKey : key] = template[key]
+    })
+    persistJsonTemplateBuilder(nextTemplate, order)
+  }, [getJsonBuilderKey, getOrderedJsonTemplateKeys, parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const updateJsonTemplateFieldKind = useCallback((key: string, kind: ProgressionJsonTemplateFieldKind) => {
+    const template = parseProgressionJsonTemplate()
+    template[key] = getJsonTemplateDefaultValue(kind, key)
+    persistJsonTemplateBuilder(template)
+  }, [getJsonTemplateDefaultValue, parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const updateJsonTemplatePrimitiveValue = useCallback((key: string, value: string | boolean, kind: ProgressionJsonTemplateFieldKind) => {
+    const template = parseProgressionJsonTemplate()
+    template[key] = kind === "number" ? Number(value) || 0 : kind === "boolean" ? Boolean(value) : value
+    persistJsonTemplateBuilder(template)
+  }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const removeJsonTemplateField = useCallback((key: string) => {
+    const template = parseProgressionJsonTemplate()
+    delete template[key]
+    persistJsonTemplateBuilder(template, getOrderedJsonTemplateKeys(template).filter(item => item !== key))
+  }, [getOrderedJsonTemplateKeys, parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const reorderJsonTemplateField = useCallback((key: string, direction: 'up' | 'down') => {
+    const template = parseProgressionJsonTemplate()
+    const order = getOrderedJsonTemplateKeys(template)
+    const index = order.indexOf(key)
+    if (index < 0) return
+    const targetIndex = direction === "up" ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= order.length) return
+    const nextOrder = [...order]
+    const temp = nextOrder[index]
+    nextOrder[index] = nextOrder[targetIndex]
+    nextOrder[targetIndex] = temp
+    persistJsonTemplateBuilder(template, nextOrder)
+  }, [getOrderedJsonTemplateKeys, parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const addJsonTemplateObjectField = useCallback((parentKey: string) => {
+    const template = parseProgressionJsonTemplate()
+    const parent = template[parentKey] && typeof template[parentKey] === "object" && !Array.isArray(template[parentKey])
+      ? { ...template[parentKey] }
+      : {}
+    const fieldKey = getUniqueJsonBuilderKey("field", new Set(Object.keys(parent)))
+    parent[fieldKey] = ""
+    template[parentKey] = parent
+    persistJsonTemplateBuilder(template)
+  }, [getUniqueJsonBuilderKey, parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const renameJsonTemplateObjectField = useCallback((parentKey: string, oldFieldKey: string, rawKey: string) => {
+    const nextFieldKey = getJsonBuilderKey(rawKey)
+    if (!nextFieldKey || nextFieldKey === oldFieldKey) return
+    const template = parseProgressionJsonTemplate()
+    const parent = template[parentKey] && typeof template[parentKey] === "object" && !Array.isArray(template[parentKey])
+      ? template[parentKey] as Record<string, any>
+      : {}
+    if (!(oldFieldKey in parent) || nextFieldKey in parent) return
+    const nextParent: Record<string, any> = {}
+    Object.keys(parent).forEach(key => {
+      nextParent[key === oldFieldKey ? nextFieldKey : key] = parent[key]
+    })
+    template[parentKey] = nextParent
+    persistJsonTemplateBuilder(template)
+  }, [getJsonBuilderKey, parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const updateJsonTemplateObjectValue = useCallback((parentKey: string, fieldKey: string, value: string) => {
+    const template = parseProgressionJsonTemplate()
+    const parent = template[parentKey] && typeof template[parentKey] === "object" && !Array.isArray(template[parentKey])
+      ? { ...template[parentKey] }
+      : {}
+    parent[fieldKey] = value
+    template[parentKey] = parent
+    persistJsonTemplateBuilder(template)
+  }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const removeJsonTemplateObjectField = useCallback((parentKey: string, fieldKey: string) => {
+    const template = parseProgressionJsonTemplate()
+    const parent = template[parentKey] && typeof template[parentKey] === "object" && !Array.isArray(template[parentKey])
+      ? { ...template[parentKey] }
+      : {}
+    delete parent[fieldKey]
+    template[parentKey] = parent
+    persistJsonTemplateBuilder(template)
+  }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const addJsonTemplateListItem = useCallback((key: string) => {
+    const template = parseProgressionJsonTemplate()
+    const list = Array.isArray(template[key]) ? [...template[key]] : []
+    list.push("")
+    template[key] = list
+    persistJsonTemplateBuilder(template)
+  }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const updateJsonTemplateListItem = useCallback((key: string, index: number, value: string) => {
+    const template = parseProgressionJsonTemplate()
+    const list = Array.isArray(template[key]) ? [...template[key]] : []
+    list[index] = value
+    template[key] = list
+    persistJsonTemplateBuilder(template)
+  }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
+
+  const removeJsonTemplateListItem = useCallback((key: string, index: number) => {
+    const template = parseProgressionJsonTemplate()
+    const list = Array.isArray(template[key]) ? [...template[key]] : []
+    template[key] = list.filter((_, itemIndex) => itemIndex !== index)
+    persistJsonTemplateBuilder(template)
+  }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
 
   const fetchProgressionSystem = useCallback(() => {
     if (!projectId) return
@@ -9273,74 +9528,270 @@ ${navPoints}  </navMap>
                 <p className="modal-description">Design the reusable status card for this novel. New and updated characters follow this shape.</p>
               </div>
               <div className="progression-template-modal-body">
-                <div className="json-template-mode-toggle" style={{ display: "none" }}>
-                  <input
-                    type="checkbox"
-                    id="useCustomJsonTemplate"
-                    checked={progressionSystem.useCustomJsonTemplate || false}
-                    onChange={(e) => {
-                      persistProgressionSystem({
-                        ...progressionSystem,
-                        useCustomJsonTemplate: e.target.checked
-                      })
-                    }}
-                  />
-                  <label htmlFor="useCustomJsonTemplate" style={{ fontWeight: 800, fontSize: "0.85rem", cursor: "pointer", color: "var(--text-primary)" }}>
-                    Enable Custom JSON Template Mode (AI-optimized dynamic status cards)
-                  </label>
+                <div className="progression-template-mode-switch">
+                  <button
+                    type="button"
+                    className={!progressionSystem.useCustomJsonTemplate ? "active" : ""}
+                    onClick={() => persistProgressionSystem({
+                      ...progressionSystem,
+                      useCustomJsonTemplate: false
+                    })}
+                  >
+                    <Layers size={13} />
+                    Visual Cards
+                  </button>
+                  <button
+                    type="button"
+                    className={progressionSystem.useCustomJsonTemplate ? "active" : ""}
+                    onClick={() => persistProgressionSystem({
+                      ...progressionSystem,
+                      useCustomJsonTemplate: true
+                    })}
+                  >
+                    <Code size={13} />
+                    JSON Builder
+                  </button>
                 </div>
 
                 {progressionSystem.useCustomJsonTemplate ? (
                   <div className="json-template-editor-section">
-                    <div className="progression-template-header" style={{ marginBottom: "0.5rem" }}>
-                      <div>
-                        <strong>Custom JSON Status Template</strong>
-                        <span>Define the JSON structure you want the AI to extract and update for characters. Must be valid JSON.</span>
-                      </div>
-                    </div>
-                    <textarea
-                      className="ai-textarea progression-json-template-textarea font-mono text-sm scrollbar"
-                      value={progressionSystem.customJsonTemplate || ""}
-                      onChange={(e) => {
-                        const nextVal = e.target.value
-                        let parsedKeys: string[] = []
-                        try {
-                          const parsed = JSON.parse(nextVal)
-                          if (parsed && typeof parsed === "object") {
-                            parsedKeys = Object.keys(parsed)
-                          }
-                        } catch {}
-                        persistProgressionSystem({
-                          ...progressionSystem,
-                          customJsonTemplate: nextVal,
-                          jsonCardOrder: parsedKeys.length > 0 ? parsedKeys : progressionSystem.jsonCardOrder
-                        })
-                      }}
-                      placeholder={`{\n  "class": "Warrior",\n  "cultivation": {\n    "realm": "Body Tempering"\n  }\n}`}
-                      rows={12}
-                      style={{ width: "100%", padding: "0.75rem", background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--surface-border)", borderRadius: "var(--radius-md)", color: "#fff" }}
-                    />
                     {(() => {
+                      let parsedTemplate: Record<string, any> = {}
+                      let parseError = ""
                       try {
-                        if (progressionSystem.customJsonTemplate) {
-                          const parsed = JSON.parse(progressionSystem.customJsonTemplate)
-                          const keys = Object.keys(parsed)
-                          return (
-                            <div className="json-validation-success" style={{ color: "#4ade80", fontSize: "0.75rem", marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <Check size={12} />
-                              Valid JSON! Top-level keys: {keys.join(", ")} (these will render as status cards)
-                            </div>
-                          )
+                        const parsed = progressionSystem.customJsonTemplate ? JSON.parse(progressionSystem.customJsonTemplate) : {}
+                        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                          parsedTemplate = parsed
+                        } else {
+                          parseError = "Template must be a JSON object."
                         }
                       } catch (err) {
-                        return (
-                          <div className="json-validation-error" style={{ color: "var(--error)", fontSize: "0.75rem", marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "4px" }}>
-                            <AlertCircle size={12} />
-                            Invalid JSON format: {(err as Error).message}
-                          </div>
-                        )
+                        parseError = (err as Error).message
                       }
-                      return null
+                      const orderedKeys = getOrderedJsonTemplateKeys(parsedTemplate)
+
+                      return (
+                        <>
+                          <div className="progression-json-builder-panel">
+                            <div className="progression-template-header">
+                              <div>
+                                <strong>Guided JSON Status Builder</strong>
+                                <span>Add status cards and fields visually. PenPad keeps the starter JSON and card order in sync.</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn-ai-sub btn-ai-primary"
+                                onClick={convertProgressionCardsToJsonTemplate}
+                              >
+                                <RefreshCw size={12} />
+                                Build From Current Cards
+                              </button>
+                            </div>
+
+                            {parseError ? (
+                              <div className="json-validation-error progression-json-builder-warning">
+                                <AlertCircle size={13} />
+                                Invalid JSON preview: {parseError}
+                              </div>
+                            ) : (
+                              <div className="json-validation-success progression-json-builder-warning">
+                                <Check size={13} />
+                                {orderedKeys.length} JSON status cards ready: {orderedKeys.join(", ") || "none yet"}
+                              </div>
+                            )}
+
+                            <div className="progression-json-builder-list">
+                              {orderedKeys.length === 0 ? (
+                                <div className="empty-state-text compact">No JSON cards yet. Add one below or convert the current visual template.</div>
+                              ) : orderedKeys.map((key, index) => {
+                                const value = parsedTemplate[key]
+                                const fieldKind = getJsonTemplateFieldKind(value)
+                                const objectValue = fieldKind === "object" ? value as Record<string, any> : {}
+                                const listValue = fieldKind === "list" ? value as any[] : []
+
+                                return (
+                                  <div className="progression-json-builder-card" key={key}>
+                                    <div className="progression-json-builder-row">
+                                      <label>
+                                        <span>Card Key</span>
+                                        <input
+                                          className="ai-input"
+                                          defaultValue={key}
+                                          onBlur={(e) => renameJsonTemplateField(key, e.target.value)}
+                                          placeholder="cultivationRealm"
+                                        />
+                                      </label>
+                                      <label>
+                                        <span>Value Type</span>
+                                        <select
+                                          className="ai-select"
+                                          value={fieldKind}
+                                          onChange={(e) => updateJsonTemplateFieldKind(key, e.target.value as ProgressionJsonTemplateFieldKind)}
+                                        >
+                                          <option value="text">Text</option>
+                                          <option value="number">Number</option>
+                                          <option value="boolean">Toggle</option>
+                                          <option value="list">List</option>
+                                          <option value="object">Grouped Fields</option>
+                                        </select>
+                                      </label>
+                                      <div className="progression-json-card-actions">
+                                        <button type="button" className="btn-icon-mini" onClick={() => reorderJsonTemplateField(key, "up")} disabled={index === 0} title="Move up">
+                                          <ChevronDown size={12} style={{ transform: "rotate(180deg)" }} />
+                                        </button>
+                                        <button type="button" className="btn-icon-mini" onClick={() => reorderJsonTemplateField(key, "down")} disabled={index === orderedKeys.length - 1} title="Move down">
+                                          <ChevronDown size={12} />
+                                        </button>
+                                        <button type="button" className="btn-icon-mini danger" onClick={() => removeJsonTemplateField(key)} title="Remove JSON card">
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {fieldKind === "text" && (
+                                      <label className="progression-json-wide-input">
+                                        <span>Starter Value</span>
+                                        <input
+                                          className="ai-input"
+                                          value={String(value || "")}
+                                          onChange={(e) => updateJsonTemplatePrimitiveValue(key, e.target.value, "text")}
+                                          placeholder="Mortal, Warrior, Human..."
+                                        />
+                                      </label>
+                                    )}
+
+                                    {fieldKind === "number" && (
+                                      <label className="progression-json-wide-input">
+                                        <span>Starter Number</span>
+                                        <input
+                                          className="ai-input"
+                                          type="number"
+                                          value={Number(value) || 0}
+                                          onChange={(e) => updateJsonTemplatePrimitiveValue(key, e.target.value, "number")}
+                                        />
+                                      </label>
+                                    )}
+
+                                    {fieldKind === "boolean" && (
+                                      <label className="progression-json-toggle-row">
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(value)}
+                                          onChange={(e) => updateJsonTemplatePrimitiveValue(key, e.target.checked, "boolean")}
+                                        />
+                                        <span>Default to enabled/true</span>
+                                      </label>
+                                    )}
+
+                                    {fieldKind === "object" && (
+                                      <div className="progression-json-nested-editor">
+                                        {Object.keys(objectValue).length === 0 ? (
+                                          <div className="empty-state-text compact">No grouped fields yet.</div>
+                                        ) : Object.keys(objectValue).map(fieldKey => (
+                                          <div className="progression-json-nested-row" key={`${key}-${fieldKey}`}>
+                                            <input
+                                              className="ai-input"
+                                              defaultValue={fieldKey}
+                                              onBlur={(e) => renameJsonTemplateObjectField(key, fieldKey, e.target.value)}
+                                              placeholder="realm"
+                                            />
+                                            <input
+                                              className="ai-input"
+                                              value={typeof objectValue[fieldKey] === "object" ? JSON.stringify(objectValue[fieldKey]) : String(objectValue[fieldKey] ?? "")}
+                                              onChange={(e) => updateJsonTemplateObjectValue(key, fieldKey, e.target.value)}
+                                              placeholder="Body Tempering"
+                                            />
+                                            <button type="button" className="btn-icon-mini danger" onClick={() => removeJsonTemplateObjectField(key, fieldKey)} title="Remove grouped field">
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        ))}
+                                        <button type="button" className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addJsonTemplateObjectField(key)}>
+                                          <Plus size={12} />
+                                          Add Grouped Field
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {fieldKind === "list" && (
+                                      <div className="progression-json-nested-editor">
+                                        {listValue.length === 0 ? (
+                                          <div className="empty-state-text compact">No list items yet.</div>
+                                        ) : listValue.map((item, itemIndex) => (
+                                          <div className="progression-json-list-row" key={`${key}-${itemIndex}`}>
+                                            <input
+                                              className="ai-input"
+                                              value={typeof item === "object" ? JSON.stringify(item) : String(item ?? "")}
+                                              onChange={(e) => updateJsonTemplateListItem(key, itemIndex, e.target.value)}
+                                              placeholder="Slash, Fire affinity, Seven Stars Sect..."
+                                            />
+                                            <button type="button" className="btn-icon-mini danger" onClick={() => removeJsonTemplateListItem(key, itemIndex)} title="Remove list item">
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        ))}
+                                        <button type="button" className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addJsonTemplateListItem(key)}>
+                                          <Plus size={12} />
+                                          Add List Item
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            <div className="progression-json-add-row">
+                              <input
+                                className="ai-input"
+                                value={progressionJsonNewKey}
+                                onChange={(e) => setProgressionJsonNewKey(e.target.value)}
+                                placeholder="New card key, e.g. weapon, cultivation, resources"
+                              />
+                              <select
+                                className="ai-select"
+                                value={progressionJsonNewKind}
+                                onChange={(e) => setProgressionJsonNewKind(e.target.value as ProgressionJsonTemplateFieldKind)}
+                              >
+                                <option value="text">Text</option>
+                                <option value="number">Number</option>
+                                <option value="boolean">Toggle</option>
+                                <option value="list">List</option>
+                                <option value="object">Grouped Fields</option>
+                              </select>
+                              <button type="button" className="btn-ai-sub btn-ai-primary" onClick={addJsonTemplateField}>
+                                <Plus size={12} />
+                                Add JSON Card
+                              </button>
+                            </div>
+                          </div>
+
+                          <details className="progression-json-raw-preview">
+                            <summary>Raw JSON preview</summary>
+                            <textarea
+                              className="ai-textarea progression-json-template-textarea font-mono text-sm scrollbar"
+                              value={progressionSystem.customJsonTemplate || ""}
+                              onChange={(e) => {
+                                const nextVal = e.target.value
+                                let parsedKeys: string[] = []
+                                try {
+                                  const parsed = JSON.parse(nextVal)
+                                  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                                    parsedKeys = Object.keys(parsed)
+                                  }
+                                } catch {}
+                                persistProgressionSystem({
+                                  ...progressionSystem,
+                                  customJsonTemplate: nextVal,
+                                  jsonCardOrder: parsedKeys.length > 0 ? parsedKeys : progressionSystem.jsonCardOrder
+                                })
+                              }}
+                              placeholder={`{\n  "class": "Warrior",\n  "cultivation": {\n    "realm": "Body Tempering"\n  }\n}`}
+                              rows={8}
+                            />
+                          </details>
+                        </>
+                      )
                     })()}
 
                     <div className="progression-theme-library" style={{ marginTop: "1.5rem" }}>
@@ -9385,6 +9836,14 @@ ${navPoints}  </navMap>
                       >
                         <RotateCcw size={12} />
                         Load Simple Template
+                      </button>
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={convertProgressionCardsToJsonTemplate}
+                        type="button"
+                      >
+                        <RefreshCw size={12} />
+                        Convert Cards to JSON
                       </button>
                       <button
                         className="btn-ai-sub btn-ai-secondary danger-text"
@@ -13110,6 +13569,170 @@ ${navPoints}  </navMap>
           border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
 
+        .progression-template-mode-switch {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.45rem;
+          padding: 0.35rem;
+          margin-bottom: 0.85rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.025);
+        }
+
+        .progression-template-mode-switch button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4rem;
+          min-height: 34px;
+          border: 1px solid transparent;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          color: var(--text-dim);
+          font-size: 0.75rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .progression-template-mode-switch button:hover,
+        .progression-template-mode-switch button.active {
+          border-color: rgba(99, 102, 241, 0.35);
+          background: rgba(99, 102, 241, 0.14);
+          color: rgb(224, 231, 255);
+        }
+
+        .progression-json-builder-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding: 0.75rem;
+          border: 1px solid rgba(99, 102, 241, 0.24);
+          border-radius: var(--radius-md);
+          background: linear-gradient(145deg, rgba(99, 102, 241, 0.08), rgba(255, 255, 255, 0.025));
+        }
+
+        .progression-json-builder-warning {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.45rem 0.55rem;
+          border-radius: var(--radius-sm);
+          font-size: 0.74rem;
+          font-weight: 800;
+        }
+
+        .progression-json-builder-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+        }
+
+        .progression-json-builder-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          padding: 0.7rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.16);
+        }
+
+        .progression-json-builder-row,
+        .progression-json-add-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 180px auto;
+          gap: 0.5rem;
+          align-items: end;
+        }
+
+        .progression-json-builder-row label,
+        .progression-json-wide-input {
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
+        }
+
+        .progression-json-builder-row label span,
+        .progression-json-wide-input span {
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .progression-json-card-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.25rem;
+        }
+
+        .progression-json-toggle-row {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .progression-json-toggle-row input {
+          accent-color: var(--primary);
+        }
+
+        .progression-json-nested-editor {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+          padding: 0.55rem;
+          border: 1px dashed rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.025);
+        }
+
+        .progression-json-nested-row {
+          display: grid;
+          grid-template-columns: minmax(120px, 0.65fr) minmax(0, 1fr) 30px;
+          gap: 0.4rem;
+          align-items: center;
+        }
+
+        .progression-json-list-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 30px;
+          gap: 0.4rem;
+          align-items: center;
+        }
+
+        .progression-json-raw-preview {
+          margin-top: 0.75rem;
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.025);
+          overflow: hidden;
+        }
+
+        .progression-json-raw-preview summary {
+          padding: 0.65rem 0.75rem;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .progression-json-template-textarea {
+          width: 100%;
+          min-height: 160px;
+          padding: 0.75rem;
+          border: 0;
+          border-top: 1px solid rgba(148, 163, 184, 0.14);
+          border-radius: 0;
+          background: rgba(0, 0, 0, 0.25);
+          color: #fff;
+        }
+
         .progression-character-modal-list,
         .progression-template-builder-list {
           display: flex;
@@ -15247,6 +15870,14 @@ ${navPoints}  </navMap>
           .progression-theme-grid,
           .progression-preset-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .progression-json-builder-row,
+          .progression-json-add-row,
+          .progression-json-nested-row {
+            grid-template-columns: 1fr;
+          }
+          .progression-json-card-actions {
+            justify-content: flex-start;
           }
           .editor-ai-sidebar {
             width: 100%;
