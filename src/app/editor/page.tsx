@@ -14,7 +14,8 @@ import {
   Sparkles, Wand2, Copy, Clipboard, BarChart3,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
-  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical
+  User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
+  Network, ShieldAlert, AlertTriangle, CheckCircle2
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -887,6 +888,19 @@ function EditorContent() {
   const [brainAskAnswer, setBrainAskAnswer] = useState('')
   const [brainAskLoading, setBrainAskLoading] = useState(false)
   const [brainAskError, setBrainAskError] = useState('')
+
+  // New Brain Map Enhancements States
+  const [showBrainGraph, setShowBrainGraph] = useState(false)
+  const [consistencyLoading, setConsistencyLoading] = useState(false)
+  const [consistencyWarnings, setConsistencyWarnings] = useState<{ entityName: string; severity: 'warning' | 'critical'; message: string }[]>([])
+  const [consistencyCheckedNoteId, setConsistencyCheckedNoteId] = useState<string | null>(null)
+  const [suggestionLoading, setSuggestionLoading] = useState(false)
+  const [suggestedEntities, setSuggestedEntities] = useState<{ entityName: string; entityType: BrainEntityType; importance: BrainImportance; aiSummary: string }[]>([])
+  const [dossierLoading, setDossierLoading] = useState(false)
+  const [dossierMessage, setDossierMessage] = useState('')
+  const [isEditingDossier, setIsEditingDossier] = useState(false)
+  const [dossierEditText, setDossierEditText] = useState('')
+  const [activeBrainPopup, setActiveBrainPopup] = useState<'ask' | 'suggestions' | 'continuity' | null>(null)
 
   // Focus Sprints & Gamified Focus Tracker States
   const [sprintDuration, setSprintDuration] = useState(1500)
@@ -4501,23 +4515,85 @@ function EditorContent() {
       .then(res => res.json())
       .then(async data => {
         const summary = data.text || data.error || "Could not analyze."
-        const finalEntry: BrainEntry = {
-          ...newEntry,
-          aiSummary: summary,
-          entityType: data.entityType || "unknown",
-          entityName: data.entityName || text,
-          importance: data.importance || "minor",
-          connections: Array.isArray(data.connections) ? data.connections : [],
-          updatedAt: Date.now()
-        }
+        const entityName = (data.entityName || text).trim()
+        const entityType = data.entityType || "unknown"
+        const importance = data.importance || "minor"
+        const connections = Array.isArray(data.connections) ? data.connections : []
+        const parentEntityName = data.parentEntityName ? data.parentEntityName.trim() : ""
+        const isSubEntity = !!data.isSubEntity
 
         setBrainEntries(prev => {
-          const list = prev.map(e => e.id === newEntry.id ? finalEntry : e)
+          const existingEntry = prev.find(e => e.id !== newEntry.id && e.entityName && e.entityName.trim().toLowerCase() === entityName.toLowerCase())
+          const parentEntry = (!existingEntry && isSubEntity && parentEntityName)
+            ? prev.find(e => e.id !== newEntry.id && e.entityName && e.entityName.trim().toLowerCase() === parentEntityName.toLowerCase())
+            : null
+
+          let list: BrainEntry[]
+          if (existingEntry) {
+            const newChapterLabel = chapterNumber ? `Chapter ${chapterNumber}` : activeNote.title || "New Chapter"
+            const updatedSummary = `${existingEntry.aiSummary}\n\n***\n\n### 🔄 Update: ${newChapterLabel}\n${summary}`
+            
+            const importanceOrder: Record<string, number> = { minor: 1, major: 2, critical: 3 }
+            const currentImportanceVal = importanceOrder[existingEntry.importance || 'minor'] || 1
+            const newImportanceVal = importanceOrder[importance || 'minor'] || 1
+            const finalImportance = (newImportanceVal > currentImportanceVal ? importance : existingEntry.importance) as BrainImportance
+
+            const mergedConnections = Array.from(new Set([...(existingEntry.connections || []), ...connections]))
+
+            const updatedExisting: BrainEntry = {
+              ...existingEntry,
+              aiSummary: updatedSummary,
+              importance: finalImportance,
+              connections: mergedConnections,
+              updatedAt: Date.now()
+            }
+
+            const remaining = prev.filter(e => e.id !== newEntry.id && e.id !== existingEntry.id)
+            list = [updatedExisting, ...remaining]
+
+            saveBrainEntryToCloud(user.uid, projectId, updatedExisting)
+            deleteBrainEntryFromCloud(user.uid, projectId, newEntry.id)
+          } else if (parentEntry) {
+            const newChapterLabel = chapterNumber ? `Chapter ${chapterNumber}` : activeNote.title || "New Chapter"
+            const updatedSummary = `${parentEntry.aiSummary}\n\n***\n\n### 📍 Sub-Entity: ${entityName} (${newChapterLabel})\n${summary}`
+            
+            const importanceOrder: Record<string, number> = { minor: 1, major: 2, critical: 3 }
+            const currentImportanceVal = importanceOrder[parentEntry.importance || 'minor'] || 1
+            const newImportanceVal = importanceOrder[importance || 'minor'] || 1
+            const finalImportance = (newImportanceVal > currentImportanceVal ? importance : parentEntry.importance) as BrainImportance
+
+            const mergedConnections = Array.from(new Set([...(parentEntry.connections || []), entityName, ...connections]))
+
+            const updatedParent: BrainEntry = {
+              ...parentEntry,
+              aiSummary: updatedSummary,
+              importance: finalImportance,
+              connections: mergedConnections,
+              updatedAt: Date.now()
+            }
+
+            const remaining = prev.filter(e => e.id !== newEntry.id && e.id !== parentEntry.id)
+            list = [updatedParent, ...remaining]
+
+            saveBrainEntryToCloud(user.uid, projectId, updatedParent)
+            deleteBrainEntryFromCloud(user.uid, projectId, newEntry.id)
+          } else {
+            const finalEntry: BrainEntry = {
+              ...newEntry,
+              aiSummary: summary,
+              entityType,
+              entityName,
+              importance,
+              connections,
+              updatedAt: Date.now()
+            }
+            list = prev.map(e => e.id === newEntry.id ? finalEntry : e)
+            saveBrainEntryToCloud(user.uid, projectId, finalEntry)
+          }
+
           saveStoryBrainLocal(projectId, list)
           return list
         })
-
-        saveBrainEntryToCloud(user.uid, projectId, finalEntry)
       })
       .catch(() => {
         const errorEntry = { ...newEntry, aiSummary: "Analysis failed. Try again.", updatedAt: Date.now() }
@@ -4582,6 +4658,157 @@ function EditorContent() {
       setBrainAskError(err instanceof Error ? err.message : "Could not ask Brain Map")
     } finally {
       setBrainAskLoading(false)
+    }
+  }
+
+  const checkBrainConsistency = async () => {
+    if (!activeNote || !projectId || consistencyLoading) return
+    setConsistencyLoading(true)
+    setConsistencyWarnings([])
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "brain_consistency_check",
+          chapterContent: activeNote.content,
+          chapterTitle: activeNote.title,
+          existingBrainEntries: brainEntries.filter(entry => entry.aiSummary !== "Analyzing...")
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to check consistency")
+      setConsistencyWarnings(data.conflicts || [])
+      setConsistencyCheckedNoteId(activeNote.id)
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Consistency check failed")
+    } finally {
+      setConsistencyLoading(false)
+    }
+  }
+
+  const fetchEntitySuggestions = async () => {
+    if (!activeNote || !projectId || suggestionLoading) return
+    setSuggestionLoading(true)
+    setSuggestedEntities([])
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "brain_suggest_additions",
+          chapterContent: activeNote.content,
+          existingBrainEntries: brainEntries.filter(entry => entry.aiSummary !== "Analyzing...")
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to fetch suggestions")
+      setSuggestedEntities(data.suggestions || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSuggestionLoading(false)
+    }
+  }
+
+  const quickAddSuggestedEntity = async (suggestion: { entityName: string; entityType: BrainEntityType; importance: BrainImportance; aiSummary: string }) => {
+    if (!user || !projectId || !activeNote) return
+    const now = Date.now()
+    const chapterNumber = getNoteChapterNumber(activeNote)
+    const newEntry: BrainEntry = {
+      id: crypto.randomUUID(),
+      highlightedText: suggestion.entityName,
+      entityName: suggestion.entityName,
+      entityType: suggestion.entityType,
+      importance: suggestion.importance,
+      aiSummary: suggestion.aiSummary,
+      chapterTitle: activeNote.title || "Untitled",
+      chapterId: activeNote.id,
+      ...(chapterNumber ? { chapterNumber } : {}),
+      connections: [],
+      createdAt: now,
+      updatedAt: now
+    }
+
+    const updated = [newEntry, ...brainEntries]
+    setBrainEntries(updated)
+    await saveStoryBrainLocal(projectId, updated)
+    saveBrainEntryToCloud(user.uid, projectId, newEntry)
+
+    setSuggestedEntities(prev => prev.filter(s => s.entityName.toLowerCase() !== suggestion.entityName.toLowerCase()))
+  }
+
+  const generateEntityDossier = async (entityName: string, entityType: BrainEntityType) => {
+    if (!user || !projectId || dossierLoading) return
+    setDossierLoading(true)
+    setDossierMessage("")
+    try {
+      const relevantEntries = brainEntries.filter(entry => 
+        (entry.entityName || entry.highlightedText || "").toLowerCase() === entityName.toLowerCase()
+      )
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "brain_generate_dossier",
+          entityName,
+          entityType,
+          brainEntries: relevantEntries
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to generate dossier")
+
+      const existingEntry = bibleEntries.find(e => e.name.toLowerCase() === entityName.toLowerCase())
+      if (existingEntry) {
+        const updatedEntry = {
+          ...existingEntry,
+          content: data.dossierText,
+          updatedAt: Date.now()
+        }
+        const updatedList = bibleEntries.map(e => e.id === existingEntry.id ? updatedEntry : e)
+        setBibleEntries(updatedList)
+        await saveStoryBibleLocal(projectId, updatedList)
+        await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
+      } else {
+        const newBibleEntry = {
+          id: crypto.randomUUID(),
+          name: entityName,
+          category: (entityType === "character" ? "character" : entityType === "place" ? "place" : entityType === "object" ? "item" : "world") as any,
+          content: data.dossierText,
+          groupIds: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }
+        const updatedList = [newBibleEntry, ...bibleEntries]
+        setBibleEntries(updatedList)
+        await saveStoryBibleLocal(projectId, updatedList)
+        await saveBibleEntryToCloud(user.uid, projectId, newBibleEntry)
+      }
+      setDossierMessage("Dossier successfully generated and saved to Story Bible!")
+      setTimeout(() => setDossierMessage(""), 5000)
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Failed to compile dossier")
+    } finally {
+      setDossierLoading(false)
+    }
+  }
+
+  const handleSaveDossierText = async (entityName: string, textContent: string) => {
+    if (!user || !projectId) return
+    const existingEntry = bibleEntries.find(e => e.name.toLowerCase() === entityName.toLowerCase())
+    if (existingEntry) {
+      const updatedEntry = {
+        ...existingEntry,
+        content: textContent,
+        updatedAt: Date.now()
+      }
+      const updatedList = bibleEntries.map(e => e.id === existingEntry.id ? updatedEntry : e)
+      setBibleEntries(updatedList)
+      await saveStoryBibleLocal(projectId, updatedList)
+      await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
     }
   }
 
@@ -8319,7 +8546,141 @@ ${navPoints}  </navMap>
             {/* TAB 4: BRAIN MAP */}
             {activeSidebarTab === 'brain' && (
               <div className="sidebar-tab-content brain-panel fade-in">
-                <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Brain Map</span>
+                <div className="brain-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexShrink: 0 }}>
+                  <span className="section-title text-xs font-bold uppercase tracking-wider text-dim" style={{ marginBottom: 0 }}>Brain Map</span>
+                  <button
+                    className="brain-graph-btn glass-light"
+                    onClick={() => setShowBrainGraph(true)}
+                    title="Open Interactive Visual Graph"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.68rem',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Network size={11} />
+                    <span>View Graph</span>
+                  </button>
+                </div>
+
+                {/* Compact Quick Action Badges */}
+                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={() => setActiveBrainPopup('ask')}
+                    title="Ask Brain Map"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)'
+                    }}
+                  >
+                    <MessageSquare size={14} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ask Brain</span>
+                  </button>
+
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={() => setActiveBrainPopup('suggestions')}
+                    title="Suggested Lore Additions"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)',
+                      position: 'relative'
+                    }}
+                  >
+                    <Sparkles size={14} style={{ color: '#c084fc' }} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Suggestions</span>
+                    {suggestedEntities.length > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        background: 'var(--primary)',
+                        color: 'white',
+                        fontSize: '0.55rem',
+                        fontWeight: 'bold',
+                        borderRadius: '50%',
+                        width: '14px',
+                        height: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 6px var(--primary)'
+                      }}>{suggestedEntities.length}</span>
+                    )}
+                  </button>
+
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={() => setActiveBrainPopup('continuity')}
+                    title="Lore Continuity Checker"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)',
+                      position: 'relative'
+                    }}
+                  >
+                    <ShieldAlert size={14} style={{ color: '#fbbf24' }} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Continuity</span>
+                    {consistencyWarnings.length > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        background: '#ef4444',
+                        color: 'white',
+                        fontSize: '0.55rem',
+                        fontWeight: 'bold',
+                        borderRadius: '50%',
+                        width: '14px',
+                        height: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 6px #ef4444'
+                      }}>{consistencyWarnings.length}</span>
+                    )}
+                  </button>
+                </div>
+
                 {brainEntityGroups.length > 0 && (
                   <div className="brain-entity-strip">
                     {brainEntityGroups.slice(0, 6).map(group => (
@@ -8337,39 +8698,6 @@ ${navPoints}  </navMap>
                   </div>
                 )}
 
-                <div className="brain-ask-panel glass-light">
-                  <div className="brain-ask-header">
-                    <MessageSquare size={13} />
-                    <span>Ask Brain Map</span>
-                  </div>
-                  <textarea
-                    value={brainAskQuestion}
-                    onChange={(e) => setBrainAskQuestion(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                        e.preventDefault()
-                        askBrainMap()
-                      }
-                    }}
-                    placeholder="Where did I first mention the black door?"
-                    className="brain-ask-input"
-                  />
-                  <button
-                    className="brain-ask-button"
-                    onClick={askBrainMap}
-                    disabled={brainAskLoading || !brainAskQuestion.trim()}
-                  >
-                    {brainAskLoading ? <Loader2 size={13} className="spin" /> : <MessageSquare size={13} />}
-                    Ask
-                  </button>
-                  {(brainAskAnswer || brainAskError) && (
-                    <div className={`brain-ask-answer ${brainAskError ? 'error' : ''}`}>
-                      {brainAskError ? brainAskError : (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{brainAskAnswer}</ReactMarkdown>
-                      )}
-                    </div>
-                  )}
-                </div>
                 <p className="ai-instructions">Highlight text and click Brain to save with AI context.</p>
                 
                 <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
@@ -8467,6 +8795,18 @@ ${navPoints}  </navMap>
                                     {entry.connections?.length} link{entry.connections?.length === 1 ? '' : 's'}
                                   </span>
                                 )}
+                                {(() => {
+                                  const updateCount = (entry.aiSummary.match(/### 🔄 Update:/g) || []).length
+                                  if (updateCount > 0) {
+                                    return (
+                                      <span className="brain-connection-count" style={{ color: '#c084fc', marginLeft: '0.4rem' }}>
+                                        <RefreshCw size={10} />
+                                        {updateCount} update{updateCount === 1 ? '' : 's'}
+                                      </span>
+                                    )
+                                  }
+                                  return null
+                                })()}
                               </div>
                               <button 
                                 className="btn-delete-chapter brain-card-delete"
@@ -9335,7 +9675,9 @@ ${navPoints}  </navMap>
                       Analyzing...
                     </span>
                   ) : (
-                    <p>{selectedBrainEntry.aiSummary}</p>
+                    <div className="brain-markdown-view">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedBrainEntry.aiSummary}</ReactMarkdown>
+                    </div>
                   )}
                 </div>
               </div>
@@ -9370,62 +9712,377 @@ ${navPoints}  </navMap>
           </div>
         )}
 
-        {selectedBrainEntity && (
-          <div className="modal-overlay" onClick={() => setSelectedBrainEntityName(null)}>
-            <div className="modal brain-detail-modal brain-entity-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header brain-detail-header">
-                <div>
-                  <h2 className="modal-title">{selectedBrainEntity.name}</h2>
-                  <p className="modal-description">
-                    {getBrainTypeLabel(selectedBrainEntity.type)} dossier - {selectedBrainEntity.entries.length} entr{selectedBrainEntity.entries.length === 1 ? 'y' : 'ies'}
-                  </p>
+        {selectedBrainEntity && (() => {
+          const linkedBibleEntry = bibleEntries.find(e => e.name.toLowerCase() === selectedBrainEntity.name.toLowerCase());
+          return (
+            <div className="modal-overlay" onClick={() => { setSelectedBrainEntityName(null); setIsEditingDossier(false); }}>
+              <div className="modal brain-detail-modal brain-entity-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '860px', width: '90vw' }}>
+                <div className="modal-header brain-detail-header">
+                  <div>
+                    <h2 className="modal-title">{selectedBrainEntity.name}</h2>
+                    <p className="modal-description">
+                      {getBrainTypeLabel(selectedBrainEntity.type)} dossier - {selectedBrainEntity.entries.length} occurrence{selectedBrainEntity.entries.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <button
+                    className="btn-close-ai"
+                    onClick={() => { setSelectedBrainEntityName(null); setIsEditingDossier(false); }}
+                    title="Close"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-                <button
-                  className="btn-close-ai"
-                  onClick={() => setSelectedBrainEntityName(null)}
-                  title="Close"
-                >
-                  <X size={16} />
-                </button>
-              </div>
 
-              <div className="brain-detail-meta">
-                <span className={`brain-type-badge type-${selectedBrainEntity.type}`}>
-                  {renderBrainTypeIcon(selectedBrainEntity.type, 11)}
-                  {getBrainTypeLabel(selectedBrainEntity.type)}
-                </span>
-                {selectedBrainEntity.criticalCount > 0 && (
-                  <span className="brain-importance-badge importance-critical">
-                    <Star size={10} />
-                    critical
+                <div className="brain-detail-meta" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <span className={`brain-type-badge type-${selectedBrainEntity.type}`}>
+                    {renderBrainTypeIcon(selectedBrainEntity.type, 11)}
+                    {getBrainTypeLabel(selectedBrainEntity.type)}
                   </span>
+                  {selectedBrainEntity.criticalCount > 0 && (
+                    <span className="brain-importance-badge importance-critical">
+                      <Star size={10} />
+                      critical
+                    </span>
+                  )}
+                  {dossierMessage && (
+                    <span className="dossier-success-msg" style={{ fontSize: '0.72rem', color: '#10b981', marginLeft: 'auto', fontWeight: 'bold' }}>{dossierMessage}</span>
+                  )}
+                </div>
+
+                <div className="dossier-split-layout" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1.25rem', marginTop: '0.75rem', maxHeight: '520px', overflow: 'hidden' }}>
+                  {/* Left Column: Story Bible Dossier Bio */}
+                  <div className="dossier-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderRight: '1px solid var(--surface-border)', paddingRight: '1.25rem' }}>
+                    <div className="dossier-header-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="brain-detail-label" style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-dim)' }}>Story Bible Profile</span>
+                      <div className="dossier-action-buttons" style={{ display: 'flex', gap: '0.35rem' }}>
+                        {linkedBibleEntry ? (
+                          <>
+                            {isEditingDossier ? (
+                              <button
+                                className="btn-ai-sub btn-ai-secondary"
+                                onClick={() => {
+                                  handleSaveDossierText(selectedBrainEntity.name, dossierEditText);
+                                  setIsEditingDossier(false);
+                                }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer' }}
+                              >
+                                <Check size={11} /> Save
+                              </button>
+                            ) : (
+                              <button
+                                className="btn-ai-sub btn-ai-secondary"
+                                onClick={() => {
+                                  setIsEditingDossier(true);
+                                  setDossierEditText(linkedBibleEntry.content || "");
+                                }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer' }}
+                              >
+                                <Edit3 size={11} /> Edit
+                              </button>
+                            )}
+                            <button
+                              className="btn-ai-sub btn-ai-secondary"
+                              onClick={() => generateEntityDossier(selectedBrainEntity.name, selectedBrainEntity.type)}
+                              disabled={dossierLoading}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer' }}
+                            >
+                              {dossierLoading ? <Loader2 size={11} className="spin" /> : <Wand2 size={11} />}
+                              AI Re-Write
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="btn-ai-sub btn-ai-secondary text-accent"
+                            onClick={() => generateEntityDossier(selectedBrainEntity.name, selectedBrainEntity.type)}
+                            disabled={dossierLoading}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer', color: '#c084fc' }}
+                          >
+                            {dossierLoading ? <Loader2 size={11} className="spin" /> : <Sparkles size={11} />}
+                            Generate AI Dossier
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="dossier-content-area" style={{ flex: 1, overflowY: 'auto', background: 'rgba(0, 0, 0, 0.16)', borderRadius: 'var(--radius-md)', border: '1px solid var(--surface-border)', padding: '0.75rem', minHeight: '300px' }}>
+                      {isEditingDossier ? (
+                        <textarea
+                          className="dossier-textarea"
+                          value={dossierEditText}
+                          onChange={(e) => setDossierEditText(e.target.value)}
+                          style={{ width: '100%', height: '100%', minHeight: '280px', background: 'transparent', border: 0, outline: 'none', color: 'var(--text-primary)', fontSize: '0.82rem', lineHeight: '1.5', resize: 'none' }}
+                        />
+                      ) : linkedBibleEntry ? (
+                        <div className="dossier-markdown-view" style={{ fontSize: '0.82rem', lineHeight: '1.55', color: 'var(--text-secondary)' }}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{linkedBibleEntry.content || "_No content written yet._"}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="dossier-empty-state" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                          <p>No canon dossier exists yet for this entity. Click &quot;Generate AI Dossier&quot; to compile one from mentions across your manuscript.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Occurrence Timeline */}
+                  <div className="dossier-right-col" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <span className="brain-detail-label" style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-dim)' }}>Occurrence Timeline</span>
+                    <div className="occurrence-timeline-wrapper" style={{ flex: 1, overflowY: 'auto', paddingRight: '0.4rem', position: 'relative' }}>
+                      <div className="vertical-timeline-line" style={{ position: 'absolute', left: '7px', top: '5px', bottom: '5px', width: '2px', background: 'var(--surface-border)' }}></div>
+                      <div className="occurrence-timeline-items" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {selectedBrainEntity.entries
+                          .slice()
+                          .sort((a, b) => (getBrainEntryChapterNumber(a) || 9999) - (getBrainEntryChapterNumber(b) || 9999))
+                          .map((entry) => (
+                            <div key={entry.id} className="timeline-node-item" style={{ display: 'flex', gap: '0.75rem', position: 'relative', paddingLeft: '1.25rem' }}>
+                              <div className="timeline-marker" style={{ position: 'absolute', left: '4px', top: '10px' }}>
+                                <span className={`timeline-marker-dot importance-${getBrainEntryImportance(entry)}`} style={{
+                                  display: 'block',
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  background: getBrainEntryImportance(entry) === 'critical' ? '#ef4444' : getBrainEntryImportance(entry) === 'major' ? '#a855f7' : '#94a3b8',
+                                  boxShadow: getBrainEntryImportance(entry) === 'critical' ? '0 0 6px #ef4444' : 'none'
+                                }}></span>
+                              </div>
+                              <button
+                                className="timeline-node-card glass-light"
+                                onClick={() => {
+                                  setSelectedBrainEntityName(null);
+                                  setSelectedBrainEntryId(entry.id);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.3rem',
+                                  width: '100%',
+                                  padding: '0.55rem 0.65rem',
+                                  borderRadius: 'var(--radius-md)',
+                                  border: '1px solid var(--surface-border)',
+                                  background: 'rgba(255,255,255,0.03)',
+                                  textAlign: 'left',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <div className="timeline-node-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', fontSize: '0.64rem', color: 'var(--text-dim)' }}>
+                                  <span className="brain-chapter-badge" style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 5px', borderRadius: '3px' }}>{getBrainEntryChapterLabel(entry)}</span>
+                                  <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem' }}>
+                                    <Star size={8} />
+                                    {getBrainEntryImportance(entry)}
+                                  </span>
+                                </div>
+                                <div className="timeline-node-card-highlight" style={{ fontSize: '0.78rem', fontWeight: 'bold', color: 'var(--text-primary)', fontStyle: 'italic' }}>
+                                  &ldquo;{entry.highlightedText}&rdquo;
+                                </div>
+                                <div className="timeline-node-card-summary brain-markdown-view" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: '1.4', width: '100%' }}>
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.aiSummary}</ReactMarkdown>
+                                </div>
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        <BrainGraphModalComponent
+          isOpen={showBrainGraph}
+          onClose={() => setShowBrainGraph(false)}
+          brainEntityGroups={brainEntityGroups}
+          onSelectEntity={(name) => setSelectedBrainEntityName(name)}
+        />
+
+        {/* DEDICATED POPUP MODALS FOR BRAIN ACTIONS */}
+        {activeBrainPopup === 'ask' && (
+          <div className="modal-overlay" onClick={() => setActiveBrainPopup(null)} style={{ zIndex: 120 }}>
+            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90vw' }}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Ask Brain Map</h2>
+                  <p className="modal-description">Query your manuscript&apos;s lore database.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', margin: '0.85rem 0 0.25rem' }}>
+                <textarea
+                  value={brainAskQuestion}
+                  onChange={(e) => setBrainAskQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                      e.preventDefault()
+                      askBrainMap()
+                    }
+                  }}
+                  placeholder="Where did I first mention the black door?"
+                  className="brain-ask-input"
+                  style={{ width: '100%', minHeight: '90px', padding: '0.65rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', outline: 'none' }}
+                />
+                <button
+                  className="brain-ask-button"
+                  onClick={askBrainMap}
+                  disabled={brainAskLoading || !brainAskQuestion.trim()}
+                  style={{ height: '34px', background: 'var(--primary)', border: 0, borderRadius: 'var(--radius-sm)', color: 'white', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                >
+                  {brainAskLoading ? <Loader2 size={13} className="spin" /> : <MessageSquare size={13} />}
+                  Ask Question
+                </button>
+                
+                {(brainAskAnswer || brainAskError) && (
+                  <div className={`brain-ask-answer brain-markdown-view ${brainAskError ? 'error' : ''}`} style={{ marginTop: '0.5rem', background: 'rgba(0,0,0,0.16)', padding: '0.75rem', borderRadius: 'var(--radius-md)', maxHeight: '200px', overflowY: 'auto' }}>
+                    {brainAskError ? brainAskError : (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{brainAskAnswer}</ReactMarkdown>
+                    )}
+                  </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
 
-              <div className="brain-entity-entry-list">
-                {selectedBrainEntity.entries
-                  .slice()
-                  .sort((a, b) => (getBrainEntryChapterNumber(a) || 9999) - (getBrainEntryChapterNumber(b) || 9999))
-                  .map(entry => (
-                    <button
-                      key={entry.id}
-                      className="brain-entity-entry"
-                      onClick={() => {
-                        setSelectedBrainEntityName(null)
-                        setSelectedBrainEntryId(entry.id)
-                      }}
-                    >
-                      <div className="brain-entity-entry-top">
-                        <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
-                        <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
-                          <Star size={10} />
-                          {getBrainEntryImportance(entry)}
-                        </span>
+        {activeBrainPopup === 'suggestions' && (
+          <div className="modal-overlay" onClick={() => setActiveBrainPopup(null)} style={{ zIndex: 120 }}>
+            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90vw' }}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Suggested Lore Additions</h2>
+                  <p className="modal-description">Scan active draft to find characters, items, or locations to add.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
+              </div>
+              
+              <div style={{ margin: '0.85rem 0 0.25rem' }}>
+                <button
+                  className="btn-ai-sub btn-ai-secondary"
+                  onClick={fetchEntitySuggestions}
+                  disabled={suggestionLoading || !activeNote}
+                  style={{ width: '100%', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.75rem', cursor: 'pointer' }}
+                >
+                  {suggestionLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                  Scan Draft for Entities
+                </button>
+                
+                {suggestedEntities.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                    <p className="suggested-subtitle" style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginBottom: '0.25rem' }}>Click a chip to import it into your Brain Map:</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+                      {suggestedEntities.map((sug, i) => (
+                        <button
+                          key={i}
+                          className="suggested-chip"
+                          onClick={() => quickAddSuggestedEntity(sug)}
+                          title={`Add "${sug.entityName}" - ${sug.aiSummary}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.35rem 0.65rem',
+                            borderRadius: '16px',
+                            border: '1px solid var(--surface-border)',
+                            background: 'rgba(255, 255, 255, 0.04)',
+                            color: 'var(--text-secondary)',
+                            fontSize: '0.74rem',
+                            cursor: 'pointer',
+                            transition: 'var(--transition)'
+                          }}
+                        >
+                          <span>+ {sug.entityName}</span>
+                          <small className={`type-${sug.entityType}`} style={{ textTransform: 'uppercase', fontSize: '0.6rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(0,0,0,0.2)' }}>{sug.entityType}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  !suggestionLoading && (
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                      Click &quot;Scan Draft for Entities&quot; to check your active chapter draft.
+                    </div>
+                  )
+                )}
+                {suggestionLoading && (
+                  <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                    <Loader2 size={16} className="spin" style={{ margin: '0 auto 0.5rem' }} />
+                    Analyzing chapter draft and looking for new entities...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeBrainPopup === 'continuity' && (
+          <div className="modal-overlay" onClick={() => setActiveBrainPopup(null)} style={{ zIndex: 120 }}>
+            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90vw' }}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Continuity Tracker</h2>
+                  <p className="modal-description">Audit active draft against Brain Map entries to spot conflicts.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
+              </div>
+              
+              <div style={{ margin: '0.85rem 0 0.25rem' }}>
+                <button
+                  className="btn-ai-sub btn-ai-secondary"
+                  onClick={checkBrainConsistency}
+                  disabled={consistencyLoading || !activeNote}
+                  style={{ width: '100%', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.75rem', cursor: 'pointer' }}
+                >
+                  {consistencyLoading ? <Loader2 size={13} className="spin" /> : <ShieldAlert size={13} />}
+                  Audit Active Draft
+                </button>
+                
+                {consistencyCheckedNoteId === activeNote?.id ? (
+                  <div style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                    {consistencyWarnings.length === 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', textAlign: 'center', color: '#10b981' }}>
+                        <CheckCircle2 size={32} style={{ marginBottom: '0.5rem' }} />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>All Clean!</span>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginTop: '0.25rem' }}>No continuity conflicts detected in this chapter.</span>
                       </div>
-                      <strong>{entry.highlightedText}</strong>
-                      <p>{entry.aiSummary}</p>
-                    </button>
-                  ))}
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                        <p style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Consistency conflicts detected in this chapter draft:</p>
+                        {consistencyWarnings.map((warning, i) => (
+                          <div key={i} className={`consistency-warning-card severity-${warning.severity}`} style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '0.5rem',
+                            padding: '0.65rem 0.75rem',
+                            borderRadius: 'var(--radius-md)',
+                            border: warning.severity === 'critical' ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)',
+                            background: warning.severity === 'critical' ? 'rgba(239, 68, 68, 0.05)' : 'rgba(245, 158, 11, 0.05)',
+                            color: warning.severity === 'critical' ? '#f87171' : '#fbbf24',
+                            fontSize: '0.78rem'
+                          }}>
+                            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <div className="warning-text">
+                              <strong style={{ fontWeight: '800', textTransform: 'uppercase', fontSize: '0.72rem', display: 'block', marginBottom: '0.15rem' }}>{warning.entityName} ({warning.severity})</strong>
+                              <span style={{ lineHeight: '1.45' }}>{warning.message}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  !consistencyLoading && (
+                    <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                      Click &quot;Audit Active Draft&quot; to analyze your draft for character/lore conflicts.
+                    </div>
+                  )
+                )}
+                
+                {consistencyLoading && (
+                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                    <Loader2 size={16} className="spin" style={{ margin: '0 auto 0.5rem' }} />
+                    Auditing chapter continuity against Brain Map...
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -14371,9 +15028,282 @@ ${navPoints}  </navMap>
         }
 
         /* Brain Map Styles */
+        .brain-markdown-view,
+        .dossier-markdown-view {
+          font-size: 0.82rem;
+          line-height: 1.55;
+          color: var(--text-secondary);
+        }
+
+        .brain-markdown-view p,
+        .dossier-markdown-view p {
+          margin-top: 0;
+          margin-bottom: 0.65rem;
+        }
+
+        .brain-markdown-view p:last-child,
+        .dossier-markdown-view p:last-child {
+          margin-bottom: 0;
+        }
+
+        .brain-markdown-view strong,
+        .dossier-markdown-view strong {
+          color: var(--text-primary);
+          font-weight: 700;
+        }
+
+        .brain-markdown-view h1, .brain-markdown-view h2, .brain-markdown-view h3,
+        .dossier-markdown-view h1, .dossier-markdown-view h2, .dossier-markdown-view h3 {
+          font-family: var(--font-outfit);
+          color: var(--text-primary);
+          font-weight: 700;
+          margin-top: 0.95rem;
+          margin-bottom: 0.45rem;
+          line-height: 1.35;
+        }
+
+        .brain-markdown-view h1, .dossier-markdown-view h1 { font-size: 1.15rem; border-bottom: 1px solid var(--surface-border); padding-bottom: 0.2rem; }
+        .brain-markdown-view h2, .dossier-markdown-view h2 { font-size: 0.98rem; }
+        .brain-markdown-view h3, .dossier-markdown-view h3 { font-size: 0.88rem; color: var(--text-dim); }
+
+        .brain-markdown-view ul, .brain-markdown-view ol,
+        .dossier-markdown-view ul, .dossier-markdown-view ol {
+          padding-left: 1.15rem;
+          margin-top: 0;
+          margin-bottom: 0.65rem;
+        }
+
+        .brain-markdown-view li,
+        .dossier-markdown-view li {
+          margin-bottom: 0.3rem;
+        }
+
+        .brain-markdown-view li:last-child,
+        .dossier-markdown-view li:last-child {
+          margin-bottom: 0;
+        }
+
+        .brain-markdown-view table,
+        .dossier-markdown-view table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 0.45rem;
+          margin-bottom: 0.65rem;
+          font-size: 0.76rem;
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: var(--radius-sm);
+          overflow: hidden;
+        }
+
+        .brain-markdown-view th, .brain-markdown-view td,
+        .dossier-markdown-view th, .dossier-markdown-view td {
+          padding: 0.4rem 0.55rem;
+          border: 1px solid var(--surface-border);
+          text-align: left;
+        }
+
+        .brain-markdown-view th,
+        .dossier-markdown-view th {
+          background: rgba(255, 255, 255, 0.05);
+          color: var(--text-primary);
+          font-weight: 700;
+        }
+
+        .brain-markdown-view tr:nth-child(even),
+        .dossier-markdown-view tr:nth-child(even) {
+          background: rgba(255, 255, 255, 0.02);
+        }
+
+        .brain-markdown-view blockquote,
+        .dossier-markdown-view blockquote {
+          margin: 0 0 0.65rem 0;
+          padding-left: 0.65rem;
+          border-left: 3px solid var(--primary);
+          color: var(--text-dim);
+          font-style: italic;
+        }
+
+        .brain-markdown-view code,
+        .dossier-markdown-view code {
+          font-family: monospace;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 0.08rem 0.2rem;
+          border-radius: 3px;
+          color: rgb(244, 114, 182);
+          font-size: 0.76rem;
+        }
         .brain-panel {
           display: flex;
           flex-direction: column;
+        }
+
+        /* Enhancements: suggested add chip styling */
+        .suggested-chip:hover {
+          border-color: rgba(168, 85, 247, 0.45) !important;
+          background: rgba(168, 85, 247, 0.08) !important;
+          color: var(--text-primary) !important;
+        }
+        .suggested-chip small.type-character { color: rgb(168, 85, 247); }
+        .suggested-chip small.type-place { color: rgb(34, 197, 94); }
+        .suggested-chip small.type-object { color: rgb(59, 130, 246); }
+        .suggested-chip small.type-concept { color: rgb(234, 179, 8); }
+        .suggested-chip small.type-event { color: rgb(249, 115, 22); }
+        .suggested-chip small.type-foreshadowing { color: rgb(236, 72, 153); }
+
+        /* Action Modals and Graph CSS Styles */
+        .brain-action-modal {
+          padding: 1.25rem;
+          background: rgba(15, 15, 20, 0.96) !important;
+          border: 1px solid rgba(168, 85, 247, 0.25) !important;
+          box-shadow: 0 0 25px rgba(168, 85, 247, 0.15) !important;
+        }
+        .brain-action-card:hover {
+          border-color: rgba(168, 85, 247, 0.4) !important;
+          background: rgba(168, 85, 247, 0.08) !important;
+          color: var(--text-primary) !important;
+        }
+        
+        /* Graph Modal CSS styles */
+        .graph-modal-overlay {
+          background: rgba(4, 4, 6, 0.88) !important;
+        }
+        .brain-graph-modal {
+          max-width: 960px !important;
+          width: 95vw !important;
+          height: 88vh !important;
+          max-height: 800px !important;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden !important;
+          border: 1px solid rgba(168, 85, 247, 0.25) !important;
+          box-shadow: 0 0 30px rgba(168, 85, 247, 0.18) !important;
+        }
+        .brain-graph-header {
+          flex-shrink: 0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-bottom: 0.75rem;
+          border-bottom: 1px solid var(--surface-border);
+        }
+        .graph-controls {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+        .graph-controls button {
+          padding: 0.35rem 0.65rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .graph-workspace-wrapper {
+          flex: 1;
+          display: flex;
+          position: relative;
+          height: calc(100% - 60px);
+          background: rgba(0, 0, 0, 0.22);
+          border-radius: var(--radius-md);
+          overflow: hidden;
+        }
+        .graph-legend {
+          position: absolute;
+          bottom: 10px;
+          left: 10px;
+          background: rgba(10, 10, 15, 0.85);
+          backdrop-filter: blur(8px);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          padding: 0.5rem 0.65rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          z-index: 10;
+        }
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+        .legend-color {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+        .legend-color.type-character { background: #a855f7; }
+        .legend-color.type-place { background: #22c55e; }
+        .legend-color.type-object { background: #3b82f6; }
+        .legend-color.type-concept { background: #eab308; }
+        .legend-color.type-event { background: #f97316; }
+        .legend-color.type-foreshadowing { background: #ec4899; }
+        .legend-label {
+          font-size: 0.68rem;
+          color: var(--text-secondary);
+          font-weight: 600;
+        }
+        .graph-svg-container {
+          width: 100%;
+          height: 100%;
+        }
+        .graph-link-line {
+          stroke: rgba(168, 85, 247, 0.25);
+          stroke-width: 1.5px;
+          stroke-dasharray: 4, 3;
+        }
+        .graph-node-circle {
+          stroke-width: 1.5px;
+          cursor: pointer;
+          transition: r 0.2s, stroke-width 0.2s;
+        }
+        .graph-node-circle:hover {
+          stroke-width: 3px;
+        }
+        .graph-node-circle.type-character {
+          fill: rgba(168, 85, 247, 0.16);
+          stroke: #c084fc;
+        }
+        .graph-node-circle.type-place {
+          fill: rgba(34, 197, 94, 0.16);
+          stroke: #4ade80;
+        }
+        .graph-node-circle.type-object {
+          fill: rgba(59, 130, 246, 0.16);
+          stroke: #60a5fa;
+        }
+        .graph-node-circle.type-concept {
+          fill: rgba(234, 179, 8, 0.16);
+          stroke: #fde047;
+        }
+        .graph-node-circle.type-event {
+          fill: rgba(249, 115, 22, 0.16);
+          stroke: #fb923c;
+        }
+        .graph-node-circle.type-foreshadowing {
+          fill: rgba(236, 72, 153, 0.16);
+          stroke: #f472b6;
+        }
+        .graph-node-group:hover .graph-node-circle {
+          r: 35px;
+        }
+        .graph-node-icon-wrapper {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-primary);
+          opacity: 0.85;
+        }
+        .graph-node-label {
+          font-size: 0.72rem;
+          font-weight: 800;
+          fill: rgb(241, 245, 249);
+          stroke: rgb(15, 15, 18);
+          stroke-width: 2.5px;
+          paint-order: stroke fill;
+        }
+        .dossier-textarea:focus {
+          box-shadow: none !important;
         }
 
         .brain-panel .ai-instructions {
@@ -17405,6 +18335,454 @@ ${navPoints}  </navMap>
     </div>
   )
 }
+
+
+// --- BRAIN GRAPH COMPONENT ---
+interface GraphNode {
+  id: string;
+  name: string;
+  type: BrainEntityType;
+  importance: BrainImportance;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  latestSummary?: string;
+  entriesCount?: number;
+}
+
+interface GraphLink {
+  source: string;
+  target: string;
+}
+
+interface BrainGraphModalComponentProps {
+  isOpen: boolean;
+  onClose: () => void;
+  brainEntityGroups: any[];
+  onSelectEntity: (name: string) => void;
+}
+
+const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
+  isOpen,
+  onClose,
+  brainEntityGroups,
+  onSelectEntity
+}) => {
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [links, setLinks] = useState<GraphLink[]>([]);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+
+  const draggingNodeIdRef = useRef<string | null>(null);
+  const nodesRef = useRef<GraphNode[]>([]);
+
+  const selectedGraphNode = selectedGraphNodeId 
+    ? nodes.find(n => n.id === selectedGraphNodeId) || null
+    : null;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const initialNodes: GraphNode[] = brainEntityGroups.map((group, idx) => {
+      const importanceScore = group.criticalCount > 0 ? 32 : group.entries.some((e: any) => e.importance === 'major') ? 24 : 18;
+      const size = Math.min(50, importanceScore + Math.sqrt(group.entries.length) * 1.8);
+      
+      const angle = (idx / brainEntityGroups.length) * 2 * Math.PI;
+      const radius = Math.min(270, brainEntityGroups.length * 16 + 70);
+
+      // Get the latest entry's summary
+      const sortedEntries = group.entries.slice().sort((a: any, b: any) => b.updatedAt - a.updatedAt);
+      const latestSummary = sortedEntries[0]?.aiSummary || "";
+      
+      return {
+        id: group.name,
+        name: group.name,
+        type: group.type || 'unknown',
+        importance: group.criticalCount > 0 ? 'critical' : group.entries.some((e: any) => e.importance === 'major') ? 'major' : 'minor',
+        x: 480 + Math.cos(angle) * radius,
+        y: 330 + Math.sin(angle) * radius,
+        vx: 0,
+        vy: 0,
+        size,
+        latestSummary,
+        entriesCount: group.entries.length
+      };
+    });
+
+    const initialLinks: GraphLink[] = [];
+    const nameSet = new Set(brainEntityGroups.map(g => g.name.toLowerCase()));
+
+    brainEntityGroups.forEach(group => {
+      group.entries.forEach((entry: any) => {
+        if (Array.isArray(entry.connections)) {
+          entry.connections.forEach((conn: string) => {
+            const targetName = conn.trim();
+            if (targetName && targetName.toLowerCase() !== group.name.toLowerCase() && nameSet.has(targetName.toLowerCase())) {
+              const canonTarget = brainEntityGroups.find(g => g.name.toLowerCase() === targetName.toLowerCase())?.name;
+              if (canonTarget) {
+                const linkKey = [group.name, canonTarget].sort().join("->");
+                if (!initialLinks.some(l => [l.source, l.target].sort().join("->") === linkKey)) {
+                  initialLinks.push({ source: group.name, target: canonTarget });
+                }
+              }
+            }
+          });
+        }
+      });
+    });
+
+    setNodes(initialNodes);
+    setLinks(initialLinks);
+    nodesRef.current = initialNodes;
+
+    let active = true;
+
+    const runSimulation = () => {
+      if (!active) return;
+
+      const currentNodes = nodesRef.current;
+
+      for (let i = 0; i < currentNodes.length; i++) {
+        for (let j = i + 1; j < currentNodes.length; j++) {
+          const dx = currentNodes[j].x - currentNodes[i].x;
+          const dy = currentNodes[j].y - currentNodes[i].y;
+          const distSq = dx * dx + dy * dy + 0.1;
+          const dist = Math.sqrt(distSq);
+          if (dist < 360) {
+            const force = (currentNodes[i].size * currentNodes[j].size * 12) / distSq;
+            const fx = (dx / dist) * force;
+            const fy = (dy / dist) * force;
+
+            currentNodes[i].vx -= fx;
+            currentNodes[i].vy -= fy;
+            currentNodes[j].vx += fx;
+            currentNodes[j].vy += fy;
+          }
+        }
+      }
+
+      initialLinks.forEach(link => {
+        const sourceNode = currentNodes.find(n => n.id === link.source);
+        const targetNode = currentNodes.find(n => n.id === link.target);
+        if (sourceNode && targetNode) {
+          const dx = targetNode.x - sourceNode.x;
+          const dy = targetNode.y - sourceNode.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+          const k = 0.05;
+          const force = (dist - 160) * k;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+
+          sourceNode.vx += fx;
+          sourceNode.vy += fy;
+          targetNode.vx -= fx;
+          targetNode.vy -= fy;
+        }
+      });
+
+      const centerX = 480;
+      const centerY = 330;
+      currentNodes.forEach(node => {
+        if (node.id === draggingNodeIdRef.current) return;
+
+        const dx = centerX - node.x;
+        const dy = centerY - node.y;
+        node.vx += dx * 0.008;
+        node.vy += dy * 0.008;
+
+        node.vx *= 0.82;
+        node.vy *= 0.82;
+
+        node.x += node.vx;
+        node.y += node.vy;
+
+        node.x = Math.max(node.size + 30, Math.min(930 - node.size - 30, node.x));
+        node.y = Math.max(node.size + 30, Math.min(630 - node.size - 30, node.y));
+      });
+
+      setNodes([...currentNodes]);
+      requestAnimationFrame(runSimulation);
+    };
+
+    const animationId = requestAnimationFrame(runSimulation);
+    return () => {
+      active = false;
+      cancelAnimationFrame(animationId);
+    };
+  }, [isOpen, brainEntityGroups]);
+
+  if (!isOpen) return null;
+
+  const handleNodeMouseDown = (e: React.MouseEvent, node: any) => {
+    e.stopPropagation();
+    draggingNodeIdRef.current = node.id;
+  };
+
+  const handleSvgMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (draggingNodeIdRef.current) {
+      const mouseX = (e.clientX - rect.left - pan.x) / scale;
+      const mouseY = (e.clientY - rect.top - pan.y) / scale;
+
+      const draggedNode = nodesRef.current.find(n => n.id === draggingNodeIdRef.current);
+      if (draggedNode) {
+        draggedNode.x = mouseX;
+        draggedNode.y = mouseY;
+        draggedNode.vx = 0;
+        draggedNode.vy = 0;
+        setNodes([...nodesRef.current]);
+      }
+    } else if (isPanning) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      setPan({ x: pan.x + dx, y: pan.y + dy });
+      setPanStart({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleSvgMouseDown = (e: React.MouseEvent) => {
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleSvgMouseUp = () => {
+    draggingNodeIdRef.current = null;
+    setIsPanning(false);
+  };
+
+  const handleSvgWheel = (e: React.WheelEvent) => {
+    const zoomFactor = e.deltaY < 0 ? 1.05 : 0.95;
+    const newScale = Math.max(0.4, Math.min(2.5, scale * zoomFactor));
+    setScale(newScale);
+  };
+
+  const resetViewport = () => {
+    setPan({ x: 0, y: 0 });
+    setScale(1);
+  };
+
+  const renderIcon = (type: string, size: number) => {
+    switch (type) {
+      case 'character': return <User size={size} />;
+      case 'place': return <MapPin size={size} />;
+      case 'object': return <Package size={size} />;
+      case 'concept': return <Globe size={size} />;
+      case 'event': return <PawPrint size={size} />;
+      case 'foreshadowing': return <Sparkles size={size} />;
+      default: return <BrainCircuit size={size} />;
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'character': return 'Character';
+      case 'place': return 'Location';
+      case 'object': return 'Item';
+      case 'concept': return 'Concept';
+      case 'event': return 'Event';
+      case 'foreshadowing': return 'Foreshadowing';
+      default: return 'Other';
+    }
+  };
+
+  return (
+    <div className="modal-overlay graph-modal-overlay" onClick={onClose} style={{ zIndex: 110 }}>
+      <div className="modal brain-graph-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '960px', width: '95vw', height: '88vh', maxHeight: '800px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="modal-header brain-graph-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid var(--surface-border)' }}>
+          <div>
+            <h2 className="modal-title">Interactive Brain Map Graph</h2>
+            <p className="modal-description">Drag nodes to explore connections. Scroll to zoom, drag background to pan.</p>
+          </div>
+          <div className="graph-controls-panel" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            <button onClick={() => setScale(s => Math.min(2.5, s + 0.1))} title="Zoom In" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--surface-border)', color: '#c084fc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 'bold' }}>+</button>
+            <button onClick={() => setScale(s => Math.max(0.4, s - 0.1))} title="Zoom Out" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--surface-border)', color: '#c084fc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 'bold' }}>-</button>
+            <button onClick={resetViewport} style={{ padding: '0 0.75rem', height: '32px', borderRadius: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--surface-border)', color: 'var(--text-secondary)', fontSize: '0.74rem', fontWeight: 'bold', cursor: 'pointer' }}>Reset View</button>
+            <button onClick={onClose} title="Close" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={15} /></button>
+          </div>
+        </div>
+
+        <div className="graph-workspace-wrapper" style={{ flex: 1, display: 'flex', position: 'relative', height: 'calc(100% - 60px)', background: '#0a0a0f', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+          {/* Horizontal Legend at Bottom */}
+          <div className="graph-legend-horizontal" style={{ position: 'absolute', bottom: '15px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(10, 10, 15, 0.85)', backdropFilter: 'blur(8px)', border: '1px solid var(--surface-border)', borderRadius: '20px', padding: '0.45rem 1rem', display: 'flex', gap: '0.85rem', zIndex: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {['character', 'place', 'object', 'concept', 'event', 'foreshadowing'].map(type => (
+              <div key={type} className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.68rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                <span className="legend-color" style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', background: type === 'character' ? '#a855f7' : type === 'place' ? '#22c55e' : type === 'object' ? '#3b82f6' : type === 'concept' ? '#eab308' : type === 'event' ? '#f97316' : '#ec4899' }}></span>
+                <span style={{ textTransform: 'capitalize' }}>{getTypeLabel(type)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="graph-svg-container" style={{ width: '100%', height: '100%' }}>
+            <svg
+              width="100%"
+              height="100%"
+              viewBox="0 0 960 660"
+              onMouseMove={handleSvgMouseMove}
+              onMouseDown={(e) => {
+                handleSvgMouseDown(e);
+                setSelectedGraphNodeId(null);
+              }}
+              onMouseUp={handleSvgMouseUp}
+              onMouseLeave={handleSvgMouseUp}
+              onWheel={handleSvgWheel}
+              style={{ cursor: isPanning ? 'grabbing' : draggingNodeIdRef.current ? 'grabbing' : 'grab' }}
+            >
+              <defs>
+                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+                <pattern id="graph-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.025)" strokeWidth="1" />
+                </pattern>
+              </defs>
+
+              <rect width="100%" height="100%" fill="url(#graph-grid)" />
+
+              <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
+                {links.map((link, idx) => {
+                  const sourceNode = nodes.find(n => n.id === link.source);
+                  const targetNode = nodes.find(n => n.id === link.target);
+                  if (!sourceNode || !targetNode) return null;
+                  return (
+                    <line
+                      key={idx}
+                      x1={sourceNode.x}
+                      y1={sourceNode.y}
+                      x2={targetNode.x}
+                      y2={targetNode.y}
+                      className="graph-link-line"
+                    />
+                  );
+                })}
+
+                {nodes.map(node => (
+                  <g
+                    key={node.id}
+                    transform={`translate(${node.x}, ${node.y})`}
+                    className="graph-node-group"
+                    onMouseDown={(e) => handleNodeMouseDown(e, node)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedGraphNodeId(node.id);
+                    }}
+                    onDoubleClick={() => {
+                      onSelectEntity(node.name);
+                      onClose();
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <circle
+                      r={node.size}
+                      className={`graph-node-circle type-${node.type} importance-${node.importance}`}
+                      filter="url(#glow)"
+                    />
+                    <foreignObject
+                      x={-node.size * 0.6}
+                      y={-node.size * 0.6}
+                      width={node.size * 1.2}
+                      height={node.size * 1.2}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      <div className="graph-node-icon-wrapper">
+                        {renderIcon(node.type, node.size * 0.75)}
+                      </div>
+                    </foreignObject>
+                    <text
+                      y={node.size + 14}
+                      textAnchor="middle"
+                      className="graph-node-label"
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '800',
+                        fill: '#f8fafc',
+                        stroke: '#08080c',
+                        strokeWidth: '4px',
+                        strokeLinejoin: 'round',
+                        paintOrder: 'stroke fill',
+                        pointerEvents: 'none'
+                      }}
+                    >
+                      {node.name}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            </svg>
+          </div>
+
+          {selectedGraphNode && (
+            <div className="graph-node-preview-panel glass fade-in" style={{
+              position: 'absolute',
+              top: '15px',
+              right: '15px',
+              width: '290px',
+              maxHeight: 'calc(100% - 30px)',
+              background: 'rgba(10, 10, 15, 0.88)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid var(--surface-border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '1.1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.65rem',
+              zIndex: 20,
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className={`brain-type-badge type-${selectedGraphNode.type}`} style={{ fontSize: '0.64rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                  {renderIcon(selectedGraphNode.type, 11)}
+                  {getTypeLabel(selectedGraphNode.type)}
+                </span>
+                <button 
+                  onClick={() => setSelectedGraphNodeId(null)}
+                  style={{ background: 'transparent', border: 0, color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              
+              <h3 style={{ margin: '0.15rem 0 0', fontSize: '1.05rem', fontWeight: '800', color: 'var(--text-primary)' }}>{selectedGraphNode.name}</h3>
+              
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                <span className={`brain-importance-badge importance-${selectedGraphNode.importance}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem' }}>
+                  <Star size={9} />
+                  {selectedGraphNode.importance}
+                </span>
+                <span>•</span>
+                <span>{selectedGraphNode.entriesCount} occurrence{selectedGraphNode.entriesCount === 1 ? '' : 's'}</span>
+              </div>
+              
+              <div className="brain-markdown-view scrollbar" style={{ flex: 1, fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: '1.5', overflowY: 'auto', borderTop: '1px solid var(--surface-border)', paddingTop: '0.65rem', marginTop: '0.2rem', paddingRight: '0.2rem' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedGraphNode.latestSummary}</ReactMarkdown>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.45rem', borderTop: '1px solid var(--surface-border)', paddingTop: '0.75rem', flexShrink: 0 }}>
+                <button
+                  onClick={() => {
+                    onSelectEntity(selectedGraphNode.name);
+                    onClose();
+                  }}
+                  className="btn-ai-sub btn-ai-secondary"
+                  style={{ flex: 1, fontSize: '0.7rem', padding: '0.45rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', cursor: 'pointer', background: 'rgba(255,255,255,0.04)' }}
+                >
+                  <BookOpen size={12} />
+                  Open Bible Dossier
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function EditorPage() {
   return (

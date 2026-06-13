@@ -7,6 +7,8 @@ type BrainAnalysis = {
   entityName?: string
   importance?: string
   connections?: string[]
+  parentEntityName?: string
+  isSubEntity?: boolean
 }
 
 type AppearancePromptResult = {
@@ -488,11 +490,12 @@ export async function POST(req: NextRequest) {
         "They highlighted a specific word, name, phrase, or element from their chapter and want to remember its significance.\n" +
         "Your task:\n" +
         "1. Read the chapter content provided and identify what the highlighted element refers to.\n" +
-        "2. Write a concise recap (2-4 sentences) explaining what this element is, its role in the chapter, and why the writer might want to remember it.\n" +
+        "2. Write a detailed and visually premium summary. If the element refers to groups, factions, teams, relationships, or multiple items being formed/changed (e.g., team setups, member listings, alliances, rivalries), do NOT just say 'teams were formed' or summarize it in a plain sentence. Instead, write a highly structured markdown section: use bold titles, bullet points to list the teams and their members (with their roles/alignments), or tables to represent structured data. Use markdown formatting to make the structure clear, readable, and immediately scanning-friendly so the writer knows exactly who belongs to what or what was formed at a single glance. Keep it concise but structurally rich.\n" +
         "3. Classify the element as one of: character, place, object, concept, event, foreshadowing, unknown.\n" +
         "4. Choose an importance value: minor, major, or critical.\n" +
         "5. Compare against existing Brain Map entries and list up to 3 meaningful recurring connections.\n" +
-        "6. Output ONLY valid JSON with keys: summary, entityType, entityName, importance, connections. No markdown fences."
+        "6. Analyze if the highlighted entity is located inside, belongs to, is part of, or is a member of any of the existing Brain Map entries (e.g. a room/cave/street inside a city/world, a person/member inside a harem/sect/faction/group, a member of a team/squad). If a parent entity exists in the list, set `isSubEntity` to true and set `parentEntityName` to the exact `entityName` of that parent entity from the list. If no parent entity exists, set `isSubEntity` to false and `parentEntityName` to empty string.\n" +
+        "7. Output ONLY valid JSON with keys: summary, entityType, entityName, importance, connections, parentEntityName, isSubEntity. No markdown fences."
 
       const parsedChapterNumber = Number(chapterNumber)
       const numberContext = chapterNumber !== null && chapterNumber !== undefined && Number.isFinite(parsedChapterNumber) && parsedChapterNumber > 0
@@ -526,7 +529,7 @@ export async function POST(req: NextRequest) {
         "1. Be direct and useful for a novelist checking continuity.\n" +
         "2. Mention chapter numbers or titles when available.\n" +
         "3. If the answer is not in the Brain Map, say that clearly and suggest what entry would help.\n" +
-        "4. Output concise markdown. No intro or outro."
+        "4. Output concise, beautiful markdown (using lists, bold accents, or tables where appropriate to represent groups, squads, or lists of details). No intro or outro."
 
       const memory = brainEntries.slice(0, 120).map((entry: {
         highlightedText?: string
@@ -565,16 +568,113 @@ export async function POST(req: NextRequest) {
       userPrompt =
         `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
         `User Prompt for Template Design:\n${prompt}`
+    } else if (action === "brain_consistency_check") {
+      const { chapterContent, chapterTitle, existingBrainEntries } = body
+      if (!chapterContent) {
+        return NextResponse.json({ error: "chapterContent is required for brain_consistency_check" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are an expert story editor and continuity supervisor. The user is writing a novel.\n" +
+        "You are given the draft of the active chapter and the existing Brain Map lore entries.\n" +
+        "Your task is to analyze the draft against the Brain Map to identify any plot holes, lore contradictions, or character status issues.\n" +
+        "Compare details such as: character physical features, character locations, whether characters are alive/dead, magical powers, item ownership, and history.\n" +
+        "Output ONLY a valid JSON object with keys:\n" +
+        "- conflicts: an array of objects, each containing:\n" +
+        "  - entityName: the name of the entity involved\n" +
+        "  - severity: 'warning' or 'critical'\n" +
+        "  - message: a concise description of the contradiction, citing the conflict between the chapter and the Brain Map.\n" +
+        "If there are no conflicts, the conflicts array must be empty. Do not include markdown formatting or backticks around the JSON."
+
+      const titleContext = chapterTitle ? `\nChapter Title: "${chapterTitle}"` : ""
+      const existingContext = Array.isArray(existingBrainEntries) && existingBrainEntries.length > 0
+        ? `\n\nExisting Brain Map entries:\n${existingBrainEntries.slice(0, 100).map((entry: any) => {
+            const chapter = entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle || "Unknown chapter"
+            return `- ${chapter}: ${entry.entityName || entry.highlightedText || "Unknown"} (${entry.entityType || "unknown"}, ${entry.importance || "minor"}) - ${entry.aiSummary || ""}`
+          }).join("\n")}`
+        : ""
+      userPrompt = `Active Chapter Draft:${titleContext}\n\n${chapterContent}${existingContext}`
+    } else if (action === "brain_suggest_additions") {
+      const { chapterContent, existingBrainEntries } = body
+      if (!chapterContent) {
+        return NextResponse.json({ error: "chapterContent is required for brain_suggest_additions" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a helpful creative writing assistant. Scan the provided chapter text and extract up to 5 key names, items, places, concepts, or events " +
+        "that are NOT already tracked in the existing Brain Map entries list.\n" +
+        "For each suggestion, provide a name, class classification, importance, and brief context recap from the chapter.\n" +
+        "Output ONLY a JSON object with key:\n" +
+        "- suggestions: an array of objects, each containing:\n" +
+        "  - entityName: name of the entity (e.g. 'Arthur')\n" +
+        "  - entityType: one of 'character', 'place', 'object', 'concept', 'event', 'foreshadowing'\n" +
+        "  - importance: one of 'minor', 'major', 'critical'\n" +
+        "  - aiSummary: a concise 1-2 sentence recap explaining what it is based on the chapter content.\n" +
+        "Do not include markdown formatting or backticks around the JSON."
+
+      const existingContext = Array.isArray(existingBrainEntries) && existingBrainEntries.length > 0
+        ? `\n\nExisting tracked Brain Map entities:\n${existingBrainEntries.map((e: any) => e.entityName || e.highlightedText).filter(Boolean).slice(0, 100).join(", ")}`
+        : ""
+      userPrompt = `Chapter Content:\n${chapterContent}${existingContext}`
+    } else if (action === "brain_generate_dossier") {
+      const { entityName, entityType, brainEntries } = body
+      if (!entityName || !Array.isArray(brainEntries)) {
+        return NextResponse.json({ error: "entityName and brainEntries are required for brain_generate_dossier" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a professional story coordinator. Analyze all the provided Brain Map mentions for the entity \"" + entityName + "\" (" + (entityType || "unknown") + ").\n" +
+        "Synthesize them into a single, cohesive, premium markdown dossier summary.\n" +
+        "Structure it with sections such as Description, Key Mentions, and Relationships/Significance (use rich markdown tables and lists to summarize teams/factions they belong to and their interaction dynamics).\n" +
+        "Be concise, creative, and professional. Output ONLY valid JSON with keys:\n" +
+        "- dossierText: the compiled markdown dossier biography.\n" +
+        "Do not include markdown formatting or backticks around the JSON."
+
+      const mentions = brainEntries.map((entry: any) => {
+        const chapter = entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle || "Unknown chapter"
+        return `- ${chapter}: ${entry.highlightedText} - ${entry.aiSummary}`
+      }).join("\n")
+      userPrompt = `Entity Name: ${entityName}\nEntity Type: ${entityType}\n\nMentions across chapters:\n${mentions}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, or progression_template_design." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, or progression_template_design." }, { status: 400 })
     }
 
-    const jsonActions = new Set(["appearance_prompts", "progression_update", "cultivation_realm_import", "brain_analyze", "progression_template_design"])
+    const jsonActions = new Set([
+      "appearance_prompts",
+      "progression_update",
+      "cultivation_realm_import",
+      "brain_analyze",
+      "progression_template_design",
+      "brain_consistency_check",
+      "brain_suggest_additions",
+      "brain_generate_dossier"
+    ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
       text = JSON.stringify({ settings: parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings })
     } else {
       text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action))
+    }
+
+    if (action === "brain_consistency_check") {
+      const result = parseJsonObject<any>(text)
+      return NextResponse.json({
+        conflicts: result?.conflicts || []
+      })
+    }
+
+    if (action === "brain_suggest_additions") {
+      const result = parseJsonObject<any>(text)
+      return NextResponse.json({
+        suggestions: result?.suggestions || []
+      })
+    }
+
+    if (action === "brain_generate_dossier") {
+      const result = parseJsonObject<any>(text)
+      return NextResponse.json({
+        dossierText: result?.dossierText || "Failed to generate dossier."
+      })
     }
 
     if (action === "brain_analyze") {
@@ -597,7 +697,9 @@ export async function POST(req: NextRequest) {
         entityType,
         entityName: analysis.entityName || "",
         importance,
-        connections
+        connections,
+        parentEntityName: analysis.parentEntityName || "",
+        isSubEntity: analysis.isSubEntity || false
       })
     }
 
