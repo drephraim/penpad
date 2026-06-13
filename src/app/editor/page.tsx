@@ -1176,6 +1176,16 @@ function EditorContent() {
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
   const [hoveredLorePosition, setHoveredLorePosition] = useState<{ top: number; left: number } | null>(null)
 
+  useEffect(() => {
+    if (!hoveredLore) return
+    const handleOutsideClick = () => {
+      setHoveredLore(null)
+      setHoveredLorePosition(null)
+    }
+    window.addEventListener('click', handleOutsideClick)
+    return () => window.removeEventListener('click', handleOutsideClick)
+  }, [hoveredLore])
+
   // Autocomplete States
   const [showAutocomplete, setShowAutocomplete] = useState(false)
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([])
@@ -1183,19 +1193,7 @@ function EditorContent() {
 
   const [autocompleteTriggerPos, setAutocompleteTriggerPos] = useState(0)
 
-  const handleLoreMouseEnter = (e: React.MouseEvent, entry: BibleEntry) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    setHoveredLore(entry)
-    setHoveredLorePosition({
-      top: rect.top + window.scrollY - 10,
-      left: rect.left + window.scrollX + rect.width / 2
-    })
-  }
 
-  const handleLoreMouseLeave = () => {
-    setHoveredLore(null)
-    setHoveredLorePosition(null)
-  }
 
   const persistLeftSidebarWidth = (width: number) => {
     const clamped = clampLeftSidebarWidth(width)
@@ -1238,12 +1236,7 @@ function EditorContent() {
     persistLeftSidebarWidth(leftSidebarWidth + direction)
   }
 
-  const handleLoreClick = (entry: BibleEntry) => {
-    setActiveSidebarTab('bible')
-    setIsLeftSidebarOpen(true)
-    setActiveBibleEntryId(entry.id)
-    setIsBibleDrawerOpen(true)
-  }
+
 
   const handleGenerateAILore = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -3448,9 +3441,15 @@ function EditorContent() {
           <span 
             key={index} 
             className="lore-chip-preview"
-            onMouseEnter={(e) => handleLoreMouseEnter(e, match.entry)}
-            onMouseLeave={handleLoreMouseLeave}
-            onClick={() => handleLoreClick(match.entry)}
+            onClick={(e) => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              setHoveredLore(match.entry)
+              setHoveredLorePosition({
+                top: rect.top + window.scrollY - 10,
+                left: rect.left + window.scrollX + rect.width / 2
+              })
+            }}
           >
             {part}
           </span>
@@ -11378,32 +11377,73 @@ ${navPoints}  </navMap>
         {hoveredLore && hoveredLorePosition && (
           <div 
             className="lore-hover-card glass"
+            onClick={(e) => e.stopPropagation()}
             style={{
               position: 'absolute',
               top: hoveredLorePosition.top,
               left: hoveredLorePosition.left,
               transform: 'translate(-50%, -100%)',
               zIndex: 400,
-              pointerEvents: 'none'
+              pointerEvents: 'auto',
+              cursor: 'default'
             }}
           >
-            <div className="hover-card-header">
+            <div className="hover-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '1rem' }}>
               <span className={`category-badge ${hoveredLore.category}`}>
                 {hoveredLore.category === 'character' ? '👤 Person' : 
                  hoveredLore.category === 'beast' ? '🐾 Beast' : 
                  hoveredLore.category === 'place' ? '📍 Place' : '🗺️ World'}
               </span>
-              <h4 className="hover-card-title">{hoveredLore.name}</h4>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setHoveredLore(null);
+                  setHoveredLorePosition(null);
+                }}
+                style={{ background: 'transparent', border: 0, color: 'var(--text-dim)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={12} />
+              </button>
             </div>
+            <h4 className="hover-card-title" style={{ margin: '0.25rem 0 0.4rem', fontSize: '0.95rem' }}>{hoveredLore.name}</h4>
+            
+            {Array.isArray(hoveredLore.groupIds) && hoveredLore.groupIds.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginBottom: '0.4rem' }}>
+                {hoveredLore.groupIds.map(gid => {
+                  const g = bibleGroups.find(group => group.id === gid);
+                  if (!g) return null;
+                  return (
+                    <span key={gid} style={{ fontSize: '0.62rem', padding: '0.1rem 0.35rem', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)' }}>
+                      {g.name}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="hover-card-body">
               {hoveredLore.content ? (
-                <p className="line-clamp-3">{hoveredLore.content.replace(/[#*`>_\-]/g, '').substring(0, 150)}...</p>
+                <p className="line-clamp-3" style={{ margin: 0, fontSize: '0.74rem', lineHeight: '1.4' }}>{hoveredLore.content.replace(/[#*`>_\-]/g, '').substring(0, 150)}...</p>
               ) : (
-                <p className="no-info">No biography or notes entered yet.</p>
+                <p className="no-info" style={{ margin: 0, fontSize: '0.74rem' }}>No biography or notes entered yet.</p>
               )}
             </div>
-            <div className="hover-card-footer">
-              <span>Click to view details</span>
+            <div className="hover-card-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '0.5rem' }}>
+              <button
+                className="btn-ai-sub btn-ai-secondary"
+                style={{ fontSize: '0.7rem', padding: '0.25rem 0.6rem', cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setHoveredLore(null);
+                  setHoveredLorePosition(null);
+                  setActiveSidebarTab('bible');
+                  setIsLeftSidebarOpen(true);
+                  setActiveBibleEntryId(hoveredLore.id);
+                  setIsBibleDrawerOpen(true);
+                }}
+              >
+                Edit Entry
+              </button>
             </div>
           </div>
         )}
