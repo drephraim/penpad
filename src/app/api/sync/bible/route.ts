@@ -7,6 +7,7 @@ interface BibleEntry {
   category: "character" | "world" | "beast" | "place" | "item"
   content: string
   groupIds?: string[]
+  timelineFacts?: unknown[]
   createdAt: number
   updatedAt: number
 }
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch bible entries from DB
     const selectRes = await pool.query(
-      "SELECT id, name, category, content, created_at, updated_at, group_ids FROM bible_entries WHERE user_id = $1 AND project_id = $2",
+      "SELECT id, name, category, content, created_at, updated_at, group_ids, timeline_facts FROM bible_entries WHERE user_id = $1 AND project_id = $2",
       [userId, projectId]
     )
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       category: (row.category || "character") as "character" | "world" | "beast" | "place" | "item",
       content: row.content || "",
       groupIds: Array.isArray(row.group_ids) ? row.group_ids.filter((item: unknown) => typeof item === "string") : [],
+      timelineFacts: Array.isArray(row.timeline_facts) ? row.timeline_facts : [],
       createdAt: row.created_at ? Number(row.created_at) : Date.now(),
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now()
     }))
@@ -62,25 +64,28 @@ export async function POST(req: NextRequest) {
       const localUpdated = localEntry.updatedAt || Date.now()
       const localCreated = localEntry.createdAt || Date.now()
       const groupIds = Array.isArray(localEntry.groupIds) ? localEntry.groupIds : []
+      const timelineFacts = Array.isArray(localEntry.timelineFacts) ? localEntry.timelineFacts : []
 
       if (!cloudEntry) {
         // Upload to cloud
         await pool.query(
-          `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at, group_ids)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at, group_ids, timeline_facts)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT (id) DO UPDATE SET 
             name = EXCLUDED.name,
             category = EXCLUDED.category,
             content = EXCLUDED.content,
             updated_at = EXCLUDED.updated_at,
-            group_ids = EXCLUDED.group_ids`,
-          [localEntry.id, projectId, userId, localEntry.name, localEntry.category, localEntry.content || "", localCreated, localUpdated, JSON.stringify(groupIds)]
+            group_ids = EXCLUDED.group_ids,
+            timeline_facts = EXCLUDED.timeline_facts`,
+          [localEntry.id, projectId, userId, localEntry.name, localEntry.category, localEntry.content || "", localCreated, localUpdated, JSON.stringify(groupIds), JSON.stringify(timelineFacts)]
         )
         finalMap.set(localEntry.id, {
           ...localEntry,
           updatedAt: localUpdated,
           createdAt: localCreated,
-          groupIds
+          groupIds,
+          timelineFacts
         })
       } else {
         const cloudUpdated = cloudEntry.updatedAt || 0
@@ -88,14 +93,15 @@ export async function POST(req: NextRequest) {
           // Local is newer, upload to cloud
           await pool.query(
             `UPDATE bible_entries 
-             SET name = $1, category = $2, content = $3, updated_at = $4, group_ids = $5 
-             WHERE id = $6 AND user_id = $7 AND project_id = $8`,
-            [localEntry.name, localEntry.category, localEntry.content || "", localUpdated, JSON.stringify(groupIds), localEntry.id, userId, projectId]
+             SET name = $1, category = $2, content = $3, updated_at = $4, group_ids = $5, timeline_facts = $6 
+             WHERE id = $7 AND user_id = $8 AND project_id = $9`,
+            [localEntry.name, localEntry.category, localEntry.content || "", localUpdated, JSON.stringify(groupIds), JSON.stringify(timelineFacts), localEntry.id, userId, projectId]
           )
           finalMap.set(localEntry.id, {
             ...localEntry,
             updatedAt: localUpdated,
-            groupIds
+            groupIds,
+            timelineFacts
           })
         } else {
           // Cloud is newer, use cloud version

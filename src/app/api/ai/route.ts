@@ -102,6 +102,32 @@ type ProgressionTemplateDesignSettings = {
   }
 }
 
+type BibleConsistencyResponse = {
+  conflicts?: Array<{
+    entryName?: string
+    severity?: "warning" | "critical"
+    message?: string
+    chapterEvidence?: string
+    bibleEvidence?: string
+    suggestedFix?: string
+  }>
+}
+
+type BibleExtractResponse = {
+  suggestions?: Array<{
+    entryName?: string
+    category?: "character" | "world" | "beast" | "place" | "item"
+    summary?: string
+    contentPatch?: string
+    matchedEntryId?: string
+    timelineFact?: {
+      summary?: string
+      evidence?: string
+      status?: string
+    }
+  }>
+}
+
 function parseJsonObject<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T
@@ -406,6 +432,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "A Story Bible entry or candidate profiles and chapter content are required for progression_update." }, { status: 400 })
       }
 
+      const useCustomJsonTemplate = (progressionSystem as any)?.useCustomJsonTemplate === true
+      const customJsonTemplate = (progressionSystem as any)?.customJsonTemplate || ""
+      let customJsonTemplateStr = ""
+      if (useCustomJsonTemplate && customJsonTemplate) {
+        try {
+          JSON.parse(customJsonTemplate)
+          customJsonTemplateStr = customJsonTemplate
+        } catch (e) {
+          console.error("Invalid customJsonTemplate in progressionSystem:", e)
+        }
+      }
+
+      let customJsonInstruction = ""
+      if (customJsonTemplateStr) {
+        customJsonInstruction = `\n15. CRITICAL: The user has enabled a custom JSON status template. The returned 'profile' object MUST contain a 'customJsonData' property. This 'customJsonData' property MUST be a valid JSON object matching the exact structure, keys, nesting, and value types of this template:\n${customJsonTemplateStr}\nAnalyze the chapter and fill in the values for the keys inside 'customJsonData' based on the chapter details. Preserve any existing values from the candidate/existing profile when no new details are found in the chapter.`
+      }
+
       systemInstruction =
         "You are a web-novel character progression tracker for a novelist. " +
         "The writer wants a simple profile that can be refreshed whenever a chapter or chapters are scanned.\n" +
@@ -423,7 +466,8 @@ export async function POST(req: NextRequest) {
         "11. Preserve existing values when the current chapter gives no direct evidence. If the chapter has no meaningful progression or new character detail, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
         "12. Never double-count previous profile history. Use the existing profile and processed chapter history as current truth.\n" +
         "13. In update.evidence, include short exact snippets that justify every changed card field, especially class, secondary class, cultivation realm (realm), stage, bloodline, bloodline rank, affinity names, affinity rank, and skills.\n" +
-        "14. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, abilities, customFields, notes, level, exp, nextLevelExp, stats, traits, nicknames, uniqueTrait, and cultivationPath. customFields must include Bloodline, Bloodline Rank, Affinity Names, Affinity Rank, and Secondary Class. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, and evidence."
+        "14. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, abilities, customFields, notes, level, exp, nextLevelExp, stats, traits, nicknames, uniqueTrait, cultivationPath, and optionally customJsonData. customFields must include Bloodline, Bloodline Rank, Affinity Names, Affinity Rank, and Secondary Class. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, and evidence." +
+        customJsonInstruction
 
       const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
       const configuredRealms = Array.isArray((progressionSystem as { realms?: unknown[] } | undefined)?.realms)
@@ -443,10 +487,16 @@ export async function POST(req: NextRequest) {
         ? `Target: ${safeLoreEntry.name}\nTarget lore id: ${safeLoreEntry.id || ""}\nHighlighted text: ${selectedText || ""}\nType: ${safeLoreEntry.category || "character"}\nGroups: ${groups}\nStory Bible Notes:\n${safeLoreEntry.content || ""}\n\n`
         : "Target: Auto-detect from candidate profiles and chapter content.\n"
 
+      let customJsonPrompt = ""
+      if (customJsonTemplateStr) {
+        customJsonPrompt = `Custom JSON Template Fields Required:\n- Fill in the values for the custom JSON template inside 'profile.customJsonData':\n${customJsonTemplateStr}\nEnsure you match the structure and key names exactly.\n\n`
+      }
+
       userPrompt =
         explicitTarget +
         `Simple Profile Fields Required:\n` +
         `- Name\n- Title\n- Cultivation Realm (profile.realm; e.g. Demigod, God; match against the configured cultivation realms list when possible)\n- Cultivation Stage (profile.stage; e.g. Low, Medium, High, Peak; match against the configured stage labels when possible)\n- Rank (profile.rank; e.g. Tier 1, Rank 4)\n- Bloodline (profile.customFields.Bloodline)\n- Bloodline Rank (profile.customFields['Bloodline Rank']; examples: Supreme, Celestial)\n- Affinity Names (profile.customFields['Affinity Names']; comma-separated for multiple affinities)\n- Affinity Rank (profile.customFields['Affinity Rank']; preserve pairings like Fire (High), Void (Supreme))\n- Main Class (profile.className)\n- Secondary Class (profile.customFields['Secondary Class'])\n- Skills (profile.abilities)\n- Lore (profile.notes)\n\n` +
+        customJsonPrompt +
         `Extraction Checklist:\n` +
         `1. Identify only the target character.\n` +
         `2. Search target evidence and full chapter for explicit status-like details.\n` +
@@ -635,8 +685,58 @@ export async function POST(req: NextRequest) {
         return `- ${chapter}: ${entry.highlightedText} - ${entry.aiSummary}`
       }).join("\n")
       userPrompt = `Entity Name: ${entityName}\nEntity Type: ${entityType}\n\nMentions across chapters:\n${mentions}`
+    } else if (action === "bible_consistency_check") {
+      const { chapterContent, chapterTitle, chapterNumber, bibleEntries } = body
+      if (!chapterContent || !Array.isArray(bibleEntries)) {
+        return NextResponse.json({ error: "chapterContent and bibleEntries are required for bible_consistency_check" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a senior canon continuity editor for a novelist. Compare the active chapter against the Story Bible.\n" +
+        "Use both entry notes and timeline facts. Timeline facts are chapter-specific canon, so respect their chapter order when judging whether a change is a contradiction or a legitimate later update.\n" +
+        "Flag contradictions in identity, physical traits, aliases, faction membership, location, item ownership, relationship status, death/alive status, cultivation/class/status details, rules of magic, and timeline order.\n" +
+        "Do not flag a change if the chapter explicitly explains the change. Output ONLY valid JSON with key conflicts.\n" +
+        "Each conflict must include entryName, severity ('warning' or 'critical'), message, chapterEvidence, bibleEvidence, and suggestedFix."
+
+      const bibleContext = bibleEntries.slice(0, 120).map((entry: any) => {
+        const facts = Array.isArray(entry.timelineFacts)
+          ? entry.timelineFacts.slice(-12).map((fact: any) => {
+            const chapter = fact.chapterNumber ? `Chapter ${fact.chapterNumber}` : fact.chapterTitle || "Unknown chapter"
+            return `  - ${chapter}: ${fact.summary || ""}${fact.evidence ? ` Evidence: ${fact.evidence}` : ""}`
+          }).join("\n")
+          : ""
+        return `- ${entry.name || "Untitled"} (${entry.category || "world"})\nNotes: ${String(entry.content || "").slice(0, 1600)}\nTimeline:\n${facts || "  - none"}`
+      }).join("\n\n")
+
+      userPrompt =
+        `Active Chapter: ${chapterNumber ? `Chapter ${chapterNumber} - ` : ""}${chapterTitle || "Untitled"}\n\n` +
+        `Chapter Content:\n${String(chapterContent).slice(0, 60000)}\n\n` +
+        `Story Bible Canon:\n${bibleContext || "No Story Bible entries yet."}`
+    } else if (action === "bible_extract_from_chapter") {
+      const { chapterContent, chapterTitle, chapterNumber, bibleEntries } = body
+      if (!chapterContent || !Array.isArray(bibleEntries)) {
+        return NextResponse.json({ error: "chapterContent and bibleEntries are required for bible_extract_from_chapter" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a meticulous Story Bible curator for a novelist. Scan the active chapter and propose high-value canon additions.\n" +
+        "Prefer facts that should be remembered later: new characters, beasts, factions, locations, artifacts, vows, relationships, status reveals, rules, secrets, deaths, promotions, and chapter-specific changes.\n" +
+        "Match existing Story Bible entries by exact name or obvious alias when possible. For matched entries, provide matchedEntryId and a concise contentPatch to append. For new entries, provide category and starter notes.\n" +
+        "Every suggestion must include a timelineFact with summary, evidence, and optional status. Output ONLY valid JSON with key suggestions. Limit to 8 suggestions."
+
+      const existingContext = bibleEntries.slice(0, 120).map((entry: any) => {
+        const facts = Array.isArray(entry.timelineFacts)
+          ? entry.timelineFacts.slice(-8).map((fact: any) => `${fact.chapterNumber ? `Ch ${fact.chapterNumber}` : fact.chapterTitle || "Chapter"}: ${fact.summary || ""}`).join("; ")
+          : ""
+        return `- id=${entry.id}; name=${entry.name}; category=${entry.category}; notes=${String(entry.content || "").slice(0, 800)}; timeline=${facts}`
+      }).join("\n")
+
+      userPrompt =
+        `Active Chapter: ${chapterNumber ? `Chapter ${chapterNumber} - ` : ""}${chapterTitle || "Untitled"}\n\n` +
+        `Existing Story Bible Entries:\n${existingContext || "No Story Bible entries yet."}\n\n` +
+        `Chapter Content:\n${String(chapterContent).slice(0, 60000)}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, or progression_template_design." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, or progression_template_design." }, { status: 400 })
     }
 
     const jsonActions = new Set([
@@ -647,7 +747,9 @@ export async function POST(req: NextRequest) {
       "progression_template_design",
       "brain_consistency_check",
       "brain_suggest_additions",
-      "brain_generate_dossier"
+      "brain_generate_dossier",
+      "bible_consistency_check",
+      "bible_extract_from_chapter"
     ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
@@ -831,6 +933,44 @@ export async function POST(req: NextRequest) {
         imported: {
           settings
         }
+      })
+    }
+
+    if (action === "bible_consistency_check") {
+      const result = parseJsonObject<BibleConsistencyResponse>(text)
+      return NextResponse.json({
+        conflicts: Array.isArray(result?.conflicts)
+          ? result.conflicts.map(conflict => ({
+            entryName: String(conflict.entryName || "Unknown"),
+            severity: conflict.severity === "critical" ? "critical" : "warning",
+            message: String(conflict.message || ""),
+            chapterEvidence: String(conflict.chapterEvidence || ""),
+            bibleEvidence: String(conflict.bibleEvidence || ""),
+            suggestedFix: String(conflict.suggestedFix || "")
+          })).filter(conflict => conflict.message)
+          : []
+      })
+    }
+
+    if (action === "bible_extract_from_chapter") {
+      const result = parseJsonObject<BibleExtractResponse>(text)
+      return NextResponse.json({
+        suggestions: Array.isArray(result?.suggestions)
+          ? result.suggestions.map(suggestion => ({
+            entryName: String(suggestion.entryName || "").trim(),
+            category: ["character", "world", "beast", "place", "item"].includes(String(suggestion.category))
+              ? suggestion.category
+              : "world",
+            summary: String(suggestion.summary || "").trim(),
+            contentPatch: String(suggestion.contentPatch || suggestion.summary || "").trim(),
+            matchedEntryId: String(suggestion.matchedEntryId || "").trim(),
+            timelineFact: {
+              summary: String(suggestion.timelineFact?.summary || suggestion.summary || "").trim(),
+              evidence: String(suggestion.timelineFact?.evidence || "").trim(),
+              status: String(suggestion.timelineFact?.status || "").trim()
+            }
+          })).filter(suggestion => suggestion.entryName && suggestion.summary)
+          : []
       })
     }
 

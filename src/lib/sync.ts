@@ -24,8 +24,20 @@ export interface BibleEntry {
   category: "character" | "world" | "beast" | "place" | "item"
   content: string
   groupIds?: string[]
+  timelineFacts?: BibleTimelineFact[]
   createdAt: number
   updatedAt: number
+}
+
+export interface BibleTimelineFact {
+  id: string
+  chapterId: string
+  chapterTitle: string
+  chapterNumber?: number | null
+  summary: string
+  evidence?: string
+  status?: string
+  createdAt: number
 }
 
 export interface BrainEntry {

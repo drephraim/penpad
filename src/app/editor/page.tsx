@@ -125,6 +125,39 @@ interface StoryBibleGroup {
   sortOrder: number
 }
 
+interface BibleTimelineFact {
+  id: string
+  chapterId: string
+  chapterTitle: string
+  chapterNumber?: number | null
+  summary: string
+  evidence?: string
+  status?: string
+  createdAt: number
+}
+
+interface BibleCanonConflict {
+  entryName: string
+  severity: "warning" | "critical"
+  message: string
+  chapterEvidence?: string
+  bibleEvidence?: string
+  suggestedFix?: string
+}
+
+interface BibleExtractionSuggestion {
+  entryName: string
+  category: BibleEntry["category"]
+  summary: string
+  contentPatch: string
+  matchedEntryId?: string
+  timelineFact?: {
+    summary: string
+    evidence?: string
+    status?: string
+  }
+}
+
 interface ExportHistoryRecord {
   filename: string
   fingerprint: string
@@ -875,6 +908,12 @@ function EditorContent() {
   const [selectedBibleIds, setSelectedBibleIds] = useState<Set<string>>(new Set())
   const [isBibleGroupAddMenuOpen, setIsBibleGroupAddMenuOpen] = useState(false)
   const [showMultiBibleDeleteModal, setShowMultiBibleDeleteModal] = useState(false)
+  const [activeBiblePopup, setActiveBiblePopup] = useState<"extract" | "canon" | "timeline" | null>(null)
+  const [bibleExtractLoading, setBibleExtractLoading] = useState(false)
+  const [bibleExtractionSuggestions, setBibleExtractionSuggestions] = useState<BibleExtractionSuggestion[]>([])
+  const [bibleCanonLoading, setBibleCanonLoading] = useState(false)
+  const [bibleCanonConflicts, setBibleCanonConflicts] = useState<BibleCanonConflict[]>([])
+  const [bibleCanonCheckedNoteId, setBibleCanonCheckedNoteId] = useState<string | null>(null)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -2561,6 +2600,163 @@ function EditorContent() {
     }
   }
 
+const fillEmptyCustomJsonData = (
+  jsonData: Record<string, any>,
+  profile: {
+    name: string;
+    title: string;
+    className: string;
+    realm: string;
+    stage: string;
+    rank: string;
+    level: number;
+    exp: number;
+    nextLevelExp: number;
+    abilities: ProgressionAbility[];
+    customFields: Record<string, any>;
+    stats: Record<string, any>;
+  }
+): Record<string, any> => {
+  const result = { ...jsonData }
+
+  const isEmpty = (val: any): boolean => {
+    if (val === null || val === undefined) return true
+    if (typeof val === "string") return val.trim() === ""
+    if (Array.isArray(val)) return val.length === 0 || val.every(isEmpty)
+    if (typeof val === "object") return Object.values(val).every(isEmpty)
+    return false
+  }
+
+  const getCleanKey = (k: string) => k.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+  const getProfileValueForKey = (k: string, expectedType: string): any => {
+    const clean = getCleanKey(k)
+    if (clean === "name") return profile.name
+    if (clean === "title") return expectedType === "array" ? [profile.title].filter(Boolean) : profile.title
+    if (clean === "classname" || clean === "class") return profile.className
+    if (clean === "realm") return profile.realm
+    if (clean === "stage") return profile.stage
+    if (clean === "rank") return profile.rank
+    if (clean === "cultivation" || clean === "cultivationstage") {
+      if (expectedType === "object") {
+        return {
+          realm: profile.realm,
+          stage: profile.stage,
+          rank: profile.rank
+        }
+      }
+      return [profile.realm, profile.stage || profile.rank].filter(Boolean).join(" - ")
+    }
+    if (clean === "level" || clean === "lvl") return profile.level
+    if (clean === "exp" || clean === "experience") return expectedType === "string" ? `${profile.exp}/${profile.nextLevelExp}` : profile.exp
+    
+    if (clean === "skills" || clean === "abilities" || clean === "techniques") {
+      if (expectedType === "array") {
+        return profile.abilities.map(a => a.name)
+      }
+      return profile.abilities.map(a => `${a.name}${a.rank ? ` (${a.rank})` : ""}`).join(", ")
+    }
+
+    if (clean === "bloodline") {
+      const bloodlineName = profile.customFields["Bloodline"] || profile.customFields["bloodline"] || ""
+      const bloodlineRank = profile.customFields["Bloodline Rank"] || profile.customFields["Bloodline Grade"] || profile.customFields["bloodline rank"] || ""
+      if (expectedType === "object") {
+        return {
+          name: bloodlineName,
+          rank: bloodlineRank,
+          description: bloodlineRank
+        }
+      }
+      return [bloodlineName, bloodlineRank].filter(Boolean).join(" - ")
+    }
+
+    // Try customFields match
+    for (const cfKey of Object.keys(profile.customFields)) {
+      if (getCleanKey(cfKey) === clean) {
+        return profile.customFields[cfKey]
+      }
+    }
+
+    // Try stats match
+    for (const sKey of Object.keys(profile.stats)) {
+      if (getCleanKey(sKey) === clean) {
+        return profile.stats[sKey]
+      }
+    }
+
+    return undefined
+  }
+
+  const fillValue = (val: any, keyContext: string): any => {
+    if (val === null || val === undefined) {
+      return getProfileValueForKey(keyContext, "string") || val
+    }
+
+    if (Array.isArray(val)) {
+      if (val.length === 0) {
+        const fallback = getProfileValueForKey(keyContext, "array")
+        if (Array.isArray(fallback)) return fallback
+      }
+      return val.map((item, idx) => fillValue(item, `${keyContext}_${idx}`))
+    }
+
+    if (typeof val === "object") {
+      const keys = Object.keys(val)
+      const isValEmpty = keys.every(k => isEmpty(val[k]))
+      
+      if (isValEmpty) {
+        const fallback = getProfileValueForKey(keyContext, "object")
+        if (fallback && typeof fallback === "object" && !Array.isArray(fallback)) {
+          const filledObj: Record<string, any> = {}
+          for (const k of keys) {
+            const cleanSub = getCleanKey(k)
+            if (cleanSub in fallback) {
+              filledObj[k] = fallback[cleanSub]
+            } else if (cleanSub === "realm" && "realm" in fallback) {
+              filledObj[k] = fallback.realm
+            } else if ((cleanSub === "stage" || cleanSub === "rank") && ("stage" in fallback || "rank" in fallback)) {
+              filledObj[k] = fallback.stage || fallback.rank
+            } else if (cleanSub === "description" && "description" in fallback) {
+              filledObj[k] = fallback.description
+            } else {
+              filledObj[k] = getProfileValueForKey(k, typeof val[k]) || val[k]
+            }
+          }
+          return filledObj
+        }
+      }
+
+      const newObj: Record<string, any> = {}
+      for (const k of keys) {
+        if (isEmpty(val[k])) {
+          newObj[k] = getProfileValueForKey(k, typeof val[k]) || val[k]
+        } else if (typeof val[k] === "object") {
+          newObj[k] = fillValue(val[k], k)
+        } else {
+          newObj[k] = val[k]
+        }
+      }
+      return newObj
+    }
+
+    if (isEmpty(val)) {
+      return getProfileValueForKey(keyContext, typeof val) || val
+    }
+
+    return val
+  }
+
+  for (const key of Object.keys(result)) {
+    if (isEmpty(result[key])) {
+      result[key] = getProfileValueForKey(key, typeof result[key]) || result[key]
+    } else if (typeof result[key] === "object") {
+      result[key] = fillValue(result[key], key)
+    }
+  }
+
+  return result
+}
+
   const normalizeProgressionProfile = (
     sourceEntry: BibleEntry,
     aiProfile: Partial<CharacterProgressionProfile> | undefined,
@@ -2648,18 +2844,37 @@ function EditorContent() {
       customFields,
       notes: incomingNotes || existingProfile?.notes || sharedTemplate.notes || "",
       loreEntries: nextLoreEntries,
-      customJsonData: {
-        ...(() => {
-          if (progressionSystem.useCustomJsonTemplate && progressionSystem.customJsonTemplate) {
-            try {
-              return JSON.parse(progressionSystem.customJsonTemplate)
-            } catch {}
-          }
-          return {}
-        })(),
-        ...(existingProfile?.customJsonData || {}),
-        ...(aiProfile?.customJsonData || {})
-      },
+      customJsonData: (() => {
+        const baseCustomJson = {
+          ...(() => {
+            if (progressionSystem.useCustomJsonTemplate && progressionSystem.customJsonTemplate) {
+              try {
+                return JSON.parse(progressionSystem.customJsonTemplate)
+              } catch {}
+            }
+            return {}
+          })(),
+          ...(existingProfile?.customJsonData || {}),
+          ...(aiProfile?.customJsonData || {})
+        }
+        if (progressionSystem.useCustomJsonTemplate) {
+          return fillEmptyCustomJsonData(baseCustomJson, {
+            name: aiProfile?.name || existingProfile?.name || sourceEntry.name,
+            title: aiProfile?.title || existingProfile?.title || "",
+            className: inferredClassName || existingProfile?.className || sharedTemplate.defaultClassName || "",
+            realm: aiProfile?.realm || existingProfile?.realm || sharedTemplate.defaultRealm || "",
+            stage: aiProfile?.stage || existingProfile?.stage || sharedTemplate.defaultStage || "",
+            rank: aiProfile?.rank || existingProfile?.rank || sharedTemplate.defaultRank || "",
+            level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || sharedTemplate.baseLevel || 1,
+            exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || sharedTemplate.baseExp || 0,
+            nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+            abilities,
+            customFields,
+            stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) }
+          })
+        }
+        return baseCustomJson
+      })(),
       processedChapterIds: Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId])),
       history: [
         historyEntry,
@@ -4157,8 +4372,41 @@ function EditorContent() {
               evidence: String(skill.evidence || "")
             }
           })
+
+        const finalJsonData = (() => {
+          const baseJson = {
+            ...(() => {
+              if (progressionSystem.useCustomJsonTemplate && progressionSystem.customJsonTemplate) {
+                try {
+                  return JSON.parse(progressionSystem.customJsonTemplate)
+                } catch {}
+              }
+              return {}
+            })(),
+            ...jsonData
+          }
+          if (progressionSystem.useCustomJsonTemplate) {
+            return fillEmptyCustomJsonData(baseJson, {
+              name: profile.name || String(jsonData.name || ""),
+              title: profile.title || String(jsonData.title || ""),
+              className: profile.className || String(jsonData.mainClass || jsonData["Main Class"] || jsonData.class || jsonData.className || ""),
+              realm: profile.realm || String(jsonCultivation.realm || jsonCultivation.stage || jsonData.realm || ""),
+              stage: profile.stage || String(jsonCultivation.rank || jsonCultivation.subRank || jsonData.stage || jsonData.rank || ""),
+              rank: profile.rank || "",
+              level: Number.isFinite(Number(profile.level)) ? Number(profile.level) : 1,
+              exp: Number.isFinite(Number(profile.exp)) ? Number(profile.exp) : 0,
+              nextLevelExp: Number.isFinite(Number(profile.nextLevelExp)) ? Number(profile.nextLevelExp) : 100,
+              abilities: migratedAbilities,
+              customFields,
+              stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) }
+            })
+          }
+          return baseJson
+        })()
+
         return {
           ...profile,
+          customJsonData: finalJsonData,
           title: profile.title || String(jsonData.title || ""),
           className: profile.className || String(jsonData.mainClass || jsonData["Main Class"] || jsonData.class || jsonData.className || ""),
           realm: profile.realm || String(jsonCultivation.realm || jsonCultivation.stage || jsonData.realm || ""),
@@ -4183,7 +4431,7 @@ function EditorContent() {
       console.error("Failed to load progression profiles:", e)
       setProgressionProfiles([])
     }
-  }, [projectId, getProgressionStorageKey, selectedProgressionProfileId])
+  }, [projectId, getProgressionStorageKey, selectedProgressionProfileId, progressionSystem])
 
   const fetchNotes = useCallback(async () => {
     if (!user || !projectId) return
@@ -4377,6 +4625,159 @@ function EditorContent() {
     if (!projectId) return
     setBibleEntries(nextEntries)
     await saveStoryBibleLocal(projectId, nextEntries)
+  }
+
+  const getBibleTimelineFacts = (entry: BibleEntry): BibleTimelineFact[] => {
+    const rawFacts = Array.isArray(entry.timelineFacts) ? entry.timelineFacts : []
+    return rawFacts
+      .filter((fact): fact is BibleTimelineFact => Boolean(fact) && typeof fact === "object")
+      .map((fact, index) => ({
+        id: String(fact.id || `${entry.id}-timeline-${index}`),
+        chapterId: String(fact.chapterId || ""),
+        chapterTitle: String(fact.chapterTitle || "Untitled"),
+        chapterNumber: Number.isFinite(Number(fact.chapterNumber)) ? Number(fact.chapterNumber) : null,
+        summary: String(fact.summary || "").trim(),
+        evidence: String(fact.evidence || "").trim(),
+        status: String(fact.status || "").trim(),
+        createdAt: Number.isFinite(Number(fact.createdAt)) ? Number(fact.createdAt) : entry.updatedAt || Date.now()
+      }))
+      .filter(fact => fact.summary)
+      .sort((a, b) => {
+        const aChapter = Number(a.chapterNumber || 0)
+        const bChapter = Number(b.chapterNumber || 0)
+        if (aChapter !== bChapter) return aChapter - bChapter
+        return a.createdAt - b.createdAt
+      })
+  }
+
+  const getBibleFactChapterLabel = (fact: BibleTimelineFact) => {
+    if (fact.chapterNumber) return `Chapter ${fact.chapterNumber}`
+    return fact.chapterTitle || "Unknown chapter"
+  }
+
+  const appendBibleTimelineFact = (entry: BibleEntry, fact: Omit<BibleTimelineFact, "id" | "createdAt">): BibleEntry => {
+    const now = Date.now()
+    const nextFact: BibleTimelineFact = {
+      ...fact,
+      id: crypto.randomUUID(),
+      createdAt: now
+    }
+    const existingFacts = getBibleTimelineFacts(entry)
+    const isDuplicate = existingFacts.some(existing =>
+      existing.chapterId === nextFact.chapterId &&
+      existing.summary.toLowerCase() === nextFact.summary.toLowerCase()
+    )
+    return {
+      ...entry,
+      timelineFacts: isDuplicate ? existingFacts : [...existingFacts, nextFact],
+      updatedAt: now
+    }
+  }
+
+  const scanChapterForBibleSuggestions = async () => {
+    if (!activeNote || bibleExtractLoading) return
+    setBibleExtractLoading(true)
+    setBibleExtractionSuggestions([])
+    try {
+      const chapterNumber = getNoteChapterNumber(activeNote)
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "bible_extract_from_chapter",
+          chapterContent: activeNote.content,
+          chapterTitle: activeNote.title,
+          chapterNumber,
+          bibleEntries
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to extract Bible suggestions")
+      setBibleExtractionSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to extract Bible suggestions")
+    } finally {
+      setBibleExtractLoading(false)
+    }
+  }
+
+  const approveBibleExtractionSuggestion = async (suggestion: BibleExtractionSuggestion) => {
+    if (!projectId || !activeNote) return
+    const now = Date.now()
+    const chapterNumber = getNoteChapterNumber(activeNote)
+    const matchedEntry = suggestion.matchedEntryId
+      ? bibleEntries.find(entry => entry.id === suggestion.matchedEntryId)
+      : bibleEntries.find(entry => entry.name.toLowerCase() === suggestion.entryName.toLowerCase())
+
+    const timelineFact = {
+      chapterId: activeNote.id,
+      chapterTitle: activeNote.title || "Untitled",
+      chapterNumber,
+      summary: suggestion.timelineFact?.summary || suggestion.summary,
+      evidence: suggestion.timelineFact?.evidence || "",
+      status: suggestion.timelineFact?.status || ""
+    }
+
+    let nextEntry: BibleEntry
+    if (matchedEntry) {
+      const contentPatch = suggestion.contentPatch.trim()
+      const nextContent = contentPatch && !matchedEntry.content.includes(contentPatch)
+        ? `${matchedEntry.content || ""}${matchedEntry.content ? "\n\n" : ""}### Chapter ${chapterNumber || "Update"} Update\n${contentPatch}`.trim()
+        : matchedEntry.content
+      nextEntry = appendBibleTimelineFact({
+        ...matchedEntry,
+        content: nextContent,
+        updatedAt: now
+      }, timelineFact)
+    } else {
+      nextEntry = appendBibleTimelineFact({
+        id: crypto.randomUUID(),
+        name: suggestion.entryName,
+        category: suggestion.category || "world",
+        content: suggestion.contentPatch || suggestion.summary,
+        createdAt: now,
+        updatedAt: now
+      }, timelineFact)
+    }
+
+    const nextEntries = matchedEntry
+      ? bibleEntries.map(entry => entry.id === nextEntry.id ? nextEntry : entry)
+      : [nextEntry, ...bibleEntries]
+
+    setBibleEntries(nextEntries)
+    await saveStoryBibleLocal(projectId, nextEntries)
+    if (user) await saveBibleEntryToCloud(user.uid, projectId, nextEntry)
+    setBibleExtractionSuggestions(items => items.filter(item => item !== suggestion))
+    setActiveBibleEntryId(nextEntry.id)
+    setIsBibleDrawerOpen(true)
+  }
+
+  const checkBibleCanonConsistency = async () => {
+    if (!activeNote || bibleCanonLoading) return
+    setBibleCanonLoading(true)
+    setBibleCanonConflicts([])
+    try {
+      const chapterNumber = getNoteChapterNumber(activeNote)
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "bible_consistency_check",
+          chapterContent: activeNote.content,
+          chapterTitle: activeNote.title,
+          chapterNumber,
+          bibleEntries
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to check Story Bible canon")
+      setBibleCanonConflicts(Array.isArray(data.conflicts) ? data.conflicts : [])
+      setBibleCanonCheckedNoteId(activeNote.id)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to check Story Bible canon")
+    } finally {
+      setBibleCanonLoading(false)
+    }
   }
 
   const addBibleEntriesToGroup = async (entryIds: string[], groupId: string) => {
@@ -8206,6 +8607,23 @@ ${navPoints}  </navMap>
                     AI Generate
                   </button>
                 </div>
+
+                <div className="bible-premium-actions">
+                  <button className="bible-premium-action" onClick={() => setActiveBiblePopup("extract")} title="Extract canon from the active chapter">
+                    <Sparkles size={13} />
+                    <span>Extract</span>
+                    {bibleExtractionSuggestions.length > 0 && <strong>{bibleExtractionSuggestions.length}</strong>}
+                  </button>
+                  <button className="bible-premium-action" onClick={() => setActiveBiblePopup("canon")} title="Check the active chapter against Story Bible canon">
+                    <ShieldAlert size={13} />
+                    <span>Canon</span>
+                    {bibleCanonConflicts.length > 0 && <strong>{bibleCanonConflicts.length}</strong>}
+                  </button>
+                  <button className="bible-premium-action" onClick={() => setActiveBiblePopup("timeline")} title="View chapter-aware Bible facts">
+                    <History size={13} />
+                    <span>Timeline</span>
+                  </button>
+                </div>
                 
                 <div className="sidebar-search">
                   <Search size={14} />
@@ -8370,6 +8788,7 @@ ${navPoints}  </navMap>
                 <div className="chapter-list bible-list">
                   {filteredBibleEntries.map(entry => {
                     const isSelected = selectedBibleIds.has(entry.id);
+                    const timelineCount = getBibleTimelineFacts(entry).length
                     return (
                       <div 
                         key={entry.id} 
@@ -8402,6 +8821,9 @@ ${navPoints}  </navMap>
                               .slice(0, 2)
                               .join(", ")}
                           </span>
+                        )}
+                        {timelineCount > 0 && (
+                          <span className="bible-entry-timeline-count">{timelineCount} facts</span>
                         )}
                         {!isBibleSelectionMode && (
                           <button 
@@ -9612,6 +10034,24 @@ ${navPoints}  </navMap>
                 </div>
               </div>
 
+              <div className="ai-form-field">
+                <label>Timeline Facts</label>
+                <div className="bible-timeline-panel">
+                  {getBibleTimelineFacts(activeBibleEntry).length === 0 ? (
+                    <span className="empty-state-text compact">No chapter-specific facts yet. Use Extract from the World Bible panel to add them.</span>
+                  ) : getBibleTimelineFacts(activeBibleEntry).map(fact => (
+                    <div className="bible-timeline-fact" key={fact.id}>
+                      <div>
+                        <strong>{getBibleFactChapterLabel(fact)}</strong>
+                        {fact.status && <em>{fact.status}</em>}
+                      </div>
+                      <p>{fact.summary}</p>
+                      {fact.evidence && <small>&ldquo;{fact.evidence}&rdquo;</small>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="ai-form-field flex-1 flex flex-col min-h-[300px]">
                 <label>Notes & Descriptions</label>
                 <textarea 
@@ -10193,6 +10633,140 @@ ${navPoints}  </navMap>
                     Auditing chapter continuity against Brain Map...
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeBiblePopup === 'extract' && (
+          <div className="modal-overlay" onClick={() => setActiveBiblePopup(null)} style={{ zIndex: 120 }}>
+            <div className="modal bible-action-modal glass" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Auto-Extract From Chapter</h2>
+                  <p className="modal-description">Scan the active chapter for new canon, then approve what enters the Story Bible.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setActiveBiblePopup(null)} title="Close"><X size={16} /></button>
+              </div>
+              <button
+                className="btn-ai-sub btn-ai-primary bible-action-run"
+                onClick={scanChapterForBibleSuggestions}
+                disabled={bibleExtractLoading || !activeNote}
+              >
+                {bibleExtractLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                Scan Active Chapter
+              </button>
+              <div className="bible-action-list">
+                {bibleExtractionSuggestions.length === 0 && !bibleExtractLoading ? (
+                  <div className="empty-state-text">No suggestions yet. Run a scan to find canon-worthy facts.</div>
+                ) : bibleExtractionSuggestions.map((suggestion, index) => (
+                  <div className="bible-suggestion-card" key={`${suggestion.entryName}-${index}`}>
+                    <div className="bible-suggestion-head">
+                      <strong>{suggestion.entryName}</strong>
+                      <span>{suggestion.category}</span>
+                    </div>
+                    <p>{suggestion.summary}</p>
+                    {suggestion.timelineFact?.evidence && <small>&ldquo;{suggestion.timelineFact.evidence}&rdquo;</small>}
+                    <button className="btn-ai-sub btn-ai-secondary" onClick={() => approveBibleExtractionSuggestion(suggestion)}>
+                      <Check size={12} />
+                      Approve to Bible
+                    </button>
+                  </div>
+                ))}
+                {bibleExtractLoading && (
+                  <div className="empty-state-text">
+                    <Loader2 size={16} className="spin" />
+                    Scanning chapter for Bible additions...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeBiblePopup === 'canon' && (
+          <div className="modal-overlay" onClick={() => setActiveBiblePopup(null)} style={{ zIndex: 120 }}>
+            <div className="modal bible-action-modal glass" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Canon Consistency Checker</h2>
+                  <p className="modal-description">Audit the active chapter against Story Bible notes and timeline facts.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setActiveBiblePopup(null)} title="Close"><X size={16} /></button>
+              </div>
+              <button
+                className="btn-ai-sub btn-ai-primary bible-action-run"
+                onClick={checkBibleCanonConsistency}
+                disabled={bibleCanonLoading || !activeNote}
+              >
+                {bibleCanonLoading ? <Loader2 size={13} className="spin" /> : <ShieldAlert size={13} />}
+                Check Active Chapter
+              </button>
+              <div className="bible-action-list">
+                {bibleCanonCheckedNoteId === activeNote?.id && bibleCanonConflicts.length === 0 && !bibleCanonLoading ? (
+                  <div className="bible-clean-state">
+                    <CheckCircle2 size={28} />
+                    <strong>Canon looks clean.</strong>
+                    <span>No Story Bible contradictions were detected in this chapter.</span>
+                  </div>
+                ) : bibleCanonConflicts.map((conflict, index) => (
+                  <div className={`bible-conflict-card severity-${conflict.severity}`} key={`${conflict.entryName}-${index}`}>
+                    <div>
+                      <AlertTriangle size={14} />
+                      <strong>{conflict.entryName}</strong>
+                      <span>{conflict.severity}</span>
+                    </div>
+                    <p>{conflict.message}</p>
+                    {conflict.chapterEvidence && <small>Chapter: &ldquo;{conflict.chapterEvidence}&rdquo;</small>}
+                    {conflict.bibleEvidence && <small>Bible: &ldquo;{conflict.bibleEvidence}&rdquo;</small>}
+                    {conflict.suggestedFix && <em>{conflict.suggestedFix}</em>}
+                  </div>
+                ))}
+                {bibleCanonCheckedNoteId !== activeNote?.id && !bibleCanonLoading && bibleCanonConflicts.length === 0 && (
+                  <div className="empty-state-text">Run a canon check to compare this chapter with the Story Bible.</div>
+                )}
+                {bibleCanonLoading && (
+                  <div className="empty-state-text">
+                    <Loader2 size={16} className="spin" />
+                    Checking canon against Story Bible...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeBiblePopup === 'timeline' && (
+          <div className="modal-overlay" onClick={() => setActiveBiblePopup(null)} style={{ zIndex: 120 }}>
+            <div className="modal bible-action-modal glass" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Timeline-Aware Bible</h2>
+                  <p className="modal-description">Chapter-specific canon facts across all Story Bible entries.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setActiveBiblePopup(null)} title="Close"><X size={16} /></button>
+              </div>
+              <div className="bible-action-list">
+                {bibleEntries.flatMap(entry => getBibleTimelineFacts(entry).map(fact => ({ entry, fact }))).length === 0 ? (
+                  <div className="empty-state-text">No timeline facts yet. Use Auto-Extract From Chapter to create them.</div>
+                ) : bibleEntries
+                  .flatMap(entry => getBibleTimelineFacts(entry).map(fact => ({ entry, fact })))
+                  .sort((a, b) => Number(a.fact.chapterNumber || 0) - Number(b.fact.chapterNumber || 0))
+                  .map(({ entry, fact }) => (
+                    <button
+                      className="bible-timeline-row"
+                      key={`${entry.id}-${fact.id}`}
+                      onClick={() => {
+                        setActiveBibleEntryId(entry.id)
+                        setIsBibleDrawerOpen(true)
+                        setActiveBiblePopup(null)
+                      }}
+                    >
+                      <span>{getBibleFactChapterLabel(fact)}</span>
+                      <strong>{entry.name}</strong>
+                      <p>{fact.summary}</p>
+                    </button>
+                  ))}
               </div>
             </div>
           </div>
@@ -11641,6 +12215,54 @@ ${navPoints}  </navMap>
           margin-bottom: 0.75rem;
         }
 
+        .bible-premium-actions {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 0.45rem;
+          margin-bottom: 0.75rem;
+        }
+
+        .bible-premium-action {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+          padding: 0.55rem 0.45rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(20, 184, 166, 0.055);
+          color: var(--text-secondary);
+          font-size: 0.72rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .bible-premium-action span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .bible-premium-action strong {
+          min-width: 1.15rem;
+          height: 1.15rem;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: rgba(45, 212, 191, 0.16);
+          color: rgb(94, 234, 212);
+          font-size: 0.65rem;
+        }
+
+        .bible-premium-action:hover {
+          border-color: rgba(20, 184, 166, 0.38);
+          background: rgba(20, 184, 166, 0.1);
+          color: var(--text-primary);
+        }
+
         .editor-controls-row {
           display: flex;
           align-items: center;
@@ -13014,6 +13636,18 @@ ${navPoints}  </navMap>
           color: var(--text-dim);
           font-size: 0.66rem;
           font-weight: 800;
+        }
+
+        .bible-entry-timeline-count {
+          flex-shrink: 0;
+          padding: 0.12rem 0.35rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-sm);
+          color: rgb(94, 234, 212);
+          background: rgba(20, 184, 166, 0.06);
+          font-size: 0.62rem;
+          font-weight: 800;
+          white-space: nowrap;
         }
 
         .bible-group-editor {
@@ -15312,6 +15946,214 @@ ${navPoints}  </navMap>
           border-color: rgba(168, 85, 247, 0.4) !important;
           background: rgba(168, 85, 247, 0.08) !important;
           color: var(--text-primary) !important;
+        }
+
+        .bible-action-modal {
+          width: min(92vw, 560px);
+          max-height: 82vh;
+          display: flex;
+          flex-direction: column;
+          gap: 0.85rem;
+          padding: 1.2rem;
+          background: rgba(15, 18, 20, 0.97) !important;
+          border: 1px solid rgba(20, 184, 166, 0.24) !important;
+          box-shadow: 0 0 28px rgba(20, 184, 166, 0.13) !important;
+        }
+
+        .bible-action-run {
+          width: 100%;
+          justify-content: center;
+        }
+
+        .bible-action-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          overflow-y: auto;
+          padding-right: 0.15rem;
+        }
+
+        .bible-suggestion-card,
+        .bible-conflict-card,
+        .bible-timeline-row {
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .bible-suggestion-card,
+        .bible-conflict-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          padding: 0.8rem;
+        }
+
+        .bible-suggestion-head,
+        .bible-conflict-card > div {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+        }
+
+        .bible-suggestion-head strong,
+        .bible-conflict-card strong,
+        .bible-clean-state strong {
+          color: var(--text-primary);
+          font-size: 0.9rem;
+        }
+
+        .bible-suggestion-head span,
+        .bible-conflict-card span {
+          margin-left: auto;
+          padding: 0.12rem 0.38rem;
+          border-radius: 999px;
+          background: rgba(20, 184, 166, 0.09);
+          color: rgb(94, 234, 212);
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .bible-suggestion-card p,
+        .bible-conflict-card p,
+        .bible-timeline-row p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.82rem;
+          line-height: 1.5;
+        }
+
+        .bible-suggestion-card small,
+        .bible-conflict-card small,
+        .bible-conflict-card em {
+          color: var(--text-dim);
+          font-size: 0.74rem;
+          line-height: 1.45;
+        }
+
+        .bible-conflict-card.severity-critical {
+          border-color: rgba(248, 113, 113, 0.32);
+          background: rgba(248, 113, 113, 0.06);
+        }
+
+        .bible-conflict-card.severity-critical span {
+          background: rgba(248, 113, 113, 0.11);
+          color: rgb(252, 165, 165);
+        }
+
+        .bible-conflict-card.severity-warning {
+          border-color: rgba(251, 191, 36, 0.28);
+          background: rgba(251, 191, 36, 0.055);
+        }
+
+        .bible-conflict-card.severity-warning span {
+          background: rgba(251, 191, 36, 0.11);
+          color: rgb(253, 224, 71);
+        }
+
+        .bible-clean-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 1.5rem 1rem;
+          border: 1px solid rgba(34, 197, 94, 0.22);
+          border-radius: var(--radius-md);
+          background: rgba(34, 197, 94, 0.055);
+          color: rgb(134, 239, 172);
+          text-align: center;
+        }
+
+        .bible-clean-state span {
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+        }
+
+        .bible-timeline-row {
+          width: 100%;
+          display: grid;
+          grid-template-columns: minmax(86px, 0.55fr) minmax(110px, 0.75fr);
+          gap: 0.35rem 0.65rem;
+          padding: 0.72rem;
+          color: var(--text-secondary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .bible-timeline-row span {
+          color: rgb(94, 234, 212);
+          font-size: 0.7rem;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .bible-timeline-row strong {
+          color: var(--text-primary);
+          font-size: 0.82rem;
+        }
+
+        .bible-timeline-row p {
+          grid-column: 1 / -1;
+        }
+
+        .bible-timeline-row:hover {
+          border-color: rgba(20, 184, 166, 0.34);
+          background: rgba(20, 184, 166, 0.07);
+        }
+
+        .bible-timeline-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.12);
+        }
+
+        .bible-timeline-fact {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          padding: 0.65rem;
+          border: 1px solid rgba(20, 184, 166, 0.16);
+          border-radius: var(--radius-sm);
+          background: rgba(20, 184, 166, 0.04);
+        }
+
+        .bible-timeline-fact div {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+
+        .bible-timeline-fact strong {
+          color: rgb(94, 234, 212);
+          font-size: 0.72rem;
+        }
+
+        .bible-timeline-fact em {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-style: normal;
+          text-transform: uppercase;
+          font-weight: 800;
+        }
+
+        .bible-timeline-fact p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          line-height: 1.45;
+        }
+
+        .bible-timeline-fact small {
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          line-height: 1.45;
         }
         
         /* Graph Modal CSS styles */

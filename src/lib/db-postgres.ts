@@ -95,6 +95,11 @@ export async function bootstrapDb() {
       ALTER TABLE bible_entries
       ADD COLUMN IF NOT EXISTS group_ids JSONB;
     `)
+
+    await client.query(`
+      ALTER TABLE bible_entries
+      ADD COLUMN IF NOT EXISTS timeline_facts JSONB;
+    `)
     
     isBootstrapped = true
     console.log("Postgres database tables checked/created successfully.")
