@@ -4628,9 +4628,6 @@ function EditorContent() {
     const targetEntry = brainEntries.find(e => e.id === targetId)
     if (!sourceEntry || !targetEntry) return
 
-    const confirmed = window.confirm(`Are you sure you want to merge "${sourceEntry.entityName || sourceEntry.highlightedText}" into "${targetEntry.entityName || targetEntry.highlightedText}"?\n\nThis will append all summaries, merge connections, and delete "${sourceEntry.entityName || sourceEntry.highlightedText}".`)
-    if (!confirmed) return
-
     const chapterLabel = sourceEntry.chapterNumber ? `Chapter ${sourceEntry.chapterNumber}` : sourceEntry.chapterTitle || "Unknown Chapter"
     const appendedSummary = `${targetEntry.aiSummary}\n\n***\n\n### 🔗 Manually Merged: ${sourceEntry.entityName || sourceEntry.highlightedText} (${chapterLabel})\n${sourceEntry.aiSummary}`
 
@@ -9709,6 +9706,51 @@ ${navPoints}  </navMap>
               </div>
 
               <div className="brain-detail-section">
+                <span className="brain-detail-label">Merge Into Another Entry</span>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', width: '100%', marginTop: '0.25rem' }}>
+                  <select 
+                    value={mergeTargetId}
+                    onChange={(e) => setMergeTargetId(e.target.value)}
+                    style={{ 
+                      flex: 1, 
+                      fontSize: '0.74rem', 
+                      padding: '0.4rem 0.5rem', 
+                      background: 'rgba(255,255,255,0.04)', 
+                      border: '1px solid var(--surface-border)', 
+                      borderRadius: 'var(--radius-md)', 
+                      color: 'var(--text-primary)',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="" style={{ background: '#0a0a0f' }}>-- Select Entry to Merge Into --</option>
+                    {brainEntries
+                      .filter(e => e.id !== selectedBrainEntry.id)
+                      .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
+                      .map(e => (
+                        <option key={e.id} value={e.id} style={{ background: '#0a0a0f' }}>
+                          {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
+                        </option>
+                      ))
+                    }
+                  </select>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary"
+                    disabled={!mergeTargetId}
+                    onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
+                    style={{ 
+                      fontSize: '0.72rem', 
+                      padding: '0.42rem 0.8rem', 
+                      whiteSpace: 'nowrap', 
+                      cursor: mergeTargetId ? 'pointer' : 'not-allowed',
+                      opacity: mergeTargetId ? 1 : 0.5
+                    }}
+                  >
+                    Merge Into
+                  </button>
+                </div>
+              </div>
+
+              <div className="brain-detail-section">
                 <span className="brain-detail-label">Keyword / Highlight</span>
                 <div className="brain-detail-keyword">
                   &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
@@ -9762,50 +9804,7 @@ ${navPoints}  </navMap>
                 </div>
               )}
 
-              <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                <span className="brain-detail-label" style={{ fontSize: '0.7rem' }}>Manual Merge Options</span>
-                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', width: '100%' }}>
-                  <select 
-                    value={mergeTargetId}
-                    onChange={(e) => setMergeTargetId(e.target.value)}
-                    style={{ 
-                      flex: 1, 
-                      fontSize: '0.74rem', 
-                      padding: '0.4rem 0.5rem', 
-                      background: 'rgba(255,255,255,0.04)', 
-                      border: '1px solid var(--surface-border)', 
-                      borderRadius: 'var(--radius-md)', 
-                      color: 'var(--text-primary)',
-                      outline: 'none'
-                    }}
-                  >
-                    <option value="" style={{ background: '#0a0a0f' }}>-- Select Entry to Merge Into --</option>
-                    {brainEntries
-                      .filter(e => e.id !== selectedBrainEntry.id)
-                      .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
-                      .map(e => (
-                        <option key={e.id} value={e.id} style={{ background: '#0a0a0f' }}>
-                          {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
-                        </option>
-                      ))
-                    }
-                  </select>
-                  <button
-                    className="btn-ai-sub btn-ai-secondary"
-                    disabled={!mergeTargetId}
-                    onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
-                    style={{ 
-                      fontSize: '0.72rem', 
-                      padding: '0.42rem 0.8rem', 
-                      whiteSpace: 'nowrap', 
-                      cursor: mergeTargetId ? 'pointer' : 'not-allowed',
-                      opacity: mergeTargetId ? 1 : 0.5
-                    }}
-                  >
-                    Merge Into
-                  </button>
-                </div>
-              </div>
+
 
               <div className="brain-detail-actions">
                 <button
