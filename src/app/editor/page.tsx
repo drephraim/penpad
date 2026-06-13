@@ -40,7 +40,9 @@ import {
   saveBrainEntryToCloud,
   deleteBrainEntryFromCloud,
   BibleEntry,
-  BrainEntry
+  BrainEntry,
+  Project,
+  saveProjectToCloud
 } from '@/lib/sync'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -811,6 +813,8 @@ function EditorContent() {
   const [newVolumeName, setNewVolumeName] = useState("")
   const [newVolumeIsOpen, setNewVolumeIsOpen] = useState(true)
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
+  const activeNoteIdRef = useRef<string | null>(null)
+  activeNoteIdRef.current = activeNoteId
   const [searchQuery, setSearchQuery] = useState('')
   const [sessionTime, setSessionTime] = useState(0)
   const [isTimerRunning, setIsTimerRunning] = useState(true)
@@ -3908,17 +3912,55 @@ const fillEmptyCustomJsonData = (
     return projectId ? `penpad_export_history_${projectId}` : ""
   }, [projectId])
 
+  const updateProjectMetadata = useCallback((updates: Partial<Project>) => {
+    if (!user || !projectId) return
+    try {
+      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
+      if (stored) {
+        const projects = JSON.parse(stored)
+        const idx = projects.findIndex((p: any) => p.id === projectId)
+        if (idx >= 0) {
+          const updatedProject = {
+            ...projects[idx],
+            ...updates,
+            lastUpdated: Date.now()
+          }
+          projects[idx] = updatedProject
+          localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
+          
+          // Save to cloud in background
+          saveProjectToCloud(user.uid, updatedProject)
+        }
+      }
+    } catch (e) {
+      console.error("Failed to update project metadata:", e)
+    }
+  }, [user, projectId])
+
   const persistVolumes = useCallback((nextVolumes: ManuscriptVolume[]) => {
     const key = getVolumesStorageKey()
     if (!key) return
     localStorage.setItem(key, JSON.stringify(nextVolumes))
     setVolumes(nextVolumes)
-  }, [getVolumesStorageKey])
+    updateProjectMetadata({ volumes: nextVolumes })
+  }, [getVolumesStorageKey, updateProjectMetadata])
 
   const fetchVolumes = useCallback(() => {
     if (!projectId) return
     try {
-      const storedVolumes = localStorage.getItem(getVolumesStorageKey())
+      let storedVolumes = localStorage.getItem(getVolumesStorageKey())
+      if (!storedVolumes && user) {
+        const storedProjs = localStorage.getItem(`penpad_projects_${user.uid}`)
+        if (storedProjs) {
+          const projects = JSON.parse(storedProjs)
+          const project = projects.find((p: any) => p.id === projectId)
+          if (project && project.volumes) {
+            storedVolumes = JSON.stringify(project.volumes)
+            localStorage.setItem(getVolumesStorageKey(), storedVolumes)
+          }
+        }
+      }
+
       const volumeList: ManuscriptVolume[] = storedVolumes
         ? JSON.parse(storedVolumes).map((volume: ManuscriptVolume) => ({ ...volume, isOpen: volume.isOpen !== false }))
         : []
@@ -3939,7 +3981,7 @@ const fillEmptyCustomJsonData = (
       setCollapsedVolumeIds(new Set())
       setExportHistory({})
     }
-  }, [projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
+  }, [user, projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
 
   const persistProgressionProfiles = useCallback((nextProfiles: CharacterProgressionProfile[]) => {
     const key = getProgressionStorageKey()
@@ -3947,7 +3989,8 @@ const fillEmptyCustomJsonData = (
     const sorted = [...nextProfiles].sort((a, b) => b.updatedAt - a.updatedAt)
     localStorage.setItem(key, JSON.stringify(sorted))
     setProgressionProfiles(sorted)
-  }, [getProgressionStorageKey])
+    updateProjectMetadata({ progressionProfiles: sorted })
+  }, [getProgressionStorageKey, updateProjectMetadata])
 
   const normalizeProgressionSystem = useCallback((settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
     const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
@@ -4035,7 +4078,8 @@ const fillEmptyCustomJsonData = (
     const normalized = normalizeProgressionSystem({ ...nextSettings, updatedAt: Date.now() })
     localStorage.setItem(key, JSON.stringify(normalized))
     setProgressionSystem(normalized)
-  }, [getProgressionSystemStorageKey, normalizeProgressionSystem])
+    updateProjectMetadata({ progressionSystem: normalized })
+  }, [getProgressionSystemStorageKey, normalizeProgressionSystem, updateProjectMetadata])
 
   const moveJsonCard = useCallback((key: string, direction: 'up' | 'down') => {
     const currentOrder = progressionSystem.jsonCardOrder || []
@@ -4331,18 +4375,40 @@ const fillEmptyCustomJsonData = (
   const fetchProgressionSystem = useCallback(() => {
     if (!projectId) return
     try {
-      const stored = localStorage.getItem(getProgressionSystemStorageKey())
+      let stored = localStorage.getItem(getProgressionSystemStorageKey())
+      if (!stored && user) {
+        const storedProjs = localStorage.getItem(`penpad_projects_${user.uid}`)
+        if (storedProjs) {
+          const projects = JSON.parse(storedProjs)
+          const project = projects.find((p: any) => p.id === projectId)
+          if (project && project.progressionSystem) {
+            stored = JSON.stringify(project.progressionSystem)
+            localStorage.setItem(getProgressionSystemStorageKey(), stored)
+          }
+        }
+      }
       setProgressionSystem(normalizeProgressionSystem(stored ? JSON.parse(stored) : undefined))
     } catch (e) {
       console.error("Failed to load progression system:", e)
       setProgressionSystem(DEFAULT_PROGRESSION_SYSTEM)
     }
-  }, [projectId, getProgressionSystemStorageKey, normalizeProgressionSystem])
+  }, [user, projectId, getProgressionSystemStorageKey, normalizeProgressionSystem])
 
   const fetchProgressionProfiles = useCallback(() => {
     if (!projectId) return
     try {
-      const stored = localStorage.getItem(getProgressionStorageKey())
+      let stored = localStorage.getItem(getProgressionStorageKey())
+      if (!stored && user) {
+        const storedProjs = localStorage.getItem(`penpad_projects_${user.uid}`)
+        if (storedProjs) {
+          const projects = JSON.parse(storedProjs)
+          const project = projects.find((p: any) => p.id === projectId)
+          if (project && project.progressionProfiles) {
+            stored = JSON.stringify(project.progressionProfiles)
+            localStorage.setItem(getProgressionStorageKey(), stored)
+          }
+        }
+      }
       const profiles: CharacterProgressionProfile[] = stored ? JSON.parse(stored) : []
       const normalized = profiles.map(profile => {
         const jsonData = profile.customJsonData && typeof profile.customJsonData === "object" ? profile.customJsonData as Record<string, any> : {}
@@ -4431,7 +4497,7 @@ const fillEmptyCustomJsonData = (
       console.error("Failed to load progression profiles:", e)
       setProgressionProfiles([])
     }
-  }, [projectId, getProgressionStorageKey, selectedProgressionProfileId, progressionSystem])
+  }, [user, projectId, getProgressionStorageKey, selectedProgressionProfileId, progressionSystem])
 
   const fetchNotes = useCallback(async () => {
     if (!user || !projectId) return
@@ -4449,23 +4515,22 @@ const fillEmptyCustomJsonData = (
       }
       noteList.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(noteList)
-      if (noteList.length > 0 && !activeNoteId) {
+      if (noteList.length > 0 && !activeNoteIdRef.current) {
         setActiveNoteId(noteList[0].id)
       }
       
       const syncedNotes = await syncChaptersWithCloud(user.uid, projectId, noteList)
       const orderedSyncedNotes = syncedNotes.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(orderedSyncedNotes)
-      if (syncedNotes.length > 0 && !activeNoteId) {
+      if (syncedNotes.length > 0 && !activeNoteIdRef.current) {
         setActiveNoteId(orderedSyncedNotes[0].id)
       }
     } catch (e) {
       console.error("Fetch/Sync notes failed:", e)
-      setNotes([])
     } finally {
       setIsLoadingNotes(false)
     }
-  }, [user, projectId, activeNoteId])
+  }, [user, projectId])
 
   // World Bible Logic
   const persistBibleGroups = useCallback((nextGroups: StoryBibleGroup[]) => {
@@ -4474,12 +4539,24 @@ const fillEmptyCustomJsonData = (
     const sorted = nextGroups.sort((a, b) => a.sortOrder - b.sortOrder)
     localStorage.setItem(key, JSON.stringify(sorted))
     setBibleGroups(sorted)
-  }, [getBibleGroupsStorageKey])
+    updateProjectMetadata({ bibleGroups: sorted })
+  }, [getBibleGroupsStorageKey, updateProjectMetadata])
 
   const fetchBible = useCallback(async () => {
     if (!user || !projectId) return
     try {
-      const storedGroups = localStorage.getItem(getBibleGroupsStorageKey())
+      let storedGroups = localStorage.getItem(getBibleGroupsStorageKey())
+      if (!storedGroups) {
+        const storedProjs = localStorage.getItem(`penpad_projects_${user.uid}`)
+        if (storedProjs) {
+          const projects = JSON.parse(storedProjs)
+          const project = projects.find((p: any) => p.id === projectId)
+          if (project && project.bibleGroups) {
+            storedGroups = JSON.stringify(project.bibleGroups)
+            localStorage.setItem(getBibleGroupsStorageKey(), storedGroups)
+          }
+        }
+      }
       const groupList: StoryBibleGroup[] = storedGroups ? JSON.parse(storedGroups) : []
       setBibleGroups(groupList.sort((a, b) => a.sortOrder - b.sortOrder))
 
@@ -4850,12 +4927,7 @@ const fillEmptyCustomJsonData = (
   }
 
   const getOrderedNotesList = (noteList: Note[]) => {
-    return [...noteList].sort((a, b) => {
-      const aSort = getNoteSortValue(a)
-      const bSort = getNoteSortValue(b)
-      if (aSort !== bSort) return bSort - aSort
-      return a.title.localeCompare(b.title, undefined, { numeric: true })
-    })
+    return [...noteList].sort((a, b) => b.createdAt - a.createdAt)
   }
 
   const getManuscriptNotesList = (noteList: Note[]) => {
@@ -4873,6 +4945,19 @@ const fillEmptyCustomJsonData = (
 
     const chapterIndex = getManuscriptNotesList(notes).findIndex(n => n.id === note.id)
     return chapterIndex >= 0 ? chapterIndex + 1 : null
+  }
+
+  const getChapterListDisplay = (note: Note) => {
+    const chapterNumber = getNoteChapterNumber(note)
+    const rawTitle = note.title?.trim() || "Untitled"
+    const titleWithoutChapterNumber = rawTitle
+      .replace(/^\s*chapter\s*0*\d+\s*(?:[-:–—]\s*)?/i, "")
+      .trim()
+
+    return {
+      chapterNumber: chapterNumber ?? "?",
+      title: titleWithoutChapterNumber || rawTitle || "Untitled"
+    }
   }
 
   const handleAddToBrain = async () => {
@@ -5371,7 +5456,8 @@ const fillEmptyCustomJsonData = (
       fetchProgressionSystem()
       fetchProgressionProfiles()
     }
-  }, [user, projectId, fetchProjectName, fetchVolumes, fetchNotes, fetchBible, fetchBrain, fetchProgressionSystem, fetchProgressionProfiles])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, projectId])
 
   useEffect(() => {
     let active = true
@@ -6319,11 +6405,20 @@ ${navPoints}  </navMap>
   }
 
   const toggleVolumeOpen = (volumeId: string) => {
-    persistVolumes(volumes.map(volume =>
-      volume.id === volumeId
-        ? { ...volume, isOpen: !volume.isOpen, updatedAt: Date.now() }
-        : volume
-    ))
+    persistVolumes(volumes.map(volume => {
+      if (volume.id === volumeId) {
+        const nextOpen = !volume.isOpen
+        return { ...volume, isOpen: nextOpen, updatedAt: Date.now() }
+      } else {
+        // If we are turning a volume ON (active), turn all other volumes OFF (inactive).
+        const targetVolume = volumes.find(v => v.id === volumeId)
+        const nextOpen = targetVolume ? !targetVolume.isOpen : false
+        if (nextOpen) {
+          return { ...volume, isOpen: false, updatedAt: Date.now() }
+        }
+        return volume
+      }
+    }))
   }
 
   const toggleVolumeCollapsed = (volumeId: string) => {
@@ -6342,14 +6437,28 @@ ${navPoints}  </navMap>
 
   const renameVolume = (volumeId: string) => {
     const volume = volumes.find(item => item.id === volumeId)
-    if (!volume) return
-    const title = prompt("Rename volume:", volume.title)
+    const currentTitle = volume ? volume.title : "Recovered Volume"
+    const title = prompt("Rename volume:", currentTitle)
     if (title === null) return
     const trimmedTitle = title.trim()
     if (!trimmedTitle) return
-    persistVolumes(volumes.map(item =>
-      item.id === volumeId ? { ...item, title: trimmedTitle, updatedAt: Date.now() } : item
-    ))
+    if (volume) {
+      persistVolumes(volumes.map(item =>
+        item.id === volumeId ? { ...item, title: trimmedTitle, updatedAt: Date.now() } : item
+      ))
+    } else {
+      // It's an orphan/recovered volume! Create a new volume entry for it in the volumes list.
+      const now = Date.now()
+      const newVol: ManuscriptVolume = {
+        id: volumeId,
+        title: trimmedTitle,
+        isOpen: true,
+        sortOrder: volumes.length > 0 ? Math.max(...volumes.map(v => v.sortOrder)) + 1 : 1,
+        createdAt: now,
+        updatedAt: now
+      }
+      persistVolumes([...volumes, newVol])
+    }
   }
 
   const createNewNote = async (volumeId?: string | null) => {
@@ -6359,7 +6468,7 @@ ${navPoints}  </navMap>
       const newTitle = generateChapterTitle(notes)
       const targetVolumeId = volumeId !== undefined
         ? (volumeId === UNASSIGNED_VOLUME_ID ? null : volumeId)
-        : (volumes.find(volume => volume.isOpen !== false)?.id || volumes[0]?.id || null)
+        : (volumes.find(volume => volume.isOpen !== false)?.id || null)
       const newNote: Note = {
         id: crypto.randomUUID(),
         title: newTitle,
@@ -7338,19 +7447,26 @@ ${navPoints}  </navMap>
                 />
               </div>
               <div className="drawer-chapters">
-                {filteredNotes.map(note => (
-                  <div 
-                    key={note.id}
-                    className={`chapter-item ${note.id === activeNoteId ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveNoteId(note.id)
-                      setShowChapterDrawer(false)
-                    }}
-                  >
-                    <FileText size={14} />
-                    <span className="chapter-title">{note.title || 'Untitled'}</span>
-                  </div>
-                ))}
+                {filteredNotes.map(note => {
+                  const chapterDisplay = getChapterListDisplay(note)
+                  return (
+                    <div 
+                      key={note.id}
+                      className={`chapter-item ${note.id === activeNoteId ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveNoteId(note.id)
+                        setShowChapterDrawer(false)
+                      }}
+                    >
+                      <span className="chapter-number-card" aria-label={`Chapter ${chapterDisplay.chapterNumber}`}>
+                        {chapterDisplay.chapterNumber}
+                      </span>
+                      <span className="chapter-title-wrap">
+                        <span className="chapter-title">{chapterDisplay.title}</span>
+                      </span>
+                    </div>
+                  )
+                })}
                 {filteredNotes.length === 0 && (
                   <div className="empty-chapters">No chapters yet</div>
                 )}
@@ -7462,8 +7578,8 @@ ${navPoints}  </navMap>
                           <button
                             type="button"
                             className="volume-title"
-                            onClick={() => !group.isSystem && renameVolume(group.id)}
-                            title={group.isSystem ? group.title : "Rename volume"}
+                            onClick={() => renameVolume(group.id)}
+                            title="Rename volume"
                           >
                             {group.title}
                           </button>
@@ -7478,16 +7594,14 @@ ${navPoints}  </navMap>
                             </button>
                           )}
                           <span className="volume-count">{group.chapters.length}</span>
-                          {!group.isSystem && (
-                            <button
-                              type="button"
-                              className="volume-add-chapter"
-                              onClick={() => renameVolume(group.id)}
-                              title="Rename volume"
-                            >
-                              <Edit3 size={12} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className="volume-add-chapter"
+                            onClick={() => renameVolume(group.id)}
+                            title="Rename volume"
+                          >
+                            <Edit3 size={12} />
+                          </button>
                           <button
                             type="button"
                             className="volume-add-chapter"
@@ -7504,6 +7618,7 @@ ${navPoints}  </navMap>
                               const isSelected = selectedNoteIds.has(note.id);
                               const exportRecord = exportHistory[note.id]
                               const needsExport = !exportRecord || exportRecord.fingerprint !== getChapterExportFingerprint(note)
+                              const chapterDisplay = getChapterListDisplay(note)
                               return (
                                 <div
                                   key={note.id}
@@ -7537,9 +7652,14 @@ ${navPoints}  </navMap>
                                       {isSelected && <Check size={10} strokeWidth={3} />}
                                     </button>
                                   ) : (
-                                    <FileText size={16} />
+                                    null
                                   )}
-                                  <span className="chapter-title">{note.title || 'Untitled'}</span>
+                                  <span className="chapter-number-card" aria-label={`Chapter ${chapterDisplay.chapterNumber}`}>
+                                    {chapterDisplay.chapterNumber}
+                                  </span>
+                                  <span className="chapter-title-wrap">
+                                    <span className="chapter-title">{chapterDisplay.title}</span>
+                                  </span>
                                   {!needsExport && <span className="chapter-exported-badge">Exported</span>}
                                   
                                   {!isSelectionMode && (
@@ -13328,7 +13448,7 @@ ${navPoints}  </navMap>
         .volume-chapters {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 0.5rem;
           padding-left: 0.35rem;
         }
 
@@ -13343,12 +13463,19 @@ ${navPoints}  </navMap>
         .chapter-item {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 0.5rem 0.75rem;
+          gap: 0.65rem;
+          min-height: 58px;
+          padding: 0.55rem 0.7rem 0.55rem 0.55rem;
           border-radius: var(--radius-md);
           cursor: pointer;
           transition: var(--transition);
           color: var(--text-secondary);
+          background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+            var(--surface-raised);
+          border: 1px solid var(--surface-border);
+          box-shadow: var(--shadow-sm);
+          overflow: hidden;
         }
 
         .chapter-item[draggable="true"] {
@@ -13366,24 +13493,78 @@ ${navPoints}  </navMap>
 
         .chapter-item.selection-mode.selected {
           background: var(--primary-light);
-          border-left-color: var(--primary);
+          border-color: var(--primary);
           color: var(--text-primary);
         }
 
         .chapter-item:hover {
-          background: var(--surface-hover);
+          background:
+            linear-gradient(135deg, rgba(236, 72, 153, 0.08), rgba(255, 255, 255, 0.018)),
+            var(--surface-hover);
           color: var(--text-primary);
+          border-color: var(--primary-hover);
+          transform: translateY(-1px);
+          box-shadow: var(--shadow-md);
         }
 
         .chapter-item.active {
-          background: var(--primary-light);
+          background:
+            linear-gradient(135deg, rgba(236, 72, 153, 0.18), rgba(236, 72, 153, 0.045)),
+            var(--primary-light);
+          border-color: var(--primary);
+          color: var(--primary-hover);
+          box-shadow: var(--shadow-glow);
+        }
+
+        .chapter-number-card {
+          flex: 0 0 44px;
+          width: 44px;
+          height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+            rgba(15, 23, 42, 0.42);
+          color: var(--text-primary);
+          font-size: 0.84rem;
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: 0;
+          font-variant-numeric: tabular-nums;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .chapter-item:hover .chapter-number-card {
+          border-color: rgba(236, 72, 153, 0.42);
+          background:
+            linear-gradient(180deg, rgba(236, 72, 153, 0.16), rgba(236, 72, 153, 0.055)),
+            rgba(15, 23, 42, 0.58);
           color: var(--primary-hover);
         }
 
+        .chapter-item.active .chapter-number-card {
+          border-color: rgba(236, 72, 153, 0.58);
+          background:
+            linear-gradient(180deg, rgba(236, 72, 153, 0.24), rgba(236, 72, 153, 0.08)),
+            rgba(15, 23, 42, 0.68);
+          color: var(--primary-hover);
+        }
+
+        .chapter-title-wrap {
+          min-width: 0;
+          flex: 1 1 auto;
+          display: flex;
+          align-items: center;
+        }
+
         .chapter-title {
-          flex: 1;
           font-size: 0.9rem;
-          font-weight: 500;
+          font-weight: 700;
+          line-height: 1.25;
+          color: currentColor;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;

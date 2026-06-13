@@ -5,6 +5,10 @@ interface Project {
   id: string
   name: string
   lastUpdated?: number
+  volumes?: unknown[]
+  bibleGroups?: unknown[]
+  progressionProfiles?: unknown[]
+  progressionSystem?: unknown
 }
 
 export async function POST(req: NextRequest) {
@@ -20,16 +24,20 @@ export async function POST(req: NextRequest) {
 
     const localProjs = localProjects || []
 
-    // Fetch projects from DB
+    // Fetch projects from DB including JSONB metadata
     const selectRes = await pool.query(
-      "SELECT id, name, last_updated FROM projects WHERE user_id = $1",
+      "SELECT id, name, last_updated, volumes, bible_groups, progression_profiles, progression_system FROM projects WHERE user_id = $1",
       [userId]
     )
 
     const cloudProjects: Project[] = selectRes.rows.map(row => ({
       id: row.id,
       name: row.name || "Untitled",
-      lastUpdated: row.last_updated ? Number(row.last_updated) : 0
+      lastUpdated: row.last_updated ? Number(row.last_updated) : 0,
+      volumes: row.volumes || [],
+      bibleGroups: row.bible_groups || [],
+      progressionProfiles: row.progression_profiles || [],
+      progressionSystem: row.progression_system || null
     }))
 
     const cloudProjectsMap = new Map(cloudProjects.map(p => [p.id, p]))
@@ -44,10 +52,25 @@ export async function POST(req: NextRequest) {
       if (!cloudProj) {
         // Upload local project to cloud
         await pool.query(
-          `INSERT INTO projects (id, user_id, name, last_updated)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_updated = EXCLUDED.last_updated`,
-          [localProj.id, userId, localProj.name, localTime]
+          `INSERT INTO projects (id, user_id, name, last_updated, volumes, bible_groups, progression_profiles, progression_system)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO UPDATE SET 
+             name = EXCLUDED.name, 
+             last_updated = EXCLUDED.last_updated,
+             volumes = EXCLUDED.volumes,
+             bible_groups = EXCLUDED.bible_groups,
+             progression_profiles = EXCLUDED.progression_profiles,
+             progression_system = EXCLUDED.progression_system`,
+          [
+            localProj.id, 
+            userId, 
+            localProj.name, 
+            localTime,
+            JSON.stringify(localProj.volumes || []),
+            JSON.stringify(localProj.bibleGroups || []),
+            JSON.stringify(localProj.progressionProfiles || []),
+            localProj.progressionSystem ? JSON.stringify(localProj.progressionSystem) : null
+          ]
         )
         finalProjectsMap.set(localProj.id, {
           ...localProj,
@@ -58,8 +81,24 @@ export async function POST(req: NextRequest) {
         if (localTime > cloudTime) {
           // Local is newer, upload to cloud
           await pool.query(
-            `UPDATE projects SET name = $1, last_updated = $2 WHERE id = $3 AND user_id = $4`,
-            [localProj.name, localTime, localProj.id, userId]
+            `UPDATE projects SET 
+               name = $1, 
+               last_updated = $2, 
+               volumes = $3, 
+               bible_groups = $4, 
+               progression_profiles = $5, 
+               progression_system = $6 
+             WHERE id = $7 AND user_id = $8`,
+            [
+              localProj.name, 
+              localTime,
+              JSON.stringify(localProj.volumes || []),
+              JSON.stringify(localProj.bibleGroups || []),
+              JSON.stringify(localProj.progressionProfiles || []),
+              localProj.progressionSystem ? JSON.stringify(localProj.progressionSystem) : null,
+              localProj.id, 
+              userId
+            ]
           )
           finalProjectsMap.set(localProj.id, {
             ...localProj,

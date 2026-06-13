@@ -4,6 +4,10 @@ export interface Project {
   id: string
   name: string
   lastUpdated?: number
+  volumes?: unknown[]
+  bibleGroups?: unknown[]
+  progressionProfiles?: unknown[]
+  progressionSystem?: unknown
 }
 
 export interface Note {
