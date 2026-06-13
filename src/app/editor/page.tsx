@@ -192,6 +192,8 @@ interface ProgressionSystemSettings {
   useCustomJsonTemplate?: boolean
   customJsonTemplate?: string
   jsonCardOrder?: string[]
+  cultivationSourceText?: string
+  cultivationGuide?: string
   allowEmptyTemplate?: boolean
   updatedAt?: number
 }
@@ -450,6 +452,8 @@ const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
     "relations": []
   }, null, 2),
   jsonCardOrder: ["title", "cultivation", "class", "race", "weapon", "skills", "affiliation", "relations"],
+  cultivationSourceText: "",
+  cultivationGuide: "",
   notes: "Simple character progression tracks Name, Title, Bloodline, Bloodline Rank, Affinities, Class, Skills, Lore, Race, and Affiliation."
 }
 
@@ -2252,6 +2256,8 @@ function EditorContent() {
         enabled: true
       },
       notes: "",
+      cultivationSourceText: "",
+      cultivationGuide: "",
       allowEmptyTemplate: true
     }
 
@@ -2271,6 +2277,8 @@ function EditorContent() {
         customFields: progressionSystem.customFields,
         profileTemplate: progressionSystem.profileTemplate,
         notes: progressionSystem.notes,
+        cultivationSourceText: progressionSystem.cultivationSourceText || "",
+        cultivationGuide: progressionSystem.cultivationGuide || "",
         allowEmptyTemplate: progressionSystem.allowEmptyTemplate === true
       }
       navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
@@ -2409,11 +2417,13 @@ function EditorContent() {
           ...(Array.isArray(importedSettings.customFields) ? importedSettings.customFields : [])
         ].map(item => String(item).trim()).filter(Boolean))),
         profileTemplate: progressionSystem.profileTemplate,
+        cultivationSourceText: text.slice(0, 20000),
+        cultivationGuide: importedSettings.cultivationGuide || importedSettings.notes || progressionSystem.cultivationGuide || "",
         notes: importedSettings.notes || progressionSystem.notes
       })
       setProgressionRealmImportText("")
       setIsProgressionCultivationImportOpen(false)
-      setProgressionNotice("Cultivation stages imported. The AI will use this realm order when updating profiles.")
+      setProgressionNotice("Cultivation stages imported. The AI will use this realm order to keep class and cultivation separate in later chapter updates.")
     } catch (err) {
       setProgressionError(err instanceof Error ? err.message : "Failed to import cultivation stages.")
     } finally {
@@ -2427,6 +2437,63 @@ function EditorContent() {
     setProgressionRealmImportText(text)
     await handleCultivationRealmImport(text)
   }
+
+  const renderCultivationImportPanel = () => (
+    <div className="progression-cultivation-import-box">
+      <div className="progression-template-header">
+        <div>
+          <strong>Cultivation System</strong>
+          <span>Upload or paste this novel&apos;s realm ladder so AI updates keep cultivation separate from class/job fields.</span>
+        </div>
+        <button type="button" className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
+          <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
+          {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
+        </button>
+      </div>
+      <div className="progression-system-summary">
+        <span>{progressionSystem.realms.length} realms</span>
+        <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
+        {progressionSystem.cultivationGuide && <span>AI guide saved</span>}
+      </div>
+      {progressionSystem.cultivationGuide && (
+        <div className="progression-cultivation-guide-preview">
+          {progressionSystem.cultivationGuide}
+        </div>
+      )}
+      {isProgressionCultivationImportOpen && (
+        <div className="progression-cultivation-import-body">
+          <div className="progression-cultivation-actions">
+            <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
+              <FileText size={12} />
+              Upload TXT
+              <input
+                type="file"
+                accept=".txt,text/plain"
+                onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
+              />
+            </label>
+          </div>
+          <textarea
+            className="ai-textarea compact progression-realm-import-textarea"
+            value={progressionRealmImportText}
+            onChange={(e) => setProgressionRealmImportText(e.target.value)}
+            placeholder="Paste cultivation stages weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm. Add sub-stages like Low / Medium / High / Peak if your novel uses them."
+          />
+          <div className="progression-cultivation-import-footer">
+            <button
+              type="button"
+              className="btn-ai-sub btn-ai-primary"
+              onClick={() => handleCultivationRealmImport()}
+              disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
+            >
+              {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+              Save Cultivation Stages
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
   const handleDesignTemplateWithAi = async () => {
     if (!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading) return
@@ -3720,6 +3787,8 @@ function EditorContent() {
       useCustomJsonTemplate: settings?.useCustomJsonTemplate === true,
       customJsonTemplate: settings?.customJsonTemplate || DEFAULT_PROGRESSION_SYSTEM.customJsonTemplate,
       jsonCardOrder: settings?.jsonCardOrder || DEFAULT_PROGRESSION_SYSTEM.jsonCardOrder,
+      cultivationSourceText: typeof settings?.cultivationSourceText === "string" ? settings.cultivationSourceText.slice(0, 20000) : "",
+      cultivationGuide: typeof settings?.cultivationGuide === "string" ? settings.cultivationGuide.slice(0, 4000) : "",
       allowEmptyTemplate,
       showLevels: false,
       showExp: false,
@@ -7243,6 +7312,20 @@ ${navPoints}  </navMap>
                     <strong>{normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(card => card.enabled).length}</strong>
                     <p>Set the reusable status screen for this novel</p>
                   </button>
+                  <button
+                    className="progression-library-card"
+                    onClick={() => {
+                      setShowProgressionTemplateModal(true)
+                      setIsProgressionCultivationImportOpen(true)
+                    }}
+                  >
+                    <div>
+                      <FileText size={15} />
+                      <span>Cultivation</span>
+                    </div>
+                    <strong>{progressionSystem.realms.length}</strong>
+                    <p>{progressionSystem.cultivationGuide ? "Stage guide saved for AI updates" : "Upload TXT stages for AI updates"}</p>
+                  </button>
                 </div>
 
                 <button 
@@ -10029,6 +10112,8 @@ ${navPoints}  </navMap>
                       )
                     })()}
 
+                    {renderCultivationImportPanel()}
+
                     <div className="progression-theme-library" style={{ marginTop: "1.5rem" }}>
                       <div className="progression-template-header">
                         <div>
@@ -10246,54 +10331,7 @@ ${navPoints}  </navMap>
                         </div>
                       )}
                     </div>
-                    <div className="progression-cultivation-import-box">
-                      <div className="progression-template-header">
-                        <div>
-                          <strong>Cultivation System</strong>
-                          <span>Upload or paste this novel&apos;s realm ladder so AI updates can place characters in the correct order.</span>
-                        </div>
-                        <button type="button" className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionCultivationImportOpen(prev => !prev)}>
-                          <ChevronDown size={12} className={isProgressionCultivationImportOpen ? "rotate" : ""} />
-                          {isProgressionCultivationImportOpen ? "Hide" : "Manage"}
-                        </button>
-                      </div>
-                      <div className="progression-system-summary">
-                        <span>{progressionSystem.realms.length} realms</span>
-                        <span>{progressionSystem.stageLabels.join(" / ") || "No stages"}</span>
-                      </div>
-                      {isProgressionCultivationImportOpen && (
-                        <div className="progression-cultivation-import-body">
-                          <div className="progression-cultivation-actions">
-                            <label className="btn-ai-sub btn-ai-secondary progression-file-btn">
-                              <FileText size={12} />
-                              Upload TXT
-                              <input
-                                type="file"
-                                accept=".txt,text/plain"
-                                onChange={(e) => handleCultivationRealmFileUpload(e.target.files?.[0])}
-                              />
-                            </label>
-                          </div>
-                          <textarea
-                            className="ai-textarea compact progression-realm-import-textarea"
-                            value={progressionRealmImportText}
-                            onChange={(e) => setProgressionRealmImportText(e.target.value)}
-                            placeholder="Paste realms here, weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm..."
-                          />
-                          <div className="progression-cultivation-import-footer">
-                            <button
-                              type="button"
-                              className="btn-ai-sub btn-ai-primary"
-                              onClick={() => handleCultivationRealmImport()}
-                              disabled={!progressionRealmImportText.trim() || progressionRealmImportLoading}
-                            >
-                              {progressionRealmImportLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                              Arrange Stages
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    {renderCultivationImportPanel()}
                     <div className="progression-template-builder-list">
                       {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
                         <div
@@ -14165,6 +14203,18 @@ ${navPoints}  </navMap>
 
         .progression-cultivation-import-box .rotate {
           transform: rotate(180deg);
+        }
+
+        .progression-cultivation-guide-preview {
+          padding: 0.5rem 0.6rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.14);
+          color: var(--text-secondary);
+          font-size: 0.74rem;
+          line-height: 1.45;
+          max-height: 72px;
+          overflow: auto;
         }
 
         .progression-cultivation-import-body {

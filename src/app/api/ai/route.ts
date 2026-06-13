@@ -51,6 +51,8 @@ type CultivationImportResponse = {
     statKeys?: string[]
     customFields?: string[]
     notes?: string
+    cultivationSourceText?: string
+    cultivationGuide?: string
   }
 }
 
@@ -76,6 +78,8 @@ type ProgressionTemplateDesignSettings = {
   statKeys?: string[]
   customFields?: string[]
   notes?: string
+  cultivationSourceText?: string
+  cultivationGuide?: string
   profileTemplate?: {
     enabled?: boolean
     name?: string
@@ -110,6 +114,24 @@ function parseJsonObject<T>(text: string): T | null {
   }
 }
 
+function buildCultivationGuide(rawText: string, realms: string[], stageLabels: string[]): string {
+  const sampleRealms = realms.slice(0, 24).join(" -> ")
+  const sampleStages = stageLabels.join(" / ")
+  const rawPreview = rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(0, 18)
+    .join("; ")
+  return [
+    realms.length > 0 ? `Uploaded cultivation realms, weakest to strongest: ${sampleRealms}${realms.length > 24 ? " -> ..." : ""}.` : "",
+    stageLabels.length > 0 ? `Cultivation sub-stages/stage labels: ${sampleStages}.` : "",
+    "When a term appears in this cultivation ladder, treat it as cultivation: profile.realm for the major realm and profile.stage for the sub-stage.",
+    "Do not store cultivation realms or stages in profile.className. Only use profile.className for explicit jobs/classes/roles such as Warrior, Mage, Necromancer, Hunter, or System Class.",
+    rawPreview ? `Uploaded text sample: ${rawPreview.slice(0, 1200)}` : ""
+  ].filter(Boolean).join(" ")
+}
+
 function parseCultivationSettingsFromText(rawText: string, currentSettings?: unknown): CultivationImportResponse {
   const current = currentSettings && typeof currentSettings === "object"
     ? currentSettings as { stageLabels?: string[]; statKeys?: string[]; customFields?: string[] }
@@ -139,6 +161,7 @@ function parseCultivationSettingsFromText(rawText: string, currentSettings?: unk
     .filter(item => !/^(stage|stages|rank|ranks|realm|realms|weakest|strongest)$/i.test(item))
     .filter(item => !stageSet.has(item.toLowerCase()))))
     .slice(0, 120)
+  const cultivationGuide = buildCultivationGuide(rawText, realms, stageLabels)
 
   return {
     settings: {
@@ -149,7 +172,9 @@ function parseCultivationSettingsFromText(rawText: string, currentSettings?: unk
       showStats: true,
       statKeys: current.statKeys || ["strength", "agility", "endurance", "vitality", "intelligence", "sense", "mana"],
       customFields: Array.from(new Set([...(current.customFields || []), "Race", "Affiliation"])),
-      notes: `Imported ${realms.length} cultivation realms. Realm names such as Demigod belong in profile.realm; sub-ranks such as Medium belong in profile.stage.`
+      cultivationSourceText: rawText.slice(0, 20000),
+      cultivationGuide,
+      notes: `Imported ${realms.length} cultivation realms. Realm names such as Demigod belong in profile.realm; sub-ranks such as Medium belong in profile.stage. Class/job names stay in profile.className.`
     }
   }
 }
@@ -387,10 +412,10 @@ export async function POST(req: NextRequest) {
         "2. If an explicit Story Bible entry is provided, that entry is the only target. Do not copy cultivation, powers, titles, bloodlines, skills, or lore from nearby characters. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter.\n" +
         "3. Read in this order: target-specific evidence first, Story Bible notes second, full chapter third, existing profile last for preservation. Do not stop after the first mention; scan the full chapter for later corrections, reveals, awakenings, status screens, dialogue labels, and narration.\n" +
         "4. The profile schema includes: name, title, cultivation realm (profile.realm), cultivation stage/sub-rank (profile.stage), rank (profile.rank), bloodline name, bloodline rank, affinity names/ranks, main class, secondary class, skills, and lore.\n" +
-        "5. Put the character's main class/job/role in profile.className. If the chapter gives a second class, subclass, job, or secondary role, put it in profile.customFields['Secondary Class']. Do not put classes in abilities or lore.\n" +
+        "5. Put the character's main class/job/role in profile.className only when the text explicitly presents it as a class, job, occupation, system class, or combat role. If the chapter gives a second class, subclass, job, or secondary role, put it in profile.customFields['Secondary Class']. Do not put classes in abilities or lore.\n" +
         "6. Put the bloodline name in profile.customFields['Bloodline'] and its rank/grade/tier/quality such as Supreme or Celestial in profile.customFields['Bloodline Rank']. Do not put bloodlines in affinities or skills.\n" +
         "7. Put affinity names in profile.customFields['Affinity Names'] as a comma-separated list, such as Fire, Ice, Void. Put paired affinity ranks in profile.customFields['Affinity Rank'], such as Fire (High), Ice (Celestial), Void (Supreme). Preserve pairings when multiple affinities have different ranks. Do not put affinities in bloodline or class.\n" +
-        "8. Put the character's cultivation realm (such as Demigod, God) in profile.realm. Put their cultivation stage/sub-rank (such as Low, Medium, High, Peak) in profile.stage. If the system uses a non-cultivation rank (or if realm is not applicable), put it in profile.rank. Use the Configured Cultivation Realms and Configured Stage Labels when available to match and normalize these values. Be extremely smart and precise to pick up on even the smallest error or detail in character growth and cultivation advancements.\n" +
+        "8. Put the character's cultivation realm (such as Demigod, God) in profile.realm. Put their cultivation stage/sub-rank (such as Low, Medium, High, Peak) in profile.stage. If the system uses a non-cultivation rank (or if realm is not applicable), put it in profile.rank. Use the Configured Cultivation Realms, Configured Stage Labels, and Uploaded Cultivation Guide when available to match and normalize these values. Any term that appears in the uploaded cultivation ladder is cultivation, not className, unless the chapter explicitly says it is a class/job. Be extremely smart and precise to pick up on even the smallest error or detail in character growth and cultivation advancements.\n" +
         "9. Put skills, techniques, powers, spells, and signature abilities in profile.abilities. Each ability must include name, rank if known, level set to 1 when no number is stated, description, and evidence when available. Do not turn class names, bloodlines, or affinities into skills unless the chapter explicitly calls them skills/techniques.\n" +
         "10. Put one interesting reusable lore note in profile.notes: something said about the character that may matter later, such as reputation, prophecy, rumor, weakness, relationship, hidden identity, origin, temperament, or an unusual detail. Lore is not a dump of all stats.\n" +
         "11. Preserve existing values when the current chapter gives no direct evidence. If the chapter has no meaningful progression or new character detail, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
@@ -404,6 +429,12 @@ export async function POST(req: NextRequest) {
         : ""
       const configuredStages = Array.isArray((progressionSystem as { stageLabels?: unknown[] } | undefined)?.stageLabels)
         ? (progressionSystem as { stageLabels?: unknown[] }).stageLabels?.map(item => String(item)).filter(Boolean).join(" / ")
+        : ""
+      const cultivationGuide = typeof (progressionSystem as { cultivationGuide?: unknown } | undefined)?.cultivationGuide === "string"
+        ? String((progressionSystem as { cultivationGuide?: unknown }).cultivationGuide).slice(0, 3000)
+        : ""
+      const cultivationSourceText = typeof (progressionSystem as { cultivationSourceText?: unknown } | undefined)?.cultivationSourceText === "string"
+        ? String((progressionSystem as { cultivationSourceText?: unknown }).cultivationSourceText).slice(0, 5000)
         : ""
       const groups = Array.isArray(safeLoreEntry?.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
       const explicitTarget = safeLoreEntry?.name
@@ -421,6 +452,9 @@ export async function POST(req: NextRequest) {
         `4. Keep existing values when no new evidence appears.\n` +
         `5. Put supporting snippets in update.evidence.\n\n` +
         `Configured Cultivation Realms, weakest to strongest:\n${configuredRealms || "No realm ladder uploaded."}\nConfigured Stage Labels:\n${configuredStages || "Low / Medium / High / Peak"}\n\n` +
+        `Uploaded Cultivation Guide:\n${cultivationGuide || "No uploaded cultivation guide saved."}\n\n` +
+        `Uploaded Cultivation Source Text:\n${cultivationSourceText || "No cultivation source text saved."}\n\n` +
+        `Class vs Cultivation Decision Rules:\n- If a term is in the uploaded realm ladder, place it in profile.realm.\n- If a term is in the uploaded stage labels, place it in profile.stage.\n- Only place a term in profile.className when the chapter labels it as class, job, profession, role, or system class.\n- If the status screen has both Class and Cultivation, fill both separately and never copy one into the other.\n\n` +
         `Candidate Profiles JSON:\n${JSON.stringify(Array.isArray(candidateProfiles) ? candidateProfiles : []).slice(0, 6000)}\n\n` +
         `Candidate Lore Entries JSON:\n${JSON.stringify(Array.isArray(candidateLoreEntries) ? candidateLoreEntries : []).slice(0, 8000)}\n\n` +
         `Active Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}\n` +
@@ -435,9 +469,10 @@ export async function POST(req: NextRequest) {
       systemInstruction =
         "You organize cultivation, realm, rank, and progression-stage lists for web novel writing tools. " +
         "The writer uploaded plain text that may contain messy headings, numbering, notes, duplicate stages, or mixed realm/stage terms.\n" +
-        "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, and notes.\n" +
+        "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, notes, and cultivationGuide.\n" +
         "Realms should be ordered weakest to strongest. stageLabels should include repeated sub-stages such as Low, Middle, High, Peak when present. " +
-        "If the text is cultivation-focused, set showLevels and showExp to false unless numeric levels are clearly part of the system. Keep useful custom fields like Sect, Bloodline, Race, Affiliation, Dao, Core, Physique, or Legion."
+        "If the text is cultivation-focused, set showLevels and showExp to false unless numeric levels are clearly part of the system. Keep useful custom fields like Sect, Bloodline, Race, Affiliation, Dao, Core, Physique, or Legion. " +
+        "cultivationGuide must explain that uploaded realm/stage terms belong in profile.realm/profile.stage and must not be confused with profile.className."
 
       userPrompt =
         `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
@@ -653,15 +688,23 @@ export async function POST(req: NextRequest) {
 
     if (action === "cultivation_realm_import") {
       const imported = parseJsonObject<CultivationImportResponse>(text)
+      const fallback = parseCultivationSettingsFromText(body.rawText, body.currentSettings)
       if (!imported) {
-        return NextResponse.json({ imported: parseCultivationSettingsFromText(body.rawText, body.currentSettings) })
+        return NextResponse.json({ imported: fallback })
       }
+      const settings = imported.settings && Array.isArray(imported.settings.realms) && imported.settings.realms.length > 0
+        ? {
+          ...fallback.settings,
+          ...imported.settings,
+          cultivationSourceText: String(body.rawText || "").slice(0, 20000),
+          cultivationGuide: imported.settings.cultivationGuide || fallback.settings?.cultivationGuide || "",
+          notes: imported.settings.notes || fallback.settings?.notes || ""
+        }
+        : fallback.settings
 
       return NextResponse.json({
         imported: {
-          settings: imported.settings && Array.isArray(imported.settings.realms) && imported.settings.realms.length > 0
-            ? imported.settings
-            : parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings
+          settings
         }
       })
     }
