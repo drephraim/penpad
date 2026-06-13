@@ -238,6 +238,14 @@ interface CharacterProgressionProfile {
   customFields?: Record<string, string>
   customJsonData?: Record<string, any>
   notes: string
+  loreEntries?: {
+    id: string
+    chapterId?: string
+    chapterTitle?: string
+    chapterNumber?: number | null
+    text: string
+    timestamp: number
+  }[]
   processedChapterIds: string[]
   history: ProgressionHistoryEntry[]
   createdAt: number
@@ -1066,6 +1074,7 @@ function EditorContent() {
   const [progressionNewFieldType, setProgressionNewFieldType] = useState<ProgressionTemplateCardType>("text")
   const [showProgressionCharactersModal, setShowProgressionCharactersModal] = useState(false)
   const [showProgressionTemplateModal, setShowProgressionTemplateModal] = useState(false)
+  const [showLoreHistoryModal, setShowLoreHistoryModal] = useState(false)
   const [draggedProgressionTemplateCardId, setDraggedProgressionTemplateCardId] = useState<string | null>(null)
   const [progressionRealmImportText, setProgressionRealmImportText] = useState("")
   const [progressionRealmImportLoading, setProgressionRealmImportLoading] = useState(false)
@@ -1961,48 +1970,74 @@ function EditorContent() {
     const kind = getRankedProgressionFieldKind(`${cardContext} ${fieldName}`)
     if (!kind) return ""
 
-    const labelCandidates = Array.from(new Set([
-      fieldName,
-      card.sourceKey,
-      card.label,
-      kind === "bloodline" ? "Bloodline" : "Affinity",
-      kind === "bloodline" ? "Bloodline Name" : "Affinity Names",
-      kind === "bloodline" ? "Bloodline Type" : "Elemental Affinity",
-      "Spirit Affinity",
-      "Affinity Names",
-      "Elemental Affinity",
-      "Spirit Affinity"
-    ].filter(Boolean)))
-    const rankCandidates = Array.from(new Set([
-      fieldName,
-      `${card.label} Rank`,
-      `${card.label} Ranks`,
-      `${card.label} Grade`,
-      `${card.label} Grades`,
-      `${card.sourceKey} Rank`,
-      `${card.sourceKey} Ranks`,
-      `${card.sourceKey} Grade`,
-      `${card.sourceKey} Grades`,
-      kind === "bloodline" ? "Bloodline Rank" : "Affinity Rank",
-      kind === "bloodline" ? "Bloodline Grade" : "Affinity Grade",
-      kind === "bloodline" ? "Bloodline Ranks" : "Affinity Ranks",
-      kind === "bloodline" ? "Bloodline Grades" : "Affinity Grades",
-      kind === "bloodline" ? "Bloodline Quality" : "Elemental Affinity Rank",
-      kind === "bloodline" ? "Bloodline Tier" : "Elemental Affinity Grade",
-      kind === "bloodline" ? "Bloodline Realm" : "Spirit Affinity Ranks",
-      kind === "bloodline" ? "Bloodline Stage" : "Spirit Affinity Grade",
-      "Affinity Rank",
-      "Affinity Ranks",
-      "Affinity Grade",
-      "Affinity Grades",
-      "Elemental Affinity Rank",
-      "Elemental Affinity Grade",
-      "Spirit Affinity Ranks",
-      "Spirit Affinity Grade",
-      "Rank"
-    ].filter(Boolean)))
+    let labelCandidates: string[] = []
+    let rankCandidates: string[] = []
 
-    const candidates = isProgressionRankFieldName(fieldName) ? rankCandidates : labelCandidates
+    if (kind === "bloodline") {
+      labelCandidates = [
+        fieldName,
+        card.sourceKey,
+        card.label,
+        "Bloodline",
+        "Bloodline Name",
+        "Bloodline Type"
+      ]
+      rankCandidates = [
+        fieldName,
+        `${card.label} Rank`,
+        `${card.label} Ranks`,
+        `${card.label} Grade`,
+        `${card.label} Grades`,
+        `${card.sourceKey} Rank`,
+        `${card.sourceKey} Ranks`,
+        `${card.sourceKey} Grade`,
+        `${card.sourceKey} Grades`,
+        "Bloodline Rank",
+        "Bloodline Grade",
+        "Bloodline Ranks",
+        "Bloodline Grades",
+        "Bloodline Quality",
+        "Bloodline Tier",
+        "Bloodline Realm",
+        "Bloodline Stage",
+        "Rank"
+      ]
+    } else if (kind === "affinity") {
+      labelCandidates = [
+        fieldName,
+        card.sourceKey,
+        card.label,
+        "Affinity",
+        "Affinity Names",
+        "Elemental Affinity",
+        "Spirit Affinity"
+      ]
+      rankCandidates = [
+        fieldName,
+        `${card.label} Rank`,
+        `${card.label} Ranks`,
+        `${card.label} Grade`,
+        `${card.label} Grades`,
+        `${card.sourceKey} Rank`,
+        `${card.sourceKey} Ranks`,
+        `${card.sourceKey} Grade`,
+        `${card.sourceKey} Grades`,
+        "Affinity Rank",
+        "Affinity Ranks",
+        "Affinity Grade",
+        "Affinity Grades",
+        "Elemental Affinity Rank",
+        "Elemental Affinity Grade",
+        "Spirit Affinity Ranks",
+        "Spirit Affinity Grade",
+        "Rank"
+      ]
+    }
+
+    const uniqueLabelCandidates = Array.from(new Set(labelCandidates.filter(Boolean)))
+    const uniqueRankCandidates = Array.from(new Set(rankCandidates.filter(Boolean)))
+
+    const candidates = isProgressionRankFieldName(fieldName) ? uniqueRankCandidates : uniqueLabelCandidates
     for (const candidate of candidates) {
       const value = getProgressionCustomFieldValue(profile, candidate)
       if (value) return value
@@ -2418,6 +2453,29 @@ function EditorContent() {
     now: number
   ): CharacterProgressionProfile => {
     const sharedTemplate = progressionSystem.profileTemplate?.enabled ? progressionSystem.profileTemplate : DEFAULT_PROFILE_TEMPLATE
+    
+    // Capture lore history
+    const incomingNotes = String(aiProfile?.notes || "").trim()
+    let existingLoreEntries = existingProfile?.loreEntries || []
+    if (existingLoreEntries.length === 0 && existingProfile?.notes) {
+      existingLoreEntries = [{
+        id: crypto.randomUUID(),
+        text: existingProfile.notes,
+        timestamp: existingProfile.createdAt || now
+      }]
+    }
+    let nextLoreEntries = [...existingLoreEntries]
+    if (incomingNotes && !existingLoreEntries.some(entry => entry.text === incomingNotes)) {
+      nextLoreEntries.push({
+        id: crypto.randomUUID(),
+        chapterId: historyEntry.chapterId,
+        chapterTitle: historyEntry.chapterTitle,
+        chapterNumber: historyEntry.chapterNumber,
+        text: incomingNotes,
+        timestamp: now
+      })
+    }
+
     const aiCustomFields = aiProfile?.customFields && typeof aiProfile.customFields === "object" ? aiProfile.customFields as Record<string, unknown> : {}
     const rawSkillFallback = aiCustomFields.Skills || aiCustomFields.Skill || aiCustomFields.Techniques || aiCustomFields.Abilities
     const rawAbilities = Array.isArray(aiProfile?.abilities)
@@ -2472,7 +2530,8 @@ function EditorContent() {
       abilities,
       traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || sharedTemplate.defaultTraits || [],
       customFields,
-      notes: aiProfile?.notes || existingProfile?.notes || sharedTemplate.notes || "",
+      notes: incomingNotes || existingProfile?.notes || sharedTemplate.notes || "",
+      loreEntries: nextLoreEntries,
       customJsonData: {
         ...(() => {
           if (progressionSystem.useCustomJsonTemplate && progressionSystem.customJsonTemplate) {
@@ -2543,6 +2602,7 @@ function EditorContent() {
       traits: existingProfile?.traits || sharedTemplate.defaultTraits || [],
       customFields,
       notes: existingProfile?.notes || sourceEntry.content || sharedTemplate.notes || "",
+      loreEntries: existingProfile?.loreEntries || [],
       processedChapterIds: historyEntry
         ? Array.from(new Set([...(existingProfile?.processedChapterIds || []), historyEntry.chapterId]))
         : existingProfile?.processedChapterIds || [],
@@ -3157,6 +3217,25 @@ function EditorContent() {
   const saveProgressionProfileDraft = () => {
     if (!progressionEditProfileDraft) return
     const now = Date.now()
+
+    const incomingNotes = String(progressionEditProfileDraft.notes || "").trim()
+    let existingLoreEntries = progressionEditProfileDraft.loreEntries || []
+    if (existingLoreEntries.length === 0 && incomingNotes) {
+      existingLoreEntries = [{
+        id: crypto.randomUUID(),
+        text: incomingNotes,
+        timestamp: now
+      }]
+    }
+    let nextLoreEntries = [...existingLoreEntries]
+    if (incomingNotes && existingLoreEntries.length > 0 && existingLoreEntries[existingLoreEntries.length - 1].text !== incomingNotes) {
+      nextLoreEntries.push({
+        id: crypto.randomUUID(),
+        text: incomingNotes,
+        timestamp: now
+      })
+    }
+
     const updatedProfile: CharacterProgressionProfile = {
       ...progressionEditProfileDraft,
       abilities: progressionEditProfileDraft.abilities.map((ability, index) => ({
@@ -3170,6 +3249,7 @@ function EditorContent() {
       traits: Array.isArray(progressionEditProfileDraft.traits) ? progressionEditProfileDraft.traits : [],
       nicknames: Array.isArray(progressionEditProfileDraft.nicknames) ? progressionEditProfileDraft.nicknames : [],
       customFields: sanitizeSimpleProgressionCustomFields(progressionEditProfileDraft.customFields || {}),
+      loreEntries: nextLoreEntries,
       updatedAt: now
     }
     updateProgressionProfile(updatedProfile.id, () => updatedProfile)
@@ -7307,8 +7387,14 @@ ${navPoints}  </navMap>
                                 )
                               }
 
+                              const isLoreCard = templateCard.id === "template-lore" || templateCard.label.toLowerCase() === "lore" || templateCard.sourceKey.toLowerCase() === "notes" || templateCard.sourceKey.toLowerCase() === "lore";
+
                               return (
-                                <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
+                                <div 
+                                  key={templateCard.id} 
+                                  className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)} ${isLoreCard ? 'clickable' : ''}`}
+                                  onClick={isLoreCard ? () => setShowLoreHistoryModal(true) : undefined}
+                                >
                                   <span>{templateCard.label}</span>
                                   {templateCard.fields.length > 1 || templateCard.type === "compound" || templateCard.type === "stat" || templateCard.type === "rank" ? (
                                     <div className="progression-template-field-list">
@@ -9515,6 +9601,67 @@ ${navPoints}  </navMap>
               </div>
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setShowProgressionCharactersModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showLoreHistoryModal && selectedProgressionProfile && (
+          <div className="modal-overlay" onClick={() => setShowLoreHistoryModal(false)}>
+            <div className="modal progression-lore-history-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "550px" }}>
+              <div className="modal-header">
+                <h2 className="modal-title">Lore History</h2>
+                <p className="modal-description">Captured timeline of growth and events for <strong>{selectedProgressionProfile.name}</strong>.</p>
+              </div>
+              <div className="progression-lore-modal-list scrollbar" style={{ maxHeight: "350px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem", margin: "1rem 0", paddingRight: "0.25rem" }}>
+                {(() => {
+                  const loreEntries = selectedProgressionProfile.loreEntries || []
+                  const listToShow = loreEntries.length > 0 
+                    ? [...loreEntries].sort((a, b) => b.timestamp - a.timestamp)
+                    : selectedProgressionProfile.notes
+                    ? [{
+                        id: "initial-note",
+                        text: selectedProgressionProfile.notes,
+                        timestamp: selectedProgressionProfile.createdAt || Date.now()
+                      }]
+                    : []
+
+                  if (listToShow.length === 0) {
+                    return <div className="empty-state-text">No lore notes recorded yet.</div>
+                  }
+
+                  return listToShow.map((entry) => (
+                    <div 
+                      key={entry.id} 
+                      className="progression-lore-history-entry" 
+                      style={{ 
+                        padding: "0.85rem", 
+                        background: "rgba(255, 255, 255, 0.03)", 
+                        border: "1px solid rgba(255, 255, 255, 0.06)", 
+                        borderRadius: "var(--radius-md)" 
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.4rem" }}>
+                        <span style={{ fontSize: "0.72rem", color: "var(--indigo-400)", fontWeight: 600 }}>
+                          {entry.chapterNumber !== undefined && entry.chapterNumber !== null
+                            ? `Chapter ${entry.chapterNumber}${entry.chapterTitle ? `: ${entry.chapterTitle}` : ""}`
+                            : entry.chapterTitle
+                            ? entry.chapterTitle
+                            : "Manual Profile Entry"}
+                        </span>
+                        <span style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>
+                          {new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: "0.82rem", lineHeight: "1.4", color: "var(--text-main)", whiteSpace: "pre-wrap", margin: 0 }}>
+                        {entry.text}
+                      </p>
+                    </div>
+                  ))
+                })()}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowLoreHistoryModal(false)}>Close</button>
               </div>
             </div>
           </div>
@@ -12720,6 +12867,18 @@ ${navPoints}  </navMap>
         .progression-template-display-card.color-lime,
         .progression-template-builder-card.color-lime {
           --card-accent: rgb(132, 204, 22);
+        }
+
+        .progression-template-display-card.clickable {
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .progression-template-display-card.clickable:hover {
+          background: linear-gradient(145deg, color-mix(in srgb, var(--card-accent) 26%, transparent), rgba(255, 255, 255, 0.08));
+          border-color: color-mix(in srgb, var(--card-accent) 70%, transparent);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          transform: translateY(-1px);
         }
 
         .progression-template-display-card span {
