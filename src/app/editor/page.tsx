@@ -2464,7 +2464,7 @@ function EditorContent() {
         timestamp: existingProfile.createdAt || now
       }]
     }
-    let nextLoreEntries = [...existingLoreEntries]
+    const nextLoreEntries = [...existingLoreEntries]
     if (incomingNotes && !existingLoreEntries.some(entry => entry.text === incomingNotes)) {
       nextLoreEntries.push({
         id: crypto.randomUUID(),
@@ -3227,7 +3227,7 @@ function EditorContent() {
         timestamp: now
       }]
     }
-    let nextLoreEntries = [...existingLoreEntries]
+    const nextLoreEntries = [...existingLoreEntries]
     if (incomingNotes && existingLoreEntries.length > 0 && existingLoreEntries[existingLoreEntries.length - 1].text !== incomingNotes) {
       nextLoreEntries.push({
         id: crypto.randomUUID(),
