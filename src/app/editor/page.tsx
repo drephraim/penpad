@@ -926,9 +926,11 @@ function EditorContent() {
   const [brainSearchQuery, setBrainSearchQuery] = useState('')
   const [selectedBrainEntryId, setSelectedBrainEntryId] = useState<string | null>(null)
   const [mergeTargetId, setMergeTargetId] = useState<string>("")
+  const [selectedSegment, setSelectedSegment] = useState<{ id: string; title: string; content: string } | null>(null)
 
   useEffect(() => {
     setMergeTargetId("")
+    setSelectedSegment(null)
   }, [selectedBrainEntryId])
   const [brainTypeFilter, setBrainTypeFilter] = useState<BrainTypeFilter>('all')
   const [selectedBrainEntityName, setSelectedBrainEntityName] = useState<string | null>(null)
@@ -1343,7 +1345,7 @@ function EditorContent() {
       : "No chapter selected"
     const prompts = result.prompts || {}
     const notes = Array.isArray(result.consistencyNotes) && result.consistencyNotes.length > 0
-      ? result.consistencyNotes.map(note => `- ${note}`).join("\n")
+      ? result.consistencyNotes.map(note => `- ${note}`).join("\r\n")
       : "- Keep recognizable traits consistent across every form."
 
     return [
@@ -1351,7 +1353,7 @@ function EditorContent() {
       `Source: ${chapterLine}`,
       `Style Direction: ${appearanceStyle}`,
       "",
-      result.overview ? `### Visual Core\n${result.overview}\n` : "",
+      result.overview ? `### Visual Core\r\n${result.overview}\r\n` : "",
       "### Beast Form",
       prompts.beastForm || "Not generated.",
       "",
@@ -1364,8 +1366,8 @@ function EditorContent() {
       "### Consistency Notes",
       notes,
       "",
-      result.negativePrompt ? `### Negative Prompt\n${result.negativePrompt}` : ""
-    ].filter(Boolean).join("\n")
+      result.negativePrompt ? `### Negative Prompt\r\n${result.negativePrompt}` : ""
+    ].filter(Boolean).join("\r\n")
   }
 
   const findLoreEntryFromSelection = (selectedText: string) => {
@@ -1451,7 +1453,7 @@ function EditorContent() {
     const promptSheet = buildAppearanceLoreContent(appearanceResult)
     const updatedEntry: BibleEntry = {
       ...targetEntry,
-      content: `${targetEntry.content || ""}\n\n${promptSheet}`.trim(),
+      content: `${targetEntry.content || ""}\r\n\r\n${promptSheet}`.trim(),
       updatedAt: now
     }
 
@@ -1689,8 +1691,8 @@ function EditorContent() {
     const oldStr = selectedVersionForDiff.content
     const newStr = activeNote.content
     
-    const oldArr = oldStr.split('\n')
-    const newArr = newStr.split('\n')
+    const oldArr = oldStr.split('\r\n')
+    const newArr = newStr.split('\r\n')
     
     const m = oldArr.length
     const n = newArr.length
@@ -1893,10 +1895,10 @@ function EditorContent() {
 
     if (aliases.length === 0 || !chapterContent.trim()) return ""
 
-    const lineSegments = chapterContent.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const lineSegments = chapterContent.split(/\r?\r\n/).map(line => line.trim()).filter(Boolean)
     const sentenceSegments = chapterContent
-      .replace(/([.!?。！？])/g, "$1\n")
-      .split(/\n+/)
+      .replace(/([.!?。！？])/g, "$1\r\n")
+      .split(/\r\n+/)
       .map(line => line.trim())
       .filter(Boolean)
     const lines = lineSegments.length >= 5 ? lineSegments : sentenceSegments
@@ -1917,7 +1919,7 @@ function EditorContent() {
       .sort((a, b) => a - b)
       .map(index => lines[index])
 
-    return evidenceLines.join("\n").slice(0, 18000)
+    return evidenceLines.join("\r\n").slice(0, 18000)
   }
 
   const getProgressionTemplateCardId = useCallback((label: string) => {
@@ -2799,7 +2801,7 @@ const fillEmptyCustomJsonData = (
       : Array.isArray(rawSkillFallback)
       ? rawSkillFallback as unknown[]
       : typeof rawSkillFallback === "string" && rawSkillFallback.trim()
-      ? rawSkillFallback.split(/[,;\n]+/).map(item => item.trim()).filter(Boolean)
+      ? rawSkillFallback.split(/[,;\r\n]+/).map(item => item.trim()).filter(Boolean)
       : existingProfile?.abilities || sharedTemplate.defaultAbilities || []
     const abilities = rawAbilities.map((abilityItem, index) => {
       const ability = typeof abilityItem === "object" && abilityItem !== null
@@ -3810,7 +3812,7 @@ const fillEmptyCustomJsonData = (
 
     const start = textarea.selectionStart
     const textBeforeCursor = textarea.value.substring(0, start)
-    const lines = textBeforeCursor.split('\n').length - 1
+    const lines = textBeforeCursor.split('\r\n').length - 1
     
     const computedStyle = window.getComputedStyle(textarea)
     const lineHeight = parseInt(computedStyle.lineHeight) || 28
@@ -4799,7 +4801,7 @@ const fillEmptyCustomJsonData = (
     if (matchedEntry) {
       const contentPatch = suggestion.contentPatch.trim()
       const nextContent = contentPatch && !matchedEntry.content.includes(contentPatch)
-        ? `${matchedEntry.content || ""}${matchedEntry.content ? "\n\n" : ""}### Chapter ${chapterNumber || "Update"} Update\n${contentPatch}`.trim()
+        ? `${matchedEntry.content || ""}${matchedEntry.content ? "\r\n\r\n" : ""}### Chapter ${chapterNumber || "Update"} Update\r\n${contentPatch}`.trim()
         : matchedEntry.content
       nextEntry = appendBibleTimelineFact({
         ...matchedEntry,
@@ -5021,7 +5023,7 @@ const fillEmptyCustomJsonData = (
           let list: BrainEntry[]
           if (existingEntry) {
             const newChapterLabel = chapterNumber ? `Chapter ${chapterNumber}` : activeNote.title || "New Chapter"
-            const updatedSummary = `${existingEntry.aiSummary}\n\n***\n\n### 🔄 Update: ${newChapterLabel}\n${summary}`
+            const updatedSummary = `${existingEntry.aiSummary}\r\n\r\n***\r\n\r\n### 🔄 Update: ${newChapterLabel}\r\n${summary}`
             
             const importanceOrder: Record<string, number> = { minor: 1, major: 2, critical: 3 }
             const currentImportanceVal = importanceOrder[existingEntry.importance || 'minor'] || 1
@@ -5045,7 +5047,7 @@ const fillEmptyCustomJsonData = (
             deleteBrainEntryFromCloud(user.uid, projectId, newEntry.id)
           } else if (parentEntry) {
             const newChapterLabel = chapterNumber ? `Chapter ${chapterNumber}` : activeNote.title || "New Chapter"
-            const updatedSummary = `${parentEntry.aiSummary}\n\n***\n\n### 📍 Sub-Entity: ${entityName} (${newChapterLabel})\n${summary}`
+            const updatedSummary = `${parentEntry.aiSummary}\r\n\r\n***\r\n\r\n### 📍 Sub-Entity: ${entityName} (${newChapterLabel})\r\n${summary}`
             
             const importanceOrder: Record<string, number> = { minor: 1, major: 2, critical: 3 }
             const currentImportanceVal = importanceOrder[parentEntry.importance || 'minor'] || 1
@@ -5115,7 +5117,7 @@ const fillEmptyCustomJsonData = (
     if (!sourceEntry || !targetEntry) return
 
     const chapterLabel = sourceEntry.chapterNumber ? `Chapter ${sourceEntry.chapterNumber}` : sourceEntry.chapterTitle || "Unknown Chapter"
-    const appendedSummary = `${targetEntry.aiSummary}\n\n***\n\n### 🔗 Manually Merged: ${sourceEntry.entityName || sourceEntry.highlightedText} (${chapterLabel})\n${sourceEntry.aiSummary}`
+    const appendedSummary = `${targetEntry.aiSummary}\r\n\r\n***\r\n\r\n### 🔗 Manually Merged: ${sourceEntry.entityName || sourceEntry.highlightedText} (${chapterLabel})\r\n${sourceEntry.aiSummary}`
 
     const importanceOrder = { minor: 1, major: 2, critical: 3 }
     const targetImportanceVal = importanceOrder[targetEntry.importance || 'minor'] || 1
@@ -5506,7 +5508,7 @@ const fillEmptyCustomJsonData = (
   }
 
   const getChapterExportFingerprint = (note: Note) => {
-    const raw = `${note.title || ""}\n${note.content || ""}\n${note.updatedAt || 0}`
+    const raw = `${note.title || ""}\r\n${note.content || ""}\r\n${note.updatedAt || 0}`
     let hash = 0
     for (let i = 0; i < raw.length; i++) {
       hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0
@@ -5709,7 +5711,7 @@ const fillEmptyCustomJsonData = (
   const buildExportContent = (format: Exclude<ExportFormat, 'folder' | 'pdf' | 'epub'>) => {
     const chapters = getExportChapters()
     if (format === 'md') {
-      return `# ${projectName}\n\n${chapters.map(note => `## ${note.title || "Untitled"}\n\n${note.content || ""}`).join("\n\n")}`
+      return `# ${projectName}\r\n\r\n${chapters.map(note => `## ${note.title || "Untitled"}\r\n\r\n${note.content || ""}`).join("\r\n\r\n")}`
     }
 
     if (format === 'html' || format === 'doc') {
@@ -5727,12 +5729,12 @@ const fillEmptyCustomJsonData = (
 </head>
 <body>
   <h1>${escapeHtml(projectName)}</h1>
-  ${chapters.map(note => `<section><h2>${escapeHtml(note.title || "Untitled")}</h2><p>${escapeHtml(note.content || "")}</p></section>`).join("\n")}
+  ${chapters.map(note => `<section><h2>${escapeHtml(note.title || "Untitled")}</h2><p>${escapeHtml(note.content || "")}</p></section>`).join("\r\n")}
 </body>
 </html>`
     }
 
-    return chapters.map(note => `${note.title || "Untitled"}\n${"=".repeat((note.title || "Untitled").length)}\n\n${note.content || ""}`).join("\n\n\n")
+    return chapters.map(note => `${note.title || "Untitled"}\r\n${"=".repeat((note.title || "Untitled").length)}\r\n\r\n${note.content || ""}`).join("\r\n\r\n\r\n")
   }
 
   const downloadExportFile = (content: string, extension: string, type: string) => {
@@ -5812,16 +5814,16 @@ p { margin-bottom: 1em; text-indent: 1.5em; margin-top: 0; }`)
 </head>
 <body>
   <h2>${escapeHtml(title)}</h2>
-  ${(chapter.content || '').split('\n').map(line => line.trim() ? `<p>${escapeHtml(line)}</p>` : '').join('\n')}
+  ${(chapter.content || '').split('\r\n').map(line => line.trim() ? `<p>${escapeHtml(line)}</p>` : '').join('\r\n')}
 </body>
 </html>`)
 
-          manifestItems += `    <item id="${id}" href="${fileName}" media-type="application/xhtml+xml" />\n`
-          spineItems += `    <itemref idref="${id}" />\n`
+          manifestItems += `    <item id="${id}" href="${fileName}" media-type="application/xhtml+xml" />\r\n`
+          spineItems += `    <itemref idref="${id}" />\r\n`
           navPoints += `    <navPoint id="${id}" playOrder="${idx + 1}">
       <navLabel><text>${escapeHtml(title)}</text></navLabel>
       <content src="${fileName}"/>
-    </navPoint>\n`
+    </navPoint>\r\n`
         })
 
         // OEBPS/content.opf
@@ -5914,7 +5916,7 @@ ${navPoints}  </navMap>
     { name: "Heading 3", cmd: "/h3", desc: "Insert Small Heading", action: () => applyFormatting("### ") },
     { name: "Blockquote", cmd: "/quote", desc: "Insert Quote Block", action: () => applyFormatting("> ") },
     { name: "Bullet List", cmd: "/list", desc: "Insert Bullet Point", action: () => applyFormatting("- ") },
-    { name: "Code Block", cmd: "/code", desc: "Insert Code block", action: () => applyFormatting("```\n", "\n```") },
+    { name: "Code Block", cmd: "/code", desc: "Insert Code block", action: () => applyFormatting("```\r\n", "\r\n```") },
     { name: "Focus AI assistant", cmd: "/ai", desc: "Toggle Right AI Assistant Sidebar", action: () => setShowAISidebar(prev => !prev) },
     { name: "Toggle Zen Mode", cmd: "/zen", desc: "Fullscreen Zen mode", action: () => setIsZenMode(prev => !prev) },
     { name: "Open World Bible", cmd: "/bible", desc: "Toggle World Bible Panel", action: () => { setActiveSidebarTab('bible'); setIsLeftSidebarOpen(true) } },
@@ -6077,7 +6079,7 @@ ${navPoints}  </navMap>
       }
 
       // Autocomplete check
-      const lastLineIdx = textBeforeCursor.lastIndexOf("\n")
+      const lastLineIdx = textBeforeCursor.lastIndexOf("\r\n")
       const lastPunctuationIdx = Math.max(
         textBeforeCursor.lastIndexOf(","),
         textBeforeCursor.lastIndexOf("."),
@@ -6764,6 +6766,34 @@ ${navPoints}  </navMap>
   const getBrainEntryType = (entry: BrainEntry): BrainEntityType => entry.entityType || 'unknown'
   const getBrainEntryImportance = (entry: BrainEntry): BrainImportance => entry.importance || 'minor'
   const getBrainEntryEntityName = (entry: BrainEntry) => entry.entityName || entry.highlightedText
+
+  const parseAiSummarySegments = (summaryText: string) => {
+    if (!summaryText) return [];
+    // Split by horizontal rule markdown separator (handles both CRLF and LF)
+    const rawSegments = summaryText.split(/\r?\n*\*+\r?\n*/);
+    
+    return rawSegments.map((segment, index) => {
+      const trimmed = segment.trim();
+      if (!trimmed) return null;
+      
+      const headerMatch = trimmed.match(/^###\s*(.*)$/m);
+      let title = "";
+      let content = trimmed;
+      
+      if (headerMatch) {
+        title = headerMatch[1].trim();
+        content = trimmed.replace(/^###.*$/m, '').trim();
+      } else {
+        title = index === 0 ? "Initial Entry" : `Section ${index + 1}`;
+      }
+      
+      return {
+        id: `${index}`,
+        title,
+        content
+      };
+    }).filter((s): s is { id: string; title: string; content: string } => s !== null);
+  };
 
   const filteredBrainEntries = brainEntries.filter(e => {
     const query = brainSearchQuery.toLowerCase()
@@ -9400,7 +9430,8 @@ ${navPoints}  </navMap>
                                 className="btn-delete-chapter brain-card-delete"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  deleteBrainEntry(entry.id)
+                                  const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
+                                  if (confirmed) deleteBrainEntry(entry.id)
                                 }}
                                 onKeyDown={(e) => e.stopPropagation()}
                                 title="Delete"
@@ -9611,7 +9642,7 @@ ${navPoints}  </navMap>
                     <button className="fmt-btn" onClick={() => applyFormatting("> ")} title="Blockquote">
                       <Quote size={15} />
                     </button>
-                    <button className="fmt-btn" onClick={() => applyFormatting("```\n", "\n```")} title="Code Block">
+                    <button className="fmt-btn" onClick={() => applyFormatting("```\r\n", "\r\n```")} title="Code Block">
                       <Code size={15} />
                     </button>
                     <button className="fmt-btn" onClick={() => applyFormatting("- ")} title="Bullet List">
@@ -10266,51 +10297,6 @@ ${navPoints}  </navMap>
               </div>
 
               <div className="brain-detail-section">
-                <span className="brain-detail-label">Merge Into Another Entry</span>
-                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', width: '100%', marginTop: '0.25rem' }}>
-                  <select 
-                    value={mergeTargetId}
-                    onChange={(e) => setMergeTargetId(e.target.value)}
-                    style={{ 
-                      flex: 1, 
-                      fontSize: '0.74rem', 
-                      padding: '0.4rem 0.5rem', 
-                      background: 'rgba(255,255,255,0.04)', 
-                      border: '1px solid var(--surface-border)', 
-                      borderRadius: 'var(--radius-md)', 
-                      color: 'var(--text-primary)',
-                      outline: 'none'
-                    }}
-                  >
-                    <option value="" style={{ background: '#0a0a0f' }}>-- Select Entry to Merge Into --</option>
-                    {brainEntries
-                      .filter(e => e.id !== selectedBrainEntry.id)
-                      .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
-                      .map(e => (
-                        <option key={e.id} value={e.id} style={{ background: '#0a0a0f' }}>
-                          {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
-                        </option>
-                      ))
-                    }
-                  </select>
-                  <button
-                    className="btn-ai-sub btn-ai-secondary"
-                    disabled={!mergeTargetId}
-                    onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
-                    style={{ 
-                      fontSize: '0.72rem', 
-                      padding: '0.42rem 0.8rem', 
-                      whiteSpace: 'nowrap', 
-                      cursor: mergeTargetId ? 'pointer' : 'not-allowed',
-                      opacity: mergeTargetId ? 1 : 0.5
-                    }}
-                  >
-                    Merge Into
-                  </button>
-                </div>
-              </div>
-
-              <div className="brain-detail-section">
                 <span className="brain-detail-label">Keyword / Highlight</span>
                 <div className="brain-detail-keyword">
                   &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
@@ -10318,19 +10304,53 @@ ${navPoints}  </navMap>
               </div>
 
               <div className="brain-detail-section">
-                <span className="brain-detail-label">AI Analysis</span>
-                <div className="brain-detail-summary">
-                  {selectedBrainEntry.aiSummary === "Analyzing..." ? (
+                <span className="brain-detail-label">AI Analysis History</span>
+                {selectedBrainEntry.aiSummary === "Analyzing..." ? (
+                  <div className="brain-detail-summary">
                     <span className="brain-loading">
                       <Loader2 size={14} className="spin" />
                       Analyzing...
                     </span>
-                  ) : (
-                    <div className="brain-markdown-view">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedBrainEntry.aiSummary}</ReactMarkdown>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="brain-segments-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.65rem', marginTop: '0.4rem' }}>
+                    {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
+                      <div 
+                        key={seg.id} 
+                        className="brain-segment-card"
+                        onClick={() => setSelectedSegment(seg)}
+                        style={{
+                          padding: '0.75rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--surface-border)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.4rem',
+                          minHeight: '80px',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <strong style={{ fontSize: '0.74rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          {seg.title.includes('Update') || seg.title.includes('🔄') ? <RefreshCw size={10} /> : seg.title.includes('Sub-Entity') || seg.title.includes('📍') ? <MapPin size={10} /> : seg.title.includes('Merged') || seg.title.includes('🔗') ? <Link2 size={10} /> : <FileText size={10} />}
+                          {seg.title}
+                        </strong>
+                        <p style={{ 
+                          fontSize: '0.7rem', 
+                          color: 'var(--text-secondary)', 
+                          margin: 0,
+                          overflow: 'hidden',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: 'vertical',
+                          lineHeight: '1.4'
+                        }}>
+                          {seg.content.replace(/[#*`\n]/g, ' ').trim()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {(selectedBrainEntry.connections || []).length > 0 && (
@@ -10364,17 +10384,63 @@ ${navPoints}  </navMap>
                 </div>
               )}
 
-
-
-              <div className="brain-detail-actions">
+              <div className="brain-detail-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', width: '100%', borderTop: '1px solid var(--surface-border)', paddingTop: '0.85rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <select 
+                    value={mergeTargetId}
+                    onChange={(e) => setMergeTargetId(e.target.value)}
+                    style={{ 
+                      flex: 1, 
+                      fontSize: '0.74rem', 
+                      padding: '0.4rem 0.5rem', 
+                      background: 'rgba(255,255,255,0.04)', 
+                      border: '1px solid var(--surface-border)', 
+                      borderRadius: 'var(--radius-md)', 
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                      minWidth: '120px'
+                    }}
+                  >
+                    <option value="" style={{ background: '#0a0a0f' }}>-- Merge Into --</option>
+                    {brainEntries
+                      .filter(e => e.id !== selectedBrainEntry.id)
+                      .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
+                      .map(e => (
+                        <option key={e.id} value={e.id} style={{ background: '#0a0a0f' }}>
+                          {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
+                        </option>
+                      ))
+                    }
+                  </select>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary"
+                    disabled={!mergeTargetId}
+                    onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
+                    style={{ 
+                      fontSize: '0.72rem', 
+                      padding: '0.42rem 0.8rem', 
+                      whiteSpace: 'nowrap', 
+                      cursor: mergeTargetId ? 'pointer' : 'not-allowed',
+                      opacity: mergeTargetId ? 1 : 0.5
+                    }}
+                  >
+                    Merge Into
+                  </button>
+                </div>
                 <button
                   className="btn-ai-sub btn-ai-secondary danger-text"
                   onClick={() => {
                     const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
                     if (confirmed) deleteBrainEntry(selectedBrainEntry.id)
                   }}
+                  style={{ 
+                    fontSize: '0.72rem', 
+                    padding: '0.42rem 0.8rem', 
+                    whiteSpace: 'nowrap',
+                    marginLeft: 'auto'
+                  }}
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={13} style={{ marginRight: '0.25rem' }} />
                   Delete Entry
                 </button>
               </div>
@@ -10544,8 +10610,8 @@ ${navPoints}  </navMap>
                                 <div className="timeline-node-card-highlight" style={{ fontSize: '0.78rem', fontWeight: 'bold', color: 'var(--text-primary)', fontStyle: 'italic' }}>
                                   &ldquo;{entry.highlightedText}&rdquo;
                                 </div>
-                                <div className="timeline-node-card-summary brain-markdown-view" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: '1.4', width: '100%' }}>
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.aiSummary}</ReactMarkdown>
+                                <div className="timeline-node-card-summary" style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: '1.4', width: '100%', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginTop: '0.15rem' }}>
+                                  {entry.aiSummary.replace(/[#*`\n]/g, ' ').substring(0, 100).trim()}...
                                 </div>
                               </button>
                             </div>
@@ -10565,6 +10631,23 @@ ${navPoints}  </navMap>
           brainEntityGroups={brainEntityGroups}
           onSelectEntity={(name) => setSelectedBrainEntityName(name)}
         />
+
+        {selectedSegment && (
+          <div className="modal-overlay" onClick={() => setSelectedSegment(null)} style={{ zIndex: 130 }}>
+            <div className="modal brain-detail-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90vw' }}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">{selectedSegment.title}</h2>
+                  <p className="modal-description">AI analysis details for this entry event.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setSelectedSegment(null)} title="Close"><X size={16}/></button>
+              </div>
+              <div className="brain-markdown-view scrollbar" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedSegment.content}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* DEDICATED POPUP MODALS FOR BRAIN ACTIONS */}
         {activeBrainPopup === 'ask' && (
@@ -11565,7 +11648,7 @@ ${navPoints}  </navMap>
                                   jsonCardOrder: parsedKeys.length > 0 ? parsedKeys : progressionSystem.jsonCardOrder
                                 })
                               }}
-                              placeholder={`{\n  "class": "Warrior",\n  "cultivation": {\n    "realm": "Body Tempering"\n  }\n}`}
+                              placeholder={`{\r\n  "class": "Warrior",\r\n  "cultivation": {\r\n    "realm": "Body Tempering"\r\n  }\r\n}`}
                               rows={8}
                             />
                           </details>
@@ -12917,6 +13000,7 @@ ${navPoints}  </navMap>
           flex-direction: column;
           height: 100%;
           min-width: 0;
+          overflow-x: hidden;
         }
 
         .sidebar-section {
@@ -16663,6 +16747,7 @@ ${navPoints}  </navMap>
           flex-direction: column;
           gap: 0.5rem;
           overflow-y: auto;
+          overflow-x: hidden;
           flex: 1;
         }
 
@@ -16850,6 +16935,34 @@ ${navPoints}  </navMap>
 
         .brain-card-delete {
           flex-shrink: 0;
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        .brain-entry-card:hover .brain-card-delete {
+          opacity: 0.6;
+          visibility: visible;
+          pointer-events: auto;
+        }
+
+        .brain-entry-card .brain-card-delete:hover {
+          opacity: 1;
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.12);
+        }
+
+        .brain-segment-card {
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.03);
+          transition: var(--transition);
+        }
+
+        .brain-segment-card:hover {
+          border-color: rgba(168, 85, 247, 0.35) !important;
+          background: rgba(168, 85, 247, 0.05) !important;
+          transform: translateY(-1px);
         }
 
         .brain-entry-summary {
