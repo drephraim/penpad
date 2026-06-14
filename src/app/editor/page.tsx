@@ -93,12 +93,12 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain' | 'analytics'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain' | 'arcs' | 'analytics'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
 type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
-type SearchSource = 'chapter' | 'brain' | 'lore'
+type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
 
@@ -998,6 +998,8 @@ function EditorContent() {
   const [arcSeedLoading, setArcSeedLoading] = useState(false)
   const [arcSeedError, setArcSeedError] = useState("")
   const [selectedArcSeedId, setSelectedArcSeedId] = useState<string | null>(null)
+  const [arcSeedSearchQuery, setArcSeedSearchQuery] = useState("")
+  const [arcSeedStatusFilter, setArcSeedStatusFilter] = useState<ArcSeedStatus | 'all'>('all')
 
   // Focus Sprints & Gamified Focus Tracker States
   const [sprintDuration, setSprintDuration] = useState(1500)
@@ -6344,6 +6346,7 @@ ${navPoints}  </navMap>
     { name: "Open World Bible", cmd: "/bible", desc: "Toggle World Bible Panel", action: () => { setActiveSidebarTab('bible'); setIsLeftSidebarOpen(true) } },
     { name: "Appearance Lab", cmd: "/appearance", desc: "Open Appearance Prompt Lab", action: () => { setActiveSidebarTab('appearance'); setIsLeftSidebarOpen(true) } },
     { name: "Progression", cmd: "/progress", desc: "Open Character Progression Profiles", action: () => { setActiveSidebarTab('progression'); setIsLeftSidebarOpen(true) } },
+    { name: "Arc Seeds", cmd: "/arcs", desc: "Open Future Arc Seeds", action: () => { setActiveSidebarTab('arcs'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } }
   ]
 
@@ -7161,7 +7164,7 @@ ${navPoints}  </navMap>
       .slice(0, 6)
       .map(seed => ({
         id: `arc-${seed.id}`,
-        source: 'brain' as SearchSource,
+        source: 'arc' as SearchSource,
         title: seed.title,
         subtitle: `${getArcSeedChapterLabel(seed)} - Arc Seed`,
         preview: seed.summary || seed.futurePayoff,
@@ -7180,6 +7183,13 @@ ${navPoints}  </navMap>
       setActiveSidebarTab('brain')
       setIsLeftSidebarOpen(true)
       setBrainSearchQuery(result.title)
+      setShowGlobalSearch(false)
+    } else if (result.source === 'arc') {
+      const seedId = result.id.replace(/^arc-/, "")
+      setActiveSidebarTab('arcs')
+      setIsLeftSidebarOpen(true)
+      setArcSeedSearchQuery(result.title)
+      setSelectedArcSeedId(seedId)
       setShowGlobalSearch(false)
     } else if (result.source === 'lore') {
       const entry = bibleEntries.find(item => item.name === result.title)
@@ -7254,6 +7264,21 @@ ${navPoints}  </navMap>
   const selectedArcSeed = selectedArcSeedId
     ? arcSeeds.find(seed => seed.id === selectedArcSeedId) || null
     : null
+  const openArcSeedCount = arcSeeds.filter(seed => seed.status === "open").length
+  const filteredArcSeeds = arcSeeds.filter(seed => {
+    const query = arcSeedSearchQuery.trim().toLowerCase()
+    const matchesStatus = arcSeedStatusFilter === 'all' || seed.status === arcSeedStatusFilter
+    const matchesSearch = !query ||
+      seed.title.toLowerCase().includes(query) ||
+      seed.summary.toLowerCase().includes(query) ||
+      seed.whyItMatters.toLowerCase().includes(query) ||
+      seed.futurePayoff.toLowerCase().includes(query) ||
+      seed.evidence.toLowerCase().includes(query) ||
+      seed.chapterTitle.toLowerCase().includes(query) ||
+      (seed.relatedCharacters || []).some(name => name.toLowerCase().includes(query)) ||
+      (seed.relatedEntities || []).some(name => name.toLowerCase().includes(query))
+    return matchesStatus && matchesSearch
+  })
 
   const getBrainEntryChapterNumber = (entry: BrainEntry) => {
     if (entry.chapterNumber) return entry.chapterNumber
@@ -7526,7 +7551,7 @@ ${navPoints}  </navMap>
               <Search size={15} className="glow-icon" />
               <input
                 type="text"
-                placeholder="Search chapters, Brain Map, and lore..."
+                placeholder="Search chapters, Brain Map, Arc Seeds, and lore..."
                 value={globalSearchQuery}
                 onChange={(e) => setGlobalSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -7544,7 +7569,7 @@ ${navPoints}  </navMap>
               {!globalSearchQuery.trim() && (
                 <div className="global-search-empty">
                   <Search size={22} />
-                  <span>Search across chapters, Brain Map entries, and story bible lore.</span>
+                  <span>Search across chapters, Brain Map entries, Arc Seeds, and story bible lore.</span>
                 </div>
               )}
               {globalSearchResults.map(result => (
@@ -7693,7 +7718,7 @@ ${navPoints}  </navMap>
           <button
             className="btn-icon"
             onClick={() => setShowGlobalSearch(true)}
-            title="Search manuscript, Brain Map, and lore"
+            title="Search manuscript, Brain Map, Arc Seeds, and lore"
           >
             <Search size={18} />
           </button>
@@ -7863,6 +7888,21 @@ ${navPoints}  </navMap>
                 title="Brain Map"
               >
                 <BrainCircuit size={20} />
+              </button>
+
+              <button
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'arcs' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'arcs' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('arcs')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Arc Seeds"
+              >
+                <History size={20} />
               </button>
 
               <button 
@@ -9663,7 +9703,7 @@ ${navPoints}  </navMap>
                 </div>
 
                 {/* Compact Quick Action Badges */}
-                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
                   <button
                     className="brain-action-card glass-light"
                     onClick={() => setActiveBrainPopup('ask')}
@@ -9771,79 +9811,6 @@ ${navPoints}  </navMap>
                     )}
                   </button>
 
-                  <button
-                    className="brain-action-card glass-light"
-                    onClick={generateArcSeedFromChapter}
-                    title="Extract one future arc seed from the active chapter"
-                    disabled={arcSeedLoading || !activeNote}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.35rem',
-                      padding: '0.55rem 0.25rem',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--surface-border)',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      color: 'var(--text-secondary)',
-                      cursor: arcSeedLoading || !activeNote ? 'not-allowed' : 'pointer',
-                      transition: 'var(--transition)',
-                      opacity: arcSeedLoading || !activeNote ? 0.6 : 1,
-                      position: 'relative'
-                    }}
-                  >
-                    {arcSeedLoading ? <Loader2 size={14} className="spin" /> : <History size={14} style={{ color: '#5eead4' }} />}
-                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Arc Seed</span>
-                    {arcSeeds.filter(seed => seed.status === "open").length > 0 && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-4px',
-                        right: '-4px',
-                        background: '#14b8a6',
-                        color: 'white',
-                        fontSize: '0.55rem',
-                        fontWeight: 'bold',
-                        borderRadius: '50%',
-                        minWidth: '14px',
-                        height: '14px',
-                        padding: '0 3px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 0 6px #14b8a6'
-                      }}>{arcSeeds.filter(seed => seed.status === "open").length}</span>
-                    )}
-                  </button>
-                </div>
-
-                <div className="arc-seeds-panel">
-                  <div className="arc-seeds-header">
-                    <div>
-                      <strong>Arc Seeds</strong>
-                      <span>Chapter hooks to develop or pay off later.</span>
-                    </div>
-                    <em>{arcSeeds.filter(seed => seed.status === "open").length} open</em>
-                  </div>
-                  {arcSeedError && <div className="arc-seed-error">{arcSeedError}</div>}
-                  <div className="arc-seeds-list">
-                    {arcSeeds.length === 0 ? (
-                      <div className="empty-state-text compact">No Arc Seeds yet. Click Arc Seed after finishing a chapter.</div>
-                    ) : arcSeeds.slice(0, 8).map(seed => (
-                      <button
-                        key={seed.id}
-                        type="button"
-                        className={`arc-seed-card status-${seed.status}`}
-                        onClick={() => setSelectedArcSeedId(seed.id)}
-                      >
-                        <div>
-                          <small>{getArcSeedChapterLabel(seed)}</small>
-                          <strong>{seed.title}</strong>
-                        </div>
-                        <span>{seed.status.replace("_", " ")}</span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {brainEntityGroups.length > 0 && (
@@ -9998,6 +9965,99 @@ ${navPoints}  </navMap>
                       )
                     })
                   })()}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: ARC SEEDS */}
+            {activeSidebarTab === 'arcs' && (
+              <div className="sidebar-tab-content arc-seeds-page fade-in">
+                <div className="arc-seeds-page-header">
+                  <div>
+                    <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Arc Seeds</span>
+                    <p>Future threads captured from completed chapters.</p>
+                  </div>
+                  <button
+                    className="btn-new arc-seed-generate-btn"
+                    onClick={generateArcSeedFromChapter}
+                    disabled={arcSeedLoading || !activeNote}
+                    title="Extract one future arc seed from the active chapter"
+                  >
+                    {arcSeedLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                    {arcSeedLoading ? "Scanning..." : "Scan Chapter"}
+                  </button>
+                </div>
+
+                {arcSeedError && <div className="arc-seed-error">{arcSeedError}</div>}
+
+                <div className="arc-seed-stat-grid">
+                  <div className="arc-seed-stat-card">
+                    <small>All Seeds</small>
+                    <strong>{arcSeeds.length}</strong>
+                  </div>
+                  <div className="arc-seed-stat-card active">
+                    <small>Open</small>
+                    <strong>{openArcSeedCount}</strong>
+                  </div>
+                  <div className="arc-seed-stat-card">
+                    <small>Developing</small>
+                    <strong>{arcSeeds.filter(seed => seed.status === "developing").length}</strong>
+                  </div>
+                </div>
+
+                <div className="arc-seed-toolbar">
+                  <div className="search-bar">
+                    <Search size={14} className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Search arc seeds..."
+                      value={arcSeedSearchQuery}
+                      onChange={(e) => setArcSeedSearchQuery(e.target.value)}
+                      className="search-input"
+                    />
+                  </div>
+                  <select
+                    value={arcSeedStatusFilter}
+                    onChange={(e) => setArcSeedStatusFilter(e.target.value as ArcSeedStatus | 'all')}
+                    className="brain-type-filter"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="developing">Developing</option>
+                    <option value="paid_off">Paid Off</option>
+                    <option value="dropped">Dropped</option>
+                  </select>
+                </div>
+
+                <div className="arc-seeds-panel">
+                  <div className="arc-seeds-header">
+                    <div>
+                      <strong>Saved Arc Seeds</strong>
+                      <span>{filteredArcSeeds.length} shown</span>
+                    </div>
+                    <em>{openArcSeedCount} open</em>
+                  </div>
+                  <div className="arc-seeds-list arc-seeds-page-list">
+                    {filteredArcSeeds.length === 0 ? (
+                      <div className="empty-state-text compact">
+                        {arcSeeds.length === 0 ? "No Arc Seeds yet." : "No Arc Seeds match this filter."}
+                      </div>
+                    ) : filteredArcSeeds.map(seed => (
+                      <button
+                        key={seed.id}
+                        type="button"
+                        className={`arc-seed-card status-${seed.status}`}
+                        onClick={() => setSelectedArcSeedId(seed.id)}
+                      >
+                        <div>
+                          <small>{getArcSeedChapterLabel(seed)}</small>
+                          <strong>{seed.title}</strong>
+                          <p>{seed.summary || seed.futurePayoff}</p>
+                        </div>
+                        <span>{seed.status.replace("_", " ")}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -16811,6 +16871,77 @@ ${navPoints}  </navMap>
         }
 
         /* Brain Map Styles */
+        .arc-seeds-page {
+          display: flex;
+          flex-direction: column;
+          gap: 0.85rem;
+        }
+
+        .arc-seeds-page-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.8rem;
+          flex-shrink: 0;
+        }
+
+        .arc-seeds-page-header p {
+          margin: 0.15rem 0 0;
+          color: var(--text-dim);
+          font-size: 0.74rem;
+          line-height: 1.35;
+        }
+
+        .arc-seed-generate-btn {
+          flex-shrink: 0;
+          min-height: 34px;
+          white-space: nowrap;
+        }
+
+        .arc-seed-stat-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 0.55rem;
+          flex-shrink: 0;
+        }
+
+        .arc-seed-stat-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+          padding: 0.65rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .arc-seed-stat-card.active {
+          border-color: rgba(20, 184, 166, 0.28);
+          background: rgba(20, 184, 166, 0.065);
+        }
+
+        .arc-seed-stat-card small {
+          color: var(--text-dim);
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .arc-seed-stat-card strong {
+          color: var(--text-primary);
+          font-size: 1.12rem;
+          line-height: 1;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .arc-seed-toolbar {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          flex-shrink: 0;
+        }
+
         .arc-seeds-panel {
           display: flex;
           flex-direction: column;
@@ -16906,6 +17037,17 @@ ${navPoints}  </navMap>
           white-space: nowrap;
         }
 
+        .arc-seed-card p {
+          margin: 0;
+          color: var(--text-dim);
+          font-size: 0.7rem;
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
         .arc-seed-card > span {
           flex-shrink: 0;
           padding: 0.22rem 0.38rem;
@@ -16951,6 +17093,11 @@ ${navPoints}  </navMap>
           color: #99f6e4;
           font-size: 0.7rem;
           font-weight: 800;
+        }
+
+        .arc-seeds-page-list {
+          overflow-y: auto;
+          padding-right: 0.1rem;
         }
 
         .brain-markdown-view,
