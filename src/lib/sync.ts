@@ -29,8 +29,36 @@ export interface BibleEntry {
   content: string
   groupIds?: string[]
   timelineFacts?: BibleTimelineFact[]
+  characterDetails?: BibleCharacterDetails
   createdAt: number
   updatedAt: number
+}
+
+export interface BibleCharacterDetails {
+  appearance?: string
+  attire?: string
+  hair?: string
+  eyes?: string
+  body?: string
+  distinguishingFeatures?: string
+  chapterAppearances?: BibleCharacterAppearanceFact[]
+  updatedAt?: number
+}
+
+export interface BibleCharacterAppearanceFact {
+  id: string
+  chapterId: string
+  chapterTitle: string
+  chapterNumber?: number | null
+  summary: string
+  evidence?: string
+  appearance?: string
+  attire?: string
+  hair?: string
+  eyes?: string
+  body?: string
+  distinguishingFeatures?: string
+  createdAt: number
 }
 
 export interface BibleTimelineFact {

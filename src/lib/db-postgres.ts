@@ -102,6 +102,11 @@ export async function bootstrapDb() {
     `)
 
     await client.query(`
+      ALTER TABLE bible_entries
+      ADD COLUMN IF NOT EXISTS character_details JSONB;
+    `)
+
+    await client.query(`
       ALTER TABLE projects
       ADD COLUMN IF NOT EXISTS volumes JSONB,
       ADD COLUMN IF NOT EXISTS bible_groups JSONB,

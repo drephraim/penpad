@@ -120,6 +120,24 @@ type BibleExtractResponse = {
     summary?: string
     contentPatch?: string
     matchedEntryId?: string
+    characterDetails?: {
+      appearance?: string
+      attire?: string
+      hair?: string
+      eyes?: string
+      body?: string
+      distinguishingFeatures?: string
+      chapterAppearance?: {
+        summary?: string
+        evidence?: string
+        appearance?: string
+        attire?: string
+        hair?: string
+        eyes?: string
+        body?: string
+        distinguishingFeatures?: string
+      }
+    }
     timelineFact?: {
       summary?: string
       evidence?: string
@@ -127,6 +145,7 @@ type BibleExtractResponse = {
     }
   }>
 }
+type BibleExtractCharacterDetails = NonNullable<NonNullable<BibleExtractResponse["suggestions"]>[number]["characterDetails"]>
 
 function parseJsonObject<T>(text: string): T | null {
   try {
@@ -720,15 +739,19 @@ export async function POST(req: NextRequest) {
 
       systemInstruction =
         "You are a meticulous Story Bible curator for a novelist. Scan the active chapter and propose high-value canon additions.\n" +
-        "Prefer facts that should be remembered later: new characters, beasts, factions, locations, artifacts, vows, relationships, status reveals, rules, secrets, deaths, promotions, and chapter-specific changes.\n" +
+        "Prefer facts that should be remembered later: new characters, beasts, factions, locations, artifacts, vows, relationships, status reveals, rules, secrets, deaths, promotions, appearance details, clothing/attire, and chapter-specific changes.\n" +
         "Match existing Story Bible entries by exact name or obvious alias when possible. For matched entries, provide matchedEntryId and a concise contentPatch to append. For new entries, provide category and starter notes.\n" +
+        "For character or beast entries, always capture visual details when the chapter describes them: face, hair color/style, eye color, skin/fur/scales, body shape/build, height, clothing, armor, accessories, scars, aura, posture, or anything that shows how they look in this chapter. Put these in characterDetails with top-level stable fields and a chapterAppearance object with summary and exact evidence.\n" +
         "Every suggestion must include a timelineFact with summary, evidence, and optional status. Output ONLY valid JSON with key suggestions. Limit to 8 suggestions."
 
       const existingContext = bibleEntries.slice(0, 120).map((entry: any) => {
         const facts = Array.isArray(entry.timelineFacts)
           ? entry.timelineFacts.slice(-8).map((fact: any) => `${fact.chapterNumber ? `Ch ${fact.chapterNumber}` : fact.chapterTitle || "Chapter"}: ${fact.summary || ""}`).join("; ")
           : ""
-        return `- id=${entry.id}; name=${entry.name}; category=${entry.category}; notes=${String(entry.content || "").slice(0, 800)}; timeline=${facts}`
+        const characterDetails = entry.characterDetails && typeof entry.characterDetails === "object"
+          ? `; characterDetails=${JSON.stringify(entry.characterDetails).slice(0, 800)}`
+          : ""
+        return `- id=${entry.id}; name=${entry.name}; category=${entry.category}; notes=${String(entry.content || "").slice(0, 800)}; timeline=${facts}${characterDetails}`
       }).join("\n")
 
       userPrompt =
@@ -954,6 +977,34 @@ export async function POST(req: NextRequest) {
 
     if (action === "bible_extract_from_chapter") {
       const result = parseJsonObject<BibleExtractResponse>(text)
+      const sanitizeCharacterDetails = (details?: BibleExtractCharacterDetails) => {
+        if (!details || typeof details !== "object") return undefined
+        const chapterAppearance = details.chapterAppearance && typeof details.chapterAppearance === "object"
+          ? {
+            summary: String(details.chapterAppearance.summary || "").trim(),
+            evidence: String(details.chapterAppearance.evidence || "").trim(),
+            appearance: String(details.chapterAppearance.appearance || "").trim(),
+            attire: String(details.chapterAppearance.attire || "").trim(),
+            hair: String(details.chapterAppearance.hair || "").trim(),
+            eyes: String(details.chapterAppearance.eyes || "").trim(),
+            body: String(details.chapterAppearance.body || "").trim(),
+            distinguishingFeatures: String(details.chapterAppearance.distinguishingFeatures || "").trim()
+          }
+          : undefined
+        const sanitized = {
+          appearance: String(details.appearance || "").trim(),
+          attire: String(details.attire || "").trim(),
+          hair: String(details.hair || "").trim(),
+          eyes: String(details.eyes || "").trim(),
+          body: String(details.body || "").trim(),
+          distinguishingFeatures: String(details.distinguishingFeatures || "").trim(),
+          chapterAppearance
+        }
+        const hasTopLevel = [sanitized.appearance, sanitized.attire, sanitized.hair, sanitized.eyes, sanitized.body, sanitized.distinguishingFeatures].some(Boolean)
+        const hasChapter = chapterAppearance ? Object.values(chapterAppearance).some(Boolean) : false
+        return hasTopLevel || hasChapter ? sanitized : undefined
+      }
+
       return NextResponse.json({
         suggestions: Array.isArray(result?.suggestions)
           ? result.suggestions.map(suggestion => ({
@@ -964,6 +1015,7 @@ export async function POST(req: NextRequest) {
             summary: String(suggestion.summary || "").trim(),
             contentPatch: String(suggestion.contentPatch || suggestion.summary || "").trim(),
             matchedEntryId: String(suggestion.matchedEntryId || "").trim(),
+            characterDetails: sanitizeCharacterDetails(suggestion.characterDetails),
             timelineFact: {
               summary: String(suggestion.timelineFact?.summary || suggestion.summary || "").trim(),
               evidence: String(suggestion.timelineFact?.evidence || "").trim(),

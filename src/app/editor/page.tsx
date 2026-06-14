@@ -155,6 +155,24 @@ interface BibleExtractionSuggestion {
   summary: string
   contentPatch: string
   matchedEntryId?: string
+  characterDetails?: {
+    appearance?: string
+    attire?: string
+    hair?: string
+    eyes?: string
+    body?: string
+    distinguishingFeatures?: string
+    chapterAppearance?: {
+      summary?: string
+      evidence?: string
+      appearance?: string
+      attire?: string
+      hair?: string
+      eyes?: string
+      body?: string
+      distinguishingFeatures?: string
+    }
+  }
   timelineFact?: {
     summary: string
     evidence?: string
@@ -3841,15 +3859,26 @@ const fillEmptyCustomJsonData = (
     setIsReconnecting(true)
     setReconnectError(null)
     try {
+      const restored = await verifyPermission(dirHandle)
+      if (restored) {
+        setDirPermission('granted')
+        await saveFolderHandleToProject(dirHandle)
+        return
+      }
+
       const newHandle = await (window as any).showDirectoryPicker({
         startIn: dirHandle,     // opens picker directly inside the linked folder
         mode: 'readwrite'
       })
+      const granted = await verifyPermission(newHandle)
+      if (!granted) {
+        setDirPermission('denied')
+        setReconnectError('Folder access was not granted. Please select the folder and allow read/write access.')
+        return
+      }
       setDirHandle(newHandle)
       setDirPermission('granted')
-      if (projectId) {
-        await saveDirectoryHandleForProject(projectId, newHandle)
-      }
+      await saveFolderHandleToProject(newHandle)
     } catch (e: any) {
       // AbortError = user closed the picker — treat silently
       if (e?.name !== 'AbortError') {
@@ -3859,7 +3888,7 @@ const fillEmptyCustomJsonData = (
     } finally {
       setIsReconnecting(false)
     }
-  }, [dirHandle, projectId, isReconnecting])
+  }, [dirHandle, isReconnecting, saveFolderHandleToProject, verifyPermission])
 
   const disconnectFolder = async () => {
     setDirHandle(null)
@@ -4820,6 +4849,17 @@ const fillEmptyCustomJsonData = (
     setBibleEntries(updated)
   }
 
+  const updateActiveBibleCharacterDetails = (updates: Partial<NonNullable<BibleEntry["characterDetails"]>>) => {
+    if (!activeBibleEntry) return
+    updateActiveBibleEntry({
+      characterDetails: {
+        ...getBibleCharacterDetails(activeBibleEntry),
+        ...updates,
+        updatedAt: Date.now()
+      }
+    })
+  }
+
   const createBibleGroup = () => {
     const defaultName = "New Group"
     const name = prompt("Name this Story Bible group:", defaultName)
@@ -4880,7 +4920,7 @@ const fillEmptyCustomJsonData = (
       })
   }
 
-  const getBibleFactChapterLabel = (fact: BibleTimelineFact) => {
+  const getBibleFactChapterLabel = (fact: Pick<BibleTimelineFact, "chapterNumber" | "chapterTitle">) => {
     if (fact.chapterNumber) return `Chapter ${fact.chapterNumber}`
     return fact.chapterTitle || "Unknown chapter"
   }
@@ -4900,6 +4940,102 @@ const fillEmptyCustomJsonData = (
     return {
       ...entry,
       timelineFacts: isDuplicate ? existingFacts : [...existingFacts, nextFact],
+      updatedAt: now
+    }
+  }
+
+  const getBibleCharacterDetails = (entry: BibleEntry) => {
+    const details = entry.characterDetails || {}
+    const chapterAppearances = Array.isArray(details.chapterAppearances)
+      ? details.chapterAppearances
+          .filter(fact => fact && typeof fact === "object" && String(fact.summary || "").trim())
+          .map((fact, index) => ({
+            id: String(fact.id || `${entry.id}-appearance-${index}`),
+            chapterId: String(fact.chapterId || ""),
+            chapterTitle: String(fact.chapterTitle || "Untitled"),
+            chapterNumber: Number.isFinite(Number(fact.chapterNumber)) ? Number(fact.chapterNumber) : null,
+            summary: String(fact.summary || "").trim(),
+            evidence: String(fact.evidence || "").trim(),
+            appearance: String(fact.appearance || "").trim(),
+            attire: String(fact.attire || "").trim(),
+            hair: String(fact.hair || "").trim(),
+            eyes: String(fact.eyes || "").trim(),
+            body: String(fact.body || "").trim(),
+            distinguishingFeatures: String(fact.distinguishingFeatures || "").trim(),
+            createdAt: Number.isFinite(Number(fact.createdAt)) ? Number(fact.createdAt) : entry.updatedAt || Date.now()
+          }))
+          .sort((a, b) => {
+            const aChapter = Number(a.chapterNumber || 0)
+            const bChapter = Number(b.chapterNumber || 0)
+            if (aChapter !== bChapter) return aChapter - bChapter
+            return a.createdAt - b.createdAt
+          })
+      : []
+
+    return {
+      appearance: String(details.appearance || "").trim(),
+      attire: String(details.attire || "").trim(),
+      hair: String(details.hair || "").trim(),
+      eyes: String(details.eyes || "").trim(),
+      body: String(details.body || "").trim(),
+      distinguishingFeatures: String(details.distinguishingFeatures || "").trim(),
+      chapterAppearances,
+      updatedAt: Number.isFinite(Number(details.updatedAt)) ? Number(details.updatedAt) : undefined
+    }
+  }
+
+  const mergeBibleCharacterDetails = (
+    entry: BibleEntry,
+    suggestion: BibleExtractionSuggestion,
+    chapter: { id: string; title: string; chapterNumber?: number | null }
+  ): BibleEntry => {
+    if (entry.category !== "character" && entry.category !== "beast") return entry
+    const incoming = suggestion.characterDetails
+    if (!incoming) return entry
+
+    const now = Date.now()
+    const existing = getBibleCharacterDetails(entry)
+    const nextDetails = {
+      ...existing,
+      appearance: incoming.appearance || existing.appearance,
+      attire: incoming.attire || existing.attire,
+      hair: incoming.hair || existing.hair,
+      eyes: incoming.eyes || existing.eyes,
+      body: incoming.body || existing.body,
+      distinguishingFeatures: incoming.distinguishingFeatures || existing.distinguishingFeatures,
+      updatedAt: now
+    }
+
+    const chapterAppearance = incoming.chapterAppearance
+    const chapterSummary = String(chapterAppearance?.summary || suggestion.summary || "").trim()
+    if (chapterSummary) {
+      const nextAppearanceFact = {
+        id: crypto.randomUUID(),
+        chapterId: chapter.id,
+        chapterTitle: chapter.title || "Untitled",
+        chapterNumber: chapter.chapterNumber ?? null,
+        summary: chapterSummary,
+        evidence: String(chapterAppearance?.evidence || suggestion.timelineFact?.evidence || "").trim(),
+        appearance: String(chapterAppearance?.appearance || incoming.appearance || "").trim(),
+        attire: String(chapterAppearance?.attire || incoming.attire || "").trim(),
+        hair: String(chapterAppearance?.hair || incoming.hair || "").trim(),
+        eyes: String(chapterAppearance?.eyes || incoming.eyes || "").trim(),
+        body: String(chapterAppearance?.body || incoming.body || "").trim(),
+        distinguishingFeatures: String(chapterAppearance?.distinguishingFeatures || incoming.distinguishingFeatures || "").trim(),
+        createdAt: now
+      }
+      const isDuplicate = existing.chapterAppearances.some(fact =>
+        fact.chapterId === nextAppearanceFact.chapterId &&
+        fact.summary.toLowerCase() === nextAppearanceFact.summary.toLowerCase()
+      )
+      nextDetails.chapterAppearances = isDuplicate
+        ? existing.chapterAppearances
+        : [...existing.chapterAppearances, nextAppearanceFact]
+    }
+
+    return {
+      ...entry,
+      characterDetails: nextDetails,
       updatedAt: now
     }
   }
@@ -4959,6 +5095,11 @@ const fillEmptyCustomJsonData = (
         content: nextContent,
         updatedAt: now
       }, timelineFact)
+      nextEntry = mergeBibleCharacterDetails(nextEntry, suggestion, {
+        id: activeNote.id,
+        title: activeNote.title || "Untitled",
+        chapterNumber
+      })
     } else {
       nextEntry = appendBibleTimelineFact({
         id: crypto.randomUUID(),
@@ -4968,6 +5109,11 @@ const fillEmptyCustomJsonData = (
         createdAt: now,
         updatedAt: now
       }, timelineFact)
+      nextEntry = mergeBibleCharacterDetails(nextEntry, suggestion, {
+        id: activeNote.id,
+        title: activeNote.title || "Untitled",
+        chapterNumber
+      })
     }
 
     const nextEntries = matchedEntry
@@ -5646,7 +5792,7 @@ const fillEmptyCustomJsonData = (
       return () => clearTimeout(autoSaveBibleTimerRef.current!)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds])
+  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds, activeBibleEntry?.characterDetails])
 
   useEffect(() => {
     if (!isBibleSelectionMode || selectedBibleIds.size === 0) {
@@ -10306,7 +10452,7 @@ ${navPoints}  </navMap>
             <div className="ai-sidebar-header">
               <div className="ai-header-title">
                 <BookOpen size={16} className="glow-icon text-primary" />
-                <span>Edit Lore Entry</span>
+                <span>{activeBibleEntry.category === "character" || activeBibleEntry.category === "beast" ? "Character Details" : "Edit Lore Entry"}</span>
               </div>
               <button className="btn-close-ai" onClick={() => setIsBibleDrawerOpen(false)}>
                 <X size={16} />
@@ -10373,6 +10519,73 @@ ${navPoints}  </navMap>
                 </div>
               </div>
 
+              {(activeBibleEntry.category === "character" || activeBibleEntry.category === "beast") && (() => {
+                const details = getBibleCharacterDetails(activeBibleEntry)
+                const hasChapterLooks = details.chapterAppearances.length > 0
+                return (
+                  <div className="ai-form-field">
+                    <label>Character Details</label>
+                    <div className="character-detail-panel">
+                      <label>
+                        <small>Overall Look</small>
+                        <textarea
+                          value={details.appearance}
+                          onChange={(e) => updateActiveBibleCharacterDetails({ appearance: e.target.value })}
+                          placeholder="Face, aura, silhouette, general visual impression..."
+                          className="ai-textarea compact"
+                        />
+                      </label>
+                      <div className="character-detail-grid">
+                        <label>
+                          <small>Hair</small>
+                          <input className="ai-input" value={details.hair} onChange={(e) => updateActiveBibleCharacterDetails({ hair: e.target.value })} placeholder="Black curls, silver braid..." />
+                        </label>
+                        <label>
+                          <small>Eyes</small>
+                          <input className="ai-input" value={details.eyes} onChange={(e) => updateActiveBibleCharacterDetails({ eyes: e.target.value })} placeholder="Gold, violet, tired..." />
+                        </label>
+                        <label>
+                          <small>Build / Body</small>
+                          <input className="ai-input" value={details.body} onChange={(e) => updateActiveBibleCharacterDetails({ body: e.target.value })} placeholder="Tall, wiry, scarred..." />
+                        </label>
+                        <label>
+                          <small>Attire</small>
+                          <input className="ai-input" value={details.attire} onChange={(e) => updateActiveBibleCharacterDetails({ attire: e.target.value })} placeholder="Robes, armor, uniform..." />
+                        </label>
+                      </div>
+                      <label>
+                        <small>Distinguishing Features</small>
+                        <textarea
+                          value={details.distinguishingFeatures}
+                          onChange={(e) => updateActiveBibleCharacterDetails({ distinguishingFeatures: e.target.value })}
+                          placeholder="Scars, tattoos, accessories, posture, aura..."
+                          className="ai-textarea compact"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="character-detail-history">
+                      <div className="character-detail-history-header">
+                        <strong>Chapter Appearance Memory</strong>
+                        <span>{hasChapterLooks ? `${details.chapterAppearances.length} saved` : "No appearance notes yet"}</span>
+                      </div>
+                      {!hasChapterLooks ? (
+                        <span className="empty-state-text compact">No chapter-specific appearance notes yet.</span>
+                      ) : details.chapterAppearances.map(fact => (
+                        <div className="bible-timeline-fact" key={fact.id}>
+                          <div>
+                            <strong>{getBibleFactChapterLabel(fact)}</strong>
+                            {(fact.hair || fact.eyes || fact.attire) && <em>{[fact.hair, fact.eyes, fact.attire].filter(Boolean).slice(0, 2).join(" / ")}</em>}
+                          </div>
+                          <p>{fact.summary}</p>
+                          {fact.evidence && <small>&ldquo;{fact.evidence}&rdquo;</small>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div className="ai-form-field">
                 <label>Timeline Facts</label>
                 <div className="bible-timeline-panel">
@@ -10392,11 +10605,11 @@ ${navPoints}  </navMap>
               </div>
 
               <div className="ai-form-field flex-1 flex flex-col min-h-[300px]">
-                <label>Notes & Descriptions</label>
+                <label>{activeBibleEntry.category === "character" || activeBibleEntry.category === "beast" ? "Reference Notes" : "Notes & Descriptions"}</label>
                 <textarea 
                   value={activeBibleEntry.content}
                   onChange={(e) => updateActiveBibleEntry({ content: e.target.value })}
-                  placeholder="Write biography, characteristics, locations details, and lore notes..."
+                  placeholder={activeBibleEntry.category === "character" || activeBibleEntry.category === "beast" ? "Biography, personality, relationships, role, and non-visual lore..." : "Write biography, characteristics, locations details, and lore notes..."}
                   className="ai-textarea flex-1 min-h-[280px]"
                 />
               </div>
@@ -11058,6 +11271,27 @@ ${navPoints}  </navMap>
                       <span>{suggestion.category}</span>
                     </div>
                     <p>{suggestion.summary}</p>
+                    {suggestion.characterDetails && (
+                      <div className="bible-suggestion-appearance">
+                        {[
+                          suggestion.characterDetails.appearance,
+                          suggestion.characterDetails.hair,
+                          suggestion.characterDetails.eyes,
+                          suggestion.characterDetails.body,
+                          suggestion.characterDetails.attire,
+                          suggestion.characterDetails.distinguishingFeatures,
+                          suggestion.characterDetails.chapterAppearance?.appearance,
+                          suggestion.characterDetails.chapterAppearance?.hair,
+                          suggestion.characterDetails.chapterAppearance?.eyes,
+                          suggestion.characterDetails.chapterAppearance?.attire
+                        ]
+                          .filter(Boolean)
+                          .slice(0, 4)
+                          .map((detail, detailIndex) => (
+                            <span key={`${suggestion.entryName}-appearance-${detailIndex}`}>{detail}</span>
+                          ))}
+                      </div>
+                    )}
                     {suggestion.timelineFact?.evidence && <small>&ldquo;{suggestion.timelineFact.evidence}&rdquo;</small>}
                     <button className="btn-ai-sub btn-ai-secondary" onClick={() => approveBibleExtractionSuggestion(suggestion)}>
                       <Check size={12} />
@@ -16611,6 +16845,90 @@ ${navPoints}  </navMap>
           color: var(--text-dim);
           font-size: 0.72rem;
           line-height: 1.45;
+        }
+
+        .bible-suggestion-appearance {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.35rem;
+        }
+
+        .bible-suggestion-appearance span {
+          padding: 0.28rem 0.45rem;
+          border: 1px solid rgba(168, 85, 247, 0.24);
+          border-radius: var(--radius-sm);
+          background: rgba(168, 85, 247, 0.08);
+          color: rgb(216, 180, 254);
+          font-size: 0.7rem;
+          font-weight: 700;
+          line-height: 1.25;
+        }
+
+        .character-detail-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding: 0.75rem;
+          border: 1px solid rgba(168, 85, 247, 0.2);
+          border-radius: var(--radius-md);
+          background: rgba(168, 85, 247, 0.05);
+        }
+
+        .character-detail-panel label,
+        .character-detail-grid label {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .character-detail-panel small,
+        .character-detail-grid small {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .character-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.55rem;
+        }
+
+        .character-detail-history {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          margin-top: 0.7rem;
+          padding: 0.75rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          background: rgba(0, 0, 0, 0.12);
+        }
+
+        .character-detail-history-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+
+        .character-detail-history-header strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+        }
+
+        .character-detail-history-header span {
+          color: var(--text-dim);
+          font-size: 0.7rem;
+          font-weight: 700;
+        }
+
+        @media (max-width: 720px) {
+          .character-detail-grid {
+            grid-template-columns: 1fr;
+          }
         }
         
         /* Graph Modal CSS styles */

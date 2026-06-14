@@ -24,10 +24,11 @@ export async function POST(req: NextRequest) {
     const updatedAt = entry.updatedAt || Date.now()
     const groupIds = Array.isArray(entry.groupIds) ? entry.groupIds : []
     const timelineFacts = Array.isArray(entry.timelineFacts) ? entry.timelineFacts : []
+    const characterDetails = entry.characterDetails && typeof entry.characterDetails === "object" ? entry.characterDetails : null
 
     await pool.query(
-      `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at, group_ids, timeline_facts)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO bible_entries (id, project_id, user_id, name, category, content, created_at, updated_at, group_ids, timeline_facts, character_details)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (id)
        DO UPDATE SET 
          name = EXCLUDED.name,
@@ -35,8 +36,9 @@ export async function POST(req: NextRequest) {
          content = EXCLUDED.content,
          updated_at = EXCLUDED.updated_at,
          group_ids = EXCLUDED.group_ids,
-         timeline_facts = EXCLUDED.timeline_facts`,
-      [entry.id, projectId, userId, entry.name || "Untitled", entry.category || "character", entry.content || "", createdAt, updatedAt, JSON.stringify(groupIds), JSON.stringify(timelineFacts)]
+         timeline_facts = EXCLUDED.timeline_facts,
+         character_details = EXCLUDED.character_details`,
+      [entry.id, projectId, userId, entry.name || "Untitled", entry.category || "character", entry.content || "", createdAt, updatedAt, JSON.stringify(groupIds), JSON.stringify(timelineFacts), JSON.stringify(characterDetails)]
     )
 
     return NextResponse.json({ success: true })
