@@ -27,7 +27,9 @@ import {
   saveStoryBrainLocal,
   getStoryBrainLocal,
   saveChapterVersionsLocal,
-  getChapterVersionsLocal
+  getChapterVersionsLocal,
+  saveExportHistoryLocal,
+  getExportHistoryLocal
 } from '@/lib/db'
 import { 
   syncChaptersWithCloud, 
@@ -836,6 +838,7 @@ function EditorContent() {
   const [selectedVersionForDiff, setSelectedVersionForDiff] = useState<ChapterVersion | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
+  const [dirPermission, setDirPermission] = useState<'granted' | 'prompt' | 'denied'>('prompt')
 
   const [isBuffering, setIsBuffering] = useState(false)
   const [bufferStatus, setBufferStatus] = useState<'idle' | 'success' | 'error'>('idle')
@@ -3727,6 +3730,32 @@ const fillEmptyCustomJsonData = (
     return false
   }, [])
 
+  useEffect(() => {
+    if (!dirHandle) {
+      setDirPermission('prompt')
+      return
+    }
+    const checkPerm = async () => {
+      try {
+        const state = await dirHandle.queryPermission({ mode: 'readwrite' })
+        setDirPermission(state)
+      } catch (e) {
+        console.error("Error checking dir handle permission:", e)
+      }
+    }
+    checkPerm()
+  }, [dirHandle])
+
+  const reconnectFolder = useCallback(async () => {
+    if (!dirHandle) return
+    try {
+      const state = await dirHandle.requestPermission({ mode: 'readwrite' })
+      setDirPermission(state)
+    } catch (e) {
+      console.error("Error requesting directory permission:", e)
+    }
+  }, [dirHandle])
+
   const disconnectFolder = async () => {
     setDirHandle(null)
     if (projectId) {
@@ -3972,11 +4001,28 @@ const fillEmptyCustomJsonData = (
       const collapsedList: string[] = storedCollapsed ? JSON.parse(storedCollapsed) : []
       setCollapsedVolumeIds(new Set(collapsedList))
 
-      const storedHistory = localStorage.getItem(getExportHistoryStorageKey())
-      const history: Record<string, ExportHistoryRecord> = storedHistory ? JSON.parse(storedHistory) : {}
-      setExportHistory(history)
-      savedFilenamesRef.current = new Map(Object.entries(history).map(([chapterId, record]) => [chapterId, record.filename]))
-      setSavedChapters(new Set(Object.keys(history)))
+      getExportHistoryLocal(projectId).then(indexedDbHistory => {
+        let history = indexedDbHistory
+        if (!history) {
+          const storedHistory = localStorage.getItem(getExportHistoryStorageKey())
+          history = storedHistory ? JSON.parse(storedHistory) : {}
+          if (history && Object.keys(history).length > 0) {
+            saveExportHistoryLocal(projectId, history).catch(err =>
+              console.error("Failed to migrate export history to IndexedDB:", err)
+            )
+          }
+        }
+        setExportHistory(history || {})
+        savedFilenamesRef.current = new Map(Object.entries(history || {}).map(([chapterId, record]) => [chapterId, record.filename]))
+        setSavedChapters(new Set(Object.keys(history || {})))
+      }).catch(err => {
+        console.error("Failed to load export history from IndexedDB:", err)
+        const storedHistory = localStorage.getItem(getExportHistoryStorageKey())
+        const history: Record<string, ExportHistoryRecord> = storedHistory ? JSON.parse(storedHistory) : {}
+        setExportHistory(history)
+        savedFilenamesRef.current = new Map(Object.entries(history).map(([chapterId, record]) => [chapterId, record.filename]))
+        setSavedChapters(new Set(Object.keys(history)))
+      })
     } catch (e) {
       console.error("Failed to load volume or export history:", e)
       setVolumes([])
@@ -5515,15 +5561,19 @@ const fillEmptyCustomJsonData = (
     }
     return `${note.updatedAt || 0}:${raw.length}:${hash}`
   }
-
   const persistExportHistory = useCallback((nextHistory: Record<string, ExportHistoryRecord>) => {
     const key = getExportHistoryStorageKey()
     if (!key) return
     localStorage.setItem(key, JSON.stringify(nextHistory))
+    if (projectId) {
+      saveExportHistoryLocal(projectId, nextHistory).catch(err =>
+        console.error("Failed to save export history to IndexedDB:", err)
+      )
+    }
     setExportHistory(nextHistory)
     savedFilenamesRef.current = new Map(Object.entries(nextHistory).map(([chapterId, record]) => [chapterId, record.filename]))
     setSavedChapters(new Set(Object.keys(nextHistory)))
-  }, [getExportHistoryStorageKey])
+  }, [getExportHistoryStorageKey, projectId])
 
   const saveSingleChapterToFolder = useCallback(async (note: Note, targetDir: FileSystemDirectoryHandle) => {
     try {
@@ -5556,14 +5606,18 @@ const fillEmptyCustomJsonData = (
         }
         const key = getExportHistoryStorageKey()
         if (key) localStorage.setItem(key, JSON.stringify(next))
+        if (projectId) {
+          saveExportHistoryLocal(projectId, next).catch(err =>
+            console.error("Failed to save export history to IndexedDB:", err)
+          )
+        }
         savedFilenamesRef.current = new Map(Object.entries(next).map(([chapterId, record]) => [chapterId, record.filename]))
         return next
       })
     } catch (e) {
       console.error("Failed to save chapter:", e)
     }
-  }, [getExportHistoryStorageKey])
-
+  }, [getExportHistoryStorageKey, projectId])
   const saveCurrentChapterToFolder = useCallback(async () => {
     if (!activeNote) return
     
@@ -7529,11 +7583,34 @@ ${navPoints}  </navMap>
                     Export Manuscript
                   </button>
                   {dirHandle && (
-                    <div className="linked-folder-info">
-                      <span className="folder-name" title={dirHandle.name}>📁 {dirHandle.name}</span>
-                      <button className="btn-disconnect-folder" onClick={disconnectFolder} title="Unlink folder">
-                        Disconnect
-                      </button>
+                    <div className="linked-folder-info" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.4rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '0.5rem' }}>
+                        <span className="folder-name" title={dirHandle.name}>📁 {dirHandle.name}</span>
+                        {dirPermission === 'granted' ? (
+                          <span style={{ fontSize: '0.62rem', padding: '0.1rem 0.35rem', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', fontWeight: 'bold' }}>Connected</span>
+                        ) : (
+                          <span style={{ fontSize: '0.62rem', padding: '0.1rem 0.35rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', fontWeight: 'bold' }}>Disconnected</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.45rem', width: '100%' }}>
+                        {dirPermission !== 'granted' && (
+                          <button 
+                            className="btn-reconnect-folder" 
+                            onClick={reconnectFolder} 
+                            style={{ flex: 1, padding: '0.25rem 0.5rem', fontSize: '0.7rem', fontWeight: 'bold', background: 'var(--primary)', color: 'white', border: 0, borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'var(--transition)' }}
+                          >
+                            Reconnect
+                          </button>
+                        )}
+                        <button 
+                          className="btn-disconnect-folder" 
+                          onClick={disconnectFolder} 
+                          title="Unlink folder"
+                          style={{ flex: 1, textAlign: 'center', padding: '0.25rem 0.5rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+                        >
+                          Disconnect
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -10630,6 +10707,7 @@ ${navPoints}  </navMap>
           onClose={() => setShowBrainGraph(false)}
           brainEntityGroups={brainEntityGroups}
           onSelectEntity={(name) => setSelectedBrainEntityName(name)}
+          bibleEntries={bibleEntries}
         />
 
         {selectedSegment && (
@@ -12309,13 +12387,16 @@ ${navPoints}  </navMap>
               </div>
             )}
 
-            <div className="hover-card-body">
+            <div className="hover-card-body scrollbar" style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '0.25rem' }}>
               {hoveredLore.content ? (
-                <p className="line-clamp-3" style={{ margin: 0, fontSize: '0.74rem', lineHeight: '1.4' }}>{hoveredLore.content.replace(/[#*`>_\-]/g, '').substring(0, 150)}...</p>
+                <div className="brain-markdown-view" style={{ fontSize: '0.74rem', lineHeight: '1.45', color: 'var(--text-secondary)' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{hoveredLore.content}</ReactMarkdown>
+                </div>
               ) : (
-                <p className="no-info" style={{ margin: 0, fontSize: '0.74rem' }}>No biography or notes entered yet.</p>
+                <p className="no-info" style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-dim)' }}>No biography or notes entered yet.</p>
               )}
             </div>
+
             <div className="hover-card-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '0.5rem' }}>
               <button
                 className="btn-ai-sub btn-ai-secondary"
@@ -12600,7 +12681,7 @@ ${navPoints}  </navMap>
         }
 
         .lore-hover-card {
-          width: 260px;
+          width: 320px;
           padding: 1rem;
           border-radius: var(--radius-md);
           background: rgba(15, 17, 23, 0.95);
@@ -19649,13 +19730,15 @@ interface BrainGraphModalComponentProps {
   onClose: () => void;
   brainEntityGroups: any[];
   onSelectEntity: (name: string) => void;
+  bibleEntries?: any[];
 }
 
 const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
   isOpen,
   onClose,
   brainEntityGroups,
-  onSelectEntity
+  onSelectEntity,
+  bibleEntries = []
 }) => {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [links, setLinks] = useState<GraphLink[]>([]);
@@ -19873,9 +19956,13 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
       case 'concept': return 'Concept';
       case 'event': return 'Event';
       case 'foreshadowing': return 'Foreshadowing';
-      default: return 'Other';
     }
   };
+
+  const matchingBibleEntry = selectedGraphNode 
+    ? bibleEntries?.find(e => e.name.toLowerCase() === selectedGraphNode.name.toLowerCase())
+    : null;
+  const displaySummaryContent = matchingBibleEntry?.content || selectedGraphNode?.latestSummary || "No description or AI analysis details available.";
 
   return (
     <div className="modal-overlay graph-modal-overlay" onClick={onClose} style={{ zIndex: 110 }}>
@@ -20047,7 +20134,7 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
               </div>
               
               <div className="brain-markdown-view scrollbar" style={{ flex: 1, fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: '1.5', overflowY: 'auto', borderTop: '1px solid var(--surface-border)', paddingTop: '0.65rem', marginTop: '0.2rem', paddingRight: '0.2rem' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedGraphNode.latestSummary}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{displaySummaryContent}</ReactMarkdown>
               </div>
 
               <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.45rem', borderTop: '1px solid var(--surface-border)', paddingTop: '0.75rem', flexShrink: 0 }}>

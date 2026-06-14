@@ -57,10 +57,18 @@ export interface PenPadDB {
       updatedAt: number;
     };
   };
+  'export_history': {
+    key: string;
+    value: {
+      projectId: string;
+      data: Record<string, any>;
+      updatedAt: number;
+    };
+  };
 }
 
 const DB_NAME = 'penpad_engine_db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export async function getDB(): Promise<IDBPDatabase<any>> {
   return openDB<any>(DB_NAME, DB_VERSION, {
@@ -85,6 +93,9 @@ export async function getDB(): Promise<IDBPDatabase<any>> {
       }
       if (!db.objectStoreNames.contains('version_history')) {
         db.createObjectStore('version_history', { keyPath: 'noteId' });
+      }
+      if (!db.objectStoreNames.contains('export_history')) {
+        db.createObjectStore('export_history', { keyPath: 'projectId' });
       }
     },
   });
@@ -172,5 +183,16 @@ export async function saveChapterVersionsLocal(noteId: string, data: any[]) {
 export async function getChapterVersionsLocal(noteId: string): Promise<any[] | null> {
   const db = await getDB();
   const res = await db.get('version_history', noteId);
+  return res ? res.data : null;
+}
+
+export async function saveExportHistoryLocal(projectId: string, data: Record<string, any>) {
+  const db = await getDB();
+  await db.put('export_history', { projectId, data, updatedAt: Date.now() });
+}
+
+export async function getExportHistoryLocal(projectId: string): Promise<Record<string, any> | null> {
+  const db = await getDB();
+  const res = await db.get('export_history', projectId);
   return res ? res.data : null;
 }
