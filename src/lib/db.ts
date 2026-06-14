@@ -49,6 +49,14 @@ export interface PenPadDB {
       updatedAt: number;
     };
   };
+  'arc_seeds': {
+    key: string;
+    value: {
+      projectId: string;
+      data: any[];
+      updatedAt: number;
+    };
+  };
   'version_history': {
     key: string;
     value: {
@@ -68,7 +76,7 @@ export interface PenPadDB {
 }
 
 const DB_NAME = 'penpad_engine_db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export async function getDB(): Promise<IDBPDatabase<any>> {
   return openDB<any>(DB_NAME, DB_VERSION, {
@@ -90,6 +98,9 @@ export async function getDB(): Promise<IDBPDatabase<any>> {
       }
       if (!db.objectStoreNames.contains('story_brain')) {
         db.createObjectStore('story_brain', { keyPath: 'projectId' });
+      }
+      if (!db.objectStoreNames.contains('arc_seeds')) {
+        db.createObjectStore('arc_seeds', { keyPath: 'projectId' });
       }
       if (!db.objectStoreNames.contains('version_history')) {
         db.createObjectStore('version_history', { keyPath: 'noteId' });
@@ -172,6 +183,17 @@ export async function saveStoryBrainLocal(projectId: string, data: any[]) {
 export async function getStoryBrainLocal(projectId: string): Promise<any[] | null> {
   const db = await getDB();
   const res = await db.get('story_brain', projectId);
+  return res ? res.data : null;
+}
+
+export async function saveArcSeedsLocal(projectId: string, data: any[]) {
+  const db = await getDB();
+  await db.put('arc_seeds', { projectId, data, updatedAt: Date.now() });
+}
+
+export async function getArcSeedsLocal(projectId: string): Promise<any[] | null> {
+  const db = await getDB();
+  const res = await db.get('arc_seeds', projectId);
   return res ? res.data : null;
 }
 

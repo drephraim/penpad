@@ -87,6 +87,25 @@ export interface BrainEntry {
   updatedAt: number
 }
 
+export type ArcSeedStatus = "open" | "developing" | "paid_off" | "dropped"
+
+export interface ArcSeed {
+  id: string
+  title: string
+  summary: string
+  whyItMatters: string
+  futurePayoff: string
+  evidence: string
+  chapterTitle: string
+  chapterId: string
+  chapterNumber?: number | null
+  relatedCharacters?: string[]
+  relatedEntities?: string[]
+  status: ArcSeedStatus
+  createdAt: number
+  updatedAt: number
+}
+
 /**
  * Helper to execute a fetch request with a timeout.
  */
@@ -419,5 +438,73 @@ export async function deleteBrainEntryFromCloud(userId: string, projectId: strin
     }
   } catch (error) {
     console.error("Failed to delete brain entry from cloud:", error)
+  }
+}
+
+/**
+ * Reconciles local Arc Seeds with PostgreSQL via Next.js API.
+ */
+export async function syncArcSeedsWithCloud(userId: string, projectId: string, localSeeds: ArcSeed[]): Promise<ArcSeed[]> {
+  if (!userId || !projectId) return localSeeds
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/arc-seeds", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, localSeeds }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return (data.seeds || []) as ArcSeed[]
+  } catch (error) {
+    console.error("Failed to sync arc seeds with cloud, falling back to local:", error)
+    return localSeeds
+  }
+}
+
+export async function saveArcSeedToCloud(userId: string, projectId: string, seed: ArcSeed): Promise<void> {
+  if (!userId || !projectId || !seed || !seed.id) return
+
+  try {
+    const response = await fetch("/api/sync/save-arc-seed", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, seed })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save arc seed to cloud:", error)
+  }
+}
+
+export async function deleteArcSeedFromCloud(userId: string, projectId: string, seedId: string): Promise<void> {
+  if (!userId || !projectId || !seedId) return
+
+  try {
+    const response = await fetch("/api/sync/delete-arc-seed", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId, projectId, seedId })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to delete arc seed from cloud:", error)
   }
 }

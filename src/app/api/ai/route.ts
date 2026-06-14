@@ -147,6 +147,18 @@ type BibleExtractResponse = {
 }
 type BibleExtractCharacterDetails = NonNullable<NonNullable<BibleExtractResponse["suggestions"]>[number]["characterDetails"]>
 
+type ArcSeedExtractResponse = {
+  seed?: {
+    title?: string
+    summary?: string
+    whyItMatters?: string
+    futurePayoff?: string
+    evidence?: string
+    relatedCharacters?: string[]
+    relatedEntities?: string[]
+  }
+}
+
 function parseJsonObject<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T
@@ -758,8 +770,37 @@ export async function POST(req: NextRequest) {
         `Active Chapter: ${chapterNumber ? `Chapter ${chapterNumber} - ` : ""}${chapterTitle || "Untitled"}\n\n` +
         `Existing Story Bible Entries:\n${existingContext || "No Story Bible entries yet."}\n\n` +
         `Chapter Content:\n${String(chapterContent).slice(0, 60000)}`
+    } else if (action === "arc_seed_extract") {
+      const { chapterContent, chapterTitle, chapterNumber, existingArcSeeds, bibleEntries, brainEntries } = body
+      if (!chapterContent || typeof chapterContent !== "string") {
+        return NextResponse.json({ error: "chapterContent is required for arc_seed_extract" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a story development editor for a novelist. Read one completed chapter and identify the single strongest future arc seed hidden in it.\n" +
+        "An arc seed is not a general summary. It is a concrete unresolved hook, promise, mystery, emotional wound, omen, object, relationship tension, threat, rumor, contradiction, or quiet detail that could be developed or paid off in future chapters.\n" +
+        "Return only ONE best seed. If several exist, choose the one with the highest future-story potential and clearest evidence. Avoid noisy lists.\n" +
+        "Prefer details that the author may forget but could later become an arc. Include exact evidence from the chapter.\n" +
+        "Output ONLY valid JSON with key seed. seed must include title, summary, whyItMatters, futurePayoff, evidence, relatedCharacters, and relatedEntities."
+
+      const seedContext = Array.isArray(existingArcSeeds)
+        ? existingArcSeeds.slice(0, 80).map((seed: any) => `- ${seed.title || "Untitled"} (${seed.status || "open"}): ${seed.summary || ""}`).join("\n")
+        : ""
+      const bibleContext = Array.isArray(bibleEntries)
+        ? bibleEntries.slice(0, 60).map((entry: any) => `- ${entry.name || "Unknown"} (${entry.category || "lore"})`).join(", ")
+        : ""
+      const brainContext = Array.isArray(brainEntries)
+        ? brainEntries.slice(0, 60).map((entry: any) => `- ${entry.entityName || entry.highlightedText || "Unknown"}: ${entry.aiSummary || ""}`.slice(0, 280)).join("\n")
+        : ""
+
+      userPrompt =
+        `Active Chapter: ${chapterNumber ? `Chapter ${chapterNumber} - ` : ""}${chapterTitle || "Untitled"}\n\n` +
+        `Existing Arc Seeds:\n${seedContext || "No arc seeds yet."}\n\n` +
+        `Known Story Bible Names:\n${bibleContext || "No Story Bible entries yet."}\n\n` +
+        `Relevant Brain Map Memory:\n${brainContext || "No Brain Map entries yet."}\n\n` +
+        `Chapter Content:\n${chapterContent.slice(0, 60000)}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, or progression_template_design." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, or progression_template_design." }, { status: 400 })
     }
 
     const jsonActions = new Set([
@@ -772,7 +813,8 @@ export async function POST(req: NextRequest) {
       "brain_suggest_additions",
       "brain_generate_dossier",
       "bible_consistency_check",
-      "bible_extract_from_chapter"
+      "bible_extract_from_chapter",
+      "arc_seed_extract"
     ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
@@ -1023,6 +1065,40 @@ export async function POST(req: NextRequest) {
             }
           })).filter(suggestion => suggestion.entryName && suggestion.summary)
           : []
+      })
+    }
+
+    if (action === "arc_seed_extract") {
+      const result = parseJsonObject<ArcSeedExtractResponse>(text)
+      const seed = result?.seed
+      if (!seed) {
+        return NextResponse.json({
+          seed: {
+            title: "Future thread",
+            summary: text.slice(0, 800),
+            whyItMatters: "",
+            futurePayoff: "",
+            evidence: "",
+            relatedCharacters: [],
+            relatedEntities: []
+          }
+        })
+      }
+
+      return NextResponse.json({
+        seed: {
+          title: String(seed.title || "Future thread").trim(),
+          summary: String(seed.summary || "").trim(),
+          whyItMatters: String(seed.whyItMatters || "").trim(),
+          futurePayoff: String(seed.futurePayoff || "").trim(),
+          evidence: String(seed.evidence || "").trim(),
+          relatedCharacters: Array.isArray(seed.relatedCharacters)
+            ? seed.relatedCharacters.map(item => String(item).trim()).filter(Boolean).slice(0, 8)
+            : [],
+          relatedEntities: Array.isArray(seed.relatedEntities)
+            ? seed.relatedEntities.map(item => String(item).trim()).filter(Boolean).slice(0, 10)
+            : []
+        }
       })
     }
 

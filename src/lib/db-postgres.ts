@@ -86,6 +86,27 @@ export async function bootstrapDb() {
     `)
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS arc_seeds (
+        id VARCHAR(255) PRIMARY KEY,
+        project_id VARCHAR(255) REFERENCES projects(id) ON DELETE CASCADE,
+        user_id VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        summary TEXT,
+        why_it_matters TEXT,
+        future_payoff TEXT,
+        evidence TEXT,
+        chapter_title VARCHAR(255),
+        chapter_id VARCHAR(255),
+        chapter_number INTEGER,
+        related_characters JSONB,
+        related_entities JSONB,
+        status VARCHAR(50),
+        created_at BIGINT,
+        updated_at BIGINT
+      );
+    `)
+
+    await client.query(`
       ALTER TABLE chapters
       ADD COLUMN IF NOT EXISTS volume_id VARCHAR(255),
       ADD COLUMN IF NOT EXISTS sort_order DOUBLE PRECISION;

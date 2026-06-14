@@ -26,6 +26,8 @@ import {
   getStoryBibleLocal,
   saveStoryBrainLocal,
   getStoryBrainLocal,
+  saveArcSeedsLocal,
+  getArcSeedsLocal,
   saveChapterVersionsLocal,
   getChapterVersionsLocal,
   saveExportHistoryLocal,
@@ -41,8 +43,13 @@ import {
   syncBrainWithCloud,
   saveBrainEntryToCloud,
   deleteBrainEntryFromCloud,
+  syncArcSeedsWithCloud,
+  saveArcSeedToCloud,
+  deleteArcSeedFromCloud,
   BibleEntry,
   BrainEntry,
+  ArcSeed,
+  ArcSeedStatus,
   Project,
   saveProjectToCloud
 } from '@/lib/sync'
@@ -987,6 +994,10 @@ function EditorContent() {
   const [isEditingDossier, setIsEditingDossier] = useState(false)
   const [dossierEditText, setDossierEditText] = useState('')
   const [activeBrainPopup, setActiveBrainPopup] = useState<'ask' | 'suggestions' | 'continuity' | null>(null)
+  const [arcSeeds, setArcSeeds] = useState<ArcSeed[]>([])
+  const [arcSeedLoading, setArcSeedLoading] = useState(false)
+  const [arcSeedError, setArcSeedError] = useState("")
+  const [selectedArcSeedId, setSelectedArcSeedId] = useState<string | null>(null)
 
   // Focus Sprints & Gamified Focus Tracker States
   const [sprintDuration, setSprintDuration] = useState(1500)
@@ -5215,6 +5226,111 @@ const fillEmptyCustomJsonData = (
     }
   }, [user, projectId])
 
+  const fetchArcSeeds = useCallback(async () => {
+    if (!user || !projectId) return
+    try {
+      let seedList: ArcSeed[] = (await getArcSeedsLocal(projectId)) || []
+      if (seedList.length === 0) {
+        const stored = localStorage.getItem(`penpad_arc_seeds_${projectId}`)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          seedList = parsed
+          await saveArcSeedsLocal(projectId, parsed)
+          localStorage.removeItem(`penpad_arc_seeds_${projectId}`)
+        }
+      }
+      setArcSeeds(seedList)
+
+      const synced = await syncArcSeedsWithCloud(user.uid, projectId, seedList)
+      setArcSeeds(synced)
+      await saveArcSeedsLocal(projectId, synced)
+    } catch {
+      console.error("Fetch/Sync arc seeds failed")
+    }
+  }, [user, projectId])
+
+  const getArcSeedChapterLabel = (seed: ArcSeed) => {
+    if (seed.chapterNumber) return `Chapter ${seed.chapterNumber}`
+    return seed.chapterTitle || "Unknown chapter"
+  }
+
+  const generateArcSeedFromChapter = async () => {
+    if (!activeNote || !projectId || !user || arcSeedLoading) return
+    setArcSeedLoading(true)
+    setArcSeedError("")
+
+    try {
+      const chapterNumber = getNoteChapterNumber(activeNote)
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "arc_seed_extract",
+          chapterContent: activeNote.content,
+          chapterTitle: activeNote.title,
+          chapterNumber,
+          existingArcSeeds: arcSeeds,
+          bibleEntries,
+          brainEntries: brainEntries.filter(entry => entry.aiSummary !== "Analyzing...")
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to extract an Arc Seed")
+
+      const seedData = data.seed || {}
+      const now = Date.now()
+      const nextSeed: ArcSeed = {
+        id: crypto.randomUUID(),
+        title: String(seedData.title || "Future thread").trim(),
+        summary: String(seedData.summary || "").trim(),
+        whyItMatters: String(seedData.whyItMatters || "").trim(),
+        futurePayoff: String(seedData.futurePayoff || "").trim(),
+        evidence: String(seedData.evidence || "").trim(),
+        chapterTitle: activeNote.title || "Untitled",
+        chapterId: activeNote.id,
+        chapterNumber,
+        relatedCharacters: Array.isArray(seedData.relatedCharacters) ? seedData.relatedCharacters : [],
+        relatedEntities: Array.isArray(seedData.relatedEntities) ? seedData.relatedEntities : [],
+        status: "open",
+        createdAt: now,
+        updatedAt: now
+      }
+
+      const existingSameChapter = arcSeeds.find(seed => seed.chapterId === activeNote.id)
+      const nextList = existingSameChapter
+        ? arcSeeds.map(seed => seed.id === existingSameChapter.id ? { ...nextSeed, id: existingSameChapter.id, createdAt: existingSameChapter.createdAt } : seed)
+        : [nextSeed, ...arcSeeds]
+      setArcSeeds(nextList)
+      await saveArcSeedsLocal(projectId, nextList)
+      await saveArcSeedToCloud(user.uid, projectId, existingSameChapter ? { ...nextSeed, id: existingSameChapter.id, createdAt: existingSameChapter.createdAt } : nextSeed)
+      setSelectedArcSeedId(existingSameChapter?.id || nextSeed.id)
+    } catch (err) {
+      setArcSeedError(err instanceof Error ? err.message : "Failed to extract an Arc Seed")
+    } finally {
+      setArcSeedLoading(false)
+    }
+  }
+
+  const updateArcSeed = async (seedId: string, updates: Partial<ArcSeed>) => {
+    if (!projectId || !user) return
+    const current = arcSeeds.find(seed => seed.id === seedId)
+    if (!current) return
+    const updatedSeed: ArcSeed = { ...current, ...updates, updatedAt: Date.now() }
+    const nextList = arcSeeds.map(seed => seed.id === seedId ? updatedSeed : seed)
+    setArcSeeds(nextList)
+    await saveArcSeedsLocal(projectId, nextList)
+    saveArcSeedToCloud(user.uid, projectId, updatedSeed)
+  }
+
+  const deleteArcSeed = async (seedId: string) => {
+    if (!projectId || !user) return
+    const nextList = arcSeeds.filter(seed => seed.id !== seedId)
+    setArcSeeds(nextList)
+    setSelectedArcSeedId(current => current === seedId ? null : current)
+    await saveArcSeedsLocal(projectId, nextList)
+    await deleteArcSeedFromCloud(user.uid, projectId, seedId)
+  }
+
   const getChapterNumberFromTitle = (title?: string) => {
     const match = title?.match(/\bchapter\s*0*(\d+)\b/i)
     return match ? Number.parseInt(match[1], 10) : null
@@ -5752,6 +5868,7 @@ const fillEmptyCustomJsonData = (
       fetchNotes()
       fetchBible()
       fetchBrain()
+      fetchArcSeeds()
       fetchProgressionSystem()
       fetchProgressionProfiles()
     }
@@ -6976,6 +7093,7 @@ ${navPoints}  </navMap>
     chapters: notes.length,
     words: notes.reduce((total, note) => total + countWords(note.content || ""), 0),
     brainEntries: brainEntries.length,
+    arcSeeds: arcSeeds.length,
     loreEntries: bibleEntries.length,
     criticalBrainEntries: brainEntries.filter(entry => entry.importance === 'critical').length,
     averageChapterWords: notes.length > 0
@@ -7032,7 +7150,25 @@ ${navPoints}  </navMap>
         preview: entry.content.slice(0, 180)
       }))
 
-    return [...chapterResults, ...brainResults, ...loreResults].slice(0, 18)
+    const arcResults = arcSeeds
+      .filter(seed =>
+        seed.title.toLowerCase().includes(query) ||
+        seed.summary.toLowerCase().includes(query) ||
+        seed.whyItMatters.toLowerCase().includes(query) ||
+        seed.futurePayoff.toLowerCase().includes(query) ||
+        seed.evidence.toLowerCase().includes(query)
+      )
+      .slice(0, 6)
+      .map(seed => ({
+        id: `arc-${seed.id}`,
+        source: 'brain' as SearchSource,
+        title: seed.title,
+        subtitle: `${getArcSeedChapterLabel(seed)} - Arc Seed`,
+        preview: seed.summary || seed.futurePayoff,
+        chapterId: seed.chapterId
+      }))
+
+    return [...chapterResults, ...brainResults, ...arcResults, ...loreResults].slice(0, 18)
   })()
 
   const openGlobalSearchResult = (result: GlobalSearchResult) => {
@@ -7114,6 +7250,9 @@ ${navPoints}  </navMap>
 
   const selectedBrainEntry = selectedBrainEntryId 
     ? brainEntries.find(e => e.id === selectedBrainEntryId) || null
+    : null
+  const selectedArcSeed = selectedArcSeedId
+    ? arcSeeds.find(seed => seed.id === selectedArcSeedId) || null
     : null
 
   const getBrainEntryChapterNumber = (entry: BrainEntry) => {
@@ -9524,7 +9663,7 @@ ${navPoints}  </navMap>
                 </div>
 
                 {/* Compact Quick Action Badges */}
-                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
                   <button
                     className="brain-action-card glass-light"
                     onClick={() => setActiveBrainPopup('ask')}
@@ -9631,6 +9770,80 @@ ${navPoints}  </navMap>
                       }}>{consistencyWarnings.length}</span>
                     )}
                   </button>
+
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={generateArcSeedFromChapter}
+                    title="Extract one future arc seed from the active chapter"
+                    disabled={arcSeedLoading || !activeNote}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: arcSeedLoading || !activeNote ? 'not-allowed' : 'pointer',
+                      transition: 'var(--transition)',
+                      opacity: arcSeedLoading || !activeNote ? 0.6 : 1,
+                      position: 'relative'
+                    }}
+                  >
+                    {arcSeedLoading ? <Loader2 size={14} className="spin" /> : <History size={14} style={{ color: '#5eead4' }} />}
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Arc Seed</span>
+                    {arcSeeds.filter(seed => seed.status === "open").length > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        background: '#14b8a6',
+                        color: 'white',
+                        fontSize: '0.55rem',
+                        fontWeight: 'bold',
+                        borderRadius: '50%',
+                        minWidth: '14px',
+                        height: '14px',
+                        padding: '0 3px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 6px #14b8a6'
+                      }}>{arcSeeds.filter(seed => seed.status === "open").length}</span>
+                    )}
+                  </button>
+                </div>
+
+                <div className="arc-seeds-panel">
+                  <div className="arc-seeds-header">
+                    <div>
+                      <strong>Arc Seeds</strong>
+                      <span>Chapter hooks to develop or pay off later.</span>
+                    </div>
+                    <em>{arcSeeds.filter(seed => seed.status === "open").length} open</em>
+                  </div>
+                  {arcSeedError && <div className="arc-seed-error">{arcSeedError}</div>}
+                  <div className="arc-seeds-list">
+                    {arcSeeds.length === 0 ? (
+                      <div className="empty-state-text compact">No Arc Seeds yet. Click Arc Seed after finishing a chapter.</div>
+                    ) : arcSeeds.slice(0, 8).map(seed => (
+                      <button
+                        key={seed.id}
+                        type="button"
+                        className={`arc-seed-card status-${seed.status}`}
+                        onClick={() => setSelectedArcSeedId(seed.id)}
+                      >
+                        <div>
+                          <small>{getArcSeedChapterLabel(seed)}</small>
+                          <strong>{seed.title}</strong>
+                        </div>
+                        <span>{seed.status.replace("_", " ")}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {brainEntityGroups.length > 0 && (
@@ -10620,6 +10833,100 @@ ${navPoints}  </navMap>
               </div>
             </div>
           </aside>
+        )}
+
+        {selectedArcSeed && (
+          <div className="modal-overlay" onClick={() => setSelectedArcSeedId(null)}>
+            <div className="modal arc-seed-detail-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header brain-detail-header">
+                <div>
+                  <h2 className="modal-title">Arc Seed</h2>
+                  <p className="modal-description">{getArcSeedChapterLabel(selectedArcSeed)} - {selectedArcSeed.chapterTitle || "Untitled"}</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setSelectedArcSeedId(null)} title="Close"><X size={16} /></button>
+              </div>
+
+              <div className="arc-seed-detail-body">
+                <label className="ai-form-field">
+                  <span>Seed Title</span>
+                  <input
+                    className="ai-input"
+                    value={selectedArcSeed.title}
+                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { title: e.target.value })}
+                  />
+                </label>
+
+                <label className="ai-form-field">
+                  <span>Status</span>
+                  <select
+                    className="ai-select"
+                    value={selectedArcSeed.status}
+                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { status: e.target.value as ArcSeedStatus })}
+                  >
+                    <option value="open">Open</option>
+                    <option value="developing">Developing</option>
+                    <option value="paid_off">Paid Off</option>
+                    <option value="dropped">Dropped</option>
+                  </select>
+                </label>
+
+                <label className="ai-form-field">
+                  <span>What Happened</span>
+                  <textarea
+                    className="ai-textarea compact"
+                    value={selectedArcSeed.summary}
+                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { summary: e.target.value })}
+                  />
+                </label>
+
+                <label className="ai-form-field">
+                  <span>Why It Matters</span>
+                  <textarea
+                    className="ai-textarea compact"
+                    value={selectedArcSeed.whyItMatters}
+                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { whyItMatters: e.target.value })}
+                  />
+                </label>
+
+                <label className="ai-form-field">
+                  <span>Possible Future Payoff</span>
+                  <textarea
+                    className="ai-textarea compact"
+                    value={selectedArcSeed.futurePayoff}
+                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { futurePayoff: e.target.value })}
+                  />
+                </label>
+
+                {(selectedArcSeed.relatedCharacters?.length || selectedArcSeed.relatedEntities?.length) ? (
+                  <div className="arc-seed-chip-row">
+                    {[...(selectedArcSeed.relatedCharacters || []), ...(selectedArcSeed.relatedEntities || [])].slice(0, 10).map(item => (
+                      <span key={item}>{item}</span>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="brain-detail-section">
+                  <span className="brain-detail-label">Chapter Evidence</span>
+                  <div className="brain-detail-summary">
+                    {selectedArcSeed.evidence || "No direct evidence saved."}
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="btn btn-ghost danger-text"
+                  onClick={() => {
+                    const confirmed = window.confirm("Delete this Arc Seed? This cannot be undone.")
+                    if (confirmed) deleteArcSeed(selectedArcSeed.id)
+                  }}
+                >
+                  Delete
+                </button>
+                <button className="btn btn-primary" onClick={() => setSelectedArcSeedId(null)}>Done</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {selectedBrainEntry && (
@@ -16504,6 +16811,148 @@ ${navPoints}  </navMap>
         }
 
         /* Brain Map Styles */
+        .arc-seeds-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          margin-bottom: 0.8rem;
+          padding: 0.7rem;
+          border: 1px solid rgba(20, 184, 166, 0.22);
+          border-radius: var(--radius-md);
+          background: rgba(20, 184, 166, 0.045);
+        }
+
+        .arc-seeds-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.55rem;
+        }
+
+        .arc-seeds-header div {
+          display: flex;
+          flex-direction: column;
+          gap: 0.16rem;
+        }
+
+        .arc-seeds-header strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+        }
+
+        .arc-seeds-header span,
+        .arc-seeds-header em {
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-style: normal;
+        }
+
+        .arc-seed-error {
+          padding: 0.45rem 0.5rem;
+          border: 1px solid rgba(239, 68, 68, 0.25);
+          border-radius: var(--radius-sm);
+          background: rgba(239, 68, 68, 0.08);
+          color: #fca5a5;
+          font-size: 0.72rem;
+        }
+
+        .arc-seeds-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+        }
+
+        .arc-seed-card {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.6rem;
+          padding: 0.55rem 0.6rem;
+          border: 1px solid rgba(20, 184, 166, 0.18);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.14);
+          color: var(--text-secondary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .arc-seed-card:hover {
+          border-color: rgba(20, 184, 166, 0.42);
+          background: rgba(20, 184, 166, 0.08);
+        }
+
+        .arc-seed-card div {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.16rem;
+        }
+
+        .arc-seed-card small {
+          color: #5eead4;
+          font-size: 0.64rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .arc-seed-card strong {
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .arc-seed-card > span {
+          flex-shrink: 0;
+          padding: 0.22rem 0.38rem;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: var(--text-dim);
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .arc-seed-card.status-paid_off {
+          opacity: 0.72;
+        }
+
+        .arc-seed-card.status-dropped {
+          opacity: 0.55;
+        }
+
+        .arc-seed-detail-modal {
+          max-width: 560px;
+          max-height: calc(100vh - 4rem);
+          overflow-y: auto;
+        }
+
+        .arc-seed-detail-body {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .arc-seed-chip-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.35rem;
+        }
+
+        .arc-seed-chip-row span {
+          padding: 0.3rem 0.45rem;
+          border: 1px solid rgba(20, 184, 166, 0.24);
+          border-radius: var(--radius-sm);
+          background: rgba(20, 184, 166, 0.08);
+          color: #99f6e4;
+          font-size: 0.7rem;
+          font-weight: 800;
+        }
+
         .brain-markdown-view,
         .dossier-markdown-view {
           font-size: 0.82rem;
