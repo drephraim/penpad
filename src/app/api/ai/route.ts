@@ -187,6 +187,145 @@ function parseJsonObject<T>(text: string): T | null {
   }
 }
 
+function parseJsonValue<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0]) as T
+    } catch {
+      return null
+    }
+  }
+}
+
+function normalizeNameForCompare(name: string): string {
+  try {
+    return name.normalize("NFKC").toLocaleLowerCase().replace(new RegExp("[^\\p{L}\\p{N}]+", "gu"), "")
+  } catch {
+    return name.toLocaleLowerCase().replace(/\s+/g, "")
+  }
+}
+
+function buildFallbackNameOptions(body: Record<string, any>) {
+  const style = String(body.nameStyle || "fantasy").toLowerCase()
+  const category = ["character", "beast", "world", "place", "item"].includes(String(body.nameCategory)) ? String(body.nameCategory) : "character"
+  const structure = String(body.nameStructure || "any").toLowerCase()
+  const tone = String(body.nameTone || "memorable")
+  const prompt = String(body.customPrompt || "")
+  const existing = new Set(
+    Array.isArray(body.bibleEntries)
+      ? body.bibleEntries.map((entry: any) => normalizeNameForCompare(String(entry?.name || ""))).filter(Boolean)
+      : []
+  )
+  const seed = (Date.now() + style.length * 13 + category.length * 17 + structure.length * 19 + prompt.length * 23) % 997
+
+  const banks: Record<string, { family: string[]; given: string[]; middle: string[]; epithet: string[]; origin: string }> = {
+    chinese: {
+      family: ["Shen", "Liang", "Wei", "Jiang", "Luo", "Yun", "Mo", "Han"],
+      given: ["Qingxuan", "Moye", "Zhenyu", "Lianhua", "Ruyin", "Xiaofeng", "Yueshen", "Ninghai"],
+      middle: ["Silent", "Cloud", "Jade", "Night", "Crimson", "Hidden"],
+      epithet: ["Shadow Lotus", "Moon Blade", "Silent Meridian", "Jade Warden"],
+      origin: "Chinese-inspired cultivation"
+    },
+    japanese: {
+      family: ["Kurogane", "Tsukihara", "Minazuki", "Akamori", "Shiranui", "Yorozu"],
+      given: ["Renka", "Mitsuo", "Sayori", "Kaito", "Hotaru", "Yukina", "Reiha"],
+      middle: ["Nocturne", "Ember", "Mist", "Iron", "Moon"],
+      epithet: ["Foxfire", "Moon-Edge", "Ashen Shrine", "Mist Oath"],
+      origin: "Japanese-inspired fantasy"
+    },
+    elven: {
+      family: ["Aeltharyn", "Vaeloria", "Sylmareth", "Elarion", "Thalanis"],
+      given: ["Liora", "Faelith", "Aerendyl", "Nymeriel", "Caelion", "Vaelis"],
+      middle: ["Star", "Willow", "Dawn", "Silver", "Thorn"],
+      epithet: ["Starbloom", "Moonwoven", "Dusk Harp", "Silverleaf"],
+      origin: "Elven"
+    },
+    demonic: {
+      family: ["Varkhazar", "Maldrake", "Zorveth", "Ashkhael", "Drazhkul"],
+      given: ["Kaelrix", "Veyrath", "Nocthara", "Azrul", "Morvayne", "Xalreth"],
+      middle: ["Blood", "Abyss", "Cinder", "Ruin", "Horn"],
+      epithet: ["Oathbreaker", "Black Pyre", "Dread Crown", "Hellscar"],
+      origin: "Demonic"
+    },
+    beast: {
+      family: ["Ironmane", "Thunderclaw", "Voidscale", "Moonfang", "Ashhorn", "Stormhide"],
+      given: ["Ravok", "Kryll", "Zhara", "Mawren", "Skoruun", "Velk"],
+      middle: ["Feral", "Ancient", "Howling", "Scaled", "Dire"],
+      epithet: ["World-Eater", "Night Prowler", "Storm Tusker", "Sky Rend"],
+      origin: "Beast or monster"
+    },
+    cultivation: {
+      family: ["Azure Peak", "Ninefold", "Crimson Crane", "Void Lotus", "Heaven-Severing"],
+      given: ["Sect", "Pavilion", "Palace", "Valley", "Hall", "Sanctum"],
+      middle: ["Inner", "Hidden", "Elder", "Celestial", "Forbidden"],
+      epithet: ["Sword Oath", "Dragon Meridian", "Soul Furnace", "Cloud Tribulation"],
+      origin: "Cultivation world"
+    },
+    divine: {
+      family: ["Seraphyne", "Aurelion", "Solmara", "Elyndra", "Vauntiel"],
+      given: ["Orison", "Celest", "Halo", "Lumin", "Astrael", "Vespera"],
+      middle: ["Radiant", "Dawn", "Oracle", "Crown", "Star"],
+      epithet: ["Sun-Crowned", "Heaven's Witness", "Dawn Herald", "Star Vow"],
+      origin: "Divine or celestial"
+    },
+    fantasy: {
+      family: ["Veylan", "Draven", "Mireholt", "Sablemere", "Asterion", "Kyr Vale"],
+      given: ["Kaelen", "Mirae", "Thorne", "Seren", "Vael", "Nyra", "Corvin"],
+      middle: ["Ash", "Rune", "Storm", "Vale", "Night", "Ember"],
+      epithet: ["Glass Blade", "Runebound", "Storm-Touched", "Ashen Star"],
+      origin: "Invented fantasy"
+    }
+  }
+
+  const selected = banks[style] || banks[category === "beast" ? "beast" : "fantasy"]
+  const pick = (items: string[], offset: number) => items[(seed + offset) % items.length]
+  const makeBase = (offset: number) => {
+    if (category === "beast") return `${pick(banks.beast.family, offset)} ${pick(banks.beast.given, offset + 3)}`
+    if (category === "world") return `${pick(selected.family, offset)} ${pick(["Sect", "Clan", "Court", "Pavilion", "Order", "Dominion"], offset + 2)}`
+    if (category === "place") return `${pick(selected.epithet, offset)} ${pick(["Vale", "Citadel", "Sanctum", "Grove", "Pass", "Harbor"], offset + 4)}`
+    if (category === "item") return `${pick(selected.epithet, offset)} ${pick(["Blade", "Mirror", "Crown", "Seal", "Talisman", "Codex"], offset + 5)}`
+    if (structure === "single") return pick(selected.given, offset)
+    if (structure === "triple") return `${pick(selected.family, offset)} ${pick(selected.middle, offset + 2)} ${pick(selected.given, offset + 4)}`
+    if (structure === "clan") return `${pick(selected.family, offset)} Clan`
+    if (structure === "title") return `The ${pick(selected.epithet, offset)}`
+    if (structure === "epithet") return `${pick(selected.given, offset)}, ${pick(selected.epithet, offset + 2)}`
+    return `${pick(selected.family, offset)} ${pick(selected.given, offset + 3)}`
+  }
+
+  const options: Array<{
+    name: string
+    category: string
+    style: string
+    raceOrOrigin: string
+    structure: string
+    meaning: string
+    pronunciation: string
+    vibe: string
+    bibleContent: string
+  }> = []
+  for (let offset = 0; options.length < 3 && offset < 30; offset += 1) {
+    const name = makeBase(offset)
+    const normalized = normalizeNameForCompare(name)
+    if (!normalized || existing.has(normalized) || options.some(option => normalizeNameForCompare(option.name) === normalized)) continue
+    options.push({
+      name,
+      category,
+      style: style || "fantasy",
+      raceOrOrigin: selected.origin,
+      structure: structure || "any",
+      meaning: `A ${tone} ${category} name shaped for ${selected.origin}${prompt ? `; inspired by ${prompt.slice(0, 80)}` : ""}.`,
+      pronunciation: "",
+      vibe: tone,
+      bibleContent: `${name} is a generated ${category} name from Name Forge. It was created in a ${style || "fantasy"} style with a ${tone} tone.`
+    })
+  }
+  return options
+}
+
 function buildCultivationGuide(rawText: string, realms: string[], stageLabels: string[]): string {
   const sampleRealms = realms.slice(0, 24).join(" -> ")
   const sampleStages = stageLabels.join(" / ")
@@ -1144,25 +1283,40 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "name_generate") {
-      const result = parseJsonObject<NameGenerateResponse>(text)
+      const result = parseJsonValue<NameGenerateResponse | unknown[]>(text)
       const allowedCategories = new Set(["character", "beast", "world", "place", "item"])
+      const rawNames: unknown[] = Array.isArray(result)
+        ? result
+        : Array.isArray((result as any)?.names)
+          ? (result as any).names
+          : Array.isArray((result as any)?.options)
+            ? (result as any).options
+            : Array.isArray((result as any)?.suggestions)
+              ? (result as any).suggestions
+              : []
+      const sanitizedNames = rawNames
+        .map((option: unknown) => {
+          const record = typeof option === "string" ? { name: option } : (option || {}) as Record<string, unknown>
+          const category = allowedCategories.has(String(record.category)) ? String(record.category) : "character"
+          const meaning = String(record.meaning || record.description || record.reason || "").trim()
+          const vibe = String(record.vibe || record.tone || record.feel || "").trim()
+          return {
+            name: String(record.name || record.fullName || record.title || "").trim(),
+            category,
+            style: String(record.style || record.culture || "").trim(),
+            raceOrOrigin: String(record.raceOrOrigin || record.origin || record.race || "").trim(),
+            structure: String(record.structure || record.nameStructure || "").trim(),
+            meaning,
+            pronunciation: String(record.pronunciation || record.pronounce || "").trim(),
+            vibe,
+            bibleContent: String(record.bibleContent || record.content || meaning || vibe || "").trim()
+          }
+        })
+        .filter((option: { name: string }) => option.name)
+        .slice(0, 3)
+
       return NextResponse.json({
-        names: Array.isArray(result?.names)
-          ? result.names.map(option => {
-            const category = allowedCategories.has(String(option.category)) ? option.category : "character"
-            return {
-              name: String(option.name || "").trim(),
-              category,
-              style: String(option.style || "").trim(),
-              raceOrOrigin: String(option.raceOrOrigin || "").trim(),
-              structure: String(option.structure || "").trim(),
-              meaning: String(option.meaning || "").trim(),
-              pronunciation: String(option.pronunciation || "").trim(),
-              vibe: String(option.vibe || "").trim(),
-              bibleContent: String(option.bibleContent || option.meaning || option.vibe || "").trim()
-            }
-          }).filter(option => option.name).slice(0, 3)
-          : []
+        names: sanitizedNames.length > 0 ? sanitizedNames : buildFallbackNameOptions(body)
       })
     }
 

@@ -4857,7 +4857,13 @@ const fillEmptyCustomJsonData = (
     }
   }
 
-  const normalizeNameForCompare = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "")
+  const normalizeNameForCompare = (name: string) => {
+    try {
+      return name.normalize("NFKC").toLocaleLowerCase().replace(new RegExp("[^\\p{L}\\p{N}]+", "gu"), "")
+    } catch {
+      return name.toLocaleLowerCase().replace(/\s+/g, "")
+    }
+  }
 
   const generateNameOptions = async () => {
     if (nameGenerateLoading) return
