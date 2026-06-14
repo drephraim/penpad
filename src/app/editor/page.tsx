@@ -93,7 +93,7 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'sounds' | 'brain' | 'arcs' | 'analytics'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'analytics'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -222,6 +222,18 @@ interface ProgressionTemplateCard {
   color: string
   enabled: boolean
   repeatable?: boolean
+}
+
+interface GeneratedNameOption {
+  name: string
+  category: BibleEntry["category"]
+  style: string
+  raceOrOrigin: string
+  structure: string
+  meaning: string
+  pronunciation: string
+  vibe: string
+  bibleContent: string
 }
 
 interface ProgressionProfileTemplate {
@@ -961,6 +973,15 @@ function EditorContent() {
   const [bibleCanonLoading, setBibleCanonLoading] = useState(false)
   const [bibleCanonConflicts, setBibleCanonConflicts] = useState<BibleCanonConflict[]>([])
   const [bibleCanonCheckedNoteId, setBibleCanonCheckedNoteId] = useState<string | null>(null)
+  const [nameStyle, setNameStyle] = useState("fantasy")
+  const [nameCategory, setNameCategory] = useState<BibleEntry["category"]>("character")
+  const [nameStructure, setNameStructure] = useState("any")
+  const [nameTone, setNameTone] = useState("memorable")
+  const [nameCustomPrompt, setNameCustomPrompt] = useState("")
+  const [generatedNames, setGeneratedNames] = useState<GeneratedNameOption[]>([])
+  const [nameGenerateLoading, setNameGenerateLoading] = useState(false)
+  const [nameGenerateError, setNameGenerateError] = useState("")
+  const [acceptedNameId, setAcceptedNameId] = useState<string | null>(null)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -4836,6 +4857,98 @@ const fillEmptyCustomJsonData = (
     }
   }
 
+  const normalizeNameForCompare = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+  const generateNameOptions = async () => {
+    if (nameGenerateLoading) return
+    setNameGenerateLoading(true)
+    setNameGenerateError("")
+    setAcceptedNameId(null)
+
+    try {
+      const existingNameSet = new Set(bibleEntries.map(entry => normalizeNameForCompare(entry.name)).filter(Boolean))
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "name_generate",
+          nameStyle,
+          nameCategory,
+          nameStructure,
+          nameTone,
+          customPrompt: nameCustomPrompt,
+          bibleEntries,
+          chapterTitle: activeNote?.title || "",
+          chapterContent: activeNote?.content || ""
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to generate names")
+
+      const uniqueNames: GeneratedNameOption[] = []
+      for (const option of Array.isArray(data.names) ? data.names : []) {
+        const name = String(option.name || "").trim()
+        const normalized = normalizeNameForCompare(name)
+        if (!name || !normalized || existingNameSet.has(normalized) || uniqueNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
+        uniqueNames.push({
+          name,
+          category: ["character", "world", "beast", "place", "item"].includes(String(option.category)) ? option.category : nameCategory,
+          style: String(option.style || nameStyle).trim(),
+          raceOrOrigin: String(option.raceOrOrigin || "").trim(),
+          structure: String(option.structure || nameStructure).trim(),
+          meaning: String(option.meaning || "").trim(),
+          pronunciation: String(option.pronunciation || "").trim(),
+          vibe: String(option.vibe || "").trim(),
+          bibleContent: String(option.bibleContent || option.meaning || option.vibe || "").trim()
+        })
+      }
+
+      setGeneratedNames(uniqueNames.slice(0, 3))
+      if (uniqueNames.length === 0) {
+        setNameGenerateError("No fresh names came back. Try a different style or reroll.")
+      }
+    } catch (err) {
+      setNameGenerateError(err instanceof Error ? err.message : "Failed to generate names")
+      setGeneratedNames([])
+    } finally {
+      setNameGenerateLoading(false)
+    }
+  }
+
+  const acceptGeneratedName = async (option: GeneratedNameOption) => {
+    if (!user || !projectId) return
+    const normalized = normalizeNameForCompare(option.name)
+    if (bibleEntries.some(entry => normalizeNameForCompare(entry.name) === normalized)) {
+      setNameGenerateError(`${option.name} already exists in the World Bible.`)
+      return
+    }
+
+    const now = Date.now()
+    const contentParts = [
+      option.bibleContent || `${option.name} is a generated ${option.category} name.`,
+      option.meaning ? `Meaning: ${option.meaning}` : "",
+      option.pronunciation ? `Pronunciation: ${option.pronunciation}` : "",
+      option.raceOrOrigin ? `Origin or race: ${option.raceOrOrigin}` : "",
+      option.vibe ? `Vibe: ${option.vibe}` : "",
+      `Generated through Name Forge. Style: ${option.style || nameStyle}; structure: ${option.structure || nameStructure}.`
+    ].filter(Boolean)
+    const newEntry: BibleEntry = {
+      id: crypto.randomUUID(),
+      name: option.name,
+      category: option.category,
+      content: contentParts.join("\n\n"),
+      createdAt: now,
+      updatedAt: now
+    }
+
+    await saveBibleEntry(newEntry)
+    setAcceptedNameId(newEntry.id)
+    setActiveSidebarTab("bible")
+    setIsLeftSidebarOpen(true)
+    setActiveBibleEntryId(newEntry.id)
+    setIsBibleDrawerOpen(true)
+  }
+
   const deleteBibleEntry = async (entryId: string) => {
     if (!projectId || !user) return
     try {
@@ -6347,6 +6460,7 @@ ${navPoints}  </navMap>
     { name: "Appearance Lab", cmd: "/appearance", desc: "Open Appearance Prompt Lab", action: () => { setActiveSidebarTab('appearance'); setIsLeftSidebarOpen(true) } },
     { name: "Progression", cmd: "/progress", desc: "Open Character Progression Profiles", action: () => { setActiveSidebarTab('progression'); setIsLeftSidebarOpen(true) } },
     { name: "Arc Seeds", cmd: "/arcs", desc: "Open Future Arc Seeds", action: () => { setActiveSidebarTab('arcs'); setIsLeftSidebarOpen(true) } },
+    { name: "Name Forge", cmd: "/names", desc: "Generate fresh fantasy names", action: () => { setActiveSidebarTab('names'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } }
   ]
 
@@ -7858,6 +7972,21 @@ ${navPoints}  </navMap>
                 title="World Bible"
               >
                 <Book size={20} />
+              </button>
+
+              <button
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'names' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'names' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('names')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Name Forge"
+              >
+                <Wand2 size={20} />
               </button>
 
               <button 
@@ -9503,6 +9632,116 @@ ${navPoints}  </navMap>
                   {filteredBibleEntries.length === 0 && (
                     <div className="empty-state-text">No lore entries found</div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: NAME FORGE */}
+            {activeSidebarTab === 'names' && (
+              <div className="sidebar-tab-content name-forge-panel fade-in">
+                <div className="name-forge-header">
+                  <div>
+                    <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Name Forge</span>
+                    <p>Generate fresh fantasy names that avoid your World Bible.</p>
+                  </div>
+                  <span>{bibleEntries.length} saved</span>
+                </div>
+
+                <div className="name-forge-controls">
+                  <label>
+                    <span>Type</span>
+                    <select value={nameCategory} onChange={(e) => setNameCategory(e.target.value as BibleEntry["category"])}>
+                      <option value="character">Character</option>
+                      <option value="beast">Beast</option>
+                      <option value="world">Faction / World</option>
+                      <option value="place">Place</option>
+                      <option value="item">Artifact / Item</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Style</span>
+                    <select value={nameStyle} onChange={(e) => setNameStyle(e.target.value)}>
+                      <option value="fantasy">Wild Fantasy</option>
+                      <option value="chinese">Chinese Inspired</option>
+                      <option value="japanese">Japanese Inspired</option>
+                      <option value="korean">Korean Inspired</option>
+                      <option value="elven">Elven</option>
+                      <option value="demonic">Demonic</option>
+                      <option value="beast">Beast / Monster</option>
+                      <option value="cultivation">Cultivation Sect</option>
+                      <option value="noble">Noble House</option>
+                      <option value="divine">Divine / Celestial</option>
+                      <option value="grimdark">Grimdark</option>
+                      <option value="invented">Fully Invented</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Shape</span>
+                    <select value={nameStructure} onChange={(e) => setNameStructure(e.target.value)}>
+                      <option value="any">Any Structure</option>
+                      <option value="single">Single Name</option>
+                      <option value="double">First + Last</option>
+                      <option value="triple">First + Middle + Last</option>
+                      <option value="clan">Clan / House Name</option>
+                      <option value="title">Title Name</option>
+                      <option value="epithet">Name + Epithet</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Tone</span>
+                    <select value={nameTone} onChange={(e) => setNameTone(e.target.value)}>
+                      <option value="memorable">Memorable</option>
+                      <option value="elegant">Elegant</option>
+                      <option value="sinister">Sinister</option>
+                      <option value="ancient">Ancient</option>
+                      <option value="heroic">Heroic</option>
+                      <option value="mysterious">Mysterious</option>
+                      <option value="feral">Feral</option>
+                      <option value="royal">Royal</option>
+                    </select>
+                  </label>
+                  <textarea
+                    value={nameCustomPrompt}
+                    onChange={(e) => setNameCustomPrompt(e.target.value)}
+                    placeholder="Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."
+                    rows={3}
+                  />
+                </div>
+
+                <button
+                  className="name-forge-generate-btn"
+                  onClick={generateNameOptions}
+                  disabled={nameGenerateLoading}
+                >
+                  {nameGenerateLoading ? <Loader2 size={15} className="spin" /> : <Wand2 size={15} />}
+                  {nameGenerateLoading ? "Forging..." : generatedNames.length > 0 ? "Reroll Names" : "Generate 3 Names"}
+                </button>
+
+                {nameGenerateError && <div className="arc-seed-error">{nameGenerateError}</div>}
+
+                <div className="name-results-list">
+                  {generatedNames.length === 0 && !nameGenerateLoading ? (
+                    <div className="empty-state-text compact">No names generated yet.</div>
+                  ) : generatedNames.map(option => (
+                    <div key={option.name} className="name-result-card">
+                      <div className="name-result-main">
+                        <small>{option.category} - {option.structure || nameStructure}</small>
+                        <strong>{option.name}</strong>
+                        <p>{option.meaning || option.vibe || option.bibleContent}</p>
+                      </div>
+                      <div className="name-result-meta">
+                        {option.raceOrOrigin && <span>{option.raceOrOrigin}</span>}
+                        {option.pronunciation && <span>{option.pronunciation}</span>}
+                      </div>
+                      <button
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={() => acceptGeneratedName(option)}
+                        disabled={acceptedNameId !== null}
+                      >
+                        {acceptedNameId ? "Added" : "Add to Bible"}
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -13257,6 +13496,170 @@ ${navPoints}  </navMap>
           border-color: rgba(20, 184, 166, 0.38);
           background: rgba(20, 184, 166, 0.1);
           color: var(--text-primary);
+        }
+
+        .name-forge-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.8rem;
+        }
+
+        .name-forge-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.7rem;
+        }
+
+        .name-forge-header p {
+          margin: 0.15rem 0 0;
+          color: var(--text-dim);
+          font-size: 0.74rem;
+          line-height: 1.35;
+        }
+
+        .name-forge-header > span {
+          flex-shrink: 0;
+          padding: 0.25rem 0.45rem;
+          border: 1px solid rgba(168, 85, 247, 0.22);
+          border-radius: var(--radius-sm);
+          color: #d8b4fe;
+          background: rgba(168, 85, 247, 0.08);
+          font-size: 0.66rem;
+          font-weight: 800;
+        }
+
+        .name-forge-controls {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.58rem;
+        }
+
+        .name-forge-controls label {
+          display: flex;
+          flex-direction: column;
+          gap: 0.28rem;
+        }
+
+        .name-forge-controls label span {
+          color: var(--text-dim);
+          font-size: 0.65rem;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .name-forge-controls select,
+        .name-forge-controls textarea {
+          width: 100%;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.18);
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          outline: none;
+        }
+
+        .name-forge-controls select {
+          min-height: 34px;
+          padding: 0.35rem 0.5rem;
+        }
+
+        .name-forge-controls textarea {
+          resize: vertical;
+          min-height: 72px;
+          padding: 0.55rem;
+          line-height: 1.4;
+        }
+
+        .name-forge-generate-btn {
+          width: 100%;
+          min-height: 38px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.45rem;
+          border: 1px solid rgba(168, 85, 247, 0.28);
+          border-radius: var(--radius-md);
+          background: rgba(168, 85, 247, 0.12);
+          color: #f3e8ff;
+          font-size: 0.78rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .name-forge-generate-btn:hover:not(:disabled) {
+          border-color: rgba(168, 85, 247, 0.5);
+          background: rgba(168, 85, 247, 0.18);
+        }
+
+        .name-forge-generate-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        .name-results-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          overflow-y: auto;
+          padding-right: 0.1rem;
+        }
+
+        .name-result-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          padding: 0.75rem;
+          border: 1px solid rgba(168, 85, 247, 0.2);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .name-result-main {
+          display: flex;
+          flex-direction: column;
+          gap: 0.22rem;
+          min-width: 0;
+        }
+
+        .name-result-main small {
+          color: #c084fc;
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .name-result-main strong {
+          color: var(--text-primary);
+          font-family: var(--font-outfit);
+          font-size: 1.05rem;
+          line-height: 1.2;
+          overflow-wrap: anywhere;
+        }
+
+        .name-result-main p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 0.74rem;
+          line-height: 1.45;
+        }
+
+        .name-result-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.35rem;
+        }
+
+        .name-result-meta span {
+          padding: 0.22rem 0.4rem;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: var(--radius-sm);
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          font-weight: 700;
         }
 
         .editor-controls-row {

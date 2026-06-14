@@ -159,6 +159,20 @@ type ArcSeedExtractResponse = {
   }
 }
 
+type NameGenerateResponse = {
+  names?: Array<{
+    name?: string
+    category?: "character" | "beast" | "world" | "place" | "item"
+    style?: string
+    raceOrOrigin?: string
+    structure?: string
+    meaning?: string
+    pronunciation?: string
+    vibe?: string
+    bibleContent?: string
+  }>
+}
+
 function parseJsonObject<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T
@@ -799,8 +813,34 @@ export async function POST(req: NextRequest) {
         `Known Story Bible Names:\n${bibleContext || "No Story Bible entries yet."}\n\n` +
         `Relevant Brain Map Memory:\n${brainContext || "No Brain Map entries yet."}\n\n` +
         `Chapter Content:\n${chapterContent.slice(0, 60000)}`
+    } else if (action === "name_generate") {
+      const { nameStyle, nameCategory, nameStructure, nameTone, customPrompt, bibleEntries, chapterContent, chapterTitle } = body
+      if (!Array.isArray(bibleEntries)) {
+        return NextResponse.json({ error: "bibleEntries is required for name_generate" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a fantasy novel naming specialist. Generate fresh, memorable names that fit the user's requested culture, race, creature type, tone, and name length.\n" +
+        "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
+        "Generate exactly 3 distinct options per request. Names may be Chinese-inspired, Japanese-inspired, invented fantasy, elven, demonic, beast names, sect/faction-style, noble, divine, monstrous, or anything requested.\n" +
+        "Respect the requested name structure: single, double, triple, title-style, clan-style, or any. If the user asks for beasts, make them usable as beast/monster names rather than human names.\n" +
+        "Output ONLY valid JSON with key names. Each item must include name, category, style, raceOrOrigin, structure, meaning, pronunciation, vibe, and bibleContent."
+
+      const existingNames = bibleEntries
+        .slice(0, 300)
+        .map((entry: any) => `- ${entry.name || "Unknown"} (${entry.category || "character"}): ${String(entry.content || "").slice(0, 180)}`)
+        .join("\n")
+
+      userPrompt =
+        `Requested Style: ${nameStyle || "wild fantasy mix"}\n` +
+        `Requested Category: ${nameCategory || "character"}\n` +
+        `Requested Structure: ${nameStructure || "any"}\n` +
+        `Requested Tone: ${nameTone || "memorable fantasy"}\n` +
+        `Extra Direction: ${customPrompt || "Surprise me with useful fantasy novel names."}\n\n` +
+        `Existing Story Bible Names To Avoid:\n${existingNames || "No Story Bible names yet."}\n\n` +
+        `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, or progression_template_design." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, or progression_template_design." }, { status: 400 })
     }
 
     const jsonActions = new Set([
@@ -814,7 +854,8 @@ export async function POST(req: NextRequest) {
       "brain_generate_dossier",
       "bible_consistency_check",
       "bible_extract_from_chapter",
-      "arc_seed_extract"
+      "arc_seed_extract",
+      "name_generate"
     ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
@@ -1099,6 +1140,29 @@ export async function POST(req: NextRequest) {
             ? seed.relatedEntities.map(item => String(item).trim()).filter(Boolean).slice(0, 10)
             : []
         }
+      })
+    }
+
+    if (action === "name_generate") {
+      const result = parseJsonObject<NameGenerateResponse>(text)
+      const allowedCategories = new Set(["character", "beast", "world", "place", "item"])
+      return NextResponse.json({
+        names: Array.isArray(result?.names)
+          ? result.names.map(option => {
+            const category = allowedCategories.has(String(option.category)) ? option.category : "character"
+            return {
+              name: String(option.name || "").trim(),
+              category,
+              style: String(option.style || "").trim(),
+              raceOrOrigin: String(option.raceOrOrigin || "").trim(),
+              structure: String(option.structure || "").trim(),
+              meaning: String(option.meaning || "").trim(),
+              pronunciation: String(option.pronunciation || "").trim(),
+              vibe: String(option.vibe || "").trim(),
+              bibleContent: String(option.bibleContent || option.meaning || option.vibe || "").trim()
+            }
+          }).filter(option => option.name).slice(0, 3)
+          : []
       })
     }
 
