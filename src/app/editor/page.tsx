@@ -839,6 +839,7 @@ function EditorContent() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dirHandle, setDirHandle] = useState<any>(null)
   const [dirPermission, setDirPermission] = useState<'granted' | 'prompt' | 'denied'>('prompt')
+  const [isReconnecting, setIsReconnecting] = useState(false)
 
   const [isBuffering, setIsBuffering] = useState(false)
   const [bufferStatus, setBufferStatus] = useState<'idle' | 'success' | 'error'>('idle')
@@ -3747,14 +3748,36 @@ const fillEmptyCustomJsonData = (
   }, [dirHandle])
 
   const reconnectFolder = useCallback(async () => {
-    if (!dirHandle) return
+    if (!dirHandle || isReconnecting) return
+    setIsReconnecting(true)
     try {
-      const state = await dirHandle.requestPermission({ mode: 'readwrite' })
-      setDirPermission(state)
-    } catch (e) {
-      console.error("Error requesting directory permission:", e)
+      // requestPermission must be called directly inside a user-gesture handler.
+      // Some browsers (or restored handles) don't support it — fall back to re-picking.
+      if (typeof dirHandle.requestPermission === 'function') {
+        try {
+          const state = await dirHandle.requestPermission({ mode: 'readwrite' })
+          setDirPermission(state)
+          if (state === 'granted') { setIsReconnecting(false); return }
+        } catch (e) {
+          console.warn("requestPermission failed, falling back to re-picking folder:", e)
+        }
+      }
+      // Fallback: ask the user to re-select the same folder
+      try {
+        const newHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+        setDirHandle(newHandle)
+        setDirPermission('granted')
+        if (projectId) {
+          await saveDirectoryHandleForProject(projectId, newHandle)
+        }
+      } catch (e) {
+        // User cancelled the picker — do nothing
+        console.warn("Folder re-pick cancelled:", e)
+      }
+    } finally {
+      setIsReconnecting(false)
     }
-  }, [dirHandle])
+  }, [dirHandle, projectId, isReconnecting])
 
   const disconnectFolder = async () => {
     setDirHandle(null)
@@ -7596,10 +7619,11 @@ ${navPoints}  </navMap>
                         {dirPermission !== 'granted' && (
                           <button 
                             className="btn-reconnect-folder" 
-                            onClick={reconnectFolder} 
-                            style={{ flex: 1, padding: '0.25rem 0.5rem', fontSize: '0.7rem', fontWeight: 'bold', background: 'var(--primary)', color: 'white', border: 0, borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'var(--transition)' }}
+                            onClick={reconnectFolder}
+                            disabled={isReconnecting}
+                            style={{ flex: 1, padding: '0.25rem 0.5rem', fontSize: '0.7rem', fontWeight: 'bold', background: isReconnecting ? 'var(--surface-hover)' : 'var(--primary)', color: 'white', border: 0, borderRadius: 'var(--radius-sm)', cursor: isReconnecting ? 'not-allowed' : 'pointer', transition: 'var(--transition)', opacity: isReconnecting ? 0.7 : 1 }}
                           >
-                            Reconnect
+                            {isReconnecting ? '⏳ Connecting...' : '🔗 Reconnect'}
                           </button>
                         )}
                         <button 
