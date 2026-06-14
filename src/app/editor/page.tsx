@@ -3750,26 +3750,33 @@ const fillEmptyCustomJsonData = (
     checkPerm()
   }, [dirHandle])
 
-  // Reconnect using the handle already stored in IndexedDB.
-  // Calls requestPermission() which shows Chrome's native permission bar
-  // (NOT a folder picker). No fallback to showDirectoryPicker.
+  // Reconnect by opening the folder picker starting directly inside the
+  // previously linked folder. The user just clicks "Select Folder" once — no navigation needed.
+  // The new handle is saved back to IndexedDB for this project.
   const reconnectFolder = useCallback(async () => {
     if (!dirHandle || isReconnecting) return
     setIsReconnecting(true)
     setReconnectError(null)
     try {
-      const state = await dirHandle.requestPermission({ mode: 'readwrite' })
-      setDirPermission(state)
-      if (state !== 'granted') {
-        setReconnectError('Access was not granted. Please click Reconnect again and choose “Allow” in the browser prompt.')
+      const newHandle = await (window as any).showDirectoryPicker({
+        startIn: dirHandle,     // opens picker directly inside the linked folder
+        mode: 'readwrite'
+      })
+      setDirHandle(newHandle)
+      setDirPermission('granted')
+      if (projectId) {
+        await saveDirectoryHandleForProject(projectId, newHandle)
       }
-    } catch (e) {
-      console.error('requestPermission error:', e)
-      setReconnectError('Could not request permission. Try refreshing the page, or disconnect and re-link the folder.')
+    } catch (e: any) {
+      // AbortError = user closed the picker — treat silently
+      if (e?.name !== 'AbortError') {
+        console.error('Reconnect error:', e)
+        setReconnectError('Could not reconnect. Please try again or disconnect and re-link the folder.')
+      }
     } finally {
       setIsReconnecting(false)
     }
-  }, [dirHandle, isReconnecting])
+  }, [dirHandle, projectId, isReconnecting])
 
   const disconnectFolder = async () => {
     setDirHandle(null)
