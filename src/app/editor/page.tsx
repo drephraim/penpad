@@ -840,6 +840,7 @@ function EditorContent() {
   const [dirHandle, setDirHandle] = useState<any>(null)
   const [dirPermission, setDirPermission] = useState<'granted' | 'prompt' | 'denied'>('prompt')
   const [isReconnecting, setIsReconnecting] = useState(false)
+  const [reconnectError, setReconnectError] = useState<string | null>(null)
 
   const [isBuffering, setIsBuffering] = useState(false)
   const [bufferStatus, setBufferStatus] = useState<'idle' | 'success' | 'error'>('idle')
@@ -3731,6 +3732,8 @@ const fillEmptyCustomJsonData = (
     return false
   }, [])
 
+  // On every page load, silently check if Chrome still has permission
+  // from the previous session. If so, auto-reconnect without any user action.
   useEffect(() => {
     if (!dirHandle) {
       setDirPermission('prompt')
@@ -3741,43 +3744,32 @@ const fillEmptyCustomJsonData = (
         const state = await dirHandle.queryPermission({ mode: 'readwrite' })
         setDirPermission(state)
       } catch (e) {
-        console.error("Error checking dir handle permission:", e)
+        console.error('Error checking dir handle permission:', e)
       }
     }
     checkPerm()
   }, [dirHandle])
 
+  // Reconnect using the handle already stored in IndexedDB.
+  // Calls requestPermission() which shows Chrome's native permission bar
+  // (NOT a folder picker). No fallback to showDirectoryPicker.
   const reconnectFolder = useCallback(async () => {
     if (!dirHandle || isReconnecting) return
     setIsReconnecting(true)
+    setReconnectError(null)
     try {
-      // requestPermission must be called directly inside a user-gesture handler.
-      // Some browsers (or restored handles) don't support it — fall back to re-picking.
-      if (typeof dirHandle.requestPermission === 'function') {
-        try {
-          const state = await dirHandle.requestPermission({ mode: 'readwrite' })
-          setDirPermission(state)
-          if (state === 'granted') { setIsReconnecting(false); return }
-        } catch (e) {
-          console.warn("requestPermission failed, falling back to re-picking folder:", e)
-        }
+      const state = await dirHandle.requestPermission({ mode: 'readwrite' })
+      setDirPermission(state)
+      if (state !== 'granted') {
+        setReconnectError('Access was not granted. Please click Reconnect again and choose “Allow” in the browser prompt.')
       }
-      // Fallback: ask the user to re-select the same folder
-      try {
-        const newHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
-        setDirHandle(newHandle)
-        setDirPermission('granted')
-        if (projectId) {
-          await saveDirectoryHandleForProject(projectId, newHandle)
-        }
-      } catch (e) {
-        // User cancelled the picker — do nothing
-        console.warn("Folder re-pick cancelled:", e)
-      }
+    } catch (e) {
+      console.error('requestPermission error:', e)
+      setReconnectError('Could not request permission. Try refreshing the page, or disconnect and re-link the folder.')
     } finally {
       setIsReconnecting(false)
     }
-  }, [dirHandle, projectId, isReconnecting])
+  }, [dirHandle, isReconnecting])
 
   const disconnectFolder = async () => {
     setDirHandle(null)
@@ -7635,6 +7627,11 @@ ${navPoints}  </navMap>
                           Disconnect
                         </button>
                       </div>
+                      {reconnectError && dirPermission !== 'granted' && (
+                        <p style={{ margin: 0, fontSize: '0.65rem', color: '#f87171', lineHeight: '1.4', padding: '0.3rem 0.4rem', background: 'rgba(239,68,68,0.07)', borderRadius: '4px', border: '1px solid rgba(239,68,68,0.15)' }}>
+                          {reconnectError}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
