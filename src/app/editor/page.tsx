@@ -196,6 +196,7 @@ interface ProgressionTemplateCard {
   fields: string[]
   color: string
   enabled: boolean
+  repeatable?: boolean
 }
 
 interface ProgressionProfileTemplate {
@@ -352,12 +353,15 @@ const DIRECT_PROGRESSION_TEMPLATE_KEYS = new Set([
 ])
 const PROGRESSION_TEMPLATE_CARD_TYPES: ProgressionTemplateCardType[] = ["text", "rank", "progress", "resource", "stat", "ability", "compound", "counter"]
 const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
+  { id: "template-preset-title", label: "Title", type: "compound", sourceKey: "Title", fields: ["Title", "Title Effect"], color: "amber", enabled: true, repeatable: true },
+  { id: "template-preset-class", label: "Class", type: "compound", sourceKey: "Class", fields: ["Class", "Class Rank"], color: "fuchsia", enabled: true, repeatable: true },
   { id: "template-preset-exp", label: "EXP", type: "progress", sourceKey: "exp", fields: ["EXP"], color: "lime", enabled: true },
   { id: "template-preset-level-up", label: "Level Up", type: "counter", sourceKey: "Level Ups", fields: ["Level Ups"], color: "fuchsia", enabled: true },
   { id: "template-preset-realm-stage", label: "Realm / Stage", type: "rank", sourceKey: "cultivation", fields: ["Realm", "Stage"], color: "violet", enabled: true },
   { id: "template-preset-affinity", label: "Affinity", type: "compound", sourceKey: "Affinity", fields: ["Affinity Names", "Rank"], color: "cyan", enabled: true },
   { id: "template-preset-bloodline", label: "Bloodline", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Bloodline Grade"], color: "emerald", enabled: true },
   { id: "template-preset-titles", label: "Titles", type: "compound", sourceKey: "Titles", fields: ["Title", "Reputation"], color: "amber", enabled: true },
+  { id: "template-preset-weapon", label: "Weapon", type: "compound", sourceKey: "Weapon", fields: ["Weapon", "Weapon Grade", "Weapon Status"], color: "rose", enabled: true, repeatable: true },
   { id: "template-preset-resources", label: "Resources", type: "resource", sourceKey: "Resources", fields: ["HP", "Mana / Qi", "Stamina"], color: "blue", enabled: true },
   { id: "template-preset-artifacts", label: "Inventory / Artifacts", type: "compound", sourceKey: "Artifacts", fields: ["Artifact", "Grade", "Status"], color: "rose", enabled: true }
 ]
@@ -626,6 +630,15 @@ const getProgressionRankedTemplateFields = (label: string, sourceKey: string, fi
 
 const normalizeProgressionTemplateLookupKey = (value: unknown) => {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
+
+const REPEATABLE_PROGRESSION_TEMPLATE_KEYS = new Set(["title", "titles", "class", "classname", "jobclass", "weapon", "weapons"])
+
+const isRepeatableProgressionTemplateCard = (card: Pick<ProgressionTemplateCard, "label" | "sourceKey"> & { repeatable?: boolean }) => {
+  if (card.repeatable) return true
+  return [card.label, card.sourceKey]
+    .map(item => normalizeProgressionTemplateLookupKey(item))
+    .some(key => REPEATABLE_PROGRESSION_TEMPLATE_KEYS.has(key))
 }
 
 const isDirectProgressionTemplateKey = (value: unknown) => {
@@ -1996,7 +2009,8 @@ function EditorContent() {
           sourceKey,
           fields,
           color: card.color && PROGRESSION_CARD_COLORS.includes(card.color) ? card.color : getProgressionCardColor(index, type),
-          enabled: card.enabled !== false
+          enabled: card.enabled !== false,
+          repeatable: card.repeatable === true
         }
       })
       .filter(Boolean) as ProgressionTemplateCard[]
@@ -2004,8 +2018,9 @@ function EditorContent() {
     const seen = new Set<string>()
     const uniqueCards = normalized.filter(card => {
       const key = `${normalizeProgressionTemplateLookupKey(card.sourceKey)}::${normalizeProgressionTemplateLookupKey(card.label)}`
-      if (seen.has(key)) return false
-      seen.add(key)
+      const uniqueKey = isRepeatableProgressionTemplateCard(card) ? `${key}::${card.id}` : key
+      if (seen.has(uniqueKey)) return false
+      seen.add(uniqueKey)
       return true
     })
     customFields.forEach(fieldName => {
@@ -2371,6 +2386,69 @@ function EditorContent() {
 
   const addProgressionPresetCard = (preset: ProgressionTemplateCard) => {
     const currentCards = normalizeProgressionTemplateCards(progressionSystem?.profileTemplate?.cards, progressionSystem?.customFields || [])
+    const createRepeatablePresetCard = () => {
+      const usedNames = new Set<string>()
+      currentCards.forEach(card => {
+        const cardNames = [card.label, card.sourceKey, ...card.fields]
+        cardNames.forEach(value => {
+          const key = normalizeProgressionTemplateLookupKey(value)
+          if (key) usedNames.add(key)
+        })
+      })
+      const systemCustomFields = progressionSystem?.customFields || []
+      systemCustomFields.forEach(value => {
+        const key = normalizeProgressionTemplateLookupKey(value)
+        if (key) usedNames.add(key)
+      })
+
+      const cleanBase = String(preset.label || preset.sourceKey || "Card").trim()
+      let nextLabel = cleanBase
+      let suffix = 2
+      while (usedNames.has(normalizeProgressionTemplateLookupKey(nextLabel))) {
+        nextLabel = `${cleanBase} ${suffix}`
+        suffix += 1
+      }
+
+      const nextFields = preset.fields.map(fieldName => {
+        const cleanField = String(fieldName || "").trim()
+        const cleanFieldKey = normalizeProgressionTemplateLookupKey(cleanField)
+        const cleanBaseKey = normalizeProgressionTemplateLookupKey(cleanBase)
+        if (!cleanField) return nextLabel
+        if (cleanFieldKey === cleanBaseKey || usedNames.has(cleanFieldKey)) return nextLabel
+        if (cleanField.toLowerCase().startsWith(`${cleanBase.toLowerCase()} `)) {
+          return cleanField.replace(new RegExp(`^${cleanBase}\\b`, "i"), nextLabel)
+        }
+        return cleanField
+      })
+
+      return {
+        ...preset,
+        id: `${preset.id}-${crypto.randomUUID()}`,
+        label: nextLabel,
+        sourceKey: nextLabel,
+        fields: Array.from(new Set(nextFields)),
+        repeatable: true
+      }
+    }
+
+    if (preset.repeatable) {
+      const nextCards = [...currentCards, createRepeatablePresetCard()]
+      persistProgressionSystem({
+        ...progressionSystem,
+        customFields: Array.from(new Set([
+          ...(progressionSystem?.customFields || []),
+          ...getProgressionCustomFieldsFromTemplateCards(nextCards)
+        ])),
+        allowEmptyTemplate: false,
+        profileTemplate: {
+          ...(progressionSystem?.profileTemplate || DEFAULT_PROFILE_TEMPLATE),
+          cards: nextCards
+        }
+      })
+      setProgressionNotice(`${preset.label} card added to the profile template.`)
+      return
+    }
+
     const presetMatchKey = `${normalizeProgressionTemplateLookupKey(preset.sourceKey)}::${normalizeProgressionTemplateLookupKey(preset.label)}`
     let matched = false
     const nextCards = currentCards.map(card => {
@@ -3422,6 +3500,11 @@ const fillEmptyCustomJsonData = (
       setProgressionDraftField("name", value)
       return
     }
+    if (cleanField === "title") {
+      setProgressionDraftField("title", value)
+      setProgressionDraftCustomField(fieldName, value)
+      return
+    }
     if (cleanField === "cultivation stage" || cleanField === "realm" || cleanField === "stage") {
       setProgressionDraftField("realm", value)
       setProgressionDraftCustomField(fieldName, value)
@@ -3433,7 +3516,7 @@ const fillEmptyCustomJsonData = (
       setProgressionDraftCustomField(fieldName, value)
       return
     }
-    if (cleanField === "class" || cleanField === "job class") {
+    if (cleanField === "class" || cleanField === "job class" || cleanField === "main class" || cleanField === "primary class") {
       setProgressionDraftField("className", value)
       setProgressionDraftCustomField(fieldName, value)
       return
