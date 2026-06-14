@@ -101,6 +101,7 @@ type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
+type NameForgePicker = 'category' | 'style' | 'structure' | 'tone'
 
 interface GlobalSearchResult {
   id: string
@@ -235,6 +236,50 @@ interface GeneratedNameOption {
   vibe: string
   bibleContent: string
 }
+
+const NAME_CATEGORY_OPTIONS: Array<{ value: BibleEntry["category"]; label: string; hint: string }> = [
+  { value: "character", label: "Character", hint: "People, rivals, allies" },
+  { value: "beast", label: "Beast", hint: "Monsters and creatures" },
+  { value: "world", label: "Faction / World", hint: "Sects, clans, powers" },
+  { value: "place", label: "Place", hint: "Cities, realms, ruins" },
+  { value: "item", label: "Artifact / Item", hint: "Weapons, relics, objects" }
+]
+
+const NAME_STYLE_OPTIONS = [
+  { value: "fantasy", label: "Wild Fantasy", hint: "Flexible invented names" },
+  { value: "chinese", label: "Chinese Inspired", hint: "Cultivation-friendly" },
+  { value: "japanese", label: "Japanese Inspired", hint: "Elegant and sharp" },
+  { value: "korean", label: "Korean Inspired", hint: "Clean fantasy tone" },
+  { value: "elven", label: "Elven", hint: "Lyrical and ancient" },
+  { value: "demonic", label: "Demonic", hint: "Dark and severe" },
+  { value: "beast", label: "Beast / Monster", hint: "Feral creature names" },
+  { value: "cultivation", label: "Cultivation Sect", hint: "Sects and realms" },
+  { value: "noble", label: "Noble House", hint: "Aristocratic names" },
+  { value: "divine", label: "Divine / Celestial", hint: "Holy and mythic" },
+  { value: "grimdark", label: "Grimdark", hint: "Harsh and grounded" },
+  { value: "invented", label: "Fully Invented", hint: "No real-world anchor" }
+]
+
+const NAME_STRUCTURE_OPTIONS = [
+  { value: "any", label: "Any Structure", hint: "Let the forge decide" },
+  { value: "single", label: "Single Name", hint: "One-word names" },
+  { value: "double", label: "First + Last", hint: "Two-part names" },
+  { value: "triple", label: "First + Middle + Last", hint: "Three-part names" },
+  { value: "clan", label: "Clan / House Name", hint: "Family or group names" },
+  { value: "title", label: "Title Name", hint: "The-style names" },
+  { value: "epithet", label: "Name + Epithet", hint: "Name with a legend" }
+]
+
+const NAME_TONE_OPTIONS = [
+  { value: "memorable", label: "Memorable", hint: "Strong first impression" },
+  { value: "elegant", label: "Elegant", hint: "Graceful and refined" },
+  { value: "sinister", label: "Sinister", hint: "Dangerous undertone" },
+  { value: "ancient", label: "Ancient", hint: "Old-world weight" },
+  { value: "heroic", label: "Heroic", hint: "Bright and bold" },
+  { value: "mysterious", label: "Mysterious", hint: "Secretive aura" },
+  { value: "feral", label: "Feral", hint: "Wild and predatory" },
+  { value: "royal", label: "Royal", hint: "Noble authority" }
+]
 
 interface ProgressionProfileTemplate {
   enabled: boolean
@@ -982,6 +1027,7 @@ function EditorContent() {
   const [nameGenerateLoading, setNameGenerateLoading] = useState(false)
   const [nameGenerateError, setNameGenerateError] = useState("")
   const [acceptedNameId, setAcceptedNameId] = useState<string | null>(null)
+  const [activeNamePicker, setActiveNamePicker] = useState<NameForgePicker | null>(null)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -4947,12 +4993,19 @@ const fillEmptyCustomJsonData = (
       updatedAt: now
     }
 
-    await saveBibleEntry(newEntry)
-    setAcceptedNameId(newEntry.id)
-    setActiveSidebarTab("bible")
-    setIsLeftSidebarOpen(true)
-    setActiveBibleEntryId(newEntry.id)
-    setIsBibleDrawerOpen(true)
+    try {
+      const localEntries = await getStoryBibleLocal(projectId)
+      const currentEntries = Array.isArray(localEntries) ? localEntries : bibleEntries
+      const withoutDuplicate = currentEntries.filter(entry => normalizeNameForCompare(entry.name) !== normalized)
+      const updated = [newEntry, ...withoutDuplicate]
+      setBibleEntries(updated)
+      await saveStoryBibleLocal(projectId, updated)
+      await saveBibleEntryToCloud(user.uid, projectId, newEntry)
+      setAcceptedNameId(normalized)
+      setNameGenerateError("")
+    } catch (err) {
+      setNameGenerateError(err instanceof Error ? err.message : "Failed to add name to World Bible")
+    }
   }
 
   const deleteBibleEntry = async (entryId: string) => {
@@ -9654,58 +9707,23 @@ ${navPoints}  </navMap>
                 </div>
 
                 <div className="name-forge-controls">
-                  <label>
-                    <span>Type</span>
-                    <select value={nameCategory} onChange={(e) => setNameCategory(e.target.value as BibleEntry["category"])}>
-                      <option value="character">Character</option>
-                      <option value="beast">Beast</option>
-                      <option value="world">Faction / World</option>
-                      <option value="place">Place</option>
-                      <option value="item">Artifact / Item</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Style</span>
-                    <select value={nameStyle} onChange={(e) => setNameStyle(e.target.value)}>
-                      <option value="fantasy">Wild Fantasy</option>
-                      <option value="chinese">Chinese Inspired</option>
-                      <option value="japanese">Japanese Inspired</option>
-                      <option value="korean">Korean Inspired</option>
-                      <option value="elven">Elven</option>
-                      <option value="demonic">Demonic</option>
-                      <option value="beast">Beast / Monster</option>
-                      <option value="cultivation">Cultivation Sect</option>
-                      <option value="noble">Noble House</option>
-                      <option value="divine">Divine / Celestial</option>
-                      <option value="grimdark">Grimdark</option>
-                      <option value="invented">Fully Invented</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Shape</span>
-                    <select value={nameStructure} onChange={(e) => setNameStructure(e.target.value)}>
-                      <option value="any">Any Structure</option>
-                      <option value="single">Single Name</option>
-                      <option value="double">First + Last</option>
-                      <option value="triple">First + Middle + Last</option>
-                      <option value="clan">Clan / House Name</option>
-                      <option value="title">Title Name</option>
-                      <option value="epithet">Name + Epithet</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Tone</span>
-                    <select value={nameTone} onChange={(e) => setNameTone(e.target.value)}>
-                      <option value="memorable">Memorable</option>
-                      <option value="elegant">Elegant</option>
-                      <option value="sinister">Sinister</option>
-                      <option value="ancient">Ancient</option>
-                      <option value="heroic">Heroic</option>
-                      <option value="mysterious">Mysterious</option>
-                      <option value="feral">Feral</option>
-                      <option value="royal">Royal</option>
-                    </select>
-                  </label>
+                  {[
+                    { key: "category" as const, label: "Type", value: NAME_CATEGORY_OPTIONS.find(option => option.value === nameCategory)?.label || "Character" },
+                    { key: "style" as const, label: "Style", value: NAME_STYLE_OPTIONS.find(option => option.value === nameStyle)?.label || "Wild Fantasy" },
+                    { key: "structure" as const, label: "Shape", value: NAME_STRUCTURE_OPTIONS.find(option => option.value === nameStructure)?.label || "Any Structure" },
+                    { key: "tone" as const, label: "Tone", value: NAME_TONE_OPTIONS.find(option => option.value === nameTone)?.label || "Memorable" }
+                  ].map(item => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className="name-picker-card"
+                      onClick={() => setActiveNamePicker(item.key)}
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <ChevronDown size={13} />
+                    </button>
+                  ))}
                   <textarea
                     value={nameCustomPrompt}
                     onChange={(e) => setNameCustomPrompt(e.target.value)}
@@ -9742,13 +9760,60 @@ ${navPoints}  </navMap>
                       <button
                         className="btn-ai-sub btn-ai-primary"
                         onClick={() => acceptGeneratedName(option)}
-                        disabled={acceptedNameId !== null}
+                        disabled={acceptedNameId === normalizeNameForCompare(option.name)}
                       >
-                        {acceptedNameId ? "Added" : "Add to Bible"}
+                        {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add to Bible"}
                       </button>
                     </div>
                   ))}
                 </div>
+
+                {activeNamePicker && (
+                  <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
+                    <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()}>
+                      <div className="name-picker-popover-header">
+                        <strong>
+                          {activeNamePicker === "category" ? "Choose Type" :
+                           activeNamePicker === "style" ? "Choose Style" :
+                           activeNamePicker === "structure" ? "Choose Shape" : "Choose Tone"}
+                        </strong>
+                        <button type="button" onClick={() => setActiveNamePicker(null)} title="Close">
+                          <X size={16} />
+                        </button>
+                      </div>
+                      <div className="name-picker-options">
+                        {(activeNamePicker === "category" ? NAME_CATEGORY_OPTIONS :
+                          activeNamePicker === "style" ? NAME_STYLE_OPTIONS :
+                          activeNamePicker === "structure" ? NAME_STRUCTURE_OPTIONS :
+                          NAME_TONE_OPTIONS).map(option => {
+                            const isActive =
+                              (activeNamePicker === "category" && option.value === nameCategory) ||
+                              (activeNamePicker === "style" && option.value === nameStyle) ||
+                              (activeNamePicker === "structure" && option.value === nameStructure) ||
+                              (activeNamePicker === "tone" && option.value === nameTone)
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                className={`name-picker-option ${isActive ? "active" : ""}`}
+                                onClick={() => {
+                                  if (activeNamePicker === "category") setNameCategory(option.value as BibleEntry["category"])
+                                  if (activeNamePicker === "style") setNameStyle(option.value)
+                                  if (activeNamePicker === "structure") setNameStructure(option.value)
+                                  if (activeNamePicker === "tone") setNameTone(option.value)
+                                  setActiveNamePicker(null)
+                                }}
+                              >
+                                <span>{option.label}</span>
+                                <small>{option.hint}</small>
+                                {isActive && <Check size={14} />}
+                              </button>
+                            )
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -13507,7 +13572,7 @@ ${navPoints}  </navMap>
         .name-forge-panel {
           display: flex;
           flex-direction: column;
-          gap: 0.8rem;
+          gap: 0.62rem;
         }
 
         .name-forge-header {
@@ -13537,26 +13602,58 @@ ${navPoints}  </navMap>
 
         .name-forge-controls {
           display: grid;
-          grid-template-columns: 1fr;
-          gap: 0.58rem;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.45rem;
         }
 
-        .name-forge-controls label {
+        .name-picker-card {
           display: flex;
-          flex-direction: column;
-          gap: 0.28rem;
+          align-items: center;
+          gap: 0.35rem;
+          min-width: 0;
+          min-height: 42px;
+          padding: 0.42rem 0.5rem;
+          border: 1px solid rgba(168, 85, 247, 0.2);
+          border-radius: var(--radius-sm);
+          background: rgba(168, 85, 247, 0.055);
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: var(--transition);
+          text-align: left;
         }
 
-        .name-forge-controls label span {
-          color: var(--text-dim);
-          font-size: 0.65rem;
-          font-weight: 800;
+        .name-picker-card:hover {
+          border-color: rgba(168, 85, 247, 0.42);
+          background: rgba(168, 85, 247, 0.11);
+        }
+
+        .name-picker-card span {
+          flex-shrink: 0;
+          color: #c084fc;
+          font-size: 0.58rem;
+          font-weight: 900;
           letter-spacing: 0.04em;
           text-transform: uppercase;
         }
 
-        .name-forge-controls select,
+        .name-picker-card strong {
+          min-width: 0;
+          flex: 1;
+          color: var(--text-primary);
+          font-size: 0.76rem;
+          line-height: 1.15;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .name-picker-card svg {
+          flex-shrink: 0;
+          color: var(--text-dim);
+        }
+
         .name-forge-controls textarea {
+          grid-column: 1 / -1;
           width: 100%;
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-sm);
@@ -13564,23 +13661,15 @@ ${navPoints}  </navMap>
           color: var(--text-primary);
           font-size: 0.78rem;
           outline: none;
-        }
-
-        .name-forge-controls select {
-          min-height: 34px;
-          padding: 0.35rem 0.5rem;
-        }
-
-        .name-forge-controls textarea {
           resize: vertical;
-          min-height: 72px;
-          padding: 0.55rem;
+          min-height: 66px;
+          padding: 0.5rem;
           line-height: 1.4;
         }
 
         .name-forge-generate-btn {
           width: 100%;
-          min-height: 38px;
+          min-height: 36px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -13608,16 +13697,17 @@ ${navPoints}  </navMap>
         .name-results-list {
           display: flex;
           flex-direction: column;
-          gap: 0.65rem;
+          gap: 0.46rem;
           overflow-y: auto;
           padding-right: 0.1rem;
         }
 
         .name-result-card {
-          display: flex;
-          flex-direction: column;
-          gap: 0.55rem;
-          padding: 0.75rem;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 0.52rem;
+          padding: 0.58rem 0.62rem;
           border: 1px solid rgba(168, 85, 247, 0.2);
           border-radius: var(--radius-md);
           background: rgba(255, 255, 255, 0.035);
@@ -13641,7 +13731,7 @@ ${navPoints}  </navMap>
         .name-result-main strong {
           color: var(--text-primary);
           font-family: var(--font-outfit);
-          font-size: 1.05rem;
+          font-size: 0.98rem;
           line-height: 1.2;
           overflow-wrap: anywhere;
         }
@@ -13649,14 +13739,19 @@ ${navPoints}  </navMap>
         .name-result-main p {
           margin: 0;
           color: var(--text-secondary);
-          font-size: 0.74rem;
-          line-height: 1.45;
+          font-size: 0.7rem;
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
 
         .name-result-meta {
+          grid-column: 1 / -1;
           display: flex;
           flex-wrap: wrap;
-          gap: 0.35rem;
+          gap: 0.28rem;
         }
 
         .name-result-meta span {
@@ -13664,8 +13759,110 @@ ${navPoints}  </navMap>
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: var(--radius-sm);
           color: var(--text-dim);
-          font-size: 0.66rem;
+          font-size: 0.62rem;
           font-weight: 700;
+        }
+
+        .name-result-card .btn-ai-sub {
+          min-height: 30px;
+          padding: 0.35rem 0.62rem;
+          white-space: nowrap;
+        }
+
+        .name-picker-popover-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 650;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          background: rgba(0, 0, 0, 0.45);
+          backdrop-filter: blur(4px);
+        }
+
+        .name-picker-popover {
+          width: min(92vw, 420px);
+          max-height: min(74vh, 560px);
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding: 0.95rem;
+          border: 1px solid rgba(168, 85, 247, 0.28);
+          border-radius: var(--radius-md);
+          background: rgba(15, 15, 20, 0.97);
+          box-shadow: 0 16px 44px rgba(0, 0, 0, 0.42);
+        }
+
+        .name-picker-popover-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .name-picker-popover-header strong {
+          color: var(--text-primary);
+          font-size: 0.9rem;
+        }
+
+        .name-picker-popover-header button {
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-secondary);
+          cursor: pointer;
+          padding: 0.35rem;
+          display: inline-flex;
+        }
+
+        .name-picker-options {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.48rem;
+          overflow-y: auto;
+          padding-right: 0.1rem;
+        }
+
+        .name-picker-option {
+          min-height: 62px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 0.18rem 0.45rem;
+          align-items: center;
+          padding: 0.55rem 0.62rem;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-primary);
+          text-align: left;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .name-picker-option:hover,
+        .name-picker-option.active {
+          border-color: rgba(168, 85, 247, 0.45);
+          background: rgba(168, 85, 247, 0.1);
+        }
+
+        .name-picker-option span {
+          font-size: 0.78rem;
+          font-weight: 800;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .name-picker-option small {
+          grid-column: 1 / -1;
+          color: var(--text-dim);
+          font-size: 0.66rem;
+          line-height: 1.25;
+        }
+
+        .name-picker-option svg {
+          color: #c084fc;
         }
 
         .editor-controls-row {
