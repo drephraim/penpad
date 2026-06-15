@@ -14,13 +14,10 @@ type BrainAnalysis = {
 type AppearancePromptResult = {
   characterName?: string
   overview?: string
-  prompts?: {
-    beastForm?: string
-    demiHumanForm?: string
-    humanForm?: string
-  }
+  prompts?: Record<string, string>
   consistencyNotes?: string[]
   negativePrompt?: string
+  negativePrompts?: Record<string, string>
 }
 
 type ProgressionAiResponse = {
@@ -696,20 +693,20 @@ export async function POST(req: NextRequest) {
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry } = body
-      const safeForms = forms && typeof forms === "object" ? forms as {
-        beastForm?: string
-        demiHumanForm?: string
-        humanForm?: string
-      } : {}
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style } = body
+      const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
+      const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
+      const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
+      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] !== false)
+      const formKeys = enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : ["beastForm", "demiHumanForm", "humanForm"])
+
       const safeLoreEntry = loreEntry && typeof loreEntry === "object"
         ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[] }
         : null
+
       const hasDescription = Boolean(
         selectedText ||
-        safeForms.beastForm ||
-        safeForms.demiHumanForm ||
-        safeForms.humanForm ||
+        Object.values(appForms).some(Boolean) ||
         safeLoreEntry?.content
       )
 
@@ -717,15 +714,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "At least one appearance description or selected passage is required." }, { status: 400 })
       }
 
+      const formLabelsStr = formKeys.map(k => {
+        const label = safeFormLabels[k] || k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+        return `"${k}": "${label}"`
+      }).join(", ")
+
       systemInstruction =
         "You are an expert character concept prompt engineer for novelists and visual artists. " +
         "The user is describing a character, beast, or shapeshifter from a manuscript and wants polished image-generation prompts.\n" +
         "Guidelines:\n" +
         "1. Read the Story Bible entry and active chapter context, then infer the character's visual design from appearance notes, abilities, origin, faction, aura, personality, and scene behavior.\n" +
-        "2. Generate separate prompts for beastForm, demiHumanForm, and humanForm. If a form is not applicable, still produce a useful alternate visual interpretation based on the lore and clearly preserve shared identity traits.\n" +
+        "2. Generate separate prompts for each form listed below. If a form is not applicable, still produce a useful alternate visual interpretation based on the lore and clearly preserve shared identity traits.\n" +
         "3. Include anatomy, silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background when useful.\n" +
         "4. Do not invent unrelated names, factions, or plot details. Use chapter context only to enrich visual accuracy.\n" +
-        "5. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt. The prompts object must use keys beastForm, demiHumanForm, humanForm. No markdown fences."
+        "5. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt. The prompts object must use the following keys: " + formLabelsStr + ". " +
+        "If the user requested per-form negative prompts, also include a 'negativePrompts' object with the same keys, each containing a form-specific negative prompt.\n" +
+        "No markdown fences."
 
       const chapterContext = chapter && typeof chapter === "object"
         ? chapter as { title?: string; chapterNumber?: number; content?: string }
@@ -739,14 +743,16 @@ export async function POST(req: NextRequest) {
         ? `\nStory Bible Entry:\nName: ${safeLoreEntry.name || name || "Unknown"}\nType: ${safeLoreEntry.category || "unknown"}\nGroups: ${Array.isArray(safeLoreEntry.groups) ? safeLoreEntry.groups.join(", ") : "none"}\nLore Notes:\n${safeLoreEntry.content || ""}`
         : ""
 
+      const formDescriptions = formKeys.map(k => {
+        const label = safeFormLabels[k] || k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+        return `- ${label} (${k}): ${appForms[k] || "Not directly described. Infer from available context."}`
+      }).join("\n")
+
       userPrompt =
         `Character or creature name: ${safeLoreEntry?.name || name || "Unknown / infer from context"}\n` +
         `Preferred visual style: ${style || "cinematic fantasy character concept art"}` +
         `${chapterLine}${selectedLine}${loreLine}\n\n` +
-        `Form descriptions:\n` +
-        `- Beast form: ${safeForms.beastForm || "Not directly described. Infer from available context."}\n` +
-        `- Demi-human form: ${safeForms.demiHumanForm || "Not directly described. Infer from available context."}\n` +
-        `- Human form: ${safeForms.humanForm || "Not directly described. Infer from available context."}` +
+        `Forms to generate:\n${formDescriptions}` +
         `${chapterContent}${memoryContext}`
     } else if (action === "progression_update") {
       const { selectedText, loreEntry, chapter, existingProfile, progressionSystem, candidateProfiles, candidateLoreEntries } = body
@@ -1268,31 +1274,41 @@ export async function POST(req: NextRequest) {
       if (!appearance) {
         return NextResponse.json({
           appearancePrompts: {
+            characterName: "",
             overview: "",
-            prompts: {
-              beastForm: text,
-              demiHumanForm: "",
-              humanForm: ""
-            },
+            prompts: {},
             consistencyNotes: [],
-            negativePrompt: ""
+            negativePrompt: "",
+            negativePrompts: {}
           }
         })
+      }
+
+      const prompts: Record<string, string> = {}
+      const negativePrompts: Record<string, string> = {}
+      if (appearance.prompts && typeof appearance.prompts === "object") {
+        for (const key of Object.keys(appearance.prompts)) {
+          const val = appearance.prompts[key]
+          if (typeof val === "string" && val.trim()) prompts[key] = val.trim()
+        }
+      }
+      if (appearance.negativePrompts && typeof appearance.negativePrompts === "object") {
+        for (const key of Object.keys(appearance.negativePrompts)) {
+          const val = appearance.negativePrompts[key]
+          if (typeof val === "string" && val.trim()) negativePrompts[key] = val.trim()
+        }
       }
 
       return NextResponse.json({
         appearancePrompts: {
           characterName: appearance.characterName || "",
           overview: appearance.overview || "",
-          prompts: {
-            beastForm: appearance.prompts?.beastForm || "",
-            demiHumanForm: appearance.prompts?.demiHumanForm || "",
-            humanForm: appearance.prompts?.humanForm || ""
-          },
+          prompts,
           consistencyNotes: Array.isArray(appearance.consistencyNotes)
             ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
             : [],
-          negativePrompt: appearance.negativePrompt || ""
+          negativePrompt: appearance.negativePrompt || "",
+          negativePrompts
         }
       })
     }

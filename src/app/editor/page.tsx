@@ -15,7 +15,7 @@ import {
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
-  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark
+  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -103,7 +103,7 @@ type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
 type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
-type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
+
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
 type NameForgePicker = 'category' | 'style' | 'style2' | 'structure' | 'tone' | 'gender'
 
@@ -210,9 +210,10 @@ interface ExportHistoryRecord {
 interface AppearancePromptResult {
   characterName?: string
   overview?: string
-  prompts?: Partial<Record<AppearanceFormKey, string>>
+  prompts?: Record<string, string>
   consistencyNotes?: string[]
   negativePrompt?: string
+  negativePrompts?: Record<string, string>
 }
 
 interface ProgressionAbility {
@@ -1402,11 +1403,31 @@ function EditorContent() {
 
   // Appearance Prompt Lab States
   const [appearanceStyle, setAppearanceStyle] = useState("cinematic fantasy character concept art")
+  const [appearanceCustomStyle, setAppearanceCustomStyle] = useState("")
   const [appearanceSelectedEntryId, setAppearanceSelectedEntryId] = useState<string | null>(null)
   const [appearanceResult, setAppearanceResult] = useState<AppearancePromptResult | null>(null)
   const [appearanceLoading, setAppearanceLoading] = useState(false)
   const [appearanceError, setAppearanceError] = useState("")
   const [appearanceCopiedKey, setAppearanceCopiedKey] = useState<string | null>(null)
+  const [appearanceFormLabels, setAppearanceFormLabels] = useState<Record<string, string>>({
+    beastForm: "Beast Form",
+    demiHumanForm: "Demi-human Form",
+    humanForm: "Human Form"
+  })
+  const [appearanceFormDescriptions, setAppearanceFormDescriptions] = useState<Record<string, string>>({})
+  const [appearanceFormEnabled, setAppearanceFormEnabled] = useState<Record<string, boolean>>({
+    beastForm: true,
+    demiHumanForm: true,
+    humanForm: true
+  })
+  const [appearanceFormKeys, setAppearanceFormKeys] = useState<string[]>(["beastForm", "demiHumanForm", "humanForm"])
+  const [appearanceGeneratingForm, setAppearanceGeneratingForm] = useState<string | null>(null)
+  const [appearanceImageGenerating, setAppearanceImageGenerating] = useState<string | null>(null)
+  const [appearanceGeneratedImages, setAppearanceGeneratedImages] = useState<Record<string, string>>({})
+  const [appearancePerFormNegative, setAppearancePerFormNegative] = useState(false)
+  const [appearanceBatchEntryIds, setAppearanceBatchEntryIds] = useState<string[]>([])
+  const [appearanceBatchLoading, setAppearanceBatchLoading] = useState(false)
+  const [appearanceAddFormKey, setAppearanceAddFormKey] = useState("")
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -1524,6 +1545,8 @@ function EditorContent() {
 
   const selectedAppearanceEntry = bibleEntries.find(entry => entry.id === appearanceSelectedEntryId)
 
+  const getFormLabel = (key: string) => appearanceFormLabels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+
   const buildAppearanceLoreContent = (result: AppearancePromptResult) => {
     const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
     const chapterLine = activeNote
@@ -1533,26 +1556,28 @@ function EditorContent() {
     const notes = Array.isArray(result.consistencyNotes) && result.consistencyNotes.length > 0
       ? result.consistencyNotes.map(note => `- ${note}`).join("\r\n")
       : "- Keep recognizable traits consistent across every form."
+    const styleToUse = appearanceCustomStyle || appearanceStyle
+
+    const promptSections = Object.keys(prompts).length > 0
+      ? Object.entries(prompts).map(([key, text]) => `### ${getFormLabel(key)}\r\n${text || "Not generated."}`).join("\r\n\r\n")
+      : ""
+
+    const negPromptSections = result.negativePrompts && Object.keys(result.negativePrompts).length > 0
+      ? Object.entries(result.negativePrompts).map(([key, text]) => `${getFormLabel(key)} Negative Prompt: ${text}`).join("\r\n")
+      : ""
 
     return [
       "## Appearance Prompt Sheet",
       `Source: ${chapterLine}`,
-      `Style Direction: ${appearanceStyle}`,
+      `Style Direction: ${styleToUse}`,
       "",
       result.overview ? `### Visual Core\r\n${result.overview}\r\n` : "",
-      "### Beast Form",
-      prompts.beastForm || "Not generated.",
-      "",
-      "### Demi-human Form",
-      prompts.demiHumanForm || "Not generated.",
-      "",
-      "### Human Form",
-      prompts.humanForm || "Not generated.",
-      "",
+      promptSections,
       "### Consistency Notes",
       notes,
       "",
-      result.negativePrompt ? `### Negative Prompt\r\n${result.negativePrompt}` : ""
+      result.negativePrompt ? `### Negative Prompt\r\n${result.negativePrompt}` : "",
+      negPromptSections ? `### Per-Form Negative Prompts\r\n${negPromptSections}` : ""
     ].filter(Boolean).join("\r\n")
   }
 
@@ -1586,14 +1611,23 @@ function EditorContent() {
       const chapterContext = activeNote?.content
         ? activeNote.content.slice(0, 5000)
         : ""
+      const activeFormKeys = appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
+      const forms: Record<string, string> = {}
+      for (const key of activeFormKeys) {
+        if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
+      }
+      const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "appearance_prompts",
           name: sourceEntry.name,
-          style: appearanceStyle,
+          style: styleToUse,
           selectedText,
+          forms: Object.keys(forms).length > 0 ? forms : undefined,
+          formLabels: appearanceFormLabels,
+          formEnabled: appearanceFormEnabled,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -1614,12 +1648,82 @@ function EditorContent() {
       if (data.error) {
         setAppearanceError(data.error)
       } else {
-        setAppearanceResult(data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], characterName: sourceEntry.name })
+        setAppearanceResult(data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name })
       }
     } catch (err) {
       setAppearanceError(err instanceof Error ? err.message : "Failed to generate appearance prompts")
     } finally {
       setAppearanceLoading(false)
+    }
+  }
+
+  const handleRegenerateSingleForm = async (formKey: string) => {
+    const selectedText = aiSelectionText
+    const sourceEntry = selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
+    if (!sourceEntry) {
+      setAppearanceError("No entry selected.")
+      return
+    }
+    setAppearanceGeneratingForm(formKey)
+    try {
+      const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+      const chapterContext = activeNote?.content
+        ? activeNote.content.slice(0, 5000)
+        : ""
+      const activeFormKeys = appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
+      const forms: Record<string, string> = {}
+      for (const key of activeFormKeys) {
+        if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
+      }
+      const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "appearance_prompts",
+          name: sourceEntry.name,
+          style: styleToUse,
+          selectedText,
+          forms: Object.keys(forms).length > 0 ? forms : undefined,
+          formLabels: appearanceFormLabels,
+          formEnabled: { [formKey]: true },
+          regenerateForm: formKey,
+          loreEntry: {
+            name: sourceEntry.name,
+            category: sourceEntry.category,
+            content: sourceEntry.content,
+            groups: (sourceEntry.groupIds || [])
+              .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
+              .filter(Boolean)
+          },
+          chapter: activeNote ? {
+            title: activeNote.title,
+            chapterNumber: activeChapterNumber,
+            content: chapterContext
+          } : null,
+          memory: buildStoryMemoryContext()
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAppearanceError(data.error)
+      } else {
+        const newPrompts = data.appearancePrompts?.prompts || {}
+        setAppearanceResult(prev => {
+          if (!prev) return data.appearancePrompts || { overview: "", prompts: { [formKey]: newPrompts[formKey] || "" }, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name }
+          const mergedNegPrompts = { ...(prev.negativePrompts || {}) }
+          if (data.appearancePrompts?.negativePrompts?.[formKey]) mergedNegPrompts[formKey] = data.appearancePrompts.negativePrompts[formKey]
+          return {
+            ...prev,
+            prompts: { ...(prev.prompts || {}), [formKey]: newPrompts[formKey] || prev.prompts?.[formKey] || "" },
+            negativePrompts: mergedNegPrompts
+          }
+        })
+      }
+    } catch (err) {
+      setAppearanceError(err instanceof Error ? err.message : "Failed to regenerate form")
+    } finally {
+      setAppearanceGeneratingForm(null)
     }
   }
 
@@ -1637,6 +1741,13 @@ function EditorContent() {
     if (!targetEntry) return
 
     const promptSheet = buildAppearanceLoreContent(appearanceResult)
+    const sheetHeader = promptSheet.split("\r\n")[0] || ""
+
+    if (targetEntry.content.includes(sheetHeader)) {
+      setAppearanceError("This prompt sheet already exists in the lore entry. Skipping duplicate.")
+      return
+    }
+
     const updatedEntry: BibleEntry = {
       ...targetEntry,
       content: `${targetEntry.content || ""}\r\n\r\n${promptSheet}`.trim(),
@@ -8947,12 +9058,17 @@ ${navPoints}  </navMap>
                     </select>
                   </div>
 
+                  {/* #4: Custom style + dropdown */}
                   <div className="ai-form-field">
                     <label>Visual Style</label>
                     <select
                       className="ai-select"
-                      value={appearanceStyle}
-                      onChange={(e) => setAppearanceStyle(e.target.value)}
+                      value={appearanceCustomStyle ? "__custom__" : appearanceStyle}
+                      onChange={(e) => {
+                        if (e.target.value === "__custom__") return
+                        setAppearanceCustomStyle("")
+                        setAppearanceStyle(e.target.value)
+                      }}
                       disabled={appearanceLoading}
                     >
                       <option value="cinematic fantasy character concept art">Cinematic fantasy concept art</option>
@@ -8960,8 +9076,126 @@ ${navPoints}  </navMap>
                       <option value="dark xianxia character design sheet">Dark xianxia design sheet</option>
                       <option value="realistic film character design">Realistic film character design</option>
                       <option value="game-ready creature concept art">Game-ready creature concept art</option>
+                      <option value="__custom__">Custom style (type below)...</option>
                     </select>
+                    <input
+                      className="ai-input"
+                      style={{ marginTop: "0.4rem" }}
+                      value={appearanceCustomStyle}
+                      onChange={(e) => setAppearanceCustomStyle(e.target.value)}
+                      placeholder="e.g. watercolor portrait, cyberpunk noir illustration..."
+                      disabled={appearanceLoading}
+                    />
                   </div>
+
+                  {/* #1: Customizable form labels + #5: Form toggles */}
+                  <div className="ai-form-field">
+                    <label>
+                      Forms
+                      <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "0.4rem", fontWeight: 400 }}>
+                        (edit labels, toggle enabled)
+                      </span>
+                    </label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                      {appearanceFormKeys.map((formKey, idx) => (
+                        <div key={formKey} style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={appearanceFormEnabled[formKey] !== false}
+                            onChange={() => setAppearanceFormEnabled(prev => ({ ...prev, [formKey]: !(prev[formKey] !== false) }))}
+                            disabled={appearanceLoading}
+                            title="Toggle this form"
+                          />
+                          <input
+                            className="ai-input"
+                            style={{ flex: 1, fontSize: "0.72rem", minHeight: "28px" }}
+                            value={appearanceFormLabels[formKey] || ""}
+                            onChange={(e) => setAppearanceFormLabels(prev => ({ ...prev, [formKey]: e.target.value }))}
+                            placeholder="Form label..."
+                            disabled={appearanceLoading}
+                          />
+                          <button
+                            className="btn-ai-sub btn-ai-secondary"
+                            style={{ flexShrink: 0, minHeight: "26px", fontSize: "0.65rem", padding: "0.2rem 0.4rem" }}
+                            onClick={() => {
+                              const newKeys = [...appearanceFormKeys]
+                              newKeys.splice(idx, 1)
+                              setAppearanceFormKeys(newKeys)
+                              setAppearanceFormLabels(prev => { const n = { ...prev }; delete n[formKey]; return n })
+                              setAppearanceFormEnabled(prev => { const n = { ...prev }; delete n[formKey]; return n })
+                              setAppearanceFormDescriptions(prev => { const n = { ...prev }; delete n[formKey]; return n })
+                            }}
+                            disabled={appearanceLoading}
+                            title="Remove form"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                        <input
+                          className="ai-input"
+                          style={{ flex: 1, fontSize: "0.72rem", minHeight: "28px" }}
+                          value={appearanceAddFormKey}
+                          onChange={(e) => setAppearanceAddFormKey(e.target.value.replace(/\s+/g, "_"))}
+                          placeholder="New form key (e.g. shadowForm)"
+                        />
+                        <button
+                          className="btn-ai-sub btn-ai-primary"
+                          style={{ flexShrink: 0, minHeight: "26px", fontSize: "0.65rem", padding: "0.2rem 0.5rem" }}
+                          onClick={() => {
+                            const key = appearanceAddFormKey.trim()
+                            if (!key || appearanceFormKeys.includes(key)) return
+                            setAppearanceFormKeys(prev => [...prev, key])
+                            setAppearanceFormLabels(prev => ({ ...prev, [key]: key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim() }))
+                            setAppearanceFormEnabled(prev => ({ ...prev, [key]: true }))
+                            setAppearanceAddFormKey("")
+                          }}
+                          disabled={appearanceLoading || !appearanceAddFormKey.trim()}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* #2: Manual form description inputs */}
+                  {appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false).length > 0 && (
+                    <div className="ai-form-field">
+                      <label>
+                        Form Descriptions
+                        <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "0.4rem", fontWeight: 400 }}>
+                          (optional — leave blank for AI to infer)
+                        </span>
+                      </label>
+                      {appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false).map(formKey => (
+                        <div key={formKey} style={{ marginBottom: "0.35rem" }}>
+                          <small style={{ color: "var(--text-dim)", fontSize: "0.65rem", display: "block", marginBottom: "0.15rem" }}>
+                            {appearanceFormLabels[formKey] || formKey}
+                          </small>
+                          <textarea
+                            className="ai-textarea appearance-textarea compact"
+                            value={appearanceFormDescriptions[formKey] || ""}
+                            onChange={(e) => setAppearanceFormDescriptions(prev => ({ ...prev, [formKey]: e.target.value }))}
+                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey} appearance, attire, and distinguishing traits...`}
+                            disabled={appearanceLoading}
+                            rows={2}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* #10: Per-form negative prompts toggle */}
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "var(--text-secondary)", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={appearancePerFormNegative}
+                      onChange={() => setAppearancePerFormNegative(prev => !prev)}
+                      disabled={appearanceLoading}
+                    />
+                    Generate per-form negative prompts
+                  </label>
 
                   {aiSelectionText.trim() && (
                     <button
@@ -8997,23 +9231,71 @@ ${navPoints}  </navMap>
                     </div>
                   )}
 
-                  <button
-                    className="btn-ai-action"
-                    onClick={() => handleGenerateAppearancePrompts(appearanceSelectedEntryId, aiSelectionText)}
-                    disabled={appearanceLoading || (!appearanceSelectedEntryId && !aiSelectionText.trim())}
-                  >
-                    {appearanceLoading ? (
-                      <>
-                        <Loader2 size={16} className="spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 size={16} />
-                        Generate Prompts
-                      </>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <button
+                      className="btn-ai-action"
+                      onClick={() => handleGenerateAppearancePrompts(appearanceSelectedEntryId, aiSelectionText)}
+                      disabled={appearanceLoading || (!appearanceSelectedEntryId && !aiSelectionText.trim())}
+                    >
+                      {appearanceLoading ? (
+                        <>
+                          <Loader2 size={16} className="spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 size={16} />
+                          Generate Prompts
+                        </>
+                      )}
+                    </button>
+
+                    {/* #9: Batch generate */}
+                    {bibleEntries.length > 0 && (
+                      <details style={{ fontSize: "0.72rem" }}>
+                        <summary style={{ cursor: "pointer", color: "var(--text-dim)", padding: "0.25rem 0" }}>
+                          Batch generate for multiple entries
+                        </summary>
+                        <div style={{ marginTop: "0.4rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                          <div style={{ maxHeight: "120px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                            {bibleEntries.map(entry => (
+                              <label key={entry.id} style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.7rem", cursor: "pointer" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={appearanceBatchEntryIds.includes(entry.id)}
+                                  onChange={() => {
+                                    setAppearanceBatchEntryIds(prev =>
+                                      prev.includes(entry.id) ? prev.filter(id => id !== entry.id) : [...prev, entry.id]
+                                    )
+                                  }}
+                                  disabled={appearanceBatchLoading}
+                                />
+                                <span>{entry.name}</span>
+                                <span style={{ color: "var(--text-dim)", fontSize: "0.6rem" }}>({entry.category})</span>
+                              </label>
+                            ))}
+                          </div>
+                          <button
+                            className="btn-ai-sub btn-ai-primary"
+                            style={{ fontSize: "0.7rem", minHeight: "28px" }}
+                            onClick={async () => {
+                              if (appearanceBatchEntryIds.length === 0) return
+                              setAppearanceBatchLoading(true)
+                              setAppearanceError("")
+                              for (const id of appearanceBatchEntryIds) {
+                                await handleGenerateAppearancePrompts(id)
+                                await new Promise(r => setTimeout(r, 500))
+                              }
+                              setAppearanceBatchLoading(false)
+                            }}
+                            disabled={appearanceBatchLoading || appearanceBatchEntryIds.length === 0}
+                          >
+                            {appearanceBatchLoading ? "Generating batch..." : `Generate for ${appearanceBatchEntryIds.length} entries`}
+                          </button>
+                        </div>
+                      </details>
                     )}
-                  </button>
+                  </div>
                 </div>
 
                 {appearanceResult && (
@@ -9025,26 +9307,83 @@ ${navPoints}  </navMap>
                       </div>
                     )}
 
-                    {([
-                      ["beastForm", "Beast Form"],
-                      ["demiHumanForm", "Demi-human Form"],
-                      ["humanForm", "Human Form"]
-                    ] as Array<[AppearanceFormKey, string]>).map(([formKey, label]) => {
-                      const promptText = appearanceResult.prompts?.[formKey]
+                    {Object.entries(appearanceResult.prompts || {}).map(([formKey, promptText]) => {
                       if (!promptText) return null
+                      const label = appearanceFormLabels[formKey] || formKey.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+                      const formNegPrompt = appearanceResult.negativePrompts?.[formKey]
                       return (
                         <div className="appearance-prompt-card" key={formKey}>
                           <div className="appearance-prompt-header">
                             <strong>{label}</strong>
-                            <button
-                              className="btn-ai-sub btn-ai-secondary"
-                              onClick={() => copyAppearanceText(formKey, promptText)}
-                            >
-                              <Copy size={12} />
-                              {appearanceCopiedKey === formKey ? "Copied" : "Copy"}
-                            </button>
+                            <div style={{ display: "flex", gap: "0.3rem" }}>
+                              {/* #3: Regenerate single form */}
+                              <button
+                                className="btn-ai-sub btn-ai-secondary"
+                                style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem", minHeight: "24px" }}
+                                onClick={() => handleRegenerateSingleForm(formKey)}
+                                disabled={appearanceGeneratingForm === formKey}
+                                title="Regenerate this form only"
+                              >
+                                {appearanceGeneratingForm === formKey ? <Loader2 size={10} className="spin" /> : <RefreshCw size={10} />}
+                                Regen
+                              </button>
+                              <button
+                                className="btn-ai-sub btn-ai-secondary"
+                                onClick={() => copyAppearanceText(formKey, promptText)}
+                              >
+                                <Copy size={12} />
+                                {appearanceCopiedKey === formKey ? "Copied" : "Copy"}
+                              </button>
+                            </div>
                           </div>
                           <p>{promptText}</p>
+                          {formNegPrompt && (
+                            <div style={{ marginTop: "0.35rem", padding: "0.35rem", background: "rgba(0,0,0,0.12)", borderRadius: "var(--radius-sm)", fontSize: "0.72rem" }}>
+                              <small style={{ color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", fontSize: "0.6rem", letterSpacing: "0.04em" }}>
+                                Negative Prompt
+                              </small>
+                              <p style={{ margin: "0.2rem 0 0", color: "var(--text-secondary)" }}>{formNegPrompt}</p>
+                            </div>
+                          )}
+                          {/* #6: Image preview button (requires IMAGE_GEN_API_KEY env var to work) */}
+                          <div style={{ marginTop: "0.4rem" }}>
+                            <button
+                              className="btn-ai-sub btn-ai-primary"
+                              style={{ fontSize: "0.65rem", minHeight: "24px" }}
+                              onClick={async () => {
+                                setAppearanceImageGenerating(formKey)
+                                setAppearanceError("")
+                                try {
+                                  const res = await fetch("/api/generate-image", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ prompt: promptText, negativePrompt: formNegPrompt || appearanceResult.negativePrompt || "" })
+                                  })
+                                  const data = await res.json()
+                                  if (data.imageUrl) {
+                                    setAppearanceGeneratedImages(prev => ({ ...prev, [formKey]: data.imageUrl }))
+                                  } else if (data.error) {
+                                    setAppearanceError(data.error)
+                                  }
+                                } catch {}
+                                setAppearanceImageGenerating(null)
+                              }}
+                              disabled={appearanceImageGenerating === formKey}
+                            >
+                              {appearanceImageGenerating === formKey ? <Loader2 size={10} className="spin" /> : <ImageIcon size={10} />}
+                              {appearanceGeneratedImages[formKey] ? "Re-generate Image" : "Preview"}
+                            </button>
+                            {appearanceGeneratedImages[formKey] && (
+                              <div style={{ marginTop: "0.35rem" }}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={appearanceGeneratedImages[formKey]}
+                                  alt={label}
+                                  style={{ width: "100%", borderRadius: "var(--radius-sm)", maxHeight: "200px", objectFit: "cover" }}
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
@@ -11615,9 +11954,68 @@ ${navPoints}  </navMap>
               {(activeBibleEntry.category === "character" || activeBibleEntry.category === "beast") && (() => {
                 const details = getBibleCharacterDetails(activeBibleEntry)
                 const hasChapterLooks = details.chapterAppearances.length > 0
+                const latestLook = hasChapterLooks ? details.chapterAppearances[details.chapterAppearances.length - 1] : null
+                const hasAnyDetail = details.appearance || details.hair || details.eyes || details.body || details.attire || details.distinguishingFeatures || latestLook
                 return (
                   <div className="ai-form-field">
                     <label>Character Details</label>
+
+                    {/* Key Appearance Details summary card — shows at a glance when clicking a Bible name */}
+                    {hasAnyDetail && (
+                      <div className="character-detail-summary">
+                        <div className="character-detail-summary-header">
+                          <span>Key Appearance Details</span>
+                          {latestLook && <span className="appearance-chapter-chip">{getBibleFactChapterLabel(latestLook)}</span>}
+                        </div>
+                        <div className="character-detail-summary-grid">
+                          {details.appearance && (
+                            <div className="character-detail-summary-item full">
+                              <small>Overall</small>
+                              <p>{details.appearance}</p>
+                            </div>
+                          )}
+                          {details.hair && (
+                            <div className="character-detail-summary-item">
+                              <small>Hair</small>
+                              <p>{details.hair}</p>
+                            </div>
+                          )}
+                          {details.eyes && (
+                            <div className="character-detail-summary-item">
+                              <small>Eyes</small>
+                              <p>{details.eyes}</p>
+                            </div>
+                          )}
+                          {details.body && (
+                            <div className="character-detail-summary-item">
+                              <small>Build</small>
+                              <p>{details.body}</p>
+                            </div>
+                          )}
+                          {details.attire && (
+                            <div className="character-detail-summary-item">
+                              <small>Attire</small>
+                              <p>{details.attire}</p>
+                            </div>
+                          )}
+                          {details.distinguishingFeatures && (
+                            <div className="character-detail-summary-item full">
+                              <small>Distinguishing Features</small>
+                              <p>{details.distinguishingFeatures}</p>
+                            </div>
+                          )}
+                          {latestLook && (latestLook.appearance || latestLook.hair || latestLook.eyes || latestLook.attire || latestLook.body || latestLook.distinguishingFeatures) && (
+                            <div className="character-detail-summary-item full">
+                              <small>Latest Chapter Appearance</small>
+                              <p>
+                                {[latestLook.appearance, latestLook.hair, latestLook.eyes, latestLook.body, latestLook.attire, latestLook.distinguishingFeatures].filter(Boolean).join(" — ")}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="character-detail-panel">
                       <label>
                         <small>Overall Look</small>
@@ -11664,16 +12062,35 @@ ${navPoints}  </navMap>
                       </div>
                       {!hasChapterLooks ? (
                         <span className="empty-state-text compact">No chapter-specific appearance notes yet.</span>
-                      ) : details.chapterAppearances.map(fact => (
-                        <div className="bible-timeline-fact" key={fact.id}>
-                          <div>
-                            <strong>{getBibleFactChapterLabel(fact)}</strong>
-                            {(fact.hair || fact.eyes || fact.attire) && <em>{[fact.hair, fact.eyes, fact.attire].filter(Boolean).slice(0, 2).join(" / ")}</em>}
+                      ) : details.chapterAppearances.map((fact, factIdx) => {
+                        const prevFact = factIdx > 0 ? details.chapterAppearances[factIdx - 1] : null
+                        const diffs: string[] = []
+                        if (prevFact) {
+                          if (fact.hair && fact.hair !== prevFact.hair) diffs.push(`hair: ${prevFact.hair || "?"} → ${fact.hair}`)
+                          if (fact.eyes && fact.eyes !== prevFact.eyes) diffs.push(`eyes: ${prevFact.eyes || "?"} → ${fact.eyes}`)
+                          if (fact.attire && fact.attire !== prevFact.attire) diffs.push(`attire: ${prevFact.attire || "?"} → ${fact.attire}`)
+                          if (fact.body && fact.body !== prevFact.body) diffs.push(`body: ${prevFact.body || "?"} → ${fact.body}`)
+                          if (fact.distinguishingFeatures && fact.distinguishingFeatures !== prevFact.distinguishingFeatures) diffs.push(`features: changed`)
+                        }
+                        return (
+                          <div className="bible-timeline-fact" key={fact.id}>
+                            <div>
+                              <strong>{getBibleFactChapterLabel(fact)}</strong>
+                              {(fact.hair || fact.eyes || fact.attire) && <em>{[fact.hair, fact.eyes, fact.attire].filter(Boolean).slice(0, 2).join(" / ")}</em>}
+                            </div>
+                            <p>{fact.summary}</p>
+                            {fact.evidence && <small>&ldquo;{fact.evidence}&rdquo;</small>}
+                            {diffs.length > 0 && (
+                              <div style={{ marginTop: "0.3rem", padding: "0.25rem 0.4rem", background: "rgba(251,191,36,0.08)", borderRadius: "var(--radius-sm)", fontSize: "0.7rem" }}>
+                                <small style={{ color: "var(--yellow-500)", fontWeight: 700, textTransform: "uppercase", fontSize: "0.6rem", letterSpacing: "0.04em" }}>Changes from previous chapter</small>
+                                <ul style={{ margin: "0.15rem 0 0", paddingLeft: "1rem", color: "var(--text-secondary)" }}>
+                                  {diffs.map((d, i) => <li key={i}>{d}</li>)}
+                                </ul>
+                              </div>
+                            )}
                           </div>
-                          <p>{fact.summary}</p>
-                          {fact.evidence && <small>&ldquo;{fact.evidence}&rdquo;</small>}
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )
@@ -16304,6 +16721,16 @@ ${navPoints}  </navMap>
           padding: 0.25rem 0.45rem;
         }
 
+        .appearance-panel details summary {
+          color: var(--text-dim);
+          font-size: 0.7rem;
+          font-weight: 700;
+        }
+
+        .appearance-panel details summary:hover {
+          color: var(--text-secondary);
+        }
+
         /* Character Progression */
         .progression-panel {
           display: flex;
@@ -18905,8 +19332,68 @@ ${navPoints}  </navMap>
           font-weight: 700;
         }
 
+        .character-detail-summary {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+          padding: 0.75rem;
+          border: 1px solid rgba(20, 184, 166, 0.25);
+          border-radius: var(--radius-md);
+          background: rgba(20, 184, 166, 0.06);
+          margin-bottom: 0.65rem;
+        }
+
+        .character-detail-summary-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+
+        .character-detail-summary-header span {
+          color: var(--teal-400, #2dd4bf);
+          font-size: 0.72rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .character-detail-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.45rem;
+        }
+
+        .character-detail-summary-item {
+          padding: 0.4rem 0.5rem;
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.15);
+        }
+
+        .character-detail-summary-item.full {
+          grid-column: 1 / -1;
+        }
+
+        .character-detail-summary-item small {
+          color: var(--text-dim);
+          font-size: 0.6rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .character-detail-summary-item p {
+          margin: 0.15rem 0 0;
+          color: var(--text-main);
+          font-size: 0.78rem;
+          line-height: 1.45;
+        }
+
         @media (max-width: 720px) {
           .character-detail-grid {
+            grid-template-columns: 1fr;
+          }
+          .character-detail-summary-grid {
             grid-template-columns: 1fr;
           }
         }
