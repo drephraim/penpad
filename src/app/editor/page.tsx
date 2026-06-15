@@ -3012,17 +3012,10 @@ const fillEmptyCustomJsonData = (
     
     // Capture lore history
     const incomingNotes = String(aiProfile?.notes || "").trim()
-    let existingLoreEntries = existingProfile?.loreEntries || []
-    if (existingLoreEntries.length === 0 && existingProfile?.notes) {
-      existingLoreEntries = [{
-        id: crypto.randomUUID(),
-        text: existingProfile.notes,
-        timestamp: existingProfile.createdAt || now
-      }]
-    }
+    const existingLoreEntries = existingProfile?.loreEntries || []
     const nextLoreEntries = [...existingLoreEntries]
     if (incomingNotes) {
-      const existingEntryForChapter = existingLoreEntries.find(entry => entry.chapterId === historyEntry.chapterId)
+      const existingEntryForChapter = nextLoreEntries.find(entry => entry.chapterId === historyEntry.chapterId)
       if (existingEntryForChapter) {
         if (existingEntryForChapter.text !== incomingNotes) {
           const idx = nextLoreEntries.findIndex(entry => entry.id === existingEntryForChapter.id)
