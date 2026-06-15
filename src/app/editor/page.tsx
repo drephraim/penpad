@@ -12915,14 +12915,8 @@ ${navPoints}  </navMap>
               <div className="progression-lore-modal-list scrollbar" style={{ maxHeight: "350px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem", margin: "1rem 0", paddingRight: "0.25rem" }}>
                 {(() => {
                   const loreEntries = selectedProgressionProfile.loreEntries || []
-                  const listToShow = loreEntries.length > 0 
+                  const listToShow = loreEntries.length > 0
                     ? [...loreEntries].sort((a, b) => b.timestamp - a.timestamp)
-                    : selectedProgressionProfile.notes
-                    ? [{
-                        id: "initial-note",
-                        text: selectedProgressionProfile.notes,
-                        timestamp: selectedProgressionProfile.createdAt || Date.now()
-                      }]
                     : []
 
                   if (listToShow.length === 0) {
