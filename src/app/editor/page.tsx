@@ -5160,7 +5160,8 @@ const fillEmptyCustomJsonData = (
     })
   }
 
-  const insertNameAtCursor = (name: string) => {
+  const insertNameAtCursor = (e: React.MouseEvent, name: string) => {
+    e.preventDefault()
     insertAtCursor(name)
   }
 
@@ -7007,7 +7008,7 @@ ${navPoints}  </navMap>
     updateActiveNote({ content: newContent })
     
     setTimeout(() => {
-      textarea.focus()
+      textarea.focus({ preventScroll: true })
       const newCursorPos = start + textToInsert.length
       textarea.setSelectionRange(newCursorPos, newCursorPos)
     }, 50)
@@ -9925,6 +9926,7 @@ ${navPoints}  </navMap>
 
                 <div className="name-forge-actions-row">
                   <button
+                    type="button"
                     className="name-forge-generate-btn"
                     onClick={() => generateNameOptions(false)}
                     disabled={nameGenerateLoading}
@@ -9934,6 +9936,7 @@ ${navPoints}  </navMap>
                   </button>
                   {generatedNames.length > 0 && (
                     <button
+                      type="button"
                       className="btn-ai-sub"
                       onClick={() => generateNameOptions(true)}
                       disabled={nameGenerateLoading}
@@ -9964,7 +9967,7 @@ ${navPoints}  </navMap>
                       Select all
                     </label>
                     {selectedForBatch.size > 0 && (
-                      <button className="btn-ai-sub btn-ai-primary btn-sm" onClick={batchAddToBible}>
+                      <button type="button" className="btn-ai-sub btn-ai-primary btn-sm" onClick={batchAddToBible}>
                         Add {selectedForBatch.size} to Bible
                       </button>
                     )}
@@ -9996,6 +9999,7 @@ ${navPoints}  </navMap>
                       </div>
                       <div className="name-result-actions">
                         <button
+                          type="button"
                           className="btn-ai-sub btn-ai-primary"
                           onClick={() => acceptGeneratedName(option)}
                           disabled={acceptedNameId === normalizeNameForCompare(option.name)}
@@ -10003,6 +10007,7 @@ ${navPoints}  </navMap>
                           {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add to Bible"}
                         </button>
                         <button
+                          type="button"
                           className="btn-ai-sub"
                           onClick={() => {
                             setLoreEditorDraft(option)
@@ -10013,13 +10018,15 @@ ${navPoints}  </navMap>
                           <Edit3 size={13} />
                         </button>
                         <button
+                          type="button"
                           className="btn-ai-sub"
-                          onClick={() => insertNameAtCursor(option.name)}
+                          onClick={(e) => insertNameAtCursor(e, option.name)}
                           title="Insert at cursor in editor"
                         >
                           <FileText size={13} />
                         </button>
                         <button
+                          type="button"
                           className="btn-ai-sub"
                           onClick={() => addToShortlist(option)}
                           disabled={nameShortlist.some(n => normalizeNameForCompare(n.name) === normalizeNameForCompare(option.name))}
@@ -10028,6 +10035,7 @@ ${navPoints}  </navMap>
                           <Bookmark size={13} />
                         </button>
                         <button
+                          type="button"
                           className="btn-ai-sub"
                           onClick={() => generateNameVariants(option)}
                           disabled={nameVariantLoading}
