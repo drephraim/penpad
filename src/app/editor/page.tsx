@@ -304,6 +304,14 @@ const NAME_GENDER_OPTIONS = [
   { value: "neutral", label: "Neutral", hint: "Androgynous / unisex" }
 ]
 
+const CATEGORY_STYLE_FILTER: Record<string, string[]> = {
+  character: [],
+  beast: ["beast", "demonic", "fey", "undead", "viking", "void", "grimdark"],
+  world: ["cultivation", "noble", "arabian", "viking", "slavic", "celtic", "egyptian", "mesoamerican", "hindi", "greek", "steampunk", "cyberpunk"],
+  place: ["elven", "celestial", "viking", "egyptian", "mesoamerican", "arabian", "hindi", "greek", "dwarf", "elemental", "fey"],
+  item: ["divine", "steampunk", "elemental", "celestial", "dwarf", "noble", "fey"]
+}
+
 interface ProgressionProfileTemplate {
   enabled: boolean
   name: string
@@ -1059,6 +1067,20 @@ function EditorContent() {
   const [showLoreEditor, setShowLoreEditor] = useState(false)
   const [loreEditorDraft, setLoreEditorDraft] = useState<GeneratedNameOption | null>(null)
   const [nameVariantLoading, setNameVariantLoading] = useState(false)
+  const [showNamePrompt, setShowNamePrompt] = useState(false)
+  const [showNameSyllables, setShowNameSyllables] = useState(false)
+  const [nameStyle2Options, setNameStyle2Options] = useState(NAME_STYLE_OPTIONS)
+
+  useEffect(() => {
+    const allowed = CATEGORY_STYLE_FILTER[nameCategory]
+    if (allowed && allowed.length > 0) {
+      setNameStyle2Options(NAME_STYLE_OPTIONS.filter(s => allowed.includes(s.value)))
+      if (nameStyle2 && !allowed.includes(nameStyle2)) setNameStyle2("")
+    } else {
+      setNameStyle2Options(NAME_STYLE_OPTIONS)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nameCategory])
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -9860,19 +9882,45 @@ ${navPoints}  </navMap>
                       <ChevronDown size={13} />
                     </button>
                   ))}
-                  <textarea
-                    value={nameCustomPrompt}
-                    onChange={(e) => setNameCustomPrompt(e.target.value)}
-                    placeholder="Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."
-                    rows={2}
-                  />
-                  <textarea
-                    value={nameSyllableBank}
-                    onChange={(e) => setNameSyllableBank(e.target.value)}
-                    placeholder="Custom syllables to include (comma-separated): zen, kai, lun, vra, this, mar..."
-                    rows={2}
-                    className="name-syllable-input"
-                  />
+                  {/* Collapsible custom prompt */}
+                  <div className="name-collapsible-card" onClick={() => setShowNamePrompt(!showNamePrompt)}>
+                    <div className="name-collapsible-header">
+                      <span>{showNamePrompt ? "▾" : "▸"} Direction {nameCustomPrompt ? "✓" : ""}</span>
+                      {!showNamePrompt && nameCustomPrompt && (
+                        <small className="name-collapsible-preview">{nameCustomPrompt.slice(0, 50)}{nameCustomPrompt.length > 50 ? "…" : ""}</small>
+                      )}
+                    </div>
+                    {showNamePrompt && (
+                      <textarea
+                        value={nameCustomPrompt}
+                        onChange={(e) => setNameCustomPrompt(e.target.value)}
+                        placeholder="Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."
+                        rows={2}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                  {/* Collapsible syllable bank */}
+                  <div className="name-collapsible-card" onClick={() => setShowNameSyllables(!showNameSyllables)}>
+                    <div className="name-collapsible-header">
+                      <span>{showNameSyllables ? "▾" : "▸"} Syllables {nameSyllableBank ? "✓" : ""}</span>
+                      {!showNameSyllables && nameSyllableBank && (
+                        <small className="name-collapsible-preview">{nameSyllableBank.slice(0, 50)}{nameSyllableBank.length > 50 ? "…" : ""}</small>
+                      )}
+                    </div>
+                    {showNameSyllables && (
+                      <textarea
+                        value={nameSyllableBank}
+                        onChange={(e) => setNameSyllableBank(e.target.value)}
+                        placeholder="Custom syllables to include (comma-separated): zen, kai, lun, vra, this, mar..."
+                        rows={2}
+                        className="name-syllable-input"
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div className="name-forge-actions-row">
@@ -10064,7 +10112,7 @@ ${navPoints}  </navMap>
                       <div className="name-picker-options">
                         {(activeNamePicker === "category" ? NAME_CATEGORY_OPTIONS :
                           activeNamePicker === "style" ? NAME_STYLE_OPTIONS :
-                          activeNamePicker === "style2" ? [{ value: "", label: "None (single style)", hint: "No mashup" }, ...NAME_STYLE_OPTIONS] :
+                          activeNamePicker === "style2" ? [{ value: "", label: "None (single style)", hint: "No mashup" }, ...nameStyle2Options] :
                           activeNamePicker === "gender" ? NAME_GENDER_OPTIONS :
                           activeNamePicker === "structure" ? NAME_STRUCTURE_OPTIONS :
                           NAME_TONE_OPTIONS).map(option => {
@@ -13951,6 +13999,49 @@ ${navPoints}  </navMap>
           min-height: 66px;
           padding: 0.5rem;
           line-height: 1.4;
+        }
+
+        .name-collapsible-card {
+          grid-column: 1 / -1;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid rgba(168, 85, 247, 0.15);
+          border-radius: var(--radius-sm);
+          background: rgba(168, 85, 247, 0.04);
+          cursor: pointer;
+          transition: var(--transition);
+          min-height: 32px;
+        }
+        .name-collapsible-card:hover {
+          border-color: rgba(168, 85, 247, 0.3);
+          background: rgba(168, 85, 247, 0.07);
+        }
+        .name-collapsible-header {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.35rem 0.5rem;
+          font-size: 0.7rem;
+          font-weight: 700;
+          color: #c084fc;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          user-select: none;
+        }
+        .name-collapsible-preview {
+          color: var(--text-dim);
+          font-weight: 400;
+          text-transform: none;
+          letter-spacing: normal;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          flex: 1;
+        }
+        .name-collapsible-card textarea {
+          border-top: 1px solid rgba(168, 85, 247, 0.12);
+          border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+          min-height: 52px;
         }
 
         .name-forge-generate-btn {
