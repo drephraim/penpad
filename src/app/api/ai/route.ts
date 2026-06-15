@@ -1310,13 +1310,13 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         appearancePrompts: {
-          characterName: appearance.characterName || "",
-          overview: appearance.overview || "",
+          characterName: typeof appearance.characterName === "string" ? appearance.characterName : "",
+          overview: typeof appearance.overview === "string" ? appearance.overview : "",
           prompts,
           consistencyNotes: Array.isArray(appearance.consistencyNotes)
             ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
             : [],
-          negativePrompt: appearance.negativePrompt || "",
+          negativePrompt: typeof appearance.negativePrompt === "string" ? appearance.negativePrompt : "",
           negativePrompts
         }
       })

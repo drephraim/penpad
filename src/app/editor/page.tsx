@@ -9378,7 +9378,7 @@ ${navPoints}  </navMap>
 
                 {appearanceResult && (
                   <div className="appearance-results">
-                    {appearanceResult.overview && (
+                    {typeof appearanceResult.overview === "string" && appearanceResult.overview && (
                       <div className="appearance-overview">
                         <span>Visual Core</span>
                         <p>{appearanceResult.overview}</p>
@@ -9468,7 +9468,7 @@ ${navPoints}  </navMap>
                       )
                     })}
 
-                    {appearanceResult.negativePrompt && (
+                    {typeof appearanceResult.negativePrompt === "string" && appearanceResult.negativePrompt && (
                       <div className="appearance-prompt-card muted">
                         <div className="appearance-prompt-header">
                           <strong>Negative Prompt</strong>
