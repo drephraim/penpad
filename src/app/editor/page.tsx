@@ -11,7 +11,7 @@ import {
   Feather, X, Check, AlertCircle, Trash2,
   Download, Save, BookOpen, Send,
   Play, Pause, RotateCcw,
-  Sparkles, Wand2, Copy, Clipboard, BarChart3,
+  Sparkles, Wand2, Copy, Clipboard,
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
@@ -89,15 +89,25 @@ interface SprintRecord {
 }
 
 const MILESTONES: Milestone[] = [
+  { id: "spark", title: "Spark of Insight", reqWords: 100, description: "Jotted down the first 100 words of your manuscript.", badge: "✨" },
+  { id: "awakening", title: "Awakening", reqWords: 500, description: "Amassed 500 words — the journey begins.", badge: "🌱" },
   { id: "scribe", title: "Novice Scribe", reqWords: 1000, description: "Wrote your first 1,000 words.", badge: "📜" },
+  { id: "condensation", title: "Qi Condensation", reqWords: 2500, description: "2,500 words — your prose begins to take shape.", badge: "💧" },
   { id: "disciple", title: "Sect Disciple", reqWords: 5000, description: "Amassed 5,000 words of lore.", badge: "🔮" },
+  { id: "foundation", title: "Foundation Establishment", reqWords: 7500, description: "7,500 words — a solid foundation for your story.", badge: "🏛️" },
   { id: "elder", title: "Grand Elder", reqWords: 10000, description: "Reached 10,000 words of manuscript.", badge: "⚡" },
+  { id: "core", title: "Core Formation", reqWords: 15000, description: "15,000 words — your narrative core solidifies.", badge: "💠" },
   { id: "immortal", title: "Ascended Immortal", reqWords: 25000, description: "Achieved 25,000 words.", badge: "🌌" },
-  { id: "sovereign", title: "Heavenly Sovereign", reqWords: 50000, description: "Penned a grand epic of 50,000 words.", badge: "👑" }
+  { id: "soul", title: "Nascent Soul", reqWords: 35000, description: "35,000 words — your story develops a soul of its own.", badge: "🔷" },
+  { id: "sovereign", title: "Heavenly Sovereign", reqWords: 50000, description: "Penned a grand epic of 50,000 words.", badge: "👑" },
+  { id: "dao", title: "Dao Seeking", reqWords: 75000, description: "75,000 words — you pursue the Dao of storytelling.", badge: "☯️" },
+  { id: "transcendent", title: "Transcendent God", reqWords: 100000, description: "100,000 words — a transcendent achievement.", badge: "🏆" },
+  { id: "primordial", title: "Chaos Primordial", reqWords: 150000, description: "150,000 words — your legend enters the primordial annals.", badge: "🌀" },
+  { id: "eternal", title: "Eternal Void", reqWords: 200000, description: "200,000 words — an eternal saga for the ages.", badge: "♾️" }
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'analytics'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -2199,29 +2209,6 @@ function EditorContent() {
     return { currentStreak: current, longestStreak: longest }
   }, [dailyWordLog])
 
-  const contributionGridDays = useMemo(() => {
-    const days = []
-    const today = new Date()
-    const dayOfWeek = today.getDay()
-    const endDate = new Date(today)
-    endDate.setDate(today.getDate() + (6 - dayOfWeek))
-    
-    const startDate = new Date(endDate)
-    startDate.setDate(endDate.getDate() - 111) // 16 weeks * 7 - 1
-    
-    const curr = new Date(startDate)
-    while (curr <= endDate) {
-      const dateStr = curr.toLocaleDateString('en-CA')
-      const count = dailyWordLog[dateStr] || 0
-      days.push({
-        date: new Date(curr),
-        dateStr,
-        count
-      })
-      curr.setDate(curr.getDate() + 1)
-    }
-    return days
-  }, [dailyWordLog])
 
   const formatProgressionDate = (timestamp?: number) => {
     if (!timestamp) return ""
@@ -8618,21 +8605,6 @@ ${navPoints}  </navMap>
               >
                 <History size={20} />
               </button>
-
-              <button 
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'analytics' ? 'active' : ''}`}
-                onClick={() => {
-                  if (activeSidebarTab === 'analytics' && isLeftSidebarOpen) {
-                    setIsLeftSidebarOpen(false)
-                  } else {
-                    setActiveSidebarTab('analytics')
-                    setIsLeftSidebarOpen(true)
-                  }
-                }}
-                title="Writing Goals & Analytics"
-              >
-                <BarChart3 size={20} />
-              </button>
             </div>
             
             <div className="activity-bottom">
@@ -8987,6 +8959,8 @@ ${navPoints}  </navMap>
             {activeSidebarTab === 'insights' && (
               <div className="sidebar-tab-content insights-panel fade-in">
                 <span className="section-title">Manuscript Insights</span>
+
+                {/* Stats grid */}
                 <div className="manuscript-insights glass-light">
                   <div className="insights-grid">
                     <div>
@@ -9012,6 +8986,56 @@ ${navPoints}  </navMap>
                   </div>
                 </div>
 
+                {/* Streak counters & Daily Goal */}
+                <div className="insights-streak-goal-row">
+                  <div className="insights-streak-cards">
+                    <div className="streak-card current">
+                      <span className="streak-badge">🔥</span>
+                      <div>
+                        <strong>{streaks.currentStreak} Days</strong>
+                        <span>Current Streak</span>
+                      </div>
+                    </div>
+                    <div className="streak-card longest">
+                      <span className="streak-badge">🏆</span>
+                      <div>
+                        <strong>{streaks.longestStreak} Days</strong>
+                        <span>Longest Streak</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="insights-daily-goal glass-light">
+                    <div className="goal-card-header">
+                      <h4>Daily Goal</h4>
+                      <div className="goal-input-wrapper">
+                        <input
+                          type="number" min="100" step="100"
+                          value={dailyWritingGoal}
+                          onChange={(e) => handleDailyGoalChange(Math.max(100, Number(e.target.value)))}
+                        />
+                        <span>words</span>
+                      </div>
+                    </div>
+                    {(() => {
+                      const todayStr = new Date().toLocaleDateString('en-CA')
+                      const writtenToday = dailyWordLog[todayStr] || 0
+                      const percent = Math.min(100, Math.round((writtenToday / dailyWritingGoal) * 100))
+                      return (
+                        <div className="goal-progress-section">
+                          <div className="goal-progress-bar">
+                            <div className="goal-progress-fill" style={{ width: `${percent}%` }} />
+                          </div>
+                          <div className="goal-progress-labels">
+                            <span>{writtenToday.toLocaleString()} / {dailyWritingGoal.toLocaleString()} words</span>
+                            <strong>{percent}%</strong>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+
+                {/* Chapter Timeline */}
                 <div className="insights-section-header">
                   <span>Chapter Timeline</span>
                   <button
@@ -9048,7 +9072,7 @@ ${navPoints}  </navMap>
                   </div>
                 )}
 
-                {/* Daily Progress Heatmap Section */}
+                {/* Daily Progress Heatmap */}
                 <div className="heatmap-section">
                   <div className="insights-section-header">
                     <span>Daily Progress Heatmap</span>
@@ -9060,11 +9084,10 @@ ${navPoints}  </navMap>
                       else if (day.count > 200 && day.count <= 500) colorClass = 'intensity-2';
                       else if (day.count > 500 && day.count <= 1000) colorClass = 'intensity-3';
                       else if (day.count > 1000) colorClass = 'intensity-4';
-                      
                       const dayLabel = day.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                       return (
-                        <div 
-                          key={day.dateStr} 
+                        <div
+                          key={day.dateStr}
                           className={`heatmap-cell ${colorClass}`}
                           title={`${dayLabel}: ${day.count} words`}
                         />
@@ -9082,7 +9105,32 @@ ${navPoints}  </navMap>
                   </div>
                 </div>
 
-                {/* Cultivation Milestones Section */}
+                {/* Recent Sprints */}
+                <div className="insights-section">
+                  <div className="insights-section-header">
+                    <span>Recent Sprints</span>
+                  </div>
+                  {sprintHistory.length === 0 ? (
+                    <div className="sprint-history-empty">
+                      <p>No focus sprints logged yet.</p>
+                      <small>Start a sprint in Focus Mode (timer button in top right) to log focused sessions.</small>
+                    </div>
+                  ) : (
+                    <div className="sprint-history-list">
+                      {sprintHistory.map(sprint => (
+                        <div key={sprint.id} className="sprint-history-item">
+                          <div>
+                            <strong>{sprint.wordsWritten.toLocaleString()} words</strong>
+                            <span>{Math.round(sprint.duration / 60)} min sprint</span>
+                          </div>
+                          <small>{new Date(sprint.completedAt).toLocaleDateString()} {new Date(sprint.completedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Cultivation Milestones */}
                 <div className="milestones-section">
                   <div className="insights-section-header">
                     <span>Cultivation Milestones</span>
@@ -9090,7 +9138,6 @@ ${navPoints}  </navMap>
                       {unlockedMilestones.size} / {MILESTONES.length} Unlocked
                     </span>
                   </div>
-                  
                   <div className="milestones-list">
                     {MILESTONES.map(m => {
                       const isUnlocked = unlockedMilestones.has(m.id);
@@ -11324,149 +11371,6 @@ ${navPoints}  </navMap>
               </div>
             )}
 
-            {/* TAB: WRITING GOALS & ANALYTICS */}
-            {activeSidebarTab === 'analytics' && (
-              <div className="sidebar-tab-content analytics-panel fade-in">
-                <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Analytics</span>
-                
-                {/* Streak counters */}
-                <div className="analytics-streak-cards">
-                  <div className="streak-card current">
-                    <span className="streak-badge">🔥</span>
-                    <div>
-                      <strong>{streaks.currentStreak} Days</strong>
-                      <span>Current Streak</span>
-                    </div>
-                  </div>
-                  <div className="streak-card longest">
-                    <span className="streak-badge">🏆</span>
-                    <div>
-                      <strong>{streaks.longestStreak} Days</strong>
-                      <span>Longest Streak</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Daily Writing Goal Card */}
-                <div className="analytics-goal-card glass-light">
-                  <div className="goal-card-header">
-                    <h4>Daily Writing Goal</h4>
-                    <div className="goal-input-wrapper">
-                      <input
-                        type="number"
-                        min="100"
-                        step="100"
-                        value={dailyWritingGoal}
-                        onChange={(e) => handleDailyGoalChange(Math.max(100, Number(e.target.value)))}
-                      />
-                      <span>words</span>
-                    </div>
-                  </div>
-                  {(() => {
-                    const todayStr = new Date().toLocaleDateString('en-CA')
-                    const writtenToday = dailyWordLog[todayStr] || 0
-                    const percent = Math.min(100, Math.round((writtenToday / dailyWritingGoal) * 100))
-                    return (
-                      <div className="goal-progress-section">
-                        <div className="goal-progress-bar">
-                          <div className="goal-progress-fill" style={{ width: `${percent}%` }} />
-                        </div>
-                        <div className="goal-progress-labels">
-                          <span>{writtenToday.toLocaleString()} / {dailyWritingGoal.toLocaleString()} words</span>
-                          <strong>{percent}%</strong>
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </div>
-
-                {/* Heatmap Grid */}
-                <div className="analytics-section">
-                  <h5>Activity Map</h5>
-                  <div className="contribution-grid-container scrollbar">
-                    <div className="contribution-grid">
-                      {Array.from({ length: 16 }).map((_, colIdx) => (
-                        <div key={colIdx} className="contribution-column">
-                          {contributionGridDays.slice(colIdx * 7, (colIdx + 1) * 7).map(day => {
-                            let level = 0
-                            if (day.count > 0 && day.count < 100) level = 1
-                            else if (day.count >= 100 && day.count < 500) level = 2
-                            else if (day.count >= 500 && day.count < 1000) level = 3
-                            else if (day.count >= 1000) level = 4
-
-                            return (
-                              <div
-                                key={day.dateStr}
-                                className={`contribution-square level-${level}`}
-                                title={`${day.count.toLocaleString()} words on ${day.date.toLocaleDateString()}`}
-                              />
-                            )
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="contribution-legend">
-                    <span>Less</span>
-                    <div className="legend-squares">
-                      <div className="contribution-square level-0" />
-                      <div className="contribution-square level-1" />
-                      <div className="contribution-square level-2" />
-                      <div className="contribution-square level-3" />
-                      <div className="contribution-square level-4" />
-                    </div>
-                    <span>More</span>
-                  </div>
-                </div>
-
-                {/* Focus Sprint records */}
-                <div className="analytics-section">
-                  <h5>Recent Sprints</h5>
-                  {sprintHistory.length === 0 ? (
-                    <div className="sprint-history-empty">
-                      <p>No focus sprints logged yet.</p>
-                      <small>Start a sprint in Focus Mode (timer button in top right) to log focused sessions.</small>
-                    </div>
-                  ) : (
-                    <div className="sprint-history-list">
-                      {sprintHistory.map(sprint => (
-                        <div key={sprint.id} className="sprint-history-item">
-                          <div>
-                            <strong>{sprint.wordsWritten.toLocaleString()} words</strong>
-                            <span>{Math.round(sprint.duration / 60)} min sprint</span>
-                          </div>
-                          <small>{new Date(sprint.completedAt).toLocaleDateString()} {new Date(sprint.completedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Milestones Checklist */}
-                <div className="analytics-section">
-                  <h5>Writing Milestones</h5>
-                  <div className="milestones-analytics-list">
-                    {MILESTONES.map(m => {
-                      const isUnlocked = unlockedMilestones.has(m.id)
-                      return (
-                        <div key={m.id} className={`milestone-analytics-item ${isUnlocked ? 'unlocked' : ''}`}>
-                          <span className="milestone-item-badge">{m.badge}</span>
-                          <div className="milestone-item-details">
-                            <strong>{m.title}</strong>
-                            <p>{m.description}</p>
-                          </div>
-                          {isUnlocked ? (
-                            <span className="milestone-status unlocked">Unlocked</span>
-                          ) : (
-                            <span className="milestone-status locked">Locked</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
             <div
               className="sidebar-resize-handle"
               role="separator"
@@ -21113,19 +21017,6 @@ ${navPoints}  </navMap>
           background: var(--surface-hover);
         }
 
-        .analytics-panel {
-          display: flex;
-          flex-direction: column;
-          gap: 1.2rem;
-          padding-bottom: 2rem;
-        }
-
-        .analytics-streak-cards {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 0.6rem;
-        }
-
         .streak-card {
           display: flex;
           align-items: center;
@@ -21159,11 +21050,29 @@ ${navPoints}  </navMap>
           font-weight: 600;
         }
 
-        .analytics-goal-card {
+        .insights-streak-goal-row {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+        }
+
+        .insights-streak-cards {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.6rem;
+        }
+
+        .insights-daily-goal {
           padding: 0.8rem;
           border-radius: var(--radius-md);
           background: rgba(255, 255, 255, 0.02);
           border: 1px solid var(--surface-border);
+        }
+
+        .insights-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
         }
 
         .goal-card-header {
@@ -21230,89 +21139,11 @@ ${navPoints}  </navMap>
           color: var(--text-dim);
         }
 
-        .analytics-section {
-          display: flex;
-          flex-direction: column;
-          gap: 0.65rem;
-        }
-
-        .analytics-section h5 {
-          margin: 0;
-          font-size: 0.72rem;
-          color: var(--text-dim);
-          text-transform: uppercase;
-          font-weight: 900;
-          letter-spacing: 0.05em;
-        }
-
-        .contribution-grid-container {
-          width: 100%;
-          overflow-x: auto;
-          padding: 0.25rem 0;
-          background: rgba(0, 0, 0, 0.12);
-          border-radius: var(--radius-md);
-          border: 1px solid var(--surface-border);
-          display: flex;
-          justify-content: center;
-        }
-
-        .contribution-grid {
-          display: flex;
-          gap: 3px;
-          padding: 0.5rem;
-        }
-
-        .contribution-column {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .contribution-square {
-          width: 9px;
-          height: 9px;
-          border-radius: 1.5px;
-          transition: all 0.15s ease;
-        }
-
-        .contribution-square.level-0 {
-          background: rgba(255, 255, 255, 0.035);
-        }
-
-        .contribution-square.level-1 {
-          background: rgba(99, 102, 241, 0.25);
-        }
-
-        .contribution-square.level-2 {
-          background: rgba(99, 102, 241, 0.5);
-        }
-
-        .contribution-square.level-3 {
-          background: rgba(99, 102, 241, 0.75);
-        }
-
-        .contribution-square.level-4 {
-          background: rgba(99, 102, 241, 1);
-          box-shadow: 0 0 6px rgba(99, 102, 241, 0.4);
-        }
-
-        .contribution-legend {
-          display: flex;
-          align-items: center;
-          gap: 0.4rem;
-          font-size: 0.65rem;
-          color: var(--text-dim);
-          align-self: flex-end;
-          margin-top: -0.25rem;
-        }
-
-        .legend-squares {
-          display: flex;
-          gap: 2px;
-        }
-
         .sprint-history-empty {
-          padding: 0.8rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          padding: 1rem;
           text-align: center;
           border: 1px dashed var(--surface-border);
           border-radius: var(--radius-md);
@@ -21373,75 +21204,6 @@ ${navPoints}  </navMap>
           font-size: 0.65rem;
           text-align: right;
           flex-shrink: 0;
-        }
-
-        .milestones-analytics-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.45rem;
-        }
-
-        .milestone-analytics-item {
-          display: flex;
-          align-items: center;
-          gap: 0.6rem;
-          background: rgba(255, 255, 255, 0.015);
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-md);
-          padding: 0.5rem 0.65rem;
-          opacity: 0.5;
-          transition: all 0.2s ease;
-        }
-
-        .milestone-analytics-item.unlocked {
-          opacity: 1;
-          border-color: rgba(99, 102, 241, 0.35);
-          background: rgba(99, 102, 241, 0.03);
-        }
-
-        .milestone-item-badge {
-          font-size: 1.3rem;
-          line-height: 1;
-          flex-shrink: 0;
-        }
-
-        .milestone-item-details {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .milestone-item-details strong {
-          color: var(--text-primary);
-          font-size: 0.78rem;
-          font-weight: 800;
-        }
-
-        .milestone-item-details p {
-          margin: 0;
-          color: var(--text-dim);
-          font-size: 0.68rem;
-        }
-
-        .milestone-status {
-          font-size: 0.65rem;
-          font-weight: 900;
-          padding: 0.1rem 0.35rem;
-          border-radius: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-          flex-shrink: 0;
-        }
-
-        .milestone-status.unlocked {
-          background: rgba(34, 197, 94, 0.12);
-          color: #4ade80;
-        }
-
-        .milestone-status.locked {
-          background: rgba(255, 255, 255, 0.05);
-          color: var(--text-dim);
         }
 
         @media (max-width: 1024px) {
