@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     if (selectRes.rows.length > 0) {
       const cloudRow = selectRes.rows[0]
       const cloudUpdated = cloudRow.updated_at ? Number(cloudRow.updated_at) : 0
-      const localUpdated = (localSystem as any)?.updatedAt || 0
+      const localUpdated = Number((localSystem as Record<string, unknown>)?.updatedAt ?? 0)
 
       if (localUpdated > cloudUpdated) {
         await pool.query(
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       if (localSystem) {
-        const updatedAt = (localSystem as any)?.updatedAt || Date.now()
+        const updatedAt = Number((localSystem as Record<string, unknown>)?.updatedAt ?? Date.now())
         await pool.query(
           `INSERT INTO progression_system (project_id, user_id, system_data, updated_at)
            VALUES ($1, $2, $3::jsonb, $4)

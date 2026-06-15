@@ -48,7 +48,6 @@ import {
   deleteArcSeedFromCloud,
   syncProgressionProfilesWithCloud,
   saveProgressionProfileToCloud,
-  deleteProgressionProfileFromCloud,
   syncProgressionSystemWithCloud,
   saveProgressionSystemToCloud,
   BibleEntry,

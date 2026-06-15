@@ -539,7 +539,7 @@ export async function syncProgressionProfilesWithCloud(userId: string, projectId
  * Saves a single progression profile to PostgreSQL via Next.js API.
  */
 export async function saveProgressionProfileToCloud(userId: string, projectId: string, profile: unknown): Promise<void> {
-  if (!userId || !projectId || !profile || !(profile as any).id) return
+  if (!userId || !projectId || !profile || !(profile as Record<string, unknown>).id) return
 
   try {
     const response = await fetch("/api/sync/save-progression-profile", {

@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing userId or projectId" }, { status: 400 })
     }
 
-    const localList = localProfiles || []
+    const localList: { id: string; updatedAt?: number; createdAt?: number; [key: string]: unknown }[] = (localProfiles || []) as { id: string; updatedAt?: number; createdAt?: number; [key: string]: unknown }[]
 
     await pool.query(
       `INSERT INTO projects (id, user_id, name, last_updated)
@@ -38,12 +38,12 @@ export async function POST(req: NextRequest) {
     }))
 
     const cloudMap = new Map(cloudProfiles.map(p => [p.id, p]))
-    const localMap = new Map(localList.map((p: any) => [p.id, p]))
-    const finalMap = new Map<string, any>()
+    const localMap = new Map(localList.map(p => [p.id, p]))
+    const finalMap = new Map<string, Record<string, unknown>>()
 
     for (const localProfile of localList) {
-      const lp = localProfile as any
-      const cloudEntry = cloudMap.get(lp.id)
+      const lp = localProfile
+      const cloudEntry = cloudMap.get(lp.id as string)
       const localUpdated = lp.updatedAt || Date.now()
       const localCreated = lp.createdAt || Date.now()
 
@@ -68,18 +68,18 @@ export async function POST(req: NextRequest) {
           )
           finalMap.set(lp.id, { ...lp, updatedAt: localUpdated })
         } else {
-          finalMap.set(lp.id, { ...cloudEntry.profileData as any, id: cloudEntry.id, updatedAt: cloudEntry.updatedAt })
+          finalMap.set(lp.id, { ...(cloudEntry.profileData as Record<string, unknown>), id: cloudEntry.id, updatedAt: cloudEntry.updatedAt })
         }
       }
     }
 
     for (const cloudEntry of cloudProfiles) {
       if (!localMap.has(cloudEntry.id)) {
-        finalMap.set(cloudEntry.id, { ...cloudEntry.profileData as any, id: cloudEntry.id, updatedAt: cloudEntry.updatedAt })
+        finalMap.set(cloudEntry.id, { ...(cloudEntry.profileData as Record<string, unknown>), id: cloudEntry.id, updatedAt: cloudEntry.updatedAt })
       }
     }
 
-    const merged = Array.from(finalMap.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    const merged = Array.from(finalMap.values()).sort((a: Record<string, unknown>, b: Record<string, unknown>) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
 
     return NextResponse.json({ profiles: merged })
   } catch (error: unknown) {
