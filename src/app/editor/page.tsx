@@ -1632,11 +1632,11 @@ function EditorContent() {
     const styleToUse = appearanceCustomStyle || appearanceStyle
 
     const promptSections = Object.keys(prompts).length > 0
-      ? Object.entries(prompts).map(([key, text]) => `### ${getFormLabel(key)}\r\n${text || "Not generated."}`).join("\r\n\r\n")
+      ? Object.entries(prompts).map(([key, text]) => `### ${getFormLabel(key)}\r\n${typeof text === "string" ? text : "Not generated."}`).join("\r\n\r\n")
       : ""
 
     const negPromptSections = result.negativePrompts && Object.keys(result.negativePrompts).length > 0
-      ? Object.entries(result.negativePrompts).map(([key, text]) => `${getFormLabel(key)} Negative Prompt: ${text}`).join("\r\n")
+      ? Object.entries(result.negativePrompts).map(([key, text]) => `${getFormLabel(key)} Negative Prompt: ${typeof text === "string" ? text : ""}`).join("\r\n")
       : ""
 
     return [
@@ -1783,12 +1783,14 @@ function EditorContent() {
       } else {
         const newPrompts = data.appearancePrompts?.prompts || {}
         setAppearanceResult(prev => {
-          if (!prev) return data.appearancePrompts || { overview: "", prompts: { [formKey]: newPrompts[formKey] || "" }, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name }
+          if (!prev) return data.appearancePrompts || { overview: "", prompts: { [formKey]: typeof newPrompts[formKey] === "string" ? newPrompts[formKey] : "" }, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name }
           const mergedNegPrompts = { ...(prev.negativePrompts || {}) }
-          if (data.appearancePrompts?.negativePrompts?.[formKey]) mergedNegPrompts[formKey] = data.appearancePrompts.negativePrompts[formKey]
+          const negVal = data.appearancePrompts?.negativePrompts?.[formKey]
+          if (typeof negVal === "string") mergedNegPrompts[formKey] = negVal
+          const newVal = typeof newPrompts[formKey] === "string" ? newPrompts[formKey] : ""
           return {
             ...prev,
-            prompts: { ...(prev.prompts || {}), [formKey]: newPrompts[formKey] || prev.prompts?.[formKey] || "" },
+            prompts: { ...(prev.prompts || {}), [formKey]: newVal || prev.prompts?.[formKey] || "" },
             negativePrompts: mergedNegPrompts
           }
         })
@@ -9383,10 +9385,12 @@ ${navPoints}  </navMap>
                       </div>
                     )}
 
-                    {Object.entries(appearanceResult.prompts || {}).map(([formKey, promptText]) => {
+                    {Object.entries(appearanceResult.prompts || {}).map(([formKey, rawPrompt]) => {
+                      const promptText = typeof rawPrompt === "string" ? rawPrompt : ""
                       if (!promptText) return null
                       const label = appearanceFormLabels[formKey] || formKey.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
-                      const formNegPrompt = appearanceResult.negativePrompts?.[formKey]
+                      const rawFormNegPrompt = appearanceResult.negativePrompts?.[formKey]
+                      const formNegPrompt = typeof rawFormNegPrompt === "string" ? rawFormNegPrompt : ""
                       return (
                         <div className="appearance-prompt-card" key={formKey}>
                           <div className="appearance-prompt-header">

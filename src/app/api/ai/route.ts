@@ -1284,18 +1284,27 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      const extractString = (val: unknown, fallbackKey: string): string => {
+        if (typeof val === "string") return val.trim()
+        if (val && typeof val === "object") {
+          const nested = (val as Record<string, unknown>)[fallbackKey] ?? (val as Record<string, unknown>)[Object.keys(val as Record<string, unknown>)[0]]
+          if (typeof nested === "string") return nested.trim()
+          return ""
+        }
+        return ""
+      }
       const prompts: Record<string, string> = {}
       const negativePrompts: Record<string, string> = {}
       if (appearance.prompts && typeof appearance.prompts === "object") {
         for (const key of Object.keys(appearance.prompts)) {
-          const val = appearance.prompts[key]
-          if (typeof val === "string" && val.trim()) prompts[key] = val.trim()
+          const text = extractString(appearance.prompts[key], key)
+          if (text) prompts[key] = text
         }
       }
       if (appearance.negativePrompts && typeof appearance.negativePrompts === "object") {
         for (const key of Object.keys(appearance.negativePrompts)) {
-          const val = appearance.negativePrompts[key]
-          if (typeof val === "string" && val.trim()) negativePrompts[key] = val.trim()
+          const text = extractString(appearance.negativePrompts[key], key)
+          if (text) negativePrompts[key] = text
         }
       }
 
