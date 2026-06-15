@@ -161,6 +161,15 @@ interface BibleCanonConflict {
   suggestedFix?: string
 }
 
+interface TimelineIssue {
+  type: "power_regression" | "missing_progression" | "contradictory_state" | "premature_appearance" | "ignored_plot_point"
+  characterName: string
+  severity: "warning" | "critical"
+  message: string
+  chaptersInvolved: string[]
+  suggestion: string
+}
+
 interface BibleExtractionSuggestion {
   entryName: string
   category: BibleEntry["category"]
@@ -1367,6 +1376,9 @@ function EditorContent() {
   const [progressionBulkUpdateStatus, setProgressionBulkUpdateStatus] = useState("")
   const [showStatsChart, setShowStatsChart] = useState(false)
   const [selectedGraphStat, setSelectedGraphStat] = useState<string>("level")
+  const [timelineCheckLoading, setTimelineCheckLoading] = useState(false)
+  const [timelineIssues, setTimelineIssues] = useState<TimelineIssue[]>([])
+  const [showTimelineCheckModal, setShowTimelineCheckModal] = useState(false)
   const [hoveredGraphPoint, setHoveredGraphPoint] = useState<{ x: number; y: number; value: string | number; label: string; index: number } | null>(null)
 
   // Ambient Sound States
@@ -6027,6 +6039,67 @@ const fillEmptyCustomJsonData = (
     }
   }
 
+  const checkTimelineConsistency = async () => {
+    if (!projectId || timelineCheckLoading) return
+    setTimelineCheckLoading(true)
+    setTimelineIssues([])
+    try {
+      const sortedNotes = getManuscriptNotesList(notes)
+      const chapters = sortedNotes.map((note, index) => {
+        const chapterNumber = getNoteChapterNumber(note) || index + 1
+        const charactersAppearing = progressionProfiles
+          .filter(profile => doesCharacterAppearInChapter(profile, note.content))
+          .map(profile => profile.name)
+        return {
+          id: note.id,
+          title: note.title,
+          chapterNumber,
+          charactersAppearing
+        }
+      })
+      const profiles = progressionProfiles.map(profile => ({
+        name: profile.name,
+        history: (profile.history || []).map(h => ({
+          chapterId: h.chapterId,
+          chapterTitle: h.chapterTitle,
+          chapterNumber: h.chapterNumber,
+          levelBefore: h.levelBefore,
+          levelAfter: h.levelAfter,
+          realmBefore: h.realmBefore || "",
+          realmAfter: h.realmAfter || "",
+          stageBefore: h.stageBefore || "",
+          stageAfter: h.stageAfter || "",
+          summary: h.summary,
+          statChanges: h.statChanges as Record<string, number>
+        }))
+      }))
+      const bibleData = bibleEntries.map(e => ({
+        name: e.name,
+        category: e.category,
+        content: e.content
+      }))
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "timeline_consistency_check",
+          chapters,
+          profiles,
+          bibleEntries: bibleData
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to check timeline consistency")
+      setTimelineIssues(data.issues || [])
+      setShowTimelineCheckModal(true)
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Timeline check failed")
+    } finally {
+      setTimelineCheckLoading(false)
+    }
+  }
+
   const fetchEntitySuggestions = async () => {
     if (!activeNote || !projectId || suggestionLoading) return
     setSuggestionLoading(true)
@@ -9068,6 +9141,14 @@ ${navPoints}  </navMap>
                     </div>
                     <strong>{progressionSystem.realms.length}</strong>
                     <p>{progressionSystem.cultivationGuide ? "Stage guide saved for AI updates" : "Upload TXT stages for AI updates"}</p>
+                  </button>
+                  <button className="progression-library-card" onClick={checkTimelineConsistency} disabled={timelineCheckLoading}>
+                    <div>
+                      {timelineCheckLoading ? <Loader2 className="spin" size={15} /> : <ShieldAlert size={15} />}
+                      <span>Timeline</span>
+                    </div>
+                    <strong>{timelineIssues.length}</strong>
+                    <p>{timelineCheckLoading ? "Analyzing..." : timelineIssues.length > 0 ? `${timelineIssues.length} issue${timelineIssues.length > 1 ? "s" : ""} found` : "Check timeline for plot holes"}</p>
                   </button>
                 </div>
 
@@ -12897,6 +12978,84 @@ ${navPoints}  </navMap>
               </div>
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setShowLoreHistoryModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showTimelineCheckModal && (
+          <div className="modal-overlay" onClick={() => setShowTimelineCheckModal(false)}>
+            <div className="modal progression-template-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px" }}>
+              <div className="modal-header">
+                <h2 className="modal-title">Timeline Consistency Check</h2>
+                <p className="modal-description">
+                  {timelineIssues.length > 0
+                    ? `Found ${timelineIssues.length} potential issue${timelineIssues.length > 1 ? "s" : ""} across the manuscript.`
+                    : "No timeline issues detected. Your story is consistent."}
+                </p>
+              </div>
+              <div className="progression-template-modal-body" style={{ maxHeight: "400px", overflowY: "auto" }}>
+                {timelineIssues.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-dim)" }}>
+                    <CheckCircle2 size={32} style={{ color: "var(--green-500)", marginBottom: "0.75rem" }} />
+                    <p>All clear! Character progression timelines are consistent across all chapters.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    {timelineIssues.map((issue, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          padding: "0.85rem",
+                          background: "rgba(255,255,255,0.03)",
+                          border: `1px solid ${issue.severity === "critical" ? "rgba(239,68,68,0.3)" : "rgba(234,179,8,0.3)"}`,
+                          borderRadius: "var(--radius-md)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <AlertTriangle size={14} color={issue.severity === "critical" ? "var(--red-500)" : "var(--yellow-500)"} />
+                            <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>{issue.characterName}</span>
+                            <span style={{
+                              fontSize: "0.65rem",
+                              padding: "1px 6px",
+                              borderRadius: "var(--radius-sm)",
+                              background: issue.severity === "critical" ? "rgba(239,68,68,0.15)" : "rgba(234,179,8,0.15)",
+                              color: issue.severity === "critical" ? "var(--red-500)" : "var(--yellow-500)"
+                            }}>
+                              {issue.severity}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "capitalize" }}>
+                            {issue.type.replace(/_/g, " ")}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: "0.8rem", margin: "0 0 0.4rem 0", color: "var(--text-main)" }}>{issue.message}</p>
+                        {issue.chaptersInvolved.length > 0 && (
+                          <small style={{ color: "var(--indigo-400)", fontSize: "0.7rem" }}>
+                            Chapters: {issue.chaptersInvolved.join(", ")}
+                          </small>
+                        )}
+                        <p style={{ fontSize: "0.75rem", margin: "0.3rem 0 0 0", color: "var(--text-dim)", fontStyle: "italic" }}>
+                          Suggestion: {issue.suggestion}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowTimelineCheckModal(false)}>Close</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowTimelineCheckModal(false)
+                    setTimeout(checkTimelineConsistency, 100)
+                  }}
+                  disabled={timelineCheckLoading}
+                >
+                  {timelineCheckLoading ? <><Loader2 className="spin" size={14} /> Checking...</> : "Re-check"}
+                </button>
               </div>
             </div>
           </div>

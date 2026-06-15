@@ -1135,8 +1135,56 @@ export async function POST(req: NextRequest) {
         `Extra Direction: ${customPrompt || "Surprise me with useful fantasy novel names."}\n\n` +
         `Existing Story Bible Names To Avoid:\n${existingNames || "No Story Bible names yet."}\n\n` +
         `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}`
+    } else if (action === "timeline_consistency_check") {
+      const { chapters, profiles, bibleEntries } = body as {
+        chapters: { id: string; title: string; chapterNumber: number; charactersAppearing: string[] }[]
+        profiles: { name: string; history: { chapterId: string; chapterTitle: string; chapterNumber: number | null; levelBefore: number; levelAfter: number; realmBefore: string; realmAfter: string; stageBefore: string; stageAfter: string; summary: string; statChanges: Record<string, number> }[] }[]
+        bibleEntries: { name: string; category: string; content: string }[]
+      }
+
+      systemInstruction =
+        "You are a senior novel editor and continuity specialist. Your job is to analyze the entire manuscript timeline for plot holes and character consistency issues.\n" +
+        "You are given:\n" +
+        "1. The list of all chapters (in order) with which characters appear in each.\n" +
+        "2. For each character with a progression profile: their full history of stat/level/realm/stage changes per chapter.\n" +
+        "3. Story Bible entries for reference.\n\n" +
+        "Analyze for these types of issues:\n" +
+        "- **Power regression**: A character's realm, stage, or level drops between chapters without explanation in the history summary.\n" +
+        "- **Missing progression**: A character appears in a chapter but has no progression history entry for it (gap in tracking).\n" +
+        "- **Contradictory states**: Two chapters claim different realms/stages for the same character at overlapping times.\n" +
+        "- **Premature appearance**: A character appears in a chapter before their first recorded progression entry or Bible introduction.\n" +
+        "- **Ignored plot points**: A character's history summary mentions an injury, loss, or change that is not reflected in later chapters where they appear.\n\n" +
+        "Only flag genuine issues. A character simply not appearing in a chapter is not a problem. A character staying at the same realm across multiple chapters is normal.\n" +
+        "Output ONLY valid JSON with a single key 'issues' containing an array of objects. Each object must have:\n" +
+        "- type: 'power_regression' | 'missing_progression' | 'contradictory_state' | 'premature_appearance' | 'ignored_plot_point'\n" +
+        "- characterName: string\n" +
+        "- severity: 'warning' | 'critical'\n" +
+        "- message: string (concise explanation of the issue)\n" +
+        "- chaptersInvolved: string[] (chapter titles or numbers)\n" +
+        "- suggestion: string (how to fix)\n" +
+        "If no issues are found, return { issues: [] }."
+
+      const chapterList = (chapters || []).map(ch =>
+        `Chapter ${ch.chapterNumber}: "${ch.title}" — Characters: ${(ch.charactersAppearing || []).join(", ") || "none"}`
+      ).join("\n")
+
+      const profileDetails = (profiles || []).map(p => {
+        const timeline = (p.history || [])
+          .sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0))
+          .map(h =>
+            `  Ch${h.chapterNumber || "?"} (${h.chapterTitle}): Level ${h.levelBefore}→${h.levelAfter}, Realm "${h.realmBefore || "?"}"→"${h.realmAfter || "?"}", Stage "${h.stageBefore || "?"}"→"${h.stageAfter || "?"}" — ${h.summary}`
+          ).join("\n")
+        return `${p.name}:\n${timeline || "  No progression history recorded."}`
+      }).join("\n\n")
+
+      const bibleContext = (bibleEntries || []).map(e =>
+        `${e.name} (${e.category}): ${String(e.content || "").slice(0, 800)}`
+      ).join("\n")
+
+      userPrompt =
+        `## Chapters\n${chapterList}\n\n## Character Progression Timelines\n${profileDetails}\n\n## Story Bible Reference\n${bibleContext}`
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, or progression_template_design." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, progression_template_design, or timeline_consistency_check." }, { status: 400 })
     }
 
     const jsonActions = new Set([
@@ -1151,7 +1199,8 @@ export async function POST(req: NextRequest) {
       "bible_consistency_check",
       "bible_extract_from_chapter",
       "arc_seed_extract",
-      "name_generate"
+      "name_generate",
+      "timeline_consistency_check"
     ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
@@ -1164,6 +1213,13 @@ export async function POST(req: NextRequest) {
       const result = parseJsonObject<any>(text)
       return NextResponse.json({
         conflicts: result?.conflicts || []
+      })
+    }
+
+    if (action === "timeline_consistency_check") {
+      const result = parseJsonObject<any>(text)
+      return NextResponse.json({
+        issues: result?.issues || []
       })
     }
 
