@@ -508,3 +508,118 @@ export async function deleteArcSeedFromCloud(userId: string, projectId: string, 
     console.error("Failed to delete arc seed from cloud:", error)
   }
 }
+
+/**
+ * Reconciles local progression profiles with PostgreSQL via Next.js API.
+ */
+export async function syncProgressionProfilesWithCloud(userId: string, projectId: string, localProfiles: unknown[]): Promise<unknown[]> {
+  if (!userId || !projectId) return localProfiles
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/progression-profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, localProfiles }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return (data.profiles || []) as unknown[]
+  } catch (error) {
+    console.error("Failed to sync progression profiles with cloud, falling back to local:", error)
+    return localProfiles
+  }
+}
+
+/**
+ * Saves a single progression profile to PostgreSQL via Next.js API.
+ */
+export async function saveProgressionProfileToCloud(userId: string, projectId: string, profile: unknown): Promise<void> {
+  if (!userId || !projectId || !profile || !(profile as any).id) return
+
+  try {
+    const response = await fetch("/api/sync/save-progression-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, profile })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save progression profile to cloud:", error)
+  }
+}
+
+/**
+ * Deletes a single progression profile from PostgreSQL via Next.js API.
+ */
+export async function deleteProgressionProfileFromCloud(userId: string, projectId: string, profileId: string): Promise<void> {
+  if (!userId || !projectId || !profileId) return
+
+  try {
+    const response = await fetch("/api/sync/delete-progression-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, profileId })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to delete progression profile from cloud:", error)
+  }
+}
+
+/**
+ * Reconciles local progression system settings with PostgreSQL via Next.js API.
+ */
+export async function syncProgressionSystemWithCloud(userId: string, projectId: string, localSystem: unknown): Promise<unknown> {
+  if (!userId || !projectId) return localSystem
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/progression-system", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, localSystem }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return data.system as unknown
+  } catch (error) {
+    console.error("Failed to sync progression system with cloud, falling back to local:", error)
+    return localSystem
+  }
+}
+
+/**
+ * Saves progression system settings to PostgreSQL via Next.js API.
+ */
+export async function saveProgressionSystemToCloud(userId: string, projectId: string, system: unknown): Promise<void> {
+  if (!userId || !projectId || !system) return
+
+  try {
+    const response = await fetch("/api/sync/save-progression-system", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, system })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save progression system to cloud:", error)
+  }
+}

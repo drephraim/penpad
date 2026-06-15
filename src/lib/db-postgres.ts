@@ -130,9 +130,27 @@ export async function bootstrapDb() {
     await client.query(`
       ALTER TABLE projects
       ADD COLUMN IF NOT EXISTS volumes JSONB,
-      ADD COLUMN IF NOT EXISTS bible_groups JSONB,
-      ADD COLUMN IF NOT EXISTS progression_profiles JSONB,
-      ADD COLUMN IF NOT EXISTS progression_system JSONB;
+      ADD COLUMN IF NOT EXISTS bible_groups JSONB;
+    `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS progression_profiles (
+        id VARCHAR(255) PRIMARY KEY,
+        project_id VARCHAR(255) REFERENCES projects(id) ON DELETE CASCADE,
+        user_id VARCHAR(255) NOT NULL,
+        profile_data JSONB NOT NULL,
+        created_at BIGINT,
+        updated_at BIGINT
+      );
+    `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS progression_system (
+        project_id VARCHAR(255) PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        user_id VARCHAR(255) NOT NULL,
+        system_data JSONB NOT NULL,
+        updated_at BIGINT
+      );
     `)
     
     isBootstrapped = true

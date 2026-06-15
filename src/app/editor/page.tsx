@@ -46,6 +46,11 @@ import {
   syncArcSeedsWithCloud,
   saveArcSeedToCloud,
   deleteArcSeedFromCloud,
+  syncProgressionProfilesWithCloud,
+  saveProgressionProfileToCloud,
+  deleteProgressionProfileFromCloud,
+  syncProgressionSystemWithCloud,
+  saveProgressionSystemToCloud,
   BibleEntry,
   BrainEntry,
   ArcSeed,
@@ -4299,13 +4304,19 @@ const fillEmptyCustomJsonData = (
   }, [user, projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
 
   const persistProgressionProfiles = useCallback((nextProfiles: CharacterProgressionProfile[]) => {
+    if (!projectId) return
     const key = getProgressionStorageKey()
     if (!key) return
     const sorted = [...nextProfiles].sort((a, b) => b.updatedAt - a.updatedAt)
     localStorage.setItem(key, JSON.stringify(sorted))
     setProgressionProfiles(sorted)
     updateProjectMetadata({ progressionProfiles: sorted })
-  }, [getProgressionStorageKey, updateProjectMetadata])
+    if (user) {
+      sorted.forEach(profile => {
+        saveProgressionProfileToCloud(user.uid, projectId, profile)
+      })
+    }
+  }, [getProgressionStorageKey, updateProjectMetadata, user, projectId])
 
   const normalizeProgressionSystem = useCallback((settings?: Partial<ProgressionSystemSettings>): ProgressionSystemSettings => {
     const validStatKeys = new Set(Object.keys(DEFAULT_PROGRESSION_STATS))
@@ -4388,13 +4399,17 @@ const fillEmptyCustomJsonData = (
   }, [normalizeProgressionTemplateCards])
 
   const persistProgressionSystem = useCallback((nextSettings: ProgressionSystemSettings) => {
+    if (!projectId) return
     const key = getProgressionSystemStorageKey()
     if (!key) return
     const normalized = normalizeProgressionSystem({ ...nextSettings, updatedAt: Date.now() })
     localStorage.setItem(key, JSON.stringify(normalized))
     setProgressionSystem(normalized)
     updateProjectMetadata({ progressionSystem: normalized })
-  }, [getProgressionSystemStorageKey, normalizeProgressionSystem, updateProjectMetadata])
+    if (user) {
+      saveProgressionSystemToCloud(user.uid, projectId, normalized)
+    }
+  }, [getProgressionSystemStorageKey, normalizeProgressionSystem, updateProjectMetadata, user, projectId])
 
   const moveJsonCard = useCallback((key: string, direction: 'up' | 'down') => {
     const currentOrder = progressionSystem.jsonCardOrder || []
@@ -4687,7 +4702,7 @@ const fillEmptyCustomJsonData = (
     persistJsonTemplateBuilder(template)
   }, [parseProgressionJsonTemplate, persistJsonTemplateBuilder])
 
-  const fetchProgressionSystem = useCallback(() => {
+  const fetchProgressionSystem = useCallback(async () => {
     if (!projectId) return
     try {
       let stored = localStorage.getItem(getProgressionSystemStorageKey())
@@ -4702,14 +4717,24 @@ const fillEmptyCustomJsonData = (
           }
         }
       }
-      setProgressionSystem(normalizeProgressionSystem(stored ? JSON.parse(stored) : undefined))
+      const localSystem = normalizeProgressionSystem(stored ? JSON.parse(stored) : undefined)
+      setProgressionSystem(localSystem)
+      if (user) {
+        const synced = await syncProgressionSystemWithCloud(user.uid, projectId, localSystem)
+        if (JSON.stringify(synced) !== JSON.stringify(localSystem)) {
+          const normalizedSynced = normalizeProgressionSystem(synced as Partial<ProgressionSystemSettings>)
+          setProgressionSystem(normalizedSynced)
+          localStorage.setItem(getProgressionSystemStorageKey(), JSON.stringify(normalizedSynced))
+          updateProjectMetadata({ progressionSystem: normalizedSynced })
+        }
+      }
     } catch (e) {
       console.error("Failed to load progression system:", e)
       setProgressionSystem(DEFAULT_PROGRESSION_SYSTEM)
     }
-  }, [user, projectId, getProgressionSystemStorageKey, normalizeProgressionSystem])
+  }, [user, projectId, getProgressionSystemStorageKey, normalizeProgressionSystem, updateProjectMetadata])
 
-  const fetchProgressionProfiles = useCallback(() => {
+  const fetchProgressionProfiles = useCallback(async () => {
     if (!projectId) return
     try {
       let stored = localStorage.getItem(getProgressionStorageKey())
@@ -4808,11 +4833,45 @@ const fillEmptyCustomJsonData = (
         setSelectedProgressionProfileId(normalized[0].id)
         setProgressionSelectedEntryId(normalized[0].loreEntryId)
       }
+      if (user) {
+        const synced = await syncProgressionProfilesWithCloud(user.uid, projectId, normalized)
+        const syncedStr = JSON.stringify(synced)
+        const localStr = JSON.stringify(normalized)
+        if (syncedStr !== localStr) {
+          const reNormalized = (synced as CharacterProgressionProfile[]).map(profile => {
+            const jsonData = profile.customJsonData && typeof profile.customJsonData === "object" ? profile.customJsonData as Record<string, any> : {}
+            const customFields = sanitizeSimpleProgressionCustomFields({
+              Bloodline: jsonData.bloodline || jsonData.Bloodline || "",
+              "Bloodline Rank": jsonData.bloodlineRank || jsonData["Bloodline Rank"] || jsonData.bloodlineGrade || "",
+              "Affinity Names": jsonData.affinity || jsonData.affinities || jsonData["Affinity Names"] || "",
+              "Affinity Rank": jsonData.affinityRank || jsonData["Affinity Rank"] || jsonData.affinityGrade || "",
+              "Secondary Class": jsonData.secondaryClass || jsonData["Secondary Class"] || jsonData.subclass || "",
+              Race: jsonData.race || jsonData.Race || "",
+              Affiliation: jsonData.affiliation || jsonData.Affiliation || "",
+              ...(profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {})
+            })
+            return {
+              ...profile,
+              stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
+              traits: Array.isArray(profile.traits) ? profile.traits : [],
+              nicknames: Array.isArray(profile.nicknames) ? profile.nicknames : [],
+              uniqueTrait: profile.uniqueTrait || "",
+              customFields,
+              notes: profile.notes || String(jsonData.lore || jsonData.notes || ""),
+              processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
+              history: Array.isArray(profile.history) ? profile.history : []
+            }
+          }).sort((a, b) => b.updatedAt - a.updatedAt)
+          setProgressionProfiles(reNormalized)
+          localStorage.setItem(getProgressionStorageKey(), JSON.stringify(reNormalized))
+          updateProjectMetadata({ progressionProfiles: reNormalized })
+        }
+      }
     } catch (e) {
       console.error("Failed to load progression profiles:", e)
       setProgressionProfiles([])
     }
-  }, [user, projectId, getProgressionStorageKey, selectedProgressionProfileId, progressionSystem])
+  }, [user, projectId, getProgressionStorageKey, selectedProgressionProfileId, progressionSystem, updateProjectMetadata])
 
   const fetchNotes = useCallback(async () => {
     if (!user || !projectId) return
