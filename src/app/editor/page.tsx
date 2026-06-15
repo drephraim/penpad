@@ -9168,7 +9168,7 @@ ${navPoints}  </navMap>
                     <strong>{progressionSystem.realms.length}</strong>
                     <p>{progressionSystem.cultivationGuide ? "Stage guide saved for AI updates" : "Upload TXT stages for AI updates"}</p>
                   </button>
-                  <button className="progression-library-card" onClick={checkTimelineConsistency} disabled={timelineCheckLoading}>
+                  <button className="progression-library-card" onClick={() => checkTimelineConsistency()} disabled={timelineCheckLoading}>
                     <div>
                       {timelineCheckLoading ? <Loader2 className="spin" size={15} /> : <ShieldAlert size={15} />}
                       <span>Timeline</span>
