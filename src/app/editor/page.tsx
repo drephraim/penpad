@@ -1421,6 +1421,79 @@ function EditorContent() {
     humanForm: true
   })
   const [appearanceFormKeys, setAppearanceFormKeys] = useState<string[]>(["beastForm", "demiHumanForm", "humanForm"])
+
+  const getDefaultEntryForms = useCallback((category: string): { keys: string[]; enabled: Record<string, boolean>; labels: Record<string, string>; descriptions: Record<string, string> } => {
+    if (category === "beast") {
+      return { keys: ["beastForm"], enabled: { beastForm: true, demiHumanForm: false, humanForm: false }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Human Form" }, descriptions: {} }
+    }
+    if (category === "character") {
+      return { keys: ["humanForm", "demiHumanForm"], enabled: { beastForm: false, humanForm: true, demiHumanForm: true }, labels: { beastForm: "Beast Form", humanForm: "Human Form", demiHumanForm: "Demi-human Form" }, descriptions: {} }
+    }
+    return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Human Form" }, descriptions: {} }
+  }, [])
+
+  const [appearanceEntryForms, setAppearanceEntryForms] = useState<Record<string, { keys: string[]; enabled: Record<string, boolean>; labels: Record<string, string>; descriptions: Record<string, string> }>>({})
+
+  const saveCurrentEntryFormConfig = useCallback((entryId: string | null) => {
+    if (!entryId) return
+    setAppearanceEntryForms(prev => ({
+      ...prev,
+      [entryId]: {
+        keys: appearanceFormKeys,
+        enabled: appearanceFormEnabled,
+        labels: appearanceFormLabels,
+        descriptions: appearanceFormDescriptions
+      }
+    }))
+  }, [appearanceFormKeys, appearanceFormEnabled, appearanceFormLabels, appearanceFormDescriptions])
+
+  const loadEntryFormConfig = useCallback((entryId: string | null) => {
+    if (!entryId) {
+      setAppearanceFormKeys(["beastForm", "demiHumanForm", "humanForm"])
+      setAppearanceFormEnabled({ beastForm: true, demiHumanForm: true, humanForm: true })
+      setAppearanceFormLabels({ beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Human Form" })
+      setAppearanceFormDescriptions({})
+      return
+    }
+    const saved = appearanceEntryForms[entryId]
+    if (saved) {
+      setAppearanceFormKeys(saved.keys)
+      setAppearanceFormEnabled(saved.enabled)
+      setAppearanceFormLabels(saved.labels)
+      setAppearanceFormDescriptions(saved.descriptions || {})
+    } else {
+      const entry = bibleEntries.find(e => e.id === entryId)
+      const defaults = getDefaultEntryForms(entry?.category || "character")
+      setAppearanceFormKeys(defaults.keys)
+      setAppearanceFormEnabled(defaults.enabled)
+      setAppearanceFormLabels(defaults.labels)
+      setAppearanceFormDescriptions({})
+    }
+  }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
+
+  const formConfigSnapshotRef = useRef<string>("")
+  useEffect(() => {
+    if (!appearanceSelectedEntryId) return
+    const snapshot = JSON.stringify({ keys: appearanceFormKeys, enabled: appearanceFormEnabled, labels: appearanceFormLabels, descriptions: appearanceFormDescriptions })
+    if (formConfigSnapshotRef.current && formConfigSnapshotRef.current !== snapshot) {
+      saveCurrentEntryFormConfig(appearanceSelectedEntryId)
+    }
+    formConfigSnapshotRef.current = snapshot
+  }, [appearanceFormKeys, appearanceFormEnabled, appearanceFormLabels, appearanceFormDescriptions, appearanceSelectedEntryId, saveCurrentEntryFormConfig])
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("penpad_appearance_entry_forms")
+      if (stored) setAppearanceEntryForms(JSON.parse(stored))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("penpad_appearance_entry_forms", JSON.stringify(appearanceEntryForms))
+    } catch {}
+  }, [appearanceEntryForms])
+
   const [appearanceGeneratingForm, setAppearanceGeneratingForm] = useState<string | null>(null)
   const [appearanceImageGenerating, setAppearanceImageGenerating] = useState<string | null>(null)
   const [appearanceGeneratedImages, setAppearanceGeneratedImages] = useState<Record<string, string>>({})
@@ -9043,7 +9116,10 @@ ${navPoints}  </navMap>
                       className="ai-select"
                       value={appearanceSelectedEntryId || ""}
                       onChange={(e) => {
-                        setAppearanceSelectedEntryId(e.target.value || null)
+                        saveCurrentEntryFormConfig(appearanceSelectedEntryId)
+                        const newId = e.target.value || null
+                        setAppearanceSelectedEntryId(newId)
+                        loadEntryFormConfig(newId)
                         setAppearanceResult(null)
                         setAppearanceError("")
                       }}
