@@ -211,6 +211,7 @@ function normalizeNameForCompare(name: string): string {
 
 function buildFallbackNameOptions(body: Record<string, any>) {
   const style = String(body.nameStyle || "fantasy").toLowerCase()
+  const style2 = String(body.nameStyle2 || "").toLowerCase()
   const category = ["character", "beast", "world", "place", "item"].includes(String(body.nameCategory)) ? String(body.nameCategory) : "character"
   const structure = String(body.nameStructure || "any").toLowerCase()
   const tone = String(body.nameTone || "memorable")
@@ -236,6 +237,13 @@ function buildFallbackNameOptions(body: Record<string, any>) {
       middle: ["Nocturne", "Ember", "Mist", "Iron", "Moon"],
       epithet: ["Foxfire", "Moon-Edge", "Ashen Shrine", "Mist Oath"],
       origin: "Japanese-inspired fantasy"
+    },
+    korean: {
+      family: ["Kim", "Park", "Choi", "Yoon", "Seo", "Jang", "Baek"],
+      given: ["Hyejin", "Minjun", "Sooyoung", "Jaehwan", "Eunji", "Donghyun", "Nayoung"],
+      middle: ["Morning", "Silk", "Crystal", "Autumn", "Star"],
+      epithet: ["Morning Lotus", "Silk Veil", "Autumn Frost", "Star Singer"],
+      origin: "Korean-inspired fantasy"
     },
     elven: {
       family: ["Aeltharyn", "Vaeloria", "Sylmareth", "Elarion", "Thalanis"],
@@ -265,6 +273,13 @@ function buildFallbackNameOptions(body: Record<string, any>) {
       epithet: ["Sword Oath", "Dragon Meridian", "Soul Furnace", "Cloud Tribulation"],
       origin: "Cultivation world"
     },
+    noble: {
+      family: ["Vance", "Ashwick", "Montgrave", "Sterling", "Fairwyn", "Highmere"],
+      given: ["Alistair", "Seraphina", "Julian", "Cordelia", "Percival", "Lavinia"],
+      middle: ["Duke", "Lord", "Lady", "Baron", "Count", "Sir"],
+      epithet: ["Iron Duke", "Crimson Baron", "Silver Lady", "High Warden"],
+      origin: "Noble house"
+    },
     divine: {
       family: ["Seraphyne", "Aurelion", "Solmara", "Elyndra", "Vauntiel"],
       given: ["Orison", "Celest", "Halo", "Lumin", "Astrael", "Vespera"],
@@ -272,16 +287,146 @@ function buildFallbackNameOptions(body: Record<string, any>) {
       epithet: ["Sun-Crowned", "Heaven's Witness", "Dawn Herald", "Star Vow"],
       origin: "Divine or celestial"
     },
+    grimdark: {
+      family: ["Graves", "Blackthorn", "Murkwood", "Ravencroft", "Sorrowfeld"],
+      given: ["Malek", "Vorlag", "Grenda", "Threx", "Morrik", "Sable"],
+      middle: ["Rust", "Ash", "Bone", "Slag", "Grief"],
+      epithet: ["Bone Carver", "Ash Lord", "Rust Prince", "Grief Walker"],
+      origin: "Grimdark"
+    },
     fantasy: {
       family: ["Veylan", "Draven", "Mireholt", "Sablemere", "Asterion", "Kyr Vale"],
       given: ["Kaelen", "Mirae", "Thorne", "Seren", "Vael", "Nyra", "Corvin"],
       middle: ["Ash", "Rune", "Storm", "Vale", "Night", "Ember"],
       epithet: ["Glass Blade", "Runebound", "Storm-Touched", "Ashen Star"],
       origin: "Invented fantasy"
+    },
+    viking: {
+      family: ["Ironsson", "Stormveig", "Bjornolf", "Hildebrand", "Ragnarsen"],
+      given: ["Eirik", "Sigrid", "Ulfgar", "Freydis", "Bjorn", "Astrid", "Rollo"],
+      middle: ["Ice", "Sea", "Wolf", "Thunder", "Shield"],
+      epithet: ["Sea Wolf", "Ice Cleaver", "Thunder Helm", "Shield Maiden"],
+      origin: "Viking / Norse saga"
+    },
+    slavic: {
+      family: ["Zarubin", "Morozov", "Kovalenko", "Sokoloff", "Dragomir"],
+      given: ["Dobromir", "Vesna", "Zoran", "Mila", "Radovan", "Svetlana", "Boris"],
+      middle: ["Winter", "Forest", "Mountain", "Sun", "Star"],
+      epithet: ["Night Watch", "Winter Wolf", "Forest Tsar", "Sun Dancer"],
+      origin: "Slavic fairy-tale"
+    },
+    celtic: {
+      family: ["O'Morain", "MacBride", "Driscoll", "Kavanagh", "O'Shea"],
+      given: ["Aisling", "Cormac", "Saoirse", "Finnian", "Brigid", "Torin", "Niamh"],
+      middle: ["Mist", "Oak", "Stone", "Dew", "Raven"],
+      epithet: ["Mist Walker", "Oak Heart", "Stone Singer", "Raven Call"],
+      origin: "Celtic druidic"
+    },
+    egyptian: {
+      family: ["Amun-Ra", "Nebtnet", "Setepka", "Ankhu", "Meresger"],
+      given: ["Khenemet", "Neferu", "Senmut", "Hatshepsut", "Amenhotep", "Isis"],
+      middle: ["Sun", "Nile", "Gold", "Scarab", "Lotus"],
+      epithet: ["Sun of Ra", "Nile Guardian", "Golden Mask", "Lotus Crown"],
+      origin: "Ancient Egyptian"
+    },
+    mesoamerican: {
+      family: ["Chimal", "Coyotl", "Quetzal", "Ichtaca", "Xochitl"],
+      given: ["Cuauhtli", "Xochitl", "Tlalli", "Citlali", "Yolotli", "Ollin"],
+      middle: ["Jaguar", "Feather", "Sun", "Rain", "Flower"],
+      epithet: ["Jaguar Claw", "Feather Serpent", "Sun Priest", "Flower Warrior"],
+      origin: "Mesoamerican empire"
+    },
+    arabian: {
+      family: ["Al-Rashid", "Ibn Khalid", "Al-Nassar", "Qadir", "Zahiri"],
+      given: ["Farid", "Jasmina", "Tariq", "Layla", "Samir", "Zahra", "Nasir"],
+      middle: ["Sand", "Silk", "Star", "Moon", "Rose"],
+      epithet: ["Sand Dancer", "Silk Voice", "Star Seeker", "Moon Knight"],
+      origin: "Arabian / Persian nights"
+    },
+    hindi: {
+      family: ["Devaraja", "Mahajan", "Chandran", "Rathore", "Sharma"],
+      given: ["Arjun", "Priya", "Vikram", "Ananya", "Rohan", "Kavya", "Dhruv"],
+      middle: ["Golden", "Lotus", "Thunder", "Peacock", "Diamond"],
+      epithet: ["Golden Lotus", "Thunder Bolt", "Peacock Prince", "Diamond Soul"],
+      origin: "Indian epic mythology"
+    },
+    greek: {
+      family: ["Aetos", "Damianos", "Kypris", "Theron", "Kallistratos"],
+      given: ["Cassandra", "Leonidas", "Thalia", "Damon", "Iris", "Orion", "Phaedra"],
+      middle: ["Bronze", "Marble", "Ivory", "Laurel", "Oracle"],
+      epithet: ["Bronze Spear", "Oracle Voice", "Laurel Crown", "Marble Gaze"],
+      origin: "Greco-Roman myth"
+    },
+    steampunk: {
+      family: ["Brasswick", "Gearson", "Copperfield", "Steamlock", "Piston"],
+      given: ["Cogsworth", "Ember", "Tankard", "Pipette", "Ratchet", "Meridian"],
+      middle: ["Brass", "Iron", "Steam", "Copper", "Gear"],
+      epithet: ["Steam Baron", "Brass Cog", "Copper Knight", "Gear Master"],
+      origin: "Steampunk world"
+    },
+    cyberpunk: {
+      family: ["Neon", "Ox-Gen", "Zero-Code", "Amphere", "Circuit"],
+      given: ["Kai-7", "Ryn", "Nyx", "Vex", "Glitch", "Pixel", "Data"],
+      middle: ["Neon", "Chrome", "Shadow", "Digital", "Void"],
+      epithet: ["Neon Runner", "Chrome Ghost", "Data Warden", "Shadow Hacker"],
+      origin: "Cyberpunk future"
+    },
+    celestial: {
+      family: ["Stardust", "Nebula", "Cosmos", "Orion", "Lunaris"],
+      given: ["Nova", "Astrid", "Sol", "Luna", "Orion", "Vega", "Cygnus"],
+      middle: ["Star", "Moon", "Solar", "Void", "Nebula"],
+      epithet: ["Star Forge", "Moon Walker", "Nebula Heart", "Solar Flame"],
+      origin: "Celestial / cosmic"
+    },
+    elemental: {
+      family: ["Flamestrike", "Deepwell", "Stoneheart", "Stormborn", "Ashfall"],
+      given: ["Ignis", "Aqua", "Terra", "Ventus", "Cinder", "Glacier", "Zephyr"],
+      middle: ["Fire", "Water", "Earth", "Wind", "Storm"],
+      epithet: ["Flame Tongue", "Tide Lord", "Earth Shaker", "Storm Eye"],
+      origin: "Elemental force"
+    },
+    fey: {
+      family: ["Glimmerdew", "Thistlewhim", "Moonshade", "Brightfern", "Dustwillow"],
+      given: ["Twilight", "Fizzle", "Mimosa", "Thorn", "Petal", "Riddle", "Wisp"],
+      middle: ["Dew", "Gossamer", "Trick", "Moss", "Bloom"],
+      epithet: ["Dew Drinker", "Trick Weaver", "Gossamer Wing", "Bloom Dancer"],
+      origin: "Fey / Faerie realm"
+    },
+    undead: {
+      family: ["Gravebone", "Blackwood", "Cryptheart", "Fellmoss", "Skullfen"],
+      given: ["Marrow", "Barrow", "Lich", "Wraith", "Bane", "Sorrow", "Dirge"],
+      middle: ["Bone", "Frost", "Barrow", "Grave", "Soul"],
+      epithet: ["Bone Lord", "Grave Whisper", "Frost Lich", "Soul Reaper"],
+      origin: "Undead / Lich"
+    },
+    dwarf: {
+      family: ["Stonehelm", "Ironbeard", "Deepforged", "Hammerfell", "Goldvein"],
+      given: ["Durin", "Borin", "Thrain", "Gimla", "Morga", "Torvi", "Balin"],
+      middle: ["Stone", "Gold", "Iron", "Deep", "Anvil"],
+      epithet: ["Stone Hammer", "Gold Seeker", "Iron Lord", "Deep Miner"],
+      origin: "Dwarven mountain"
+    },
+    void: {
+      family: ["Abyssal", "Nullvoid", "Eldritch", "Beyond", "Unspoken"],
+      given: ["Xul", "Vor", "Nyarl", "C'thon", "Yog", "Azath", "Mog"],
+      middle: ["Void", "Abyss", "Elder", "Alien", "Dark"],
+      epithet: ["Void Speaker", "Elder Whisper", "Abyss Gate", "Dark Star"],
+      origin: "Void / Abyss / Eldritch"
     }
   }
 
-  const selected = banks[style] || banks[category === "beast" ? "beast" : "fantasy"]
+  const primaryBank = banks[style] || banks[category === "beast" ? "beast" : "fantasy"]
+  const secondaryBank = style2 && banks[style2] ? banks[style2] : null
+  const selected = secondaryBank
+    ? {
+        family: [...primaryBank.family.slice(0, 4), ...secondaryBank.family.slice(0, 4)],
+        given: [...primaryBank.given.slice(0, 4), ...secondaryBank.given.slice(0, 4)],
+        middle: [...primaryBank.middle.slice(0, 3), ...secondaryBank.middle.slice(0, 3)],
+        epithet: [...primaryBank.epithet.slice(0, 2), ...secondaryBank.epithet.slice(0, 2)],
+        origin: `${primaryBank.origin} blended with ${secondaryBank.origin}`
+      }
+    : primaryBank
+
   const pick = (items: string[], offset: number) => items[(seed + offset) % items.length]
   const makeBase = (offset: number) => {
     if (category === "beast") return `${pick(banks.beast.family, offset)} ${pick(banks.beast.given, offset + 3)}`
@@ -307,7 +452,7 @@ function buildFallbackNameOptions(body: Record<string, any>) {
     vibe: string
     bibleContent: string
   }> = []
-  for (let offset = 0; options.length < 3 && offset < 30; offset += 1) {
+  for (let offset = 0; options.length < 5 && offset < 50; offset += 1) {
     const name = makeBase(offset)
     const normalized = normalizeNameForCompare(name)
     if (!normalized || existing.has(normalized) || options.some(option => normalizeNameForCompare(option.name) === normalized)) continue
@@ -953,17 +1098,25 @@ export async function POST(req: NextRequest) {
         `Relevant Brain Map Memory:\n${brainContext || "No Brain Map entries yet."}\n\n` +
         `Chapter Content:\n${chapterContent.slice(0, 60000)}`
     } else if (action === "name_generate") {
-      const { nameStyle, nameCategory, nameStructure, nameTone, customPrompt, bibleEntries, chapterContent, chapterTitle } = body
+      const { nameStyle, nameStyle2, nameCategory, nameStructure, nameTone, nameGender, nameSyllableBank, customPrompt, bibleEntries, chapterContent, chapterTitle, count } = body
       if (!Array.isArray(bibleEntries)) {
         return NextResponse.json({ error: "bibleEntries is required for name_generate" }, { status: 400 })
       }
 
+      const requestedCount = typeof count === "number" && count > 0 && count <= 5 ? count : 5
+      const mashupLine = nameStyle2 ? `Mashup with secondary style: ${nameStyle2}. Blend elements from both styles naturally.` : ""
+      const genderLine = nameGender && nameGender !== "any" ? `Preferred gender/orientation: ${nameGender}.` : ""
+      const syllableLine = nameSyllableBank ? `Incorporate these syllables/roots where possible: ${nameSyllableBank}. Blend them organically into the names.` : ""
+
       systemInstruction =
         "You are a fantasy novel naming specialist. Generate fresh, memorable names that fit the user's requested culture, race, creature type, tone, and name length.\n" +
         "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
-        "Generate exactly 3 distinct options per request. Names may be Chinese-inspired, Japanese-inspired, invented fantasy, elven, demonic, beast names, sect/faction-style, noble, divine, monstrous, or anything requested.\n" +
+        `Generate exactly ${requestedCount} distinct options per request. Names may be Chinese-inspired, Japanese-inspired, invented fantasy, elven, demonic, beast names, sect/faction-style, noble, divine, monstrous, or anything requested.\n` +
         "Respect the requested name structure: single, double, triple, title-style, clan-style, or any. If the user asks for beasts, make them usable as beast/monster names rather than human names.\n" +
-        "Output ONLY valid JSON with key names. Each item must include name, category, style, raceOrOrigin, structure, meaning, pronunciation, vibe, and bibleContent."
+        `${mashupLine ? mashupLine + "\n" : ""}` +
+        `${genderLine ? genderLine + "\n" : ""}` +
+        `${syllableLine ? syllableLine + "\n" : ""}` +
+        "Output ONLY valid JSON as an array of objects. Each item must include name, category, style, raceOrOrigin, structure, meaning, pronunciation, vibe, and bibleContent."
 
       const existingNames = bibleEntries
         .slice(0, 300)
@@ -972,9 +1125,13 @@ export async function POST(req: NextRequest) {
 
       userPrompt =
         `Requested Style: ${nameStyle || "wild fantasy mix"}\n` +
+        `${mashupLine ? `Secondary Style Mashup: ${nameStyle2}\n` : ""}` +
         `Requested Category: ${nameCategory || "character"}\n` +
         `Requested Structure: ${nameStructure || "any"}\n` +
         `Requested Tone: ${nameTone || "memorable fantasy"}\n` +
+        `${nameGender && nameGender !== "any" ? `Gender: ${nameGender}\n` : ""}` +
+        `${nameSyllableBank ? `Preferred Syllables: ${nameSyllableBank}\n` : ""}` +
+        `Number of names to generate: ${requestedCount}\n` +
         `Extra Direction: ${customPrompt || "Surprise me with useful fantasy novel names."}\n\n` +
         `Existing Story Bible Names To Avoid:\n${existingNames || "No Story Bible names yet."}\n\n` +
         `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}`
@@ -1313,7 +1470,7 @@ export async function POST(req: NextRequest) {
           }
         })
         .filter((option: { name: string }) => option.name)
-        .slice(0, 3)
+        .slice(0, 5)
 
       return NextResponse.json({
         names: sanitizedNames.length > 0 ? sanitizedNames : buildFallbackNameOptions(body)

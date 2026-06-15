@@ -15,7 +15,7 @@ import {
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
-  Network, ShieldAlert, AlertTriangle, CheckCircle2
+  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -101,7 +101,7 @@ type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 type AppearanceFormKey = 'beastForm' | 'demiHumanForm' | 'humanForm'
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
-type NameForgePicker = 'category' | 'style' | 'structure' | 'tone'
+type NameForgePicker = 'category' | 'style' | 'style2' | 'structure' | 'tone' | 'gender'
 
 interface GlobalSearchResult {
   id: string
@@ -257,7 +257,23 @@ const NAME_STYLE_OPTIONS = [
   { value: "noble", label: "Noble House", hint: "Aristocratic names" },
   { value: "divine", label: "Divine / Celestial", hint: "Holy and mythic" },
   { value: "grimdark", label: "Grimdark", hint: "Harsh and grounded" },
-  { value: "invented", label: "Fully Invented", hint: "No real-world anchor" }
+  { value: "invented", label: "Fully Invented", hint: "No real-world anchor" },
+  { value: "viking", label: "Viking / Norse", hint: "Sagas and fjords" },
+  { value: "slavic", label: "Slavic", hint: "Eastern fairy-tale tone" },
+  { value: "celtic", label: "Celtic", hint: "Misty druidic names" },
+  { value: "egyptian", label: "Egyptian", hint: "Sands of antiquity" },
+  { value: "mesoamerican", label: "Mesoamerican", hint: "Jungle-empire feel" },
+  { value: "arabian", label: "Arabian / Persian", hint: "Silk-road mystique" },
+  { value: "hindi", label: "Indian / Hindi", hint: "Epic mythology weight" },
+  { value: "greek", label: "Greco-Roman", hint: "Classical mythic names" },
+  { value: "steampunk", label: "Steampunk", hint: "Gears, brass, fog" },
+  { value: "cyberpunk", label: "Cyberpunk", hint: "Neon-drenched future" },
+  { value: "celestial", label: "Celestial Body", hint: "Stars, moons, cosmic" },
+  { value: "elemental", label: "Elemental", hint: "Fire, water, stone, storm" },
+  { value: "fey", label: "Fey / Faerie", hint: "Whimsical and tricksy" },
+  { value: "undead", label: "Undead / Lich", hint: "Barrow-cold and haunting" },
+  { value: "dwarf", label: "Dwarven", hint: "Stone and forge" },
+  { value: "void", label: "Void / Abyss", hint: "Eldritch and alien" }
 ]
 
 const NAME_STRUCTURE_OPTIONS = [
@@ -279,6 +295,13 @@ const NAME_TONE_OPTIONS = [
   { value: "mysterious", label: "Mysterious", hint: "Secretive aura" },
   { value: "feral", label: "Feral", hint: "Wild and predatory" },
   { value: "royal", label: "Royal", hint: "Noble authority" }
+]
+
+const NAME_GENDER_OPTIONS = [
+  { value: "any", label: "Any", hint: "No preference" },
+  { value: "masculine", label: "Masculine", hint: "Male-leaning names" },
+  { value: "feminine", label: "Feminine", hint: "Female-leaning names" },
+  { value: "neutral", label: "Neutral", hint: "Androgynous / unisex" }
 ]
 
 interface ProgressionProfileTemplate {
@@ -1028,6 +1051,14 @@ function EditorContent() {
   const [nameGenerateError, setNameGenerateError] = useState("")
   const [acceptedNameId, setAcceptedNameId] = useState<string | null>(null)
   const [activeNamePicker, setActiveNamePicker] = useState<NameForgePicker | null>(null)
+  const [nameGender, setNameGender] = useState("any")
+  const [nameStyle2, setNameStyle2] = useState("")
+  const [nameSyllableBank, setNameSyllableBank] = useState("")
+  const [nameShortlist, setNameShortlist] = useState<GeneratedNameOption[]>([])
+  const [selectedForBatch, setSelectedForBatch] = useState<Set<number>>(new Set())
+  const [showLoreEditor, setShowLoreEditor] = useState(false)
+  const [loreEditorDraft, setLoreEditorDraft] = useState<GeneratedNameOption | null>(null)
+  const [nameVariantLoading, setNameVariantLoading] = useState(false)
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -4911,25 +4942,45 @@ const fillEmptyCustomJsonData = (
     }
   }
 
-  const generateNameOptions = async () => {
+  const makePhoneticKey = (name: string): string => {
+    return name
+      .toLocaleLowerCase()
+      .replace(/[^a-z]/g, "")
+      .replace(/[aeiouy]/g, "")
+      .replace(/(.)\1+/g, "$1")
+      .slice(0, 8)
+  }
+
+  const isPhoneticDuplicate = (name: string, existing: string[]): boolean => {
+    const key = makePhoneticKey(name)
+    if (!key) return false
+    return existing.some(ex => makePhoneticKey(ex) === key)
+  }
+
+  const generateNameOptions = async (append = false) => {
     if (nameGenerateLoading) return
     setNameGenerateLoading(true)
     setNameGenerateError("")
-    setAcceptedNameId(null)
+    if (!append) setAcceptedNameId(null)
 
     try {
       const existingNameSet = new Set(bibleEntries.map(entry => normalizeNameForCompare(entry.name)).filter(Boolean))
+      const existingPhoneticKeys = bibleEntries.map(entry => makePhoneticKey(entry.name)).filter(Boolean)
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "name_generate",
           nameStyle,
+          nameStyle2: nameStyle2 || undefined,
           nameCategory,
           nameStructure,
           nameTone,
+          nameGender,
+          nameSyllableBank: nameSyllableBank || undefined,
           customPrompt: nameCustomPrompt,
           bibleEntries,
+          count: 5,
           chapterTitle: activeNote?.title || "",
           chapterContent: activeNote?.content || ""
         })
@@ -4941,7 +4992,11 @@ const fillEmptyCustomJsonData = (
       for (const option of Array.isArray(data.names) ? data.names : []) {
         const name = String(option.name || "").trim()
         const normalized = normalizeNameForCompare(name)
-        if (!name || !normalized || existingNameSet.has(normalized) || uniqueNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
+        if (!name || !normalized) continue
+        if (existingNameSet.has(normalized)) continue
+        if (isPhoneticDuplicate(name, existingPhoneticKeys)) continue
+        if (!append && uniqueNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
+        if (append && generatedNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
         uniqueNames.push({
           name,
           category: ["character", "world", "beast", "place", "item"].includes(String(option.category)) ? option.category : nameCategory,
@@ -4955,13 +5010,18 @@ const fillEmptyCustomJsonData = (
         })
       }
 
-      setGeneratedNames(uniqueNames.slice(0, 3))
-      if (uniqueNames.length === 0) {
-        setNameGenerateError("No fresh names came back. Try a different style or reroll.")
+      const newBatch = uniqueNames.slice(0, 5)
+      if (append) {
+        setGeneratedNames(prev => [...prev, ...newBatch].slice(0, 50))
+      } else {
+        setGeneratedNames(newBatch)
+      }
+      if (newBatch.length === 0) {
+        setNameGenerateError("No fresh names came back. Try different settings or reroll.")
       }
     } catch (err) {
       setNameGenerateError(err instanceof Error ? err.message : "Failed to generate names")
-      setGeneratedNames([])
+      if (!append) setGeneratedNames([])
     } finally {
       setNameGenerateLoading(false)
     }
@@ -5006,6 +5066,80 @@ const fillEmptyCustomJsonData = (
     } catch (err) {
       setNameGenerateError(err instanceof Error ? err.message : "Failed to add name to World Bible")
     }
+  }
+
+  const acceptGeneratedNameWithLore = async () => {
+    if (!loreEditorDraft) return
+    await acceptGeneratedName(loreEditorDraft)
+    setShowLoreEditor(false)
+    setLoreEditorDraft(null)
+  }
+
+  const generateNameVariants = async (base: GeneratedNameOption) => {
+    if (nameVariantLoading) return
+    setNameVariantLoading(true)
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "name_generate",
+          nameStyle,
+          nameStyle2: nameStyle2 || undefined,
+          nameCategory: base.category,
+          nameStructure,
+          nameTone,
+          nameGender,
+          customPrompt: `Variants of "${base.name}": similar sound, same vibe, alternative spellings. ${nameCustomPrompt}`,
+          bibleEntries,
+          count: 5,
+          chapterTitle: activeNote?.title || "",
+          chapterContent: activeNote?.content || ""
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to generate variants")
+      const names: GeneratedNameOption[] = (Array.isArray(data.names) ? data.names : []).slice(0, 5)
+      setGeneratedNames(prev => [...names, ...prev].slice(0, 50))
+    } catch (err) {
+      setNameGenerateError(err instanceof Error ? err.message : "Failed to generate variants")
+    } finally {
+      setNameVariantLoading(false)
+    }
+  }
+
+  const addToShortlist = (option: GeneratedNameOption) => {
+    setNameShortlist(prev => {
+      if (prev.some(n => normalizeNameForCompare(n.name) === normalizeNameForCompare(option.name))) return prev
+      return [option, ...prev]
+    })
+  }
+
+  const removeFromShortlist = (name: string) => {
+    setNameShortlist(prev => prev.filter(n => normalizeNameForCompare(n.name) !== normalizeNameForCompare(name)))
+  }
+
+  const batchAddToBible = async () => {
+    if (!user || !projectId) return
+    const indices = Array.from(selectedForBatch)
+    for (let i = 0; i < indices.length; i++) {
+      const option = generatedNames[indices[i]]
+      if (option) await acceptGeneratedName(option)
+    }
+    setSelectedForBatch(new Set())
+  }
+
+  const toggleBatchSelect = (idx: number) => {
+    setSelectedForBatch(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  const insertNameAtCursor = (name: string) => {
+    insertAtCursor(name)
   }
 
   const deleteBibleEntry = async (entryId: string) => {
@@ -9710,6 +9844,8 @@ ${navPoints}  </navMap>
                   {[
                     { key: "category" as const, label: "Type", value: NAME_CATEGORY_OPTIONS.find(option => option.value === nameCategory)?.label || "Character" },
                     { key: "style" as const, label: "Style", value: NAME_STYLE_OPTIONS.find(option => option.value === nameStyle)?.label || "Wild Fantasy" },
+                    { key: "style2" as const, label: "Mashup", value: nameStyle2 ? (NAME_STYLE_OPTIONS.find(option => option.value === nameStyle2)?.label || "Wild Fantasy") : "None" },
+                    { key: "gender" as const, label: "Gender", value: NAME_GENDER_OPTIONS.find(option => option.value === nameGender)?.label || "Any" },
                     { key: "structure" as const, label: "Shape", value: NAME_STRUCTURE_OPTIONS.find(option => option.value === nameStructure)?.label || "Any Structure" },
                     { key: "tone" as const, label: "Tone", value: NAME_TONE_OPTIONS.find(option => option.value === nameTone)?.label || "Memorable" }
                   ].map(item => (
@@ -9728,45 +9864,187 @@ ${navPoints}  </navMap>
                     value={nameCustomPrompt}
                     onChange={(e) => setNameCustomPrompt(e.target.value)}
                     placeholder="Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."
-                    rows={3}
+                    rows={2}
+                  />
+                  <textarea
+                    value={nameSyllableBank}
+                    onChange={(e) => setNameSyllableBank(e.target.value)}
+                    placeholder="Custom syllables to include (comma-separated): zen, kai, lun, vra, this, mar..."
+                    rows={2}
+                    className="name-syllable-input"
                   />
                 </div>
 
-                <button
-                  className="name-forge-generate-btn"
-                  onClick={generateNameOptions}
-                  disabled={nameGenerateLoading}
-                >
-                  {nameGenerateLoading ? <Loader2 size={15} className="spin" /> : <Wand2 size={15} />}
-                  {nameGenerateLoading ? "Forging..." : generatedNames.length > 0 ? "Reroll Names" : "Generate 3 Names"}
-                </button>
+                <div className="name-forge-actions-row">
+                  <button
+                    className="name-forge-generate-btn"
+                    onClick={() => generateNameOptions(false)}
+                    disabled={nameGenerateLoading}
+                  >
+                    {nameGenerateLoading ? <Loader2 size={15} className="spin" /> : <Wand2 size={15} />}
+                    {nameGenerateLoading ? "Forging..." : generatedNames.length > 0 ? "Reroll 5 Names" : "Generate 5 Names"}
+                  </button>
+                  {generatedNames.length > 0 && (
+                    <button
+                      className="btn-ai-sub"
+                      onClick={() => generateNameOptions(true)}
+                      disabled={nameGenerateLoading}
+                    >
+                      {nameGenerateLoading ? <Loader2 size={13} className="spin" /> : <Plus size={13} />}
+                      Generate More
+                    </button>
+                  )}
+                </div>
 
                 {nameGenerateError && <div className="arc-seed-error">{nameGenerateError}</div>}
+
+                {/* Batch actions bar */}
+                {generatedNames.length > 0 && (
+                  <div className="name-batch-actions">
+                    <label className="name-batch-toggle">
+                      <input
+                        type="checkbox"
+                        checked={selectedForBatch.size === generatedNames.length}
+                        onChange={() => {
+                          if (selectedForBatch.size === generatedNames.length) {
+                            setSelectedForBatch(new Set())
+                          } else {
+                            setSelectedForBatch(new Set(generatedNames.map((_, i) => i)))
+                          }
+                        }}
+                      />
+                      Select all
+                    </label>
+                    {selectedForBatch.size > 0 && (
+                      <button className="btn-ai-sub btn-ai-primary btn-sm" onClick={batchAddToBible}>
+                        Add {selectedForBatch.size} to Bible
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="name-results-list">
                   {generatedNames.length === 0 && !nameGenerateLoading ? (
                     <div className="empty-state-text compact">No names generated yet.</div>
-                  ) : generatedNames.map(option => (
-                    <div key={option.name} className="name-result-card">
-                      <div className="name-result-main">
-                        <small>{option.category} - {option.structure || nameStructure}</small>
-                        <strong>{option.name}</strong>
-                        <p>{option.meaning || option.vibe || option.bibleContent}</p>
+                  ) : generatedNames.map((option, idx) => (
+                    <div key={`${option.name}-${idx}`} className="name-result-card">
+                      <div className="name-result-card-header">
+                        <label className="name-batch-checkbox" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedForBatch.has(idx)}
+                            onChange={() => toggleBatchSelect(idx)}
+                          />
+                        </label>
+                        <div className="name-result-main">
+                          <small>{option.category} - {option.structure || nameStructure}</small>
+                          <strong>{option.name}</strong>
+                          <p>{option.meaning || option.vibe || option.bibleContent}</p>
+                        </div>
                       </div>
                       <div className="name-result-meta">
                         {option.raceOrOrigin && <span>{option.raceOrOrigin}</span>}
                         {option.pronunciation && <span>{option.pronunciation}</span>}
                       </div>
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={() => acceptGeneratedName(option)}
-                        disabled={acceptedNameId === normalizeNameForCompare(option.name)}
-                      >
-                        {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add to Bible"}
-                      </button>
+                      <div className="name-result-actions">
+                        <button
+                          className="btn-ai-sub btn-ai-primary"
+                          onClick={() => acceptGeneratedName(option)}
+                          disabled={acceptedNameId === normalizeNameForCompare(option.name)}
+                        >
+                          {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add to Bible"}
+                        </button>
+                        <button
+                          className="btn-ai-sub"
+                          onClick={() => {
+                            setLoreEditorDraft(option)
+                            setShowLoreEditor(true)
+                          }}
+                          title="Add with lore editor"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button
+                          className="btn-ai-sub"
+                          onClick={() => insertNameAtCursor(option.name)}
+                          title="Insert at cursor in editor"
+                        >
+                          <FileText size={13} />
+                        </button>
+                        <button
+                          className="btn-ai-sub"
+                          onClick={() => addToShortlist(option)}
+                          disabled={nameShortlist.some(n => normalizeNameForCompare(n.name) === normalizeNameForCompare(option.name))}
+                          title="Save to shortlist"
+                        >
+                          <Bookmark size={13} />
+                        </button>
+                        <button
+                          className="btn-ai-sub"
+                          onClick={() => generateNameVariants(option)}
+                          disabled={nameVariantLoading}
+                          title="Generate variants"
+                        >
+                          {nameVariantLoading ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
+
+                {/* Shortlist section */}
+                {nameShortlist.length > 0 && (
+                  <div className="name-shortlist-section">
+                    <div className="name-shortlist-header">
+                      <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Shortlist ({nameShortlist.length})</span>
+                      <button className="btn-ai-sub btn-sm" onClick={() => setNameShortlist([])}>Clear</button>
+                    </div>
+                    {nameShortlist.map(option => (
+                      <div key={option.name} className="name-shortlist-item">
+                        <strong>{option.name}</strong>
+                        <small>{option.category}</small>
+                        <div className="name-shortlist-actions">
+                          <button
+                            className="btn-ai-sub btn-ai-primary btn-sm"
+                            onClick={() => {
+                              acceptGeneratedName(option)
+                              removeFromShortlist(option.name)
+                            }}
+                          >Add</button>
+                          <button
+                            className="btn-ai-sub btn-sm"
+                            onClick={() => removeFromShortlist(option.name)}
+                          ><X size={12} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Lore Editor Modal */}
+                {showLoreEditor && loreEditorDraft && (
+                  <div className="name-picker-popover-overlay" onClick={() => { setShowLoreEditor(false); setLoreEditorDraft(null) }}>
+                    <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                      <div className="name-picker-popover-header">
+                        <strong>Add Lore: {loreEditorDraft.name}</strong>
+                        <button type="button" onClick={() => { setShowLoreEditor(false); setLoreEditorDraft(null) }} title="Close">
+                          <X size={16} />
+                        </button>
+                      </div>
+                      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                        <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>
+                          {loreEditorDraft.meaning || loreEditorDraft.vibe || "No description yet."}
+                        </p>
+                        <button
+                          className="btn-ai-sub btn-ai-primary"
+                          onClick={acceptGeneratedNameWithLore}
+                        >
+                          <Check size={14} /> Save to Bible
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {activeNamePicker && (
                   <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
@@ -9775,6 +10053,8 @@ ${navPoints}  </navMap>
                         <strong>
                           {activeNamePicker === "category" ? "Choose Type" :
                            activeNamePicker === "style" ? "Choose Style" :
+                           activeNamePicker === "style2" ? "Choose Mashup Style (optional)" :
+                           activeNamePicker === "gender" ? "Choose Gender" :
                            activeNamePicker === "structure" ? "Choose Shape" : "Choose Tone"}
                         </strong>
                         <button type="button" onClick={() => setActiveNamePicker(null)} title="Close">
@@ -9784,11 +10064,15 @@ ${navPoints}  </navMap>
                       <div className="name-picker-options">
                         {(activeNamePicker === "category" ? NAME_CATEGORY_OPTIONS :
                           activeNamePicker === "style" ? NAME_STYLE_OPTIONS :
+                          activeNamePicker === "style2" ? [{ value: "", label: "None (single style)", hint: "No mashup" }, ...NAME_STYLE_OPTIONS] :
+                          activeNamePicker === "gender" ? NAME_GENDER_OPTIONS :
                           activeNamePicker === "structure" ? NAME_STRUCTURE_OPTIONS :
                           NAME_TONE_OPTIONS).map(option => {
                             const isActive =
                               (activeNamePicker === "category" && option.value === nameCategory) ||
                               (activeNamePicker === "style" && option.value === nameStyle) ||
+                              (activeNamePicker === "style2" && option.value === nameStyle2) ||
+                              (activeNamePicker === "gender" && option.value === nameGender) ||
                               (activeNamePicker === "structure" && option.value === nameStructure) ||
                               (activeNamePicker === "tone" && option.value === nameTone)
                             return (
@@ -9798,9 +10082,11 @@ ${navPoints}  </navMap>
                                 className={`name-picker-option ${isActive ? "active" : ""}`}
                                 onClick={() => {
                                   if (activeNamePicker === "category") setNameCategory(option.value as BibleEntry["category"])
-                                  if (activeNamePicker === "style") setNameStyle(option.value)
-                                  if (activeNamePicker === "structure") setNameStructure(option.value)
-                                  if (activeNamePicker === "tone") setNameTone(option.value)
+                                  else if (activeNamePicker === "style") setNameStyle(option.value)
+                                  else if (activeNamePicker === "style2") setNameStyle2(option.value)
+                                  else if (activeNamePicker === "gender") setNameGender(option.value)
+                                  else if (activeNamePicker === "structure") setNameStructure(option.value)
+                                  else if (activeNamePicker === "tone") setNameTone(option.value)
                                   setActiveNamePicker(null)
                                 }}
                               >
@@ -13863,6 +14149,137 @@ ${navPoints}  </navMap>
 
         .name-picker-option svg {
           color: #c084fc;
+        }
+
+        .name-forge-actions-row {
+          display: flex;
+          gap: 0.45rem;
+          align-items: stretch;
+        }
+        .name-forge-actions-row .name-forge-generate-btn {
+          flex: 1;
+        }
+        .name-forge-actions-row .btn-ai-sub {
+          flex-shrink: 0;
+          min-height: 36px;
+          padding: 0.35rem 0.7rem;
+          font-size: 0.72rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+        }
+        .name-syllable-input {
+          grid-column: 1 / -1;
+          width: 100%;
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-sm);
+          background: rgba(0, 0, 0, 0.12);
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          outline: none;
+          resize: vertical;
+          min-height: 40px;
+          padding: 0.4rem 0.5rem;
+          line-height: 1.35;
+        }
+        .name-syllable-input:focus {
+          color: var(--text-primary);
+          border-color: rgba(168, 85, 247, 0.35);
+        }
+        .name-batch-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.45rem;
+        }
+        .name-batch-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.32rem;
+          color: var(--text-dim);
+          font-size: 0.7rem;
+          cursor: pointer;
+          user-select: none;
+        }
+        .name-batch-toggle input[type="checkbox"] {
+          accent-color: #a855f7;
+        }
+        .name-batch-checkbox {
+          display: inline-flex;
+          align-items: center;
+          flex-shrink: 0;
+        }
+        .name-batch-checkbox input[type="checkbox"] {
+          accent-color: #a855f7;
+          width: 14px;
+          height: 14px;
+          cursor: pointer;
+        }
+        .name-result-card-header {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.45rem;
+          grid-column: 1 / -1;
+        }
+        .name-result-card-header .name-result-main {
+          flex: 1;
+        }
+        .name-result-actions {
+          grid-column: 1 / -1;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.3rem;
+          margin-top: 0.1rem;
+        }
+        .name-result-actions .btn-ai-sub {
+          min-height: 26px;
+          padding: 0.2rem 0.5rem;
+          font-size: 0.66rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+        }
+        .btn-sm {
+          min-height: 26px !important;
+          padding: 0.2rem 0.5rem !important;
+          font-size: 0.66rem !important;
+        }
+        .name-shortlist-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+          border-top: 1px solid rgba(168, 85, 247, 0.15);
+          padding-top: 0.6rem;
+          margin-top: 0.2rem;
+        }
+        .name-shortlist-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .name-shortlist-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.45rem;
+          padding: 0.35rem 0.5rem;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: var(--radius-sm);
+          background: rgba(255, 255, 255, 0.025);
+        }
+        .name-shortlist-item strong {
+          font-size: 0.82rem;
+          color: var(--text-primary);
+        }
+        .name-shortlist-item small {
+          color: var(--text-dim);
+          font-size: 0.62rem;
+          text-transform: uppercase;
+        }
+        .name-shortlist-actions {
+          display: flex;
+          gap: 0.3rem;
+          flex-shrink: 0;
         }
 
         .editor-controls-row {
