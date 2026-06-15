@@ -1379,6 +1379,7 @@ function EditorContent() {
   const [timelineCheckLoading, setTimelineCheckLoading] = useState(false)
   const [timelineIssues, setTimelineIssues] = useState<TimelineIssue[]>([])
   const [showTimelineCheckModal, setShowTimelineCheckModal] = useState(false)
+  const [timelineCheckTimestamp, setTimelineCheckTimestamp] = useState<number | null>(null)
   const [hoveredGraphPoint, setHoveredGraphPoint] = useState<{ x: number; y: number; value: string | number; label: string; index: number } | null>(null)
 
   // Ambient Sound States
@@ -6039,45 +6040,65 @@ const fillEmptyCustomJsonData = (
     }
   }
 
-  const checkTimelineConsistency = async () => {
+  const checkTimelineConsistency = async (force?: boolean) => {
     if (!projectId || timelineCheckLoading) return
+
+    const sortedNotes = getManuscriptNotesList(notes)
+    const chapters = sortedNotes.map((note, index) => {
+      const chapterNumber = getNoteChapterNumber(note) || index + 1
+      const charactersAppearing = progressionProfiles
+        .filter(profile => doesCharacterAppearInChapter(profile, note.content))
+        .map(profile => profile.name)
+      return {
+        id: note.id,
+        title: note.title,
+        chapterNumber,
+        charactersAppearing
+      }
+    })
+    const profiles = progressionProfiles.map(profile => ({
+      name: profile.name,
+      history: (profile.history || []).map(h => ({
+        chapterId: h.chapterId,
+        chapterTitle: h.chapterTitle,
+        chapterNumber: h.chapterNumber,
+        levelBefore: h.levelBefore,
+        levelAfter: h.levelAfter,
+        realmBefore: h.realmBefore || "",
+        realmAfter: h.realmAfter || "",
+        stageBefore: h.stageBefore || "",
+        stageAfter: h.stageAfter || "",
+        summary: h.summary,
+        statChanges: h.statChanges as Record<string, number>
+      }))
+    }))
+    const bibleData = bibleEntries.map(e => ({
+      name: e.name,
+      category: e.category,
+      content: e.content
+    }))
+
+    const fingerprint = JSON.stringify({ chapters, profiles, bibleData })
+    const cacheKey = `penpad_timeline_check_${projectId}`
+
+    if (!force) {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (parsed.fingerprint === fingerprint) {
+            setTimelineIssues(parsed.issues || [])
+            setTimelineCheckTimestamp(parsed.timestamp || null)
+            setShowTimelineCheckModal(true)
+            return
+          }
+        } catch {}
+      }
+    }
+
     setTimelineCheckLoading(true)
     setTimelineIssues([])
     try {
-      const sortedNotes = getManuscriptNotesList(notes)
-      const chapters = sortedNotes.map((note, index) => {
-        const chapterNumber = getNoteChapterNumber(note) || index + 1
-        const charactersAppearing = progressionProfiles
-          .filter(profile => doesCharacterAppearInChapter(profile, note.content))
-          .map(profile => profile.name)
-        return {
-          id: note.id,
-          title: note.title,
-          chapterNumber,
-          charactersAppearing
-        }
-      })
-      const profiles = progressionProfiles.map(profile => ({
-        name: profile.name,
-        history: (profile.history || []).map(h => ({
-          chapterId: h.chapterId,
-          chapterTitle: h.chapterTitle,
-          chapterNumber: h.chapterNumber,
-          levelBefore: h.levelBefore,
-          levelAfter: h.levelAfter,
-          realmBefore: h.realmBefore || "",
-          realmAfter: h.realmAfter || "",
-          stageBefore: h.stageBefore || "",
-          stageAfter: h.stageAfter || "",
-          summary: h.summary,
-          statChanges: h.statChanges as Record<string, number>
-        }))
-      }))
-      const bibleData = bibleEntries.map(e => ({
-        name: e.name,
-        category: e.category,
-        content: e.content
-      }))
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -6090,8 +6111,13 @@ const fillEmptyCustomJsonData = (
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to check timeline consistency")
-      setTimelineIssues(data.issues || [])
+      const issues = data.issues || []
+      setTimelineIssues(issues)
+      setTimelineCheckTimestamp(Date.now())
       setShowTimelineCheckModal(true)
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ fingerprint, issues, timestamp: Date.now() }))
+      } catch {}
     } catch (err) {
       console.error(err)
       alert(err instanceof Error ? err.message : "Timeline check failed")
@@ -12986,6 +13012,11 @@ ${navPoints}  </navMap>
                   {timelineIssues.length > 0
                     ? `Found ${timelineIssues.length} potential issue${timelineIssues.length > 1 ? "s" : ""} across the manuscript.`
                     : "No timeline issues detected. Your story is consistent."}
+                  {timelineCheckTimestamp && (
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-dim)", display: "block", marginTop: "0.25rem" }}>
+                      Last checked: {new Date(timelineCheckTimestamp).toLocaleString()} — cached results shown unless data changed
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="progression-template-modal-body" style={{ maxHeight: "400px", overflowY: "auto" }}>
@@ -13044,11 +13075,11 @@ ${navPoints}  </navMap>
                   className="btn btn-primary"
                   onClick={() => {
                     setShowTimelineCheckModal(false)
-                    setTimeout(checkTimelineConsistency, 100)
+                    setTimeout(() => checkTimelineConsistency(true), 100)
                   }}
                   disabled={timelineCheckLoading}
                 >
-                  {timelineCheckLoading ? <><Loader2 className="spin" size={14} /> Checking...</> : "Re-check"}
+                  {timelineCheckLoading ? <><Loader2 className="spin" size={14} /> Checking...</> : "Re-check (force)"}
                 </button>
               </div>
             </div>
