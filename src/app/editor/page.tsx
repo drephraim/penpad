@@ -3021,15 +3021,25 @@ const fillEmptyCustomJsonData = (
       }]
     }
     const nextLoreEntries = [...existingLoreEntries]
-    if (incomingNotes && !existingLoreEntries.some(entry => entry.text === incomingNotes)) {
-      nextLoreEntries.push({
-        id: crypto.randomUUID(),
-        chapterId: historyEntry.chapterId,
-        chapterTitle: historyEntry.chapterTitle,
-        chapterNumber: historyEntry.chapterNumber,
-        text: incomingNotes,
-        timestamp: now
-      })
+    if (incomingNotes) {
+      const existingEntryForChapter = existingLoreEntries.find(entry => entry.chapterId === historyEntry.chapterId)
+      if (existingEntryForChapter) {
+        if (existingEntryForChapter.text !== incomingNotes) {
+          const idx = nextLoreEntries.findIndex(entry => entry.id === existingEntryForChapter.id)
+          if (idx !== -1) {
+            nextLoreEntries[idx] = { ...nextLoreEntries[idx], text: incomingNotes, timestamp: now }
+          }
+        }
+      } else {
+        nextLoreEntries.push({
+          id: crypto.randomUUID(),
+          chapterId: historyEntry.chapterId,
+          chapterTitle: historyEntry.chapterTitle,
+          chapterNumber: historyEntry.chapterNumber,
+          text: incomingNotes,
+          timestamp: now
+        })
+      }
     }
 
     const aiCustomFields = aiProfile?.customFields && typeof aiProfile.customFields === "object" ? aiProfile.customFields as Record<string, unknown> : {}
@@ -3808,7 +3818,7 @@ const fillEmptyCustomJsonData = (
       }]
     }
     const nextLoreEntries = [...existingLoreEntries]
-    if (incomingNotes && existingLoreEntries.length > 0 && existingLoreEntries[existingLoreEntries.length - 1].text !== incomingNotes) {
+    if (incomingNotes && existingLoreEntries.length > 0 && !existingLoreEntries.some(entry => entry.text === incomingNotes)) {
       nextLoreEntries.push({
         id: crypto.randomUUID(),
         text: incomingNotes,
