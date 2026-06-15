@@ -12874,9 +12874,26 @@ ${navPoints}  </navMap>
                             ? entry.chapterTitle
                             : "Manual Profile Entry"}
                         </span>
-                        <span style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>
-                          {new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                          <span style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>
+                            {new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button
+                            className="btn-icon btn-icon-sm"
+                            onClick={() => {
+                              if (!window.confirm("Delete this lore entry?")) return
+                              updateProgressionProfile(selectedProgressionProfile.id, (profile) => ({
+                                ...profile,
+                                loreEntries: (profile.loreEntries || []).filter(e => e.id !== entry.id),
+                                updatedAt: Date.now()
+                              }))
+                            }}
+                            title="Delete lore entry"
+                            style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", padding: "2px", fontSize: "0.85rem", lineHeight: 1, opacity: 0.5, transition: "opacity 0.15s" }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                            onMouseLeave={e => (e.currentTarget.style.opacity = "0.5")}
+                          >✕</button>
+                        </div>
                       </div>
                       <p style={{ fontSize: "0.82rem", lineHeight: "1.4", color: "var(--text-main)", whiteSpace: "pre-wrap", margin: 0 }}>
                         {entry.text}
