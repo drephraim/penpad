@@ -214,6 +214,14 @@ interface AppearancePromptResult {
   consistencyNotes?: string[]
   negativePrompt?: string
   negativePrompts?: Record<string, string>
+  characterDetails?: {
+    appearance?: string
+    hair?: string
+    eyes?: string
+    body?: string
+    attire?: string
+    distinguishingFeatures?: string
+  }
 }
 
 interface ProgressionAbility {
@@ -1823,10 +1831,25 @@ function EditorContent() {
       return
     }
 
+    const charDetails = appearanceResult.characterDetails
     const updatedEntry: BibleEntry = {
       ...targetEntry,
       content: `${targetEntry.content || ""}\r\n\r\n${promptSheet}`.trim(),
-      updatedAt: now
+      updatedAt: now,
+      ...(charDetails && (targetEntry.category === "character" || targetEntry.category === "beast")
+        ? {
+            characterDetails: {
+              ...(targetEntry.characterDetails || {}),
+              appearance: charDetails.appearance || targetEntry.characterDetails?.appearance || "",
+              hair: charDetails.hair || targetEntry.characterDetails?.hair || "",
+              eyes: charDetails.eyes || targetEntry.characterDetails?.eyes || "",
+              body: charDetails.body || targetEntry.characterDetails?.body || "",
+              attire: charDetails.attire || targetEntry.characterDetails?.attire || "",
+              distinguishingFeatures: charDetails.distinguishingFeatures || targetEntry.characterDetails?.distinguishingFeatures || "",
+              updatedAt: now
+            }
+          }
+        : {})
     }
 
     const updated = bibleEntries.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry)

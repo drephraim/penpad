@@ -18,6 +18,14 @@ type AppearancePromptResult = {
   consistencyNotes?: string[]
   negativePrompt?: string
   negativePrompts?: Record<string, string>
+  characterDetails?: {
+    appearance?: string
+    hair?: string
+    eyes?: string
+    body?: string
+    attire?: string
+    distinguishingFeatures?: string
+  }
 }
 
 type ProgressionAiResponse = {
@@ -727,8 +735,9 @@ export async function POST(req: NextRequest) {
         "2. Generate separate prompts for each form listed below. If a form is not applicable, still produce a useful alternate visual interpretation based on the lore and clearly preserve shared identity traits.\n" +
         "3. Include anatomy, silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background when useful.\n" +
         "4. Do not invent unrelated names, factions, or plot details. Use chapter context only to enrich visual accuracy.\n" +
-        "5. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt. The prompts object must use the following keys: " + formLabelsStr + ". " +
+        "5. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt, characterDetails. The prompts object must use the following keys: " + formLabelsStr + ". " +
         "If the user requested per-form negative prompts, also include a 'negativePrompts' object with the same keys, each containing a form-specific negative prompt.\n" +
+        "6. The characterDetails object must contain: appearance (overall look), hair, eyes, body/build, attire, distinguishingFeatures. Extract these from the most humanoid/primary form if multiple forms exist.\n" +
         "No markdown fences."
 
       const chapterContext = chapter && typeof chapter === "object"
@@ -1308,6 +1317,21 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const extractCharDetail = (val: unknown): string =>
+        typeof val === "string" ? val.trim() : ""
+
+      const rawDetails = appearance.characterDetails
+      const characterDetails = rawDetails && typeof rawDetails === "object"
+        ? {
+            appearance: extractCharDetail((rawDetails as Record<string, unknown>).appearance),
+            hair: extractCharDetail((rawDetails as Record<string, unknown>).hair),
+            eyes: extractCharDetail((rawDetails as Record<string, unknown>).eyes),
+            body: extractCharDetail((rawDetails as Record<string, unknown>).body),
+            attire: extractCharDetail((rawDetails as Record<string, unknown>).attire),
+            distinguishingFeatures: extractCharDetail((rawDetails as Record<string, unknown>).distinguishingFeatures)
+          }
+        : undefined
+
       return NextResponse.json({
         appearancePrompts: {
           characterName: typeof appearance.characterName === "string" ? appearance.characterName : "",
@@ -1317,7 +1341,8 @@ export async function POST(req: NextRequest) {
             ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
             : [],
           negativePrompt: typeof appearance.negativePrompt === "string" ? appearance.negativePrompt : "",
-          negativePrompts
+          negativePrompts,
+          characterDetails: characterDetails && Object.values(characterDetails).some(Boolean) ? characterDetails : undefined
         }
       })
     }
