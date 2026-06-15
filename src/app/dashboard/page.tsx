@@ -4,7 +4,7 @@ import { useAuth } from "@/components/Providers"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { FolderPlus, Book, LogOut, Plus, Feather, Search, Clock, FileText, Trash2, Edit2, FolderOpen, BrainCircuit, Library, BarChart3, ArrowRight, Palette, Archive, ArchiveRestore, SortAsc, X, Check, TrendingUp, Target } from "lucide-react"
-import { saveDirectoryHandleForProject } from '@/lib/db'
+import { saveDirectoryHandleForProject, getManuscriptLocal, getStoryBibleLocal, getStoryBrainLocal } from '@/lib/db'
 import { syncProjectsWithCloud, saveProjectToCloud, deleteProjectFromCloud, Note, BrainEntry, BibleEntry } from '@/lib/sync'
 
 interface Milestone {
@@ -111,32 +111,38 @@ export default function Dashboard() {
 
   const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
 
-  const getProjectStats = useCallback((project: Project): ProjectStats => {
-    const notes = safeParse<Note[]>(localStorage.getItem(`penpad_notes_${project.id}`), [])
-    const brain = safeParse<BrainEntry[]>(localStorage.getItem(`penpad_brain_${project.id}`), [])
-    const lore = safeParse<BibleEntry[]>(localStorage.getItem(`penpad_bible_${project.id}`), [])
-    const sortedNotes = [...notes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  const getProjectStats = useCallback(async (project: Project): Promise<ProjectStats> => {
+    const [notes, brain, lore] = await Promise.all([
+      (await getManuscriptLocal(project.id)) as Note[] | null,
+      (await getStoryBrainLocal(project.id)) as BrainEntry[] | null,
+      (await getStoryBibleLocal(project.id)) as BibleEntry[] | null,
+    ])
+    const noteList = notes || []
+    const brainList = brain || []
+    const loreList = lore || []
+    const sortedNotes = [...noteList].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     const lastEditedAt = Math.max(project.lastUpdated || 0, sortedNotes[0]?.updatedAt || 0)
 
     return {
-      chapters: notes.length,
-      words: notes.reduce((total, note) => total + countWords(note.content || ""), 0),
-      brainEntries: brain.length,
-      loreEntries: lore.length,
+      chapters: noteList.length,
+      words: noteList.reduce((total, note) => total + countWords(note.content || ""), 0),
+      brainEntries: brainList.length,
+      loreEntries: loreList.length,
       lastChapterTitle: sortedNotes[0]?.title || "No chapters yet",
       lastEditedAt,
       matches: [
-        ...notes.slice(0, 6).map(note => note.title),
-        ...brain.slice(0, 6).map(entry => entry.entityName || entry.highlightedText),
-        ...lore.slice(0, 6).map(entry => entry.name)
+        ...noteList.slice(0, 6).map(note => note.title),
+        ...brainList.slice(0, 6).map(entry => entry.entityName || entry.highlightedText),
+        ...loreList.slice(0, 6).map(entry => entry.name)
       ].filter(Boolean)
     }
   }, [])
 
-  const getStats = useCallback((list: Project[]) => {
+  const getStats = useCallback(async (list: Project[]): Promise<Record<string, ProjectStats>> => {
+    const entries = await Promise.all(list.map(project => getProjectStats(project)))
     const stats: Record<string, ProjectStats> = {}
-    for (const project of list) {
-      stats[project.id] = getProjectStats(project)
+    for (let i = 0; i < list.length; i++) {
+      stats[list[i].id] = entries[i]
     }
     return stats
   }, [getProjectStats])
@@ -262,13 +268,15 @@ export default function Dashboard() {
         return timeB - timeA
       })
 
-      setProjectStats(getStats(stored))
+      const stats = await getStats(stored)
+      setProjectStats(stats)
       setProjects(stored)
       loadDailyWordLogs(stored)
       setFetchDone(true)
 
       const syncedProjects = await syncProjectsWithCloud(user.uid, stored)
-      setProjectStats(getStats(syncedProjects))
+      const syncedStats = await getStats(syncedProjects)
+      setProjectStats(syncedStats)
       setProjects(syncedProjects)
       loadDailyWordLogs(syncedProjects)
     } catch (e) {
@@ -358,7 +366,8 @@ export default function Dashboard() {
       localStorage.removeItem(`penpad_brain_${deleteModal.projectId}`)
       localStorage.removeItem(`penpad_bible_${deleteModal.projectId}`)
       setProjects(filtered)
-      setProjectStats(getStats(filtered))
+      const stats = await getStats(filtered)
+      setProjectStats(stats)
 
       deleteProjectFromCloud(user.uid, deleteModal.projectId)
 
@@ -378,7 +387,8 @@ export default function Dashboard() {
         stored[idx].lastUpdated = Date.now()
         localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(stored))
         setProjects([...stored])
-        setProjectStats(getStats(stored))
+        const stats = await getStats(stored)
+        setProjectStats(stats)
 
         saveProjectToCloud(user.uid, stored[idx])
       }
@@ -393,7 +403,7 @@ export default function Dashboard() {
     }
   }
 
-  const archiveProject = () => {
+  const archiveProject = async () => {
     if (!user || !showArchiveModal.projectId) return
     const stored = safeParse<Project[]>(localStorage.getItem(`penpad_projects_${user.uid}`), [])
     const idx = stored.findIndex(p => p.id === showArchiveModal.projectId)
@@ -402,12 +412,13 @@ export default function Dashboard() {
       stored[idx].lastUpdated = Date.now()
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(stored))
       setProjects([...stored])
-      setProjectStats(getStats(stored))
+      const stats = await getStats(stored)
+      setProjectStats(stats)
     }
     setShowArchiveModal({ show: false, projectId: '', projectName: '' })
   }
 
-  const restoreProject = (projectId: string) => {
+  const restoreProject = async (projectId: string) => {
     if (!user) return
     const stored = safeParse<Project[]>(localStorage.getItem(`penpad_projects_${user.uid}`), [])
     const idx = stored.findIndex(p => p.id === projectId)
@@ -416,7 +427,8 @@ export default function Dashboard() {
       stored[idx].lastUpdated = Date.now()
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(stored))
       setProjects([...stored])
-      setProjectStats(getStats(stored))
+      const stats = await getStats(stored)
+      setProjectStats(stats)
     }
   }
 
@@ -763,7 +775,7 @@ export default function Dashboard() {
           ) : (
             <div className="projects-grid">
               {filteredProjects.map((project, index) => {
-                const stats = projectStats[project.id] || getProjectStats(project)
+                const stats: ProjectStats = projectStats[project.id] || { chapters: 0, words: 0, brainEntries: 0, loreEntries: 0, lastChapterTitle: "", lastEditedAt: 0, matches: [] }
                 const milestone = getNextMilestone(stats.words)
                 return (
                   <div
