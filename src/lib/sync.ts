@@ -1,4 +1,4 @@
-import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal } from "./db"
+import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal, saveReferenceLibraryLocal } from "./db"
 
 export interface Project {
   id: string
@@ -612,7 +612,9 @@ export async function saveProgressionSystemToCloud(userId: string, projectId: st
   try {
     const response = await fetch("/api/sync/save-progression-system", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ userId, projectId, system })
     })
 
@@ -621,5 +623,55 @@ export async function saveProgressionSystemToCloud(userId: string, projectId: st
     }
   } catch (error) {
     console.error("Failed to save progression system to cloud:", error)
+  }
+}
+
+/**
+ * Reconciles local reference library with PostgreSQL via Next.js API.
+ */
+export async function syncReferenceLibraryWithCloud(userId: string, projectId: string, localData: unknown[]): Promise<unknown[]> {
+  if (!userId || !projectId) return localData
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/reference-library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, localData }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const merged = (data.data || []) as unknown[]
+
+    await saveReferenceLibraryLocal(projectId, merged)
+    return merged
+  } catch (error) {
+    console.error("Failed to sync reference library with cloud, falling back to local:", error)
+    return localData
+  }
+}
+
+/**
+ * Saves reference library data to PostgreSQL via Next.js API.
+ */
+export async function saveReferenceLibraryToCloud(userId: string, projectId: string, data: unknown[]): Promise<void> {
+  if (!userId || !projectId) return
+
+  try {
+    const response = await fetch("/api/sync/save-reference-library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, data })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save reference library to cloud:", error)
   }
 }

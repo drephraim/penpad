@@ -15,7 +15,7 @@ import {
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
-  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon
+  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -31,7 +31,9 @@ import {
   saveChapterVersionsLocal,
   getChapterVersionsLocal,
   saveExportHistoryLocal,
-  getExportHistoryLocal
+  getExportHistoryLocal,
+  saveReferenceLibraryLocal,
+  getReferenceLibraryLocal
 } from '@/lib/db'
 import { 
   syncChaptersWithCloud, 
@@ -50,6 +52,8 @@ import {
   saveProgressionProfileToCloud,
   syncProgressionSystemWithCloud,
   saveProgressionSystemToCloud,
+  syncReferenceLibraryWithCloud,
+  saveReferenceLibraryToCloud,
   BibleEntry,
   BrainEntry,
   ArcSeed,
@@ -107,7 +111,7 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -116,6 +120,27 @@ type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
 type NameForgePicker = 'category' | 'style' | 'style2' | 'structure' | 'tone' | 'gender'
+
+interface ReferenceEntry {
+  id: string
+  name: string
+  level?: number
+  parentId?: string | null
+  description?: string
+  tags?: string[]
+  sortOrder: number
+}
+
+interface ReferenceCategory {
+  id: string
+  name: string
+  description?: string
+  sourceText?: string
+  entries: ReferenceEntry[]
+  sortOrder: number
+  createdAt: number
+  updatedAt: number
+}
 
 interface GlobalSearchResult {
   id: string
@@ -1400,6 +1425,18 @@ function EditorContent() {
   const [showTimelineCheckModal, setShowTimelineCheckModal] = useState(false)
   const [timelineCheckTimestamp, setTimelineCheckTimestamp] = useState<number | null>(null)
   const [hoveredGraphPoint, setHoveredGraphPoint] = useState<{ x: number; y: number; value: string | number; label: string; index: number } | null>(null)
+
+  // Reference Library States
+  const [referenceCategories, setReferenceCategories] = useState<ReferenceCategory[]>([])
+  const [selectedRefCategoryId, setSelectedRefCategoryId] = useState<string | null>(null)
+  const [showRefCreateModal, setShowRefCreateModal] = useState(false)
+  const [showRefAIImportModal, setShowRefAIImportModal] = useState(false)
+  const [refAIImportText, setRefAIImportText] = useState("")
+  const [refAIImportLoading, setRefAIImportLoading] = useState(false)
+  const [refAIImportResult, setRefAIImportResult] = useState<ReferenceCategory | null>(null)
+  const [refEditCategoryName, setRefEditCategoryName] = useState("")
+  const [refEditCategoryDesc, setRefEditCategoryDesc] = useState("")
+  const [refEditModeCategoryId, setRefEditModeCategoryId] = useState<string | null>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -4426,6 +4463,23 @@ const fillEmptyCustomJsonData = (
     return projectId ? `penpad_export_history_${projectId}` : ""
   }, [projectId])
 
+  const getReferenceStorageKey = useCallback(() => {
+    return projectId ? `penpad_references_${projectId}` : ""
+  }, [projectId])
+
+  const persistReferenceCategories = useCallback((next: ReferenceCategory[]) => {
+    if (!projectId) return
+    const key = getReferenceStorageKey()
+    if (!key) return
+    const sorted = [...next].sort((a, b) => b.updatedAt - a.updatedAt)
+    localStorage.setItem(key, JSON.stringify(sorted))
+    setReferenceCategories(sorted)
+    saveReferenceLibraryLocal(projectId, sorted)
+    if (user) {
+      saveReferenceLibraryToCloud(user.uid, projectId, sorted)
+    }
+  }, [projectId, getReferenceStorageKey, user])
+
   const updateProjectMetadata = useCallback((updates: Partial<Project>) => {
     if (!user || !projectId) return
     try {
@@ -5083,6 +5137,37 @@ const fillEmptyCustomJsonData = (
       setProgressionProfiles([])
     }
   }, [user, projectId, getProgressionStorageKey, selectedProgressionProfileId, progressionSystem, updateProjectMetadata])
+
+  const fetchReferenceCategories = useCallback(async () => {
+    if (!projectId) return
+    try {
+      let stored = localStorage.getItem(getReferenceStorageKey())
+      if (!stored) {
+        const localData = await getReferenceLibraryLocal(projectId)
+        if (localData && localData.length > 0) {
+          stored = JSON.stringify(localData)
+          localStorage.setItem(getReferenceStorageKey(), stored)
+        }
+      }
+      const categories: ReferenceCategory[] = stored ? JSON.parse(stored) : []
+      const sorted = categories.sort((a, b) => b.updatedAt - a.updatedAt)
+      setReferenceCategories(sorted)
+      if (user) {
+        const synced = await syncReferenceLibraryWithCloud(user.uid, projectId, sorted)
+        const syncedStr = JSON.stringify(synced)
+        const localStr = JSON.stringify(sorted)
+        if (syncedStr !== localStr) {
+          const reSorted = (synced as ReferenceCategory[]).sort((a, b) => b.updatedAt - a.updatedAt)
+          setReferenceCategories(reSorted)
+          localStorage.setItem(getReferenceStorageKey(), JSON.stringify(reSorted))
+          saveReferenceLibraryLocal(projectId, reSorted)
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load reference categories:", e)
+      setReferenceCategories([])
+    }
+  }, [user, projectId, getReferenceStorageKey])
 
   const fetchNotes = useCallback(async () => {
     if (!user || !projectId) return
@@ -6558,6 +6643,7 @@ const fillEmptyCustomJsonData = (
       fetchArcSeeds()
       fetchProgressionSystem()
       fetchProgressionProfiles()
+      fetchReferenceCategories()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, projectId])
@@ -7033,7 +7119,8 @@ ${navPoints}  </navMap>
     { name: "Progression", cmd: "/progress", desc: "Open Character Progression Profiles", action: () => { setActiveSidebarTab('progression'); setIsLeftSidebarOpen(true) } },
     { name: "Arc Seeds", cmd: "/arcs", desc: "Open Future Arc Seeds", action: () => { setActiveSidebarTab('arcs'); setIsLeftSidebarOpen(true) } },
     { name: "Name Forge", cmd: "/names", desc: "Generate fresh fantasy names", action: () => { setActiveSidebarTab('names'); setIsLeftSidebarOpen(true) } },
-    { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } }
+    { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
+    { name: "Reference Library", cmd: "/ref", desc: "Open Reference Library", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } }
   ]
 
   const filteredCommands = slashCommands.filter(c => 
@@ -8569,11 +8656,26 @@ ${navPoints}  </navMap>
                   } else {
                     setActiveSidebarTab('sounds')
                     setIsLeftSidebarOpen(true)
-                  }
+                   }
                 }}
                 title="Ambient Focus Sounds"
               >
                 <Headphones size={20} />
+              </button>
+
+              <button
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'references' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'references' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('references')
+                    setIsLeftSidebarOpen(true)
+                  }
+                }}
+                title="Reference Library"
+              >
+                <BookMarked size={20} />
               </button>
 
               <button 
@@ -11371,6 +11473,142 @@ ${navPoints}  </navMap>
               </div>
             )}
 
+            {/* TAB: REFERENCE LIBRARY */}
+            {activeSidebarTab === 'references' && (
+              <div className="sidebar-tab-content references-panel fade-in">
+                <div className="sidebar-section">
+                  <div className="sidebar-section-header">
+                    <h3>Reference Library</h3>
+                    <span className="sidebar-count">{referenceCategories.length}</span>
+                  </div>
+
+                  <div className="bible-actions">
+                    <button className="btn-new" onClick={() => {
+                      setRefEditCategoryName("")
+                      setRefEditCategoryDesc("")
+                      setShowRefCreateModal(true)
+                    }}>
+                      <Plus size={16} />
+                      New Reference
+                    </button>
+                    <button className="btn-export" onClick={() => {
+                      setRefAIImportText("")
+                      setRefAIImportResult(null)
+                      setShowRefAIImportModal(true)
+                    }}>
+                      <Sparkles size={16} />
+                      AI Import
+                    </button>
+                  </div>
+
+                  {referenceCategories.length === 0 ? (
+                    <div className="empty-state-text compact">
+                      No reference categories yet. Create one or use AI Import to format your cultivation stages, ranks, and more.
+                    </div>
+                  ) : (
+                    <div className="references-list">
+                      {referenceCategories.map(cat => (
+                        <div key={cat.id} className="reference-category-card">
+                          <div
+                            className="reference-category-header"
+                            onClick={() => setSelectedRefCategoryId(selectedRefCategoryId === cat.id ? null : cat.id)}
+                          >
+                            <div className="reference-category-info">
+                              <strong>{cat.name}</strong>
+                              <span className="reference-entry-count">{cat.entries.length} {cat.entries.length === 1 ? 'entry' : 'entries'}</span>
+                            </div>
+                            <ChevronDown size={16} className={`chevron ${selectedRefCategoryId === cat.id ? 'open' : ''}`} />
+                          </div>
+                          <div className="reference-category-desc">{cat.description || ''}</div>
+
+                          <div className="reference-category-actions">
+                            <button
+                              className="btn-icon-sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setRefEditCategoryName(cat.name)
+                                setRefEditCategoryDesc(cat.description || "")
+                                setRefAIImportText(cat.sourceText || "")
+                                setRefEditModeCategoryId(cat.id)
+                                setRefAIImportResult(null)
+                                setShowRefAIImportModal(true)
+                              }}
+                              title="Edit and re-format with AI"
+                            >
+                              <Sparkles size={14} />
+                            </button>
+                            <button
+                              className="btn-icon-sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const next = referenceCategories.filter(c => c.id !== cat.id)
+                                persistReferenceCategories(next)
+                              }}
+                              title="Delete category"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+
+                          {selectedRefCategoryId === cat.id && (
+                            <div className="reference-entries-list">
+                              {cat.entries.length === 0 ? (
+                                <div className="empty-state-text compact">No entries in this category.</div>
+                              ) : (
+                                cat.entries
+                                  .sort((a, b) => (a.level || a.sortOrder) - (b.level || b.sortOrder))
+                                  .map(entry => (
+                                    <div key={entry.id} className={`reference-entry-item ${entry.parentId ? 'nested' : ''}`}>
+                                      <div className="reference-entry-level">
+                                        {entry.level ? `#${entry.level}` : ''}
+                                      </div>
+                                      <div className="reference-entry-body">
+                                        <strong className="reference-entry-name">{entry.name}</strong>
+                                        {entry.description && (
+                                          <p className="reference-entry-desc">{entry.description}</p>
+                                        )}
+                                        {entry.tags && entry.tags.length > 0 && (
+                                          <div className="reference-entry-tags">
+                                            {entry.tags.map(tag => (
+                                              <span key={tag} className="reference-tag">{tag}</span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))
+                              )}
+                              {cat.sourceText && (
+                                <div style={{ padding: "0.5rem 0 0", borderTop: "1px solid var(--surface-border)", marginTop: "0.5rem" }}>
+                                  <details style={{ fontSize: "0.7rem" }}>
+                                    <summary style={{ cursor: "pointer", color: "var(--text-dim)", userSelect: "none" }}>
+                                      Source text ({cat.sourceText.length} chars)
+                                    </summary>
+                                    <pre style={{
+                                      marginTop: "0.4rem",
+                                      padding: "0.5rem",
+                                      background: "rgba(0,0,0,0.15)",
+                                      borderRadius: "var(--radius-sm)",
+                                      fontSize: "0.65rem",
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                      maxHeight: "200px",
+                                      overflowY: "auto",
+                                      color: "var(--text-dim)"
+                                    }}>{cat.sourceText}</pre>
+                                  </details>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div
               className="sidebar-resize-handle"
               role="separator"
@@ -13443,11 +13681,11 @@ ${navPoints}  </navMap>
                   )}
                 </p>
               </div>
-              <div className="progression-template-modal-body" style={{ maxHeight: "400px", overflowY: "auto" }}>
+              <div className="modal-body" style={{ maxHeight: "50vh", overflowY: "auto" }}>
                 {timelineIssues.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-dim)" }}>
-                    <CheckCircle2 size={32} style={{ color: "var(--green-500)", marginBottom: "0.75rem" }} />
-                    <p>All clear! Character progression timelines are consistent across all chapters.</p>
+                  <div style={{ textAlign: "center", padding: "2rem 0", color: "var(--text-dim)" }}>
+                    <CheckCircle2 size={40} style={{ color: "var(--green-500)", marginBottom: "0.5rem" }} />
+                    <p>Your story&apos;s timeline looks consistent.</p>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -13505,6 +13743,221 @@ ${navPoints}  </navMap>
                 >
                   {timelineCheckLoading ? <><Loader2 className="spin" size={14} /> Checking...</> : "Re-check (force)"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Reference Category Modal */}
+        {showRefCreateModal && (
+          <div className="modal-overlay" onClick={() => setShowRefCreateModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "480px" }}>
+              <div className="modal-header">
+                <h2 className="modal-title">New Reference Category</h2>
+                <p className="modal-description">Create a category for your reference entries (e.g. Cultivation Stages, Swordsmanship Ranks).</p>
+              </div>
+              <div className="modal-body">
+                <div className="field-group">
+                  <label className="field-label">Category Name</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="e.g. Cultivation Stages"
+                    value={refEditCategoryName}
+                    onChange={(e) => setRefEditCategoryName(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Description (optional)</label>
+                  <textarea
+                    className="field-input field-textarea"
+                    placeholder="Brief description of this reference hierarchy"
+                    value={refEditCategoryDesc}
+                    onChange={(e) => setRefEditCategoryDesc(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowRefCreateModal(false)}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!refEditCategoryName.trim()}
+                    onClick={() => {
+                      const newCat: ReferenceCategory = {
+                        id: `ref-${Date.now()}`,
+                        name: refEditCategoryName.trim(),
+                        description: refEditCategoryDesc.trim(),
+                        sourceText: "",
+                        entries: [],
+                        sortOrder: referenceCategories.length,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                      }
+                      persistReferenceCategories([...referenceCategories, newCat])
+                      setShowRefCreateModal(false)
+                      setRefEditModeCategoryId(null)
+                      setSelectedRefCategoryId(newCat.id)
+                    }}
+                >
+                  <Plus size={16} /> Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Import Reference Modal */}
+        {showRefAIImportModal && (
+          <div className="modal-overlay" onClick={() => {
+            if (!refAIImportLoading) setShowRefAIImportModal(false)
+          }}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "560px" }}>
+              <div className="modal-header">
+                <h2 className="modal-title">AI Import References</h2>
+                <p className="modal-description">
+                  Paste your cultivation stages, rank lists, or any hierarchical reference text. AI will format it into structured entries.
+                </p>
+              </div>
+              <div className="modal-body">
+                {!refAIImportResult ? (
+                  <>
+                    <div className="field-group">
+                      <label className="field-label">Raw Reference Text</label>
+                      <textarea
+                        className="field-input field-textarea"
+                        placeholder={`Paste your reference text here...\n\ne.g.\n1. Qi Condensation - Absorb qi into the body\n2. Foundation Establishment - Build a solid foundation\n3. Core Formation - Form a golden core\n\nOr:\n[Mortal] Ordinary human\n[Qi Condensation] First step on the path\n[Foundation Establishment] Solid foundation`}
+                        value={refAIImportText}
+                        onChange={(e) => setRefAIImportText(e.target.value)}
+                        rows={10}
+                        style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "0.8rem" }}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Category Name (optional)</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Leave empty for AI to infer"
+                        value={refEditCategoryName}
+                        onChange={(e) => setRefEditCategoryName(e.target.value)}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="ref-ai-result">
+                    <div className="ref-ai-result-header">
+                      <CheckCircle2 size={18} style={{ color: "var(--green-500)" }} />
+                      <strong>{refAIImportResult.name}</strong>
+                      <span className="reference-entry-count">{refAIImportResult.entries.length} entries</span>
+                    </div>
+                    {refAIImportResult.description && (
+                      <p style={{ fontSize: "0.8rem", color: "var(--text-dim)", margin: "0.5rem 0" }}>{refAIImportResult.description}</p>
+                    )}
+                    <div className="ref-ai-entries-preview">
+                      {refAIImportResult.entries.slice(0, 20).sort((a, b) => (a.level || a.sortOrder) - (b.level || b.sortOrder)).map(entry => (
+                        <div key={entry.id} className="reference-entry-item">
+                          <div className="reference-entry-level">
+                            {entry.level ? `#${entry.level}` : ''}
+                          </div>
+                          <div className="reference-entry-body">
+                            <strong>{entry.name}</strong>
+                            {entry.description && <p className="reference-entry-desc">{entry.description}</p>}
+                          </div>
+                        </div>
+                      ))}
+                      {refAIImportResult.entries.length > 20 && (
+                        <p style={{ fontSize: "0.75rem", color: "var(--text-dim)", textAlign: "center", marginTop: "0.5rem" }}>
+                          ...and {refAIImportResult.entries.length - 20} more entries
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => {
+                  if (!refAIImportLoading) {
+                    setShowRefAIImportModal(false)
+                    setRefAIImportResult(null)
+                    setRefAIImportText("")
+                    setRefEditModeCategoryId(null)
+                  }
+                }} disabled={refAIImportLoading}>
+                  {refAIImportResult ? "Cancel" : "Close"}
+                </button>
+                {!refAIImportResult ? (
+                  <button
+                    className="btn btn-primary"
+                    disabled={!refAIImportText.trim() || refAIImportLoading}
+                    onClick={async () => {
+                      if (!refAIImportText.trim()) return
+                      setRefAIImportLoading(true)
+                      try {
+                        const res = await fetch("/api/ai", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            action: "format_references",
+                            rawText: refAIImportText,
+                            currentCategories: referenceCategories
+                          })
+                        })
+                        const data = await res.json()
+                        if (data.error) {
+                          console.error("AI formatting error:", data.error)
+                          return
+                        }
+                        const parsed: { name?: string; description?: string; entries?: any[] } = data.text ? JSON.parse(data.text) : {}
+                        const resultCat: ReferenceCategory = {
+                          id: `ref-${Date.now()}`,
+                          name: refEditCategoryName.trim() || parsed.name || "Imported References",
+                          description: parsed.description || "",
+                          sourceText: refAIImportText,
+                          entries: (parsed.entries || []).map((e: any, i: number) => ({
+                            id: `ref-entry-${Date.now()}-${i}`,
+                            name: String(e.name || `Entry ${i + 1}`),
+                            level: e.level != null ? Number(e.level) : i + 1,
+                            parentId: e.parentId != null ? String(e.parentId) : null,
+                            description: String(e.description || ""),
+                            tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
+                            sortOrder: i
+                          })),
+                          sortOrder: referenceCategories.length,
+                          createdAt: Date.now(),
+                          updatedAt: Date.now()
+                        }
+                        setRefAIImportResult(resultCat)
+                      } catch (e) {
+                        console.error("Failed to AI format references:", e)
+                      } finally {
+                        setRefAIImportLoading(false)
+                      }
+                    }}
+                  >
+                    {refAIImportLoading ? <><Loader2 className="spin" size={14} /> Formatting...</> : <><Sparkles size={16} /> Format with AI</>}
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      if (refEditModeCategoryId) {
+                        const next = referenceCategories.map(c => c.id === refEditModeCategoryId ? { ...refAIImportResult!, id: c.id, createdAt: c.createdAt } : c)
+                        persistReferenceCategories(next)
+                      } else {
+                        persistReferenceCategories([...referenceCategories, refAIImportResult!])
+                      }
+                      setShowRefAIImportModal(false)
+                      setRefAIImportResult(null)
+                      setRefAIImportText("")
+                      setRefEditModeCategoryId(null)
+                      setSelectedRefCategoryId(refAIImportResult!.id)
+                    }}
+                  >
+                    <Check size={16} /> {refEditModeCategoryId ? "Update Reference Category" : "Save Reference Category"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -22459,6 +22912,169 @@ ${navPoints}  </navMap>
         @keyframes scaleUp {
           from { transform: scale(0.9); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
+        }
+
+        /* Reference Library Styles */
+        .references-panel {
+          padding: 0 0.5rem;
+        }
+
+        .references-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          margin-top: 0.5rem;
+        }
+
+        .reference-category-card {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          overflow: hidden;
+          transition: var(--transition);
+        }
+
+        .reference-category-card:hover {
+          border-color: var(--surface-hover);
+        }
+
+        .reference-category-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.65rem 0.75rem;
+          cursor: pointer;
+          user-select: none;
+        }
+
+        .reference-category-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .reference-category-info strong {
+          font-size: 0.85rem;
+          color: var(--text-primary);
+        }
+
+        .reference-entry-count {
+          font-size: 0.65rem;
+          color: var(--text-dim);
+        }
+
+        .reference-category-header .chevron {
+          color: var(--text-dim);
+          transition: transform 0.2s;
+        }
+
+        .reference-category-header .chevron.open {
+          transform: rotate(180deg);
+        }
+
+        .reference-category-desc {
+          font-size: 0.75rem;
+          color: var(--text-dim);
+          padding: 0 0.75rem 0.5rem;
+          line-height: 1.4;
+        }
+
+        .reference-category-actions {
+          display: flex;
+          justify-content: flex-end;
+          padding: 0 0.5rem 0.5rem;
+          gap: 0.25rem;
+        }
+
+        .reference-entries-list {
+          border-top: 1px solid var(--surface-border);
+          padding: 0.5rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .reference-entry-item {
+          display: flex;
+          gap: 0.5rem;
+          padding: 0.4rem 0.5rem;
+          border-radius: var(--radius-sm);
+          background: rgba(255,255,255,0.02);
+          align-items: flex-start;
+        }
+
+        .reference-entry-item.nested {
+          margin-left: 1.5rem;
+          border-left: 2px solid var(--surface-border);
+        }
+
+        .reference-entry-level {
+          font-size: 0.65rem;
+          font-weight: 700;
+          color: var(--text-dim);
+          min-width: 24px;
+          text-align: center;
+          padding-top: 1px;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .reference-entry-body {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .reference-entry-name {
+          font-size: 0.8rem;
+          color: var(--text-primary);
+        }
+
+        .reference-entry-desc {
+          font-size: 0.7rem;
+          color: var(--text-dim);
+          margin: 2px 0 0;
+          line-height: 1.4;
+        }
+
+        .reference-entry-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 3px;
+          margin-top: 3px;
+        }
+
+        .reference-tag {
+          font-size: 0.6rem;
+          padding: 1px 5px;
+          border-radius: var(--radius-sm);
+          background: rgba(99,102,241,0.12);
+          color: var(--indigo-400);
+        }
+
+        .ref-ai-result {
+          background: rgba(255,255,255,0.02);
+          border: 1px solid var(--surface-border);
+          border-radius: var(--radius-md);
+          padding: 0.75rem;
+        }
+
+        .ref-ai-result-header {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 0.25rem;
+        }
+
+        .ref-ai-result-header strong {
+          font-size: 0.9rem;
+        }
+
+        .ref-ai-entries-preview {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          margin-top: 0.5rem;
+          max-height: 300px;
+          overflow-y: auto;
         }
       `}</style>
     </div>

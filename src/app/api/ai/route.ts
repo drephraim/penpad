@@ -1198,8 +1198,46 @@ export async function POST(req: NextRequest) {
 
       userPrompt =
         `## Chapters\n${chapterList}\n\n## Character Progression Timelines\n${profileDetails}\n\n## Story Bible Reference\n${bibleContext}`
+    } else if (action === "format_references") {
+      const { rawText, currentCategories } = body
+      if (!rawText || typeof rawText !== "string") {
+        return NextResponse.json({ error: "rawText is required for format_references." }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a world-building reference organizer for a novelist. The user has pasted raw text containing a list of " +
+        "cultivation stages, ranks, levels, or other hierarchical reference data (e.g. cultivation realms, swordsmanship ranks, mage tiers, etc.).\n" +
+        "Your task is to parse this text and extract each distinct entry, correctly ordering them from weakest/earliest to strongest/latest.\n" +
+        "Return ONLY valid JSON with this structure:\n" +
+        "{\n" +
+        "  \"name\": \"The category name (e.g. Cultivation Stages, Swordsmanship Ranks)\",\n" +
+        "  \"description\": \"A brief description of what this hierarchy represents\",\n" +
+        "  \"entries\": [\n" +
+        "    {\n" +
+        "      \"name\": \"Entry name (e.g. Qi Condensation, Sword Apprentice)\",\n" +
+        "      \"level\": 1,\n" +
+        "      \"parentId\": null,\n" +
+        "      \"description\": \"A brief evocative description of this stage/rank\",\n" +
+        "      \"tags\": []\n" +
+        "    }\n" +
+        "  ]\n" +
+        "}\n" +
+        "Guidelines:\n" +
+        "1. Detect whether the entries are flat (numbered 1-10) or hierarchical (e.g. Mortal -> Qi Condensation -> Foundation).\n" +
+        "2. For hierarchical data, use parentId to link parent-child relationships. The parent entry comes first in the array.\n" +
+        "3. Assign numeric level values based on the order/position in the hierarchy (1 = weakest/earliest).\n" +
+        "4. Write a brief 1-2 sentence evocative description for each entry.\n" +
+        "5. Infer the category name from the content. If the user pasted cultivation stages, name it 'Cultivation Stages'.\n" +
+        "6. Preserve any existing entries from currentCategories when they are not present in the new raw text." +
+        "7. If the raw text contains tags like [Mortal], [Qi Condensation] or similar bracketed labels, treat those as the name and use surrounding text as description."
+
+      const currentData = Array.isArray(currentCategories) ? currentCategories.slice(0, 5) : []
+      userPrompt =
+        `Parse and format the following raw reference text into structured reference entries:\n\n` +
+        `Raw text:\n${rawText.slice(0, 12000)}` +
+        (currentData.length > 0 ? `\n\nExisting categories for reference:\n${JSON.stringify(currentData).slice(0, 2000)}` : "")
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, progression_template_design, or timeline_consistency_check." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, progression_template_design, timeline_consistency_check, or format_references." }, { status: 400 })
     }
 
     const jsonActions = new Set([
@@ -1215,7 +1253,8 @@ export async function POST(req: NextRequest) {
       "bible_extract_from_chapter",
       "arc_seed_extract",
       "name_generate",
-      "timeline_consistency_check"
+      "timeline_consistency_check",
+      "format_references"
     ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {

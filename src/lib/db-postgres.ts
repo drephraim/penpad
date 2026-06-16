@@ -152,6 +152,15 @@ export async function bootstrapDb() {
         updated_at BIGINT
       );
     `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reference_library (
+        project_id VARCHAR(255) PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        user_id VARCHAR(255) NOT NULL,
+        data JSONB NOT NULL,
+        updated_at BIGINT
+      );
+    `)
     
     isBootstrapped = true
     console.log("Postgres database tables checked/created successfully.")
