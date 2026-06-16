@@ -4242,21 +4242,30 @@ const fillEmptyCustomJsonData = (
   // previously linked folder. The user just clicks "Select Folder" once — no navigation needed.
   // The new handle is saved back to IndexedDB for this project.
   const reconnectFolder = useCallback(async () => {
-    if (!dirHandle || isReconnecting) return
+    if (isReconnecting) return
     setIsReconnecting(true)
     setReconnectError(null)
     try {
-      const restored = await verifyPermission(dirHandle)
-      if (restored) {
-        setDirPermission('granted')
-        await saveFolderHandleToProject(dirHandle)
-        return
+      let handle = dirHandle
+      if (!handle && projectId) {
+        handle = await getDirectoryHandleForProject(projectId)
       }
 
-      const newHandle = await (window as any).showDirectoryPicker({
-        startIn: dirHandle,     // opens picker directly inside the linked folder
-        mode: 'readwrite'
-      })
+      if (handle) {
+        const restored = await verifyPermission(handle)
+        if (restored) {
+          setDirHandle(handle)
+          setDirPermission('granted')
+          await saveFolderHandleToProject(handle)
+          return
+        }
+      }
+
+      const pickerOptions: any = { mode: 'readwrite' }
+      if (handle) {
+        pickerOptions.startIn = handle
+      }
+      const newHandle = await (window as any).showDirectoryPicker(pickerOptions)
       const granted = await verifyPermission(newHandle)
       if (!granted) {
         setDirPermission('denied')
@@ -4267,7 +4276,6 @@ const fillEmptyCustomJsonData = (
       setDirPermission('granted')
       await saveFolderHandleToProject(newHandle)
     } catch (e: any) {
-      // AbortError = user closed the picker — treat silently
       if (e?.name !== 'AbortError') {
         console.error('Reconnect error:', e)
         setReconnectError('Could not reconnect. Please try again or disconnect and re-link the folder.')
@@ -4275,7 +4283,7 @@ const fillEmptyCustomJsonData = (
     } finally {
       setIsReconnecting(false)
     }
-  }, [dirHandle, isReconnecting, saveFolderHandleToProject, verifyPermission])
+  }, [dirHandle, isReconnecting, projectId, saveFolderHandleToProject, verifyPermission])
 
   const disconnectFolder = async () => {
     setDirHandle(null)
@@ -6696,12 +6704,12 @@ const fillEmptyCustomJsonData = (
   }
 
   const getChapterExportFingerprint = (note: Note) => {
-    const raw = `${note.title || ""}\r\n${note.content || ""}\r\n${note.updatedAt || 0}`
+    const raw = `${note.title || ""}\r\n${note.content || ""}`
     let hash = 0
     for (let i = 0; i < raw.length; i++) {
       hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0
     }
-    return `${note.updatedAt || 0}:${raw.length}:${hash}`
+    return `${raw.length}:${hash}`
   }
   const persistExportHistory = useCallback((nextHistory: Record<string, ExportHistoryRecord>) => {
     const key = getExportHistoryStorageKey()
