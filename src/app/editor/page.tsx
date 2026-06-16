@@ -1428,7 +1428,6 @@ function EditorContent() {
 
   // Reference Library States
   const [referenceCategories, setReferenceCategories] = useState<ReferenceCategory[]>([])
-  const [selectedRefCategoryId, setSelectedRefCategoryId] = useState<string | null>(null)
   const [showRefCreateModal, setShowRefCreateModal] = useState(false)
   const [showRefAIImportModal, setShowRefAIImportModal] = useState(false)
   const [refAIImportText, setRefAIImportText] = useState("")
@@ -1437,6 +1436,8 @@ function EditorContent() {
   const [refEditCategoryName, setRefEditCategoryName] = useState("")
   const [refEditCategoryDesc, setRefEditCategoryDesc] = useState("")
   const [refEditModeCategoryId, setRefEditModeCategoryId] = useState<string | null>(null)
+  const [showRefViewModal, setShowRefViewModal] = useState(false)
+  const [viewingRefCategory, setViewingRefCategory] = useState<ReferenceCategory | null>(null)
 
   // Ambient Sound States
   const [activeSound, setActiveSound] = useState<string>('none')
@@ -11511,13 +11512,15 @@ ${navPoints}  </navMap>
                         <div key={cat.id} className="reference-category-card">
                           <div
                             className="reference-category-header"
-                            onClick={() => setSelectedRefCategoryId(selectedRefCategoryId === cat.id ? null : cat.id)}
+                            onClick={() => {
+                              setViewingRefCategory(cat)
+                              setShowRefViewModal(true)
+                            }}
                           >
                             <div className="reference-category-info">
                               <strong>{cat.name}</strong>
                               <span className="reference-entry-count">{cat.entries.length} {cat.entries.length === 1 ? 'entry' : 'entries'}</span>
                             </div>
-                            <ChevronDown size={16} className={`chevron ${selectedRefCategoryId === cat.id ? 'open' : ''}`} />
                           </div>
                           <div className="reference-category-desc">{cat.description || ''}</div>
 
@@ -11550,57 +11553,7 @@ ${navPoints}  </navMap>
                             </button>
                           </div>
 
-                          {selectedRefCategoryId === cat.id && (
-                            <div className="reference-entries-list">
-                              {cat.entries.length === 0 ? (
-                                <div className="empty-state-text compact">No entries in this category.</div>
-                              ) : (
-                                cat.entries
-                                  .sort((a, b) => (a.level || a.sortOrder) - (b.level || b.sortOrder))
-                                  .map(entry => (
-                                    <div key={entry.id} className={`reference-entry-item ${entry.parentId ? 'nested' : ''}`}>
-                                      <div className="reference-entry-level">
-                                        {entry.level ? `#${entry.level}` : ''}
-                                      </div>
-                                      <div className="reference-entry-body">
-                                        <strong className="reference-entry-name">{entry.name}</strong>
-                                        {entry.description && (
-                                          <p className="reference-entry-desc">{entry.description}</p>
-                                        )}
-                                        {entry.tags && entry.tags.length > 0 && (
-                                          <div className="reference-entry-tags">
-                                            {entry.tags.map(tag => (
-                                              <span key={tag} className="reference-tag">{tag}</span>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))
-                              )}
-                              {cat.sourceText && (
-                                <div style={{ padding: "0.5rem 0 0", borderTop: "1px solid var(--surface-border)", marginTop: "0.5rem" }}>
-                                  <details style={{ fontSize: "0.7rem" }}>
-                                    <summary style={{ cursor: "pointer", color: "var(--text-dim)", userSelect: "none" }}>
-                                      Source text ({cat.sourceText.length} chars)
-                                    </summary>
-                                    <pre style={{
-                                      marginTop: "0.4rem",
-                                      padding: "0.5rem",
-                                      background: "rgba(0,0,0,0.15)",
-                                      borderRadius: "var(--radius-sm)",
-                                      fontSize: "0.65rem",
-                                      whiteSpace: "pre-wrap",
-                                      wordBreak: "break-word",
-                                      maxHeight: "200px",
-                                      overflowY: "auto",
-                                      color: "var(--text-dim)"
-                                    }}>{cat.sourceText}</pre>
-                                  </details>
-                                </div>
-                              )}
-                            </div>
-                          )}
+
                         </div>
                       ))}
                     </div>
@@ -13798,7 +13751,6 @@ ${navPoints}  </navMap>
                       persistReferenceCategories([...referenceCategories, newCat])
                       setShowRefCreateModal(false)
                       setRefEditModeCategoryId(null)
-                      setSelectedRefCategoryId(newCat.id)
                     }}
                 >
                   <Plus size={16} /> Create
@@ -13813,14 +13765,14 @@ ${navPoints}  </navMap>
           <div className="modal-overlay" onClick={() => {
             if (!refAIImportLoading) setShowRefAIImportModal(false)
           }}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "560px" }}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "560px", maxHeight: "80vh" }}>
               <div className="modal-header">
                 <h2 className="modal-title">AI Import References</h2>
                 <p className="modal-description">
                   Paste your cultivation stages, rank lists, or any hierarchical reference text. AI will format it into structured entries.
                 </p>
               </div>
-              <div className="modal-body">
+              <div className="modal-body" style={refAIImportResult ? { maxHeight: "calc(80vh - 140px)", overflowY: "auto" } : {}}>
                 {!refAIImportResult ? (
                   <>
                     <div className="field-group">
@@ -13958,16 +13910,87 @@ ${navPoints}  </navMap>
                       } else {
                         persistReferenceCategories([...referenceCategories, refAIImportResult!])
                       }
+                      const savedCat = refAIImportResult!
                       setShowRefAIImportModal(false)
                       setRefAIImportResult(null)
                       setRefAIImportText("")
                       setRefEditModeCategoryId(null)
-                      setSelectedRefCategoryId(refAIImportResult!.id)
+                      setViewingRefCategory(savedCat)
+                      setShowRefViewModal(true)
                     }}
                   >
                     <Check size={16} /> {refEditModeCategoryId ? "Update Reference Category" : "Save Reference Category"}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reference View Modal */}
+        {showRefViewModal && viewingRefCategory && (
+          <div className="modal-overlay" onClick={() => setShowRefViewModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", maxHeight: "80vh" }}>
+              <div className="modal-header">
+                <h2 className="modal-title">{viewingRefCategory.name}</h2>
+                {viewingRefCategory.description && (
+                  <p className="modal-description">{viewingRefCategory.description}</p>
+                )}
+                <span className="reference-entry-count" style={{ fontSize: "0.75rem" }}>
+                  {viewingRefCategory.entries.length} {viewingRefCategory.entries.length === 1 ? 'entry' : 'entries'}
+                </span>
+              </div>
+              <div className="modal-body" style={{ maxHeight: "55vh", overflowY: "auto" }}>
+                {viewingRefCategory.entries.length === 0 ? (
+                  <div className="empty-state-text">No entries in this category.</div>
+                ) : (
+                  viewingRefCategory.entries
+                    .sort((a, b) => (a.level || a.sortOrder) - (b.level || b.sortOrder))
+                    .map(entry => (
+                      <div key={entry.id} className={`reference-entry-item ${entry.parentId ? 'nested' : ''}`}>
+                        <div className="reference-entry-level">
+                          {entry.level ? `#${entry.level}` : ''}
+                        </div>
+                        <div className="reference-entry-body">
+                          <strong className="reference-entry-name">{entry.name}</strong>
+                          {entry.description && (
+                            <p className="reference-entry-desc">{entry.description}</p>
+                          )}
+                          {entry.tags && entry.tags.length > 0 && (
+                            <div className="reference-entry-tags">
+                              {entry.tags.map(tag => (
+                                <span key={tag} className="reference-tag">{tag}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                )}
+                {viewingRefCategory.sourceText && (
+                  <div style={{ padding: "0.5rem 0 0", borderTop: "1px solid var(--surface-border)", marginTop: "0.5rem" }}>
+                    <details style={{ fontSize: "0.7rem" }}>
+                      <summary style={{ cursor: "pointer", color: "var(--text-dim)", userSelect: "none" }}>
+                        Source text ({viewingRefCategory.sourceText.length} chars)
+                      </summary>
+                      <pre style={{
+                        marginTop: "0.4rem",
+                        padding: "0.5rem",
+                        background: "rgba(0,0,0,0.15)",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.65rem",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        maxHeight: "200px",
+                        overflowY: "auto",
+                        color: "var(--text-dim)"
+                      }}>{viewingRefCategory.sourceText}</pre>
+                    </details>
+                  </div>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => setShowRefViewModal(false)}>Close</button>
               </div>
             </div>
           </div>
