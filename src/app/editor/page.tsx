@@ -13906,10 +13906,19 @@ ${navPoints}  </navMap>
                         })
                         const data = await res.json()
                         if (data.error) {
-                          console.error("AI formatting error:", data.error)
+                          alert(data.error)
                           return
                         }
-                        const parsed: { name?: string; description?: string; entries?: any[] } = data.text ? JSON.parse(data.text) : {}
+                        let parsed: any = {}
+                        if (typeof data.text === "string") {
+                          try { parsed = JSON.parse(data.text) } catch { parsed = {} }
+                        } else if (data.text && typeof data.text === "object") {
+                          parsed = data.text
+                        }
+                        if (!parsed.entries || !Array.isArray(parsed.entries)) {
+                          alert("AI returned an unexpected format. Try rephrasing your input.")
+                          return
+                        }
                         const resultCat: ReferenceCategory = {
                           id: `ref-${Date.now()}`,
                           name: refEditCategoryName.trim() || parsed.name || "Imported References",
@@ -13931,6 +13940,7 @@ ${navPoints}  </navMap>
                         setRefAIImportResult(resultCat)
                       } catch (e) {
                         console.error("Failed to AI format references:", e)
+                        alert(`Failed to format: ${e instanceof Error ? e.message : "Unknown error"}`)
                       } finally {
                         setRefAIImportLoading(false)
                       }

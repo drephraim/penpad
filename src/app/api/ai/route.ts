@@ -1437,6 +1437,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (action === "format_references") {
+      const parsed = parseJsonObject<Record<string, unknown>>(text)
+      if (!parsed) {
+        return NextResponse.json({ error: "AI returned unparseable JSON. Please try again with different input." }, { status: 500 })
+      }
+      return NextResponse.json({ text: parsed })
+    }
+
     if (action === "cultivation_realm_import") {
       const imported = parseJsonObject<CultivationImportResponse>(text)
       const fallback = parseCultivationSettingsFromText(body.rawText, body.currentSettings)
