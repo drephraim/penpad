@@ -1,4 +1,4 @@
-import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal, saveReferenceLibraryLocal } from "./db"
+import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal, saveReferenceLibraryLocal, saveNameForgeDataLocal, type NameForgeData } from "./db"
 
 export interface Project {
   id: string
@@ -673,5 +673,55 @@ export async function saveReferenceLibraryToCloud(userId: string, projectId: str
     }
   } catch (error) {
     console.error("Failed to save reference library to cloud:", error)
+  }
+}
+
+/**
+ * Reconciles local Name Forge data with PostgreSQL via Next.js API.
+ */
+export async function syncNameForgeWithCloud(userId: string, projectId: string, localData: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!userId || !projectId) return localData
+
+  try {
+    const response = await fetchWithTimeout("/api/sync/name-forge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, localData }),
+      timeout: 3500
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    const merged = (result.data || {}) as Record<string, unknown>
+
+    await saveNameForgeDataLocal(projectId, merged as unknown as Omit<NameForgeData, 'projectId' | 'updatedAt'>)
+    return merged
+  } catch (error) {
+    console.error("Failed to sync name forge data with cloud, falling back to local:", error)
+    return localData
+  }
+}
+
+/**
+ * Saves Name Forge data to PostgreSQL via Next.js API.
+ */
+export async function saveNameForgeDataToCloud(userId: string, projectId: string, data: Record<string, unknown>): Promise<void> {
+  if (!userId || !projectId || !data) return
+
+  try {
+    const response = await fetch("/api/sync/save-name-forge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, data })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to save name forge data to cloud:", error)
   }
 }

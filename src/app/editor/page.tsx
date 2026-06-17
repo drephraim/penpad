@@ -57,6 +57,8 @@ import {
   saveProgressionSystemToCloud,
   syncReferenceLibraryWithCloud,
   saveReferenceLibraryToCloud,
+  syncNameForgeWithCloud,
+  saveNameForgeDataToCloud,
   BibleEntry,
   BrainEntry,
   ArcSeed,
@@ -6907,7 +6909,11 @@ const fillEmptyCustomJsonData = (
   const fetchNameForgeData = useCallback(async () => {
     if (!projectId) return
     try {
-      const data = await getNameForgeDataLocal(projectId)
+      let data = await getNameForgeDataLocal(projectId)
+      if (user) {
+        const synced = await syncNameForgeWithCloud(user.uid, projectId, (data || {}) as Record<string, unknown>)
+        data = synced as any
+      }
       if (data) {
         setNameShortlist(data.shortlist || [])
         setNamePresets(data.presets || [])
@@ -6917,7 +6923,7 @@ const fillEmptyCustomJsonData = (
     } catch (e) {
       console.error("Failed to load Name Forge data:", e)
     }
-  }, [projectId])
+  }, [projectId, user])
 
   useEffect(() => {
     if (user && projectId) {
@@ -6928,16 +6934,20 @@ const fillEmptyCustomJsonData = (
   const saveNameForgeData = useCallback(async () => {
     if (!projectId) return
     try {
-      await saveNameForgeDataLocal(projectId, {
+      const data = {
         shortlist: nameShortlist,
         presets: namePresets,
         generationHistory: nameGenHistory,
         nameRatings
-      })
+      }
+      await saveNameForgeDataLocal(projectId, data)
+      if (user) {
+        await saveNameForgeDataToCloud(user.uid, projectId, data as unknown as Record<string, unknown>)
+      }
     } catch (e) {
       console.error("Failed to save Name Forge data:", e)
     }
-  }, [projectId, nameShortlist, namePresets, nameGenHistory, nameRatings])
+  }, [projectId, nameShortlist, namePresets, nameGenHistory, nameRatings, user])
 
   useEffect(() => {
     const timer = setTimeout(() => {
