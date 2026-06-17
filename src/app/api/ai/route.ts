@@ -418,6 +418,132 @@ function buildFallbackNameOptions(body: Record<string, any>) {
       middle: ["Void", "Abyss", "Elder", "Alien", "Dark"],
       epithet: ["Void Speaker", "Elder Whisper", "Abyss Gate", "Dark Star"],
       origin: "Void / Abyss / Eldritch"
+    },
+    african: {
+      family: ["Mwangi", "Okonkwo", "Nkosi", "Diallo", "Kenyatta", "Okafor", "Mensah"],
+      given: ["Zuri", "Kwame", "Amara", "Chidi", "Nala", "Kofi", "Sefu", "Ayana", "Jabari", "Zola"],
+      middle: ["Lion", "Drum", "Savanna", "River", "Gold"],
+      epithet: ["Lion Heart", "Drum Keeper", "Savanna Walker", "River Spirit"],
+      origin: "African-inspired"
+    },
+    polynesian: {
+      family: ["Tane", "Moana", "Atea", "Tangaroa", "Rongo", "Hina"],
+      given: ["Maui", "Lani", "Keala", "Nalani", "Kanoa", "Leilani", "Ikaika", "Makani"],
+      middle: ["Wave", "Star", "Coral", "Tide", "Breeze"],
+      epithet: ["Wave Rider", "Star Navigator", "Coral Dancer", "Tide Caller"],
+      origin: "Polynesian / Oceanic"
+    },
+    mongolian: {
+      family: ["Khatun", "Batu", "Temur", "Altan", "Khoshuud", "Borjigin"],
+      given: ["Temujin", "Sukh", "Altan", "Sarnai", "Borte", "Toghrul", "Khasar"],
+      middle: ["Steppe", "Sky", "Iron", "Gold", "Wind"],
+      epithet: ["Steppe Wolf", "Sky Rider", "Iron Bow", "Golden Horde"],
+      origin: "Mongolian / Steppe"
+    },
+    tibetan: {
+      family: ["Lhamo", "Tenzin", "Dorje", "Norbu", "Tsering", "Wangmo", "Gyatso"],
+      given: ["Tenzin", "Kelsang", "Yangchen", "Sonam", "Chodak", "Pema", "Jigme"],
+      middle: ["Snow", "Lotus", "Diamond", "Silk", "Coral"],
+      epithet: ["Snow Lion", "Lotus Heart", "Diamond Crown", "Silk Prayer"],
+      origin: "Tibetan / Himalayan"
+    },
+    roman: {
+      family: ["Aurelius", "Cassius", "Julius", "Flavius", "Claudius", "Cornelius"],
+      given: ["Marcus", "Octavia", "Lucius", "Cassia", "Tiberius", "Livia", "Gaius"],
+      middle: ["Maximus", "Augustus", "Felix", "Primus", "Magnus"],
+      epithet: ["Iron Eagle", "Golden Shield", "Silver Spear", "Bronze Helm"],
+      origin: "Roman / Latin"
+    },
+    lovecraftian: {
+      family: ["Yuggoth", "R'lyeh", "Carcosa", "Kadath", "Ulthar"],
+      given: ["Nyarl", "C'thon", "Yog", "Azath", "Mog", "Dagon", "Hastur"],
+      middle: ["Void", "Elder", "Ward", "Star", "Gate"],
+      epithet: ["Void Whisperer", "Elder Dream", "Star Spawn", "Gate Opener"],
+      origin: "Lovecraftian / Cosmic Horror"
+    },
+    gothic: {
+      family: ["Von Hellsing", "Darkmoor", "Ravencroft", "Blackwood", "Morthrain"],
+      given: ["Victor", "Isabella", "Mortimer", "Lilith", "Sebastian", "Ophelia", "Caspian"],
+      middle: ["Dark", "Crimson", "Ivory", "Shadow", "Fallen"],
+      epithet: ["Crimson Duke", "Shadow Count", "Ivory Lady", "Dark Prince"],
+      origin: "Gothic / Dark Romantic"
+    },
+    pirate: {
+      family: ["Blackthorn", "Silverfin", "Ravensail", "Ironhook", "Seaborne", "Dreadwater"],
+      given: ["Captain", "Morgan", "Isla", "Redbeard", "Calico", "Anne", "Bartholomew"],
+      middle: ["Sea", "Crow", "Gold", "Storm", "Salt"],
+      epithet: ["Dread Captain", "Sea Wolf", "Gold Tooth", "Storm Chaser"],
+      origin: "Pirate / Swashbuckler"
+    },
+    western: {
+      family: ["Cassidy", "Dalton", "Wilder", "McCready", "Hickok", "James"],
+      given: ["Wyatt", "Daisy", "Jesse", "Annie", "Doc", "Belle", "Sundance"],
+      middle: ["Dust", "Iron", "Silver", "Rust", "Canyon"],
+      epithet: ["Silver Sheriff", "Dust Rider", "Iron Marshal", "Canyon Ghost"],
+      origin: "Western / Frontier"
+    },
+    postapocalyptic: {
+      family: ["Ashford", "Wasteland", "Rust", "Survival", "Broken", "Cinder"],
+      given: ["Wren", "Rex", "Nova", "Tank", "Ash", "Rust", "Vega", "Kestrel"],
+      middle: ["Rust", "Bone", "Scrap", "Ash", "Waste"],
+      epithet: ["Ash Walker", "Rust Lord", "Scrap Merchant", "Waste Warden"],
+      origin: "Post-Apocalyptic wasteland"
+    },
+    biopunk: {
+      family: ["Gen-7", "Helix", "Chimera", "Splice", "Cortex", "Mycelia"],
+      given: ["Xyla", "Kai", "Vira", "Nyx", "Echo", "Zyme", "Clade", "Rune"],
+      middle: ["Gene", "Spine", "Toxin", "Spore", "Synth"],
+      epithet: ["Gene Weaver", "Spine Drifter", "Toxin Bloom", "Synth Soul"],
+      origin: "Bio-Punk genetic future"
+    },
+    clockwork: {
+      family: ["Brassheart", "Cogsworth", "Pendulum", "Gearspring", "Mainspring"],
+      given: ["Tick", "Tock", "Gearhart", "Copper", "Ratchet", "Piston", "Meridian"],
+      middle: ["Brass", "Cog", "Steam", "Gear", "Spring"],
+      epithet: ["Brass Sentinel", "Cog Master", "Steam Prophet", "Gear Saint"],
+      origin: "Clockwork / Automaton"
+    },
+    tropical: {
+      family: ["Lani", "Moana", "Kahuna", "Nalu", "Makani", "Aina"],
+      given: ["Kai", "Leilani", "Koa", "Nalani", "Ikaika", "Mana", "Lono", "Pua"],
+      middle: ["Sun", "Wave", "Tide", "Coral", "Palm"],
+      epithet: ["Sun Dancer", "Wave Rider", "Tide Walker", "Coral Heart"],
+      origin: "Tropical / Island"
+    },
+    arctic: {
+      family: ["Icevein", "Frostheart", "Snowfeld", "Glacier", "Winterborn", "Hoarfrost"],
+      given: ["Bjorn", "Yuki", "Lumi", "Frost", "Eira", "Ulf", "Neve", "Tundra"],
+      middle: ["Ice", "Snow", "Frost", "Glacier", "Winter"],
+      epithet: ["Ice Walker", "Snow Hunter", "Frost Giant", "Glacier King"],
+      origin: "Arctic / Frozen"
+    },
+    desert: {
+      family: ["Dustwalker", "Sandstorm", "Oasis", "Scorch", "Mirage", "Sahara"],
+      given: ["Zephyr", "Sirocco", "Amber", "Dune", "Sahara", "Oasis", "Ember", "Khamsin"],
+      middle: ["Sand", "Sun", "Dust", "Mirage", "Heat"],
+      epithet: ["Sand Viper", "Sun Scarab", "Dust Prophet", "Mirage Walker"],
+      origin: "Desert / Sand"
+    },
+    forest: {
+      family: ["Mossheart", "Greenwood", "Fernshade", "Oakenshield", "Thornwood", "Wildfern"],
+      given: ["Bramble", "Rowan", "Hazel", "Sylvan", "Ivy", "Oakley", "Fern", "Hawthorn"],
+      middle: ["Leaf", "Root", "Moss", "Bark", "Petal"],
+      epithet: ["Leaf Walker", "Root Keeper", "Moss Crown", "Bark Guardian"],
+      origin: "Forest / Woodland"
+    },
+    swamp: {
+      family: ["Grimwater", "Blackmire", "Fogbottom", "Rotwood", "Bogfeld"],
+      given: ["Mire", "Fen", "Slough", "Marsh", "Tanner", "Wisp", "Bayou"],
+      middle: ["Mud", "Bog", "Mist", "Rot", "Fen"],
+      epithet: ["Mud Crawler", "Bog Witch", "Mist Hermit", "Fen Serpent"],
+      origin: "Swamp / Bog"
+    },
+    angelic: {
+      family: ["Seraphyne", "Aurelion", "Celestine", "Luminara", "Virtue"],
+      given: ["Raphael", "Cassiel", "Uriel", "Seraphina", "Michael", "Gabriel", "Ariel"],
+      middle: ["Light", "Wing", "Halo", "Grace", "Glory"],
+      epithet: ["Light Bringer", "Winged Guardian", "Halo Bearer", "Graceful Dawn"],
+      origin: "Angelic / Seraphic"
     }
   }
 
@@ -1124,10 +1250,27 @@ export async function POST(req: NextRequest) {
       const genderLine = nameGender && nameGender !== "any" ? `Preferred gender/orientation: ${nameGender}.` : ""
       const syllableLine = nameSyllableBank ? `Incorporate these syllables/roots where possible: ${nameSyllableBank}. Blend them organically into the names.` : ""
 
+      const allStyles = [
+        "Wild Fantasy", "Chinese-inspired", "Japanese-inspired", "Korean-inspired",
+        "Elven", "Demonic", "Beast / Monster", "Cultivation Sect", "Noble House",
+        "Divine / Celestial", "Grimdark", "Fully Invented", "Viking / Norse",
+        "Slavic", "Celtic", "Egyptian", "Mesoamerican", "Arabian / Persian",
+        "Indian / Hindi", "Greco-Roman", "Steampunk", "Cyberpunk",
+        "Celestial Body", "Elemental", "Fey / Faerie", "Undead / Lich",
+        "Dwarven", "Void / Abyss", "African", "Polynesian / Oceanic",
+        "Mongolian / Steppe", "Tibetan / Himalayan", "Roman / Latin",
+        "Lovecraftian / Cosmic Horror", "Gothic / Dark Romantic",
+        "Pirate / Swashbuckler", "Western / Frontier", "Post-Apocalyptic",
+        "Bio-Punk / Genetic", "Clockwork / Automaton", "Tropical / Island",
+        "Arctic / Frozen", "Desert / Sand", "Forest / Woodland",
+        "Swamp / Bog", "Angelic / Seraphic"
+      ]
+
       systemInstruction =
         "You are a fantasy novel naming specialist. Generate fresh, memorable names that fit the user's requested culture, race, creature type, tone, and name length.\n" +
+        `Available styles: ${allStyles.join(", ")}.\n` +
         "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
-        `Generate exactly ${requestedCount} distinct, varied options per request. Names may be Chinese-inspired, Japanese-inspired, invented fantasy, elven, demonic, beast names, sect/faction-style, noble, divine, monstrous, or anything requested.\n` +
+        `Generate exactly ${requestedCount} distinct, varied options per request.\n` +
         "Respect the requested name structure: single, double, triple, title-style, clan-style, or any. If the user asks for beasts, make them usable as beast/monster names rather than human names.\n" +
         `${mashupLine ? mashupLine + "\n" : ""}` +
         `${genderLine ? genderLine + "\n" : ""}` +

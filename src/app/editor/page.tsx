@@ -333,7 +333,25 @@ const NAME_STYLE_OPTIONS = [
   { value: "fey", label: "Fey / Faerie", hint: "Whimsical and tricksy", example: "Twilight Glimmerdew" },
   { value: "undead", label: "Undead / Lich", hint: "Barrow-cold and haunting", example: "Marrow Gravebone" },
   { value: "dwarf", label: "Dwarven", hint: "Stone and forge", example: "Durin Stonehelm" },
-  { value: "void", label: "Void / Abyss", hint: "Eldritch and alien", example: "Xul Abyssal" }
+  { value: "void", label: "Void / Abyss", hint: "Eldritch and alien", example: "Xul Abyssal" },
+  { value: "african", label: "African", hint: "Tribal and ancestral", example: "Zuri Mwangi" },
+  { value: "polynesian", label: "Polynesian / Oceanic", hint: "Island voyager names", example: "Moana Tane" },
+  { value: "mongolian", label: "Mongolian / Steppe", hint: "Horse-lord and sky", example: "Temujin Khatun" },
+  { value: "tibetan", label: "Tibetan / Himalayan", hint: "Mountain monastery", example: "Tenzin Lhamo" },
+  { value: "roman", label: "Roman / Latin", hint: "Legion and senate", example: "Marcus Aurelius" },
+  { value: "lovecraftian", label: "Lovecraftian / Cosmic Horror", hint: "Unspeakable entities", example: "Nyarlathotep" },
+  { value: "gothic", label: "Gothic / Dark Romantic", hint: "Victorian gloom", example: "Victor von Hellsing" },
+  { value: "pirate", label: "Pirate / Swashbuckler", hint: "High seas adventure", example: "Captain Blackthorn" },
+  { value: "western", label: "Western / Frontier", hint: "Wild west grit", example: "Wyatt Cassidy" },
+  { value: "postapocalyptic", label: "Post-Apocalyptic", hint: "Wasteland survivors", example: "Wren Ashford" },
+  { value: "biopunk", label: "Bio-Punk / Genetic", hint: "Gene-spliced futures", example: "Xyla Gen-7" },
+  { value: "clockwork", label: "Clockwork / Automaton", hint: "Gears and cogs", example: "Gearhart Brass" },
+  { value: "tropical", label: "Tropical / Island", hint: "Sun-drenched shores", example: "Kai Lani" },
+  { value: "arctic", label: "Arctic / Frozen", hint: "Permafrost and blizzards", example: "Bjorn Icevein" },
+  { value: "desert", label: "Desert / Sand", hint: "Dune and oasis", example: "Zephyr Dustwalker" },
+  { value: "forest", label: "Forest / Woodland", hint: "Deep green wilds", example: "Bramble Mossheart" },
+  { value: "swamp", label: "Swamp / Bog", hint: "Murky and fetid", example: "Mire Grimwater" },
+  { value: "angelic", label: "Angelic / Seraphic", hint: "Radiant heavenly", example: "Raphael Morningstar" }
 ]
 
 const NAME_STRUCTURE_OPTIONS = [
@@ -366,10 +384,10 @@ const NAME_GENDER_OPTIONS = [
 
 const CATEGORY_STYLE_FILTER: Record<string, string[]> = {
   character: [],
-  beast: ["beast", "demonic", "fey", "undead", "viking", "void", "grimdark"],
-  world: ["cultivation", "noble", "arabian", "viking", "slavic", "celtic", "egyptian", "mesoamerican", "hindi", "greek", "steampunk", "cyberpunk"],
-  place: ["elven", "celestial", "viking", "egyptian", "mesoamerican", "arabian", "hindi", "greek", "dwarf", "elemental", "fey"],
-  item: ["divine", "steampunk", "elemental", "celestial", "dwarf", "noble", "fey"]
+  beast: ["beast", "demonic", "fey", "undead", "viking", "void", "grimdark", "lovecraftian", "swamp", "arctic", "desert", "forest", "postapocalyptic", "biopunk"],
+  world: ["cultivation", "noble", "arabian", "viking", "slavic", "celtic", "egyptian", "mesoamerican", "hindi", "greek", "steampunk", "cyberpunk", "african", "polynesian", "mongolian", "tibetan", "roman", "gothic", "western", "clockwork", "tropical"],
+  place: ["elven", "celestial", "viking", "egyptian", "mesoamerican", "arabian", "hindi", "greek", "dwarf", "elemental", "fey", "tropical", "arctic", "desert", "forest", "swamp", "tibetan", "polynesian", "gothic"],
+  item: ["divine", "steampunk", "elemental", "celestial", "dwarf", "noble", "fey", "angelic", "lovecraftian", "biopunk", "clockwork", "postapocalyptic", "pirate"]
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
