@@ -16611,7 +16611,7 @@ ${navPoints}  </navMap>
         .editor-body {
           flex: 1;
           display: flex;
-          overflow: hidden;
+          overflow-y: auto;
           position: relative;
         }
 
@@ -22600,7 +22600,6 @@ ${navPoints}  </navMap>
           flex: 1;
           display: flex;
           flex-direction: column;
-          overflow: hidden;
           background: var(--background);
         }
 
@@ -22612,7 +22611,6 @@ ${navPoints}  </navMap>
           max-width: 1200px;
           margin: 0 auto;
           width: 100%;
-          overflow: hidden;
           transition: max-width 0.5s ease, padding 0.5s ease;
         }
 
