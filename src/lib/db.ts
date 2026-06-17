@@ -81,10 +81,21 @@ export interface PenPadDB {
       updatedAt: number;
     };
   };
+  'name_forge_data': {
+    key: string;
+    value: {
+      projectId: string;
+      shortlist: any[];
+      presets: any[];
+      generationHistory: any[];
+      nameRatings: Record<string, any>;
+      updatedAt: number;
+    };
+  };
 }
 
 const DB_NAME = 'penpad_engine_db';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export async function getDB(): Promise<IDBPDatabase<any>> {
   return openDB<any>(DB_NAME, DB_VERSION, {
@@ -118,6 +129,9 @@ export async function getDB(): Promise<IDBPDatabase<any>> {
       }
       if (!db.objectStoreNames.contains('reference_library')) {
         db.createObjectStore('reference_library', { keyPath: 'projectId' });
+      }
+      if (!db.objectStoreNames.contains('name_forge_data')) {
+        db.createObjectStore('name_forge_data', { keyPath: 'projectId' });
       }
     },
   });
@@ -239,4 +253,24 @@ export async function getReferenceLibraryLocal(projectId: string): Promise<any[]
   const db = await getDB();
   const res = await db.get('reference_library', projectId);
   return res ? res.data : null;
+}
+
+export interface NameForgeData {
+  projectId: string;
+  shortlist: any[];
+  presets: any[];
+  generationHistory: any[];
+  nameRatings: Record<string, any>;
+  updatedAt: number;
+}
+
+export async function saveNameForgeDataLocal(projectId: string, data: Omit<NameForgeData, 'projectId' | 'updatedAt'>): Promise<void> {
+  const db = await getDB();
+  await db.put('name_forge_data', { projectId, ...data, updatedAt: Date.now() });
+}
+
+export async function getNameForgeDataLocal(projectId: string): Promise<NameForgeData | null> {
+  const db = await getDB();
+  const res = await db.get('name_forge_data', projectId);
+  return res || null;
 }

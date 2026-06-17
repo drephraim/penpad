@@ -15,7 +15,8 @@ import {
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
-  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked
+  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
+  ThumbsUp, ThumbsDown, Shuffle, Undo2, Users
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -33,7 +34,9 @@ import {
   saveExportHistoryLocal,
   getExportHistoryLocal,
   saveReferenceLibraryLocal,
-  getReferenceLibraryLocal
+  getReferenceLibraryLocal,
+  saveNameForgeDataLocal,
+  getNameForgeDataLocal
 } from '@/lib/db'
 import { 
   syncChaptersWithCloud, 
@@ -119,7 +122,7 @@ type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
-type NameForgePicker = 'category' | 'style' | 'style2' | 'structure' | 'tone' | 'gender'
+type NameForgePicker = 'category' | 'style' | 'style2' | 'structure' | 'tone' | 'gender' | 'count'
 
 interface ReferenceEntry {
   id: string
@@ -303,34 +306,34 @@ const NAME_CATEGORY_OPTIONS: Array<{ value: BibleEntry["category"]; label: strin
 ]
 
 const NAME_STYLE_OPTIONS = [
-  { value: "fantasy", label: "Wild Fantasy", hint: "Flexible invented names" },
-  { value: "chinese", label: "Chinese Inspired", hint: "Cultivation-friendly" },
-  { value: "japanese", label: "Japanese Inspired", hint: "Elegant and sharp" },
-  { value: "korean", label: "Korean Inspired", hint: "Clean fantasy tone" },
-  { value: "elven", label: "Elven", hint: "Lyrical and ancient" },
-  { value: "demonic", label: "Demonic", hint: "Dark and severe" },
-  { value: "beast", label: "Beast / Monster", hint: "Feral creature names" },
-  { value: "cultivation", label: "Cultivation Sect", hint: "Sects and realms" },
-  { value: "noble", label: "Noble House", hint: "Aristocratic names" },
-  { value: "divine", label: "Divine / Celestial", hint: "Holy and mythic" },
-  { value: "grimdark", label: "Grimdark", hint: "Harsh and grounded" },
-  { value: "invented", label: "Fully Invented", hint: "No real-world anchor" },
-  { value: "viking", label: "Viking / Norse", hint: "Sagas and fjords" },
-  { value: "slavic", label: "Slavic", hint: "Eastern fairy-tale tone" },
-  { value: "celtic", label: "Celtic", hint: "Misty druidic names" },
-  { value: "egyptian", label: "Egyptian", hint: "Sands of antiquity" },
-  { value: "mesoamerican", label: "Mesoamerican", hint: "Jungle-empire feel" },
-  { value: "arabian", label: "Arabian / Persian", hint: "Silk-road mystique" },
-  { value: "hindi", label: "Indian / Hindi", hint: "Epic mythology weight" },
-  { value: "greek", label: "Greco-Roman", hint: "Classical mythic names" },
-  { value: "steampunk", label: "Steampunk", hint: "Gears, brass, fog" },
-  { value: "cyberpunk", label: "Cyberpunk", hint: "Neon-drenched future" },
-  { value: "celestial", label: "Celestial Body", hint: "Stars, moons, cosmic" },
-  { value: "elemental", label: "Elemental", hint: "Fire, water, stone, storm" },
-  { value: "fey", label: "Fey / Faerie", hint: "Whimsical and tricksy" },
-  { value: "undead", label: "Undead / Lich", hint: "Barrow-cold and haunting" },
-  { value: "dwarf", label: "Dwarven", hint: "Stone and forge" },
-  { value: "void", label: "Void / Abyss", hint: "Eldritch and alien" }
+  { value: "fantasy", label: "Wild Fantasy", hint: "Flexible invented names", example: "Kaelen Draven" },
+  { value: "chinese", label: "Chinese Inspired", hint: "Cultivation-friendly", example: "Shen Qingxuan" },
+  { value: "japanese", label: "Japanese Inspired", hint: "Elegant and sharp", example: "Renka Kurogane" },
+  { value: "korean", label: "Korean Inspired", hint: "Clean fantasy tone", example: "Hyejin Baek" },
+  { value: "elven", label: "Elven", hint: "Lyrical and ancient", example: "Liora Aeltharyn" },
+  { value: "demonic", label: "Demonic", hint: "Dark and severe", example: "Kaelrix Varkhazar" },
+  { value: "beast", label: "Beast / Monster", hint: "Feral creature names", example: "Ravok Ironmane" },
+  { value: "cultivation", label: "Cultivation Sect", hint: "Sects and realms", example: "Azure Peak Sect" },
+  { value: "noble", label: "Noble House", hint: "Aristocratic names", example: "Alistair Vance" },
+  { value: "divine", label: "Divine / Celestial", hint: "Holy and mythic", example: "Orison Seraphyne" },
+  { value: "grimdark", label: "Grimdark", hint: "Harsh and grounded", example: "Malek Graves" },
+  { value: "invented", label: "Fully Invented", hint: "No real-world anchor", example: "Vael Kyr Vale" },
+  { value: "viking", label: "Viking / Norse", hint: "Sagas and fjords", example: "Eirik Ironsson" },
+  { value: "slavic", label: "Slavic", hint: "Eastern fairy-tale tone", example: "Dobromir Zarubin" },
+  { value: "celtic", label: "Celtic", hint: "Misty druidic names", example: "Aisling O'Morain" },
+  { value: "egyptian", label: "Egyptian", hint: "Sands of antiquity", example: "Neferu Amun-Ra" },
+  { value: "mesoamerican", label: "Mesoamerican", hint: "Jungle-empire feel", example: "Cuauhtli Chimal" },
+  { value: "arabian", label: "Arabian / Persian", hint: "Silk-road mystique", example: "Farid Al-Rashid" },
+  { value: "hindi", label: "Indian / Hindi", hint: "Epic mythology weight", example: "Arjun Devaraja" },
+  { value: "greek", label: "Greco-Roman", hint: "Classical mythic names", example: "Cassandra Aetos" },
+  { value: "steampunk", label: "Steampunk", hint: "Gears, brass, fog", example: "Cogsworth Brasswick" },
+  { value: "cyberpunk", label: "Cyberpunk", hint: "Neon-drenched future", example: "Kai-7 Neon" },
+  { value: "celestial", label: "Celestial Body", hint: "Stars, moons, cosmic", example: "Nova Stardust" },
+  { value: "elemental", label: "Elemental", hint: "Fire, water, stone, storm", example: "Ignis Flamestrike" },
+  { value: "fey", label: "Fey / Faerie", hint: "Whimsical and tricksy", example: "Twilight Glimmerdew" },
+  { value: "undead", label: "Undead / Lich", hint: "Barrow-cold and haunting", example: "Marrow Gravebone" },
+  { value: "dwarf", label: "Dwarven", hint: "Stone and forge", example: "Durin Stonehelm" },
+  { value: "void", label: "Void / Abyss", hint: "Eldritch and alien", example: "Xul Abyssal" }
 ]
 
 const NAME_STRUCTURE_OPTIONS = [
@@ -367,6 +370,51 @@ const CATEGORY_STYLE_FILTER: Record<string, string[]> = {
   world: ["cultivation", "noble", "arabian", "viking", "slavic", "celtic", "egyptian", "mesoamerican", "hindi", "greek", "steampunk", "cyberpunk"],
   place: ["elven", "celestial", "viking", "egyptian", "mesoamerican", "arabian", "hindi", "greek", "dwarf", "elemental", "fey"],
   item: ["divine", "steampunk", "elemental", "celestial", "dwarf", "noble", "fey"]
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  character: "#60a5fa",
+  beast: "#f87171",
+  world: "#34d399",
+  place: "#fbbf24",
+  item: "#a78bfa"
+}
+
+const NAME_GEN_COUNT_OPTIONS = [
+  { value: 3, label: "3", hint: "Quick pick" },
+  { value: 5, label: "5", hint: "Standard" },
+  { value: 10, label: "10", hint: "Plenty" },
+  { value: 15, label: "15", hint: "Deep dive" },
+  { value: 20, label: "20", hint: "Maximum" }
+]
+
+interface NameForgePreset {
+  id: string
+  name: string
+  params: {
+    category: string
+    style: string
+    style2: string
+    structure: string
+    tone: string
+    gender: string
+    customPrompt: string
+    syllableBank: string
+    count: number
+  }
+  createdAt: number
+}
+
+interface NameGenRound {
+  timestamp: number
+  params: Record<string, string | number>
+  results: GeneratedNameOption[]
+}
+
+interface NameRating {
+  name: string
+  rating: "up" | "down"
+  timestamp: number
 }
 
 interface ProgressionProfileTemplate {
@@ -1123,10 +1171,26 @@ function EditorContent() {
   const [selectedForBatch, setSelectedForBatch] = useState<Set<number>>(new Set())
   const [showLoreEditor, setShowLoreEditor] = useState(false)
   const [loreEditorDraft, setLoreEditorDraft] = useState<GeneratedNameOption | null>(null)
+  const [loreEditedMeaning, setLoreEditedMeaning] = useState("")
+  const [loreEditedContent, setLoreEditedContent] = useState("")
+  const [loreEditedOrigin, setLoreEditedOrigin] = useState("")
+  const [loreEditedPronunciation, setLoreEditedPronunciation] = useState("")
   const [nameVariantLoading, setNameVariantLoading] = useState(false)
   const [showNamePrompt, setShowNamePrompt] = useState(false)
   const [showNameSyllables, setShowNameSyllables] = useState(false)
   const [nameStyle2Options, setNameStyle2Options] = useState(NAME_STYLE_OPTIONS)
+  const [nameGenCount, setNameGenCount] = useState(5)
+  const [nameSearchQuery, setNameSearchQuery] = useState("")
+  const [nameCategoryFilter, setNameCategoryFilter] = useState<string | null>(null)
+  const [namePresets, setNamePresets] = useState<NameForgePreset[]>([])
+  const [nameGenHistory, setNameGenHistory] = useState<NameGenRound[]>([])
+  const [nameRatings, setNameRatings] = useState<Record<string, NameRating>>({})
+  const [showPresetsPanel, setShowPresetsPanel] = useState(false)
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false)
+  const [showNameSearch, setShowNameSearch] = useState(false)
+  const [savePresetName, setSavePresetName] = useState("")
+  const [showSavePresetInput, setShowSavePresetInput] = useState(false)
+  const [nameUndoEntry, setNameUndoEntry] = useState<BibleEntry | null>(null)
 
   useEffect(() => {
     const allowed = CATEGORY_STYLE_FILTER[nameCategory]
@@ -5366,7 +5430,7 @@ const fillEmptyCustomJsonData = (
           nameSyllableBank: nameSyllableBank || undefined,
           customPrompt: nameCustomPrompt,
           bibleEntries,
-          count: 5,
+          count: nameGenCount,
           chapterTitle: activeNote?.title || "",
           chapterContent: activeNote?.content || ""
         })
@@ -5396,12 +5460,22 @@ const fillEmptyCustomJsonData = (
         })
       }
 
-      const newBatch = uniqueNames.slice(0, 5)
+      const newBatch = uniqueNames.slice(0, nameGenCount)
       if (append) {
-        setGeneratedNames(prev => [...prev, ...newBatch].slice(0, 50))
+        setGeneratedNames(prev => [...prev, ...newBatch].slice(0, 100))
       } else {
         setGeneratedNames(newBatch)
       }
+
+      if (newBatch.length > 0) {
+        const round: NameGenRound = {
+          timestamp: Date.now(),
+          params: { style: nameStyle, style2: nameStyle2, category: nameCategory, structure: nameStructure, tone: nameTone, gender: nameGender, count: nameGenCount },
+          results: newBatch
+        }
+        setNameGenHistory(prev => [round, ...prev].slice(0, 20))
+      }
+
       if (newBatch.length === 0) {
         setNameGenerateError("No fresh names came back. Try different settings or reroll.")
       }
@@ -5456,7 +5530,14 @@ const fillEmptyCustomJsonData = (
 
   const acceptGeneratedNameWithLore = async () => {
     if (!loreEditorDraft) return
-    await acceptGeneratedName(loreEditorDraft)
+    const merged: GeneratedNameOption = {
+      ...loreEditorDraft,
+      meaning: loreEditedMeaning || loreEditorDraft.meaning,
+      bibleContent: loreEditedContent || loreEditorDraft.bibleContent,
+      raceOrOrigin: loreEditedOrigin || loreEditorDraft.raceOrOrigin,
+      pronunciation: loreEditedPronunciation || loreEditorDraft.pronunciation
+    }
+    await acceptGeneratedName(merged)
     setShowLoreEditor(false)
     setLoreEditorDraft(null)
   }
@@ -5478,15 +5559,15 @@ const fillEmptyCustomJsonData = (
           nameGender,
           customPrompt: `Variants of "${base.name}": similar sound, same vibe, alternative spellings. ${nameCustomPrompt}`,
           bibleEntries,
-          count: 5,
+          count: nameGenCount,
           chapterTitle: activeNote?.title || "",
           chapterContent: activeNote?.content || ""
         })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to generate variants")
-      const names: GeneratedNameOption[] = (Array.isArray(data.names) ? data.names : []).slice(0, 5)
-      setGeneratedNames(prev => [...names, ...prev].slice(0, 50))
+      const names: GeneratedNameOption[] = (Array.isArray(data.names) ? data.names : []).slice(0, nameGenCount)
+      setGeneratedNames(prev => [...names, ...prev].slice(0, 100))
     } catch (err) {
       setNameGenerateError(err instanceof Error ? err.message : "Failed to generate variants")
     } finally {
@@ -5527,6 +5608,154 @@ const fillEmptyCustomJsonData = (
   const insertNameAtCursor = (e: React.MouseEvent, name: string) => {
     e.preventDefault()
     insertAtCursor(name)
+  }
+
+  const randomizeNameForgeParams = () => {
+    const cats = NAME_CATEGORY_OPTIONS
+    const styles = NAME_STYLE_OPTIONS
+    const structs = NAME_STRUCTURE_OPTIONS
+    const tones = NAME_TONE_OPTIONS
+    const genders = NAME_GENDER_OPTIONS
+    setNameCategory(cats[Math.floor(Math.random() * cats.length)].value as BibleEntry["category"])
+    setNameStyle(styles[Math.floor(Math.random() * styles.length)].value)
+    setNameStyle2(Math.random() < 0.4 ? styles[Math.floor(Math.random() * styles.length)].value : "")
+    setNameStructure(structs[Math.floor(Math.random() * structs.length)].value)
+    setNameTone(tones[Math.floor(Math.random() * tones.length)].value)
+    setNameGender(genders[Math.floor(Math.random() * genders.length)].value)
+    setNameCustomPrompt("")
+    setNameSyllableBank("")
+    setTimeout(() => generateNameOptions(false), 50)
+  }
+
+  const speakName = (name: string, pronunciation?: string) => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+      const text = pronunciation || name
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 0.8
+      utterance.pitch = 1.0
+      window.speechSynthesis.speak(utterance)
+    }
+  }
+
+  const rateName = (option: GeneratedNameOption, rating: "up" | "down") => {
+    const key = normalizeNameForCompare(option.name)
+    setNameRatings(prev => ({
+      ...prev,
+      [key]: { name: option.name, rating, timestamp: Date.now() }
+    }))
+  }
+
+  const exportNamesCSV = () => {
+    if (generatedNames.length === 0) return
+    const headers = "name,category,style,structure,meaning,pronunciation,origin,vibe"
+    const rows = generatedNames.map(n =>
+      `"${n.name}","${n.category}","${n.style}","${n.structure}","${(n.meaning || "").replace(/"/g, '""')}","${(n.pronunciation || "").replace(/"/g, '""')}","${(n.raceOrOrigin || "").replace(/"/g, '""')}","${(n.vibe || "").replace(/"/g, '""')}"`
+    )
+    const blob = new Blob([headers + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url; a.download = "name-forge-export.csv"; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportNamesJSON = () => {
+    if (generatedNames.length === 0) return
+    const blob = new Blob([JSON.stringify(generatedNames, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url; a.download = "name-forge-export.json"; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const saveCurrentPreset = () => {
+    if (!savePresetName.trim()) return
+    const preset: NameForgePreset = {
+      id: crypto.randomUUID(),
+      name: savePresetName.trim(),
+      params: {
+        category: nameCategory,
+        style: nameStyle,
+        style2: nameStyle2,
+        structure: nameStructure,
+        tone: nameTone,
+        gender: nameGender,
+        customPrompt: nameCustomPrompt,
+        syllableBank: nameSyllableBank,
+        count: nameGenCount
+      },
+      createdAt: Date.now()
+    }
+    setNamePresets(prev => [preset, ...prev])
+    setSavePresetName("")
+    setShowSavePresetInput(false)
+  }
+
+  const loadPreset = (preset: NameForgePreset) => {
+    setNameCategory(preset.params.category as BibleEntry["category"])
+    setNameStyle(preset.params.style)
+    setNameStyle2(preset.params.style2)
+    setNameStructure(preset.params.structure)
+    setNameTone(preset.params.tone)
+    setNameGender(preset.params.gender)
+    setNameCustomPrompt(preset.params.customPrompt)
+    setNameSyllableBank(preset.params.syllableBank)
+    setNameGenCount(preset.params.count)
+    setShowPresetsPanel(false)
+  }
+
+  const deletePreset = (presetId: string) => {
+    setNamePresets(prev => prev.filter(p => p.id !== presetId))
+  }
+
+  const handleUndoAddToBible = () => {
+    if (nameUndoEntry) {
+      deleteBibleEntry(nameUndoEntry.id)
+      setNameUndoEntry(null)
+    }
+  }
+
+  const generateNameFamily = async (base: GeneratedNameOption) => {
+    if (nameGenerateLoading) return
+    setNameGenerateLoading(true)
+    setNameGenerateError("")
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "name_generate",
+          nameStyle,
+          nameStyle2: nameStyle2 || undefined,
+          nameCategory: base.category,
+          nameStructure,
+          nameTone,
+          nameGender,
+          customPrompt: `Generate a family/clan/dynasty set related to "${base.name}": siblings, clan members, house variants. ${nameCustomPrompt}`,
+          bibleEntries,
+          count: nameGenCount,
+          chapterTitle: activeNote?.title || "",
+          chapterContent: activeNote?.content || ""
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to generate family names")
+      const names: GeneratedNameOption[] = (Array.isArray(data.names) ? data.names : []).slice(0, nameGenCount)
+      setGeneratedNames(prev => [...names, ...prev].slice(0, 100))
+    } catch (err) {
+      setNameGenerateError(err instanceof Error ? err.message : "Failed to generate family names")
+    } finally {
+      setNameGenerateLoading(false)
+    }
+  }
+
+  const acceptGeneratedNameWithUndo = async (option: GeneratedNameOption) => {
+    setNameUndoEntry(null)
+    await acceptGeneratedName(option)
+    const normalized = normalizeNameForCompare(option.name)
+    const added = bibleEntries.find(e => normalizeNameForCompare(e.name) === normalized)
+    if (added) setNameUndoEntry(added)
+    setTimeout(() => setNameUndoEntry(null), 10000)
   }
 
   const deleteBibleEntry = async (entryId: string) => {
@@ -6657,6 +6886,48 @@ const fillEmptyCustomJsonData = (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, projectId])
 
+  const fetchNameForgeData = useCallback(async () => {
+    if (!projectId) return
+    try {
+      const data = await getNameForgeDataLocal(projectId)
+      if (data) {
+        setNameShortlist(data.shortlist || [])
+        setNamePresets(data.presets || [])
+        setNameGenHistory(data.generationHistory || [])
+        setNameRatings(data.nameRatings || {})
+      }
+    } catch (e) {
+      console.error("Failed to load Name Forge data:", e)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (user && projectId) {
+      fetchNameForgeData()
+    }
+  }, [user, projectId, fetchNameForgeData])
+
+  const saveNameForgeData = useCallback(async () => {
+    if (!projectId) return
+    try {
+      await saveNameForgeDataLocal(projectId, {
+        shortlist: nameShortlist,
+        presets: namePresets,
+        generationHistory: nameGenHistory,
+        nameRatings
+      })
+    } catch (e) {
+      console.error("Failed to save Name Forge data:", e)
+    }
+  }, [projectId, nameShortlist, namePresets, nameGenHistory, nameRatings])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (projectId) saveNameForgeData()
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [nameShortlist, namePresets, nameGenHistory, nameRatings, projectId, saveNameForgeData])
+
   useEffect(() => {
     let active = true
     if (activeNoteId) {
@@ -6698,6 +6969,30 @@ const fillEmptyCustomJsonData = (
       setIsBibleGroupAddMenuOpen(false)
     }
   }, [isBibleSelectionMode, selectedBibleIds.size])
+
+  // Keyboard shortcuts for Name Forge
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!isLeftSidebarOpen || activeSidebarTab !== 'names') return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.altKey && e.key === 'g') { e.preventDefault(); generateNameOptions(false) }
+      if (e.altKey && e.key === 'a' && generatedNames.length > 0) { e.preventDefault(); acceptGeneratedNameWithUndo(generatedNames[0]) }
+      if (e.altKey && e.key === 's' && generatedNames.length > 0) { e.preventDefault(); addToShortlist(generatedNames[0]) }
+      if (e.altKey && e.key === 'r') { e.preventDefault(); randomizeNameForgeParams() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  })
+
+  // Reset lore editor fields when opening
+  useEffect(() => {
+    if (showLoreEditor && loreEditorDraft) {
+      setLoreEditedMeaning(loreEditorDraft.meaning || "")
+      setLoreEditedContent(loreEditorDraft.bibleContent || "")
+      setLoreEditedOrigin(loreEditorDraft.raceOrOrigin || "")
+      setLoreEditedPronunciation(loreEditorDraft.pronunciation || "")
+    }
+  }, [showLoreEditor, loreEditorDraft])
 
   const sanitizeFilename = (name: string): string => {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
@@ -10638,13 +10933,19 @@ ${navPoints}  </navMap>
                     { key: "style2" as const, label: "Mashup", value: nameStyle2 ? (NAME_STYLE_OPTIONS.find(option => option.value === nameStyle2)?.label || "Wild Fantasy") : "None" },
                     { key: "gender" as const, label: "Gender", value: NAME_GENDER_OPTIONS.find(option => option.value === nameGender)?.label || "Any" },
                     { key: "structure" as const, label: "Shape", value: NAME_STRUCTURE_OPTIONS.find(option => option.value === nameStructure)?.label || "Any Structure" },
-                    { key: "tone" as const, label: "Tone", value: NAME_TONE_OPTIONS.find(option => option.value === nameTone)?.label || "Memorable" }
+                    { key: "tone" as const, label: "Tone", value: NAME_TONE_OPTIONS.find(option => option.value === nameTone)?.label || "Memorable" },
+                    { key: "count" as const, label: "Count", value: `${nameGenCount}` },
+                    { key: "presets" as const, label: "Presets", value: namePresets.length > 0 ? `${namePresets.length} saved` : "Save / Load" }
                   ].map(item => (
                     <button
                       key={item.key}
                       type="button"
                       className="name-picker-card"
-                      onClick={() => setActiveNamePicker(item.key)}
+                      onClick={() => {
+                        if (item.key === "presets") setShowPresetsPanel(!showPresetsPanel)
+                        else if (item.key === "count") setActiveNamePicker("count" as any)
+                        else setActiveNamePicker(item.key as NameForgePicker)
+                      }}
                     >
                       <span>{item.label}</span>
                       <strong>{item.value}</strong>
@@ -10698,9 +10999,19 @@ ${navPoints}  </navMap>
                     className="name-forge-generate-btn"
                     onClick={() => generateNameOptions(false)}
                     disabled={nameGenerateLoading}
+                    title="Generate (Alt+G)"
                   >
                     {nameGenerateLoading ? <Loader2 size={15} className="spin" /> : <Wand2 size={15} />}
-                    {nameGenerateLoading ? "Forging..." : generatedNames.length > 0 ? "Reroll 5 Names" : "Generate 5 Names"}
+                    {nameGenerateLoading ? "Forging..." : generatedNames.length > 0 ? `Reroll ${nameGenCount} Names` : `Generate ${nameGenCount} Names`}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ai-sub"
+                    onClick={randomizeNameForgeParams}
+                    disabled={nameGenerateLoading}
+                    title="Inspire Me - randomize all settings"
+                  >
+                    <Shuffle size={14} />
                   </button>
                   {generatedNames.length > 0 && (
                     <button
@@ -10710,42 +11021,88 @@ ${navPoints}  </navMap>
                       disabled={nameGenerateLoading}
                     >
                       {nameGenerateLoading ? <Loader2 size={13} className="spin" /> : <Plus size={13} />}
-                      Generate More
+                      More
                     </button>
                   )}
                 </div>
 
                 {nameGenerateError && <div className="arc-seed-error">{nameGenerateError}</div>}
 
-                {/* Batch actions bar */}
+                {/* Search / filter */}
                 {generatedNames.length > 0 && (
-                  <div className="name-batch-actions">
-                    <label className="name-batch-toggle">
-                      <input
-                        type="checkbox"
-                        checked={selectedForBatch.size === generatedNames.length}
-                        onChange={() => {
-                          if (selectedForBatch.size === generatedNames.length) {
-                            setSelectedForBatch(new Set())
-                          } else {
-                            setSelectedForBatch(new Set(generatedNames.map((_, i) => i)))
-                          }
-                        }}
-                      />
-                      Select all
-                    </label>
-                    {selectedForBatch.size > 0 && (
-                      <button type="button" className="btn-ai-sub btn-ai-primary btn-sm" onClick={batchAddToBible}>
-                        Add {selectedForBatch.size} to Bible
+                  <div className="name-batch-actions" style={{ flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: "0.3rem", alignItems: "center", flex: 1 }}>
+                      <label className="name-batch-toggle">
+                        <input
+                          type="checkbox"
+                          checked={selectedForBatch.size === generatedNames.length}
+                          onChange={() => {
+                            if (selectedForBatch.size === generatedNames.length) {
+                              setSelectedForBatch(new Set())
+                            } else {
+                              setSelectedForBatch(new Set(generatedNames.map((_, i) => i)))
+                            }
+                          }}
+                        />
+                        All
+                      </label>
+                      {selectedForBatch.size > 0 && (
+                        <button type="button" className="btn-ai-sub btn-ai-primary btn-sm" onClick={batchAddToBible}>
+                          Add {selectedForBatch.size}
+                        </button>
+                      )}
+                      <button type="button" className="btn-ai-sub btn-sm" onClick={exportNamesCSV} title="Export as CSV">
+                        <FileDown size={12} /> CSV
                       </button>
-                    )}
+                      <button type="button" className="btn-ai-sub btn-sm" onClick={exportNamesJSON} title="Export as JSON">
+                        <FileDown size={12} /> JSON
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-ai-sub btn-sm"
+                      onClick={() => setShowNameSearch(!showNameSearch)}
+                      title="Search/filter names"
+                    >
+                      <Search size={12} />
+                    </button>
+                  </div>
+                )}
+                {showNameSearch && generatedNames.length > 0 && (
+                  <div style={{ display: "flex", gap: "0.3rem", flexDirection: "column" }}>
+                    <input
+                      type="text"
+                      value={nameSearchQuery}
+                      onChange={e => setNameSearchQuery(e.target.value)}
+                      placeholder="Search generated names..."
+                      className="name-syllable-input"
+                      style={{ minHeight: 30, fontSize: "0.72rem" }}
+                    />
+                    <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                      {["all", "character", "beast", "world", "place", "item"].map(cat => (
+                        <button
+                          key={cat}
+                          type="button"
+                          className={`btn-ai-sub btn-sm ${(nameCategoryFilter === cat || (!nameCategoryFilter && cat === "all")) ? "btn-ai-primary" : ""}`}
+                          onClick={() => setNameCategoryFilter(cat === "all" ? null : cat)}
+                          style={{ fontSize: "0.6rem", padding: "0.15rem 0.4rem" }}
+                        >
+                          {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 <div className="name-results-list">
                   {generatedNames.length === 0 && !nameGenerateLoading ? (
                     <div className="empty-state-text compact">No names generated yet.</div>
-                  ) : generatedNames.map((option, idx) => (
+                  ) : (nameSearchQuery || nameCategoryFilter ? generatedNames.filter(o => {
+                    const q = nameSearchQuery.toLowerCase()
+                    if (q && !o.name.toLowerCase().includes(q) && !(o.meaning || "").toLowerCase().includes(q) && !(o.raceOrOrigin || "").toLowerCase().includes(q)) return false
+                    if (nameCategoryFilter && o.category !== nameCategoryFilter) return false
+                    return true
+                  }) : generatedNames).map((option, idx) => (
                     <div key={`${option.name}-${idx}`} className="name-result-card">
                       <div className="name-result-card-header">
                         <label className="name-batch-checkbox" onClick={(e) => e.stopPropagation()}>
@@ -10756,7 +11113,16 @@ ${navPoints}  </navMap>
                           />
                         </label>
                         <div className="name-result-main">
-                          <small>{option.category} - {option.structure || nameStructure}</small>
+                          <small style={{ color: CATEGORY_COLORS[option.category] || "#c084fc" }}>
+                            <span style={{ marginRight: 4, verticalAlign: "middle" }}>
+                              {option.category === "character" ? <User size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "beast" ? <PawPrint size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "world" ? <Globe size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "place" ? <MapPin size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "item" ? <Package size={11} style={{ display: "inline", verticalAlign: "middle" }} /> : null}
+                            </span>
+                            {option.category} - {option.structure || nameStructure}
+                          </small>
                           <strong>{option.name}</strong>
                           <p>{option.meaning || option.vibe || option.bibleContent}</p>
                         </div>
@@ -10769,10 +11135,11 @@ ${navPoints}  </navMap>
                         <button
                           type="button"
                           className="btn-ai-sub btn-ai-primary"
-                          onClick={() => acceptGeneratedName(option)}
+                          onClick={() => acceptGeneratedNameWithUndo(option)}
                           disabled={acceptedNameId === normalizeNameForCompare(option.name)}
+                          title="Add to Bible (Alt+A)"
                         >
-                          {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add to Bible"}
+                          {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add"}
                         </button>
                         <button
                           type="button"
@@ -10798,9 +11165,17 @@ ${navPoints}  </navMap>
                           className="btn-ai-sub"
                           onClick={() => addToShortlist(option)}
                           disabled={nameShortlist.some(n => normalizeNameForCompare(n.name) === normalizeNameForCompare(option.name))}
-                          title="Save to shortlist"
+                          title="Save to shortlist (Alt+S)"
                         >
                           <Bookmark size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ai-sub"
+                          onClick={() => speakName(option.name, option.pronunciation)}
+                          title="Hear pronunciation"
+                        >
+                          <Volume2 size={13} />
                         </button>
                         <button
                           type="button"
@@ -10810,6 +11185,31 @@ ${navPoints}  </navMap>
                           title="Generate variants"
                         >
                           {nameVariantLoading ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ai-sub"
+                          onClick={() => generateNameFamily(option)}
+                          disabled={nameGenerateLoading}
+                          title="Generate family/clan"
+                        >
+                          <Users size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn-ai-sub ${nameRatings[normalizeNameForCompare(option.name)]?.rating === "up" ? "btn-ai-primary" : ""}`}
+                          onClick={() => rateName(option, "up")}
+                          title="Like"
+                        >
+                          <ThumbsUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn-ai-sub ${nameRatings[normalizeNameForCompare(option.name)]?.rating === "down" ? "btn-ai-primary" : ""}`}
+                          onClick={() => rateName(option, "down")}
+                          title="Dislike"
+                        >
+                          <ThumbsDown size={12} />
                         </button>
                       </div>
                     </div>
@@ -10831,7 +11231,7 @@ ${navPoints}  </navMap>
                           <button
                             className="btn-ai-sub btn-ai-primary btn-sm"
                             onClick={() => {
-                              acceptGeneratedName(option)
+                              acceptGeneratedNameWithUndo(option)
                               removeFromShortlist(option.name)
                             }}
                           >Add</button>
@@ -10845,23 +11245,152 @@ ${navPoints}  </navMap>
                   </div>
                 )}
 
+                {/* Undo bar */}
+                {nameUndoEntry && (
+                  <div className="name-batch-actions" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "var(--radius-sm)", padding: "0.35rem 0.55rem" }}>
+                    <span style={{ fontSize: "0.72rem", color: "#6ee7b7" }}><Check size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />Added to Bible</span>
+                    <button type="button" className="btn-ai-sub btn-sm" onClick={handleUndoAddToBible} style={{ borderColor: "rgba(239,68,68,0.3)", color: "#fca5a5" }}>
+                      <Undo2 size={12} /> Undo
+                    </button>
+                  </div>
+                )}
+
+                {/* History section */}
+                {nameGenHistory.length > 0 && (
+                  <div className="name-shortlist-section">
+                    <div className="name-shortlist-header" onClick={() => setShowHistoryPanel(!showHistoryPanel)} style={{ cursor: "pointer" }}>
+                      <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">{showHistoryPanel ? "▾" : "▸"} History ({nameGenHistory.length} rounds)</span>
+                    </div>
+                    {showHistoryPanel && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                        {nameGenHistory.map((round, ri) => (
+                          <div key={ri} style={{ padding: "0.3rem 0.45rem", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm)", fontSize: "0.68rem" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.2rem" }}>
+                              <span style={{ color: "var(--text-dim)" }}>{new Date(round.timestamp).toLocaleTimeString()}</span>
+                              <button
+                                type="button"
+                                className="btn-ai-sub btn-sm"
+                                onClick={() => {
+                                  const p = round.params
+                                  setNameStyle(String(p.style))
+                                  setNameStyle2(String(p.style2 || ""))
+                                  setNameCategory(String(p.category) as BibleEntry["category"])
+                                  setNameStructure(String(p.structure))
+                                  setNameTone(String(p.tone))
+                                  setNameGender(String(p.gender))
+                                  setNameGenCount(Number(p.count) || 5)
+                                  setNameCustomPrompt("")
+                                  setNameSyllableBank("")
+                                  setShowHistoryPanel(false)
+                                }}
+                              >
+                                Reload
+                              </button>
+                            </div>
+                            <div style={{ color: "var(--text-secondary)" }}>
+                              {round.params.style}{round.params.style2 ? ` + ${round.params.style2}` : ""} · {round.params.category} · {round.results.length} names
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Presets section */}
+                {showPresetsPanel && (
+                  <div className="name-shortlist-section">
+                    <div className="name-shortlist-header">
+                      <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Presets</span>
+                      <button className="btn-ai-sub btn-sm" onClick={() => { setShowSavePresetInput(!showSavePresetInput); setSavePresetName("") }}>
+                        <Save size={12} /> Save current
+                      </button>
+                    </div>
+                    {showSavePresetInput && (
+                      <div style={{ display: "flex", gap: "0.3rem" }}>
+                        <input
+                          type="text"
+                          value={savePresetName}
+                          onChange={e => setSavePresetName(e.target.value)}
+                          placeholder="Preset name..."
+                          className="name-syllable-input"
+                          style={{ minHeight: 28, fontSize: "0.7rem", flex: 1 }}
+                          onKeyDown={e => { if (e.key === "Enter") saveCurrentPreset() }}
+                        />
+                        <button className="btn-ai-sub btn-ai-primary btn-sm" onClick={saveCurrentPreset}><Check size={12} /></button>
+                      </div>
+                    )}
+                    {namePresets.length === 0 && (
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", padding: "0.3rem 0" }}>No saved presets yet.</div>
+                    )}
+                    {namePresets.map(preset => (
+                      <div key={preset.id} className="name-shortlist-item">
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+                          <strong style={{ fontSize: "0.75rem" }}>{preset.name}</strong>
+                          <small style={{ fontSize: "0.6rem", color: "var(--text-dim)" }}>
+                            {preset.params.style}{preset.params.style2 ? ` + ${preset.params.style2}` : ""} · {preset.params.category} · {preset.params.count} names
+                          </small>
+                        </div>
+                        <div className="name-shortlist-actions">
+                          <button className="btn-ai-sub btn-ai-primary btn-sm" onClick={() => loadPreset(preset)}>Load</button>
+                          <button className="btn-ai-sub btn-sm" onClick={() => deletePreset(preset.id)}><X size={12} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Lore Editor Modal */}
                 {showLoreEditor && loreEditorDraft && (
                   <div className="name-picker-popover-overlay" onClick={() => { setShowLoreEditor(false); setLoreEditorDraft(null) }}>
                     <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
                       <div className="name-picker-popover-header">
-                        <strong>Add Lore: {loreEditorDraft.name}</strong>
+                        <strong>{loreEditorDraft.name}</strong>
                         <button type="button" onClick={() => { setShowLoreEditor(false); setLoreEditorDraft(null) }} title="Close">
                           <X size={16} />
                         </button>
                       </div>
-                      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                        <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>
-                          {loreEditorDraft.meaning || loreEditorDraft.vibe || "No description yet."}
-                        </p>
+                      <div style={{ padding: "0.5rem 0.75rem", display: "flex", flexDirection: "column", gap: 8, fontSize: "0.75rem" }}>
+                        <label style={{ fontWeight: 700, color: "var(--text-secondary)" }}>Lore / Description</label>
+                        <textarea
+                          value={loreEditedContent}
+                          onChange={e => setLoreEditedContent(e.target.value)}
+                          rows={3}
+                          className="name-syllable-input"
+                          style={{ fontSize: "0.75rem" }}
+                          placeholder="Describe this name's lore..."
+                        />
+                        <label style={{ fontWeight: 700, color: "var(--text-secondary)" }}>Meaning</label>
+                        <input
+                          type="text"
+                          value={loreEditedMeaning}
+                          onChange={e => setLoreEditedMeaning(e.target.value)}
+                          className="name-syllable-input"
+                          style={{ minHeight: 28, fontSize: "0.75rem" }}
+                          placeholder="What does this name mean?"
+                        />
+                        <label style={{ fontWeight: 700, color: "var(--text-secondary)" }}>Origin / Race</label>
+                        <input
+                          type="text"
+                          value={loreEditedOrigin}
+                          onChange={e => setLoreEditedOrigin(e.target.value)}
+                          className="name-syllable-input"
+                          style={{ minHeight: 28, fontSize: "0.75rem" }}
+                          placeholder="Cultural or racial origin"
+                        />
+                        <label style={{ fontWeight: 700, color: "var(--text-secondary)" }}>Pronunciation</label>
+                        <input
+                          type="text"
+                          value={loreEditedPronunciation}
+                          onChange={e => setLoreEditedPronunciation(e.target.value)}
+                          className="name-syllable-input"
+                          style={{ minHeight: 28, fontSize: "0.75rem" }}
+                          placeholder="How to pronounce"
+                        />
                         <button
                           className="btn-ai-sub btn-ai-primary"
                           onClick={acceptGeneratedNameWithLore}
+                          style={{ marginTop: 4 }}
                         >
                           <Check size={14} /> Save to Bible
                         </button>
@@ -10870,7 +11399,32 @@ ${navPoints}  </navMap>
                   </div>
                 )}
 
-                {activeNamePicker && (
+                {activeNamePicker === "count" && (
+                  <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
+                    <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()}>
+                      <div className="name-picker-popover-header">
+                        <strong>Number of names</strong>
+                        <button type="button" onClick={() => setActiveNamePicker(null)}><X size={16} /></button>
+                      </div>
+                      <div className="name-picker-options">
+                        {NAME_GEN_COUNT_OPTIONS.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={`name-picker-option ${nameGenCount === option.value ? "active" : ""}`}
+                            onClick={() => { setNameGenCount(option.value); setActiveNamePicker(null) }}
+                          >
+                            <span>{option.label}</span>
+                            <small>{option.hint}</small>
+                            {nameGenCount === option.value && <Check size={14} />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeNamePicker && activeNamePicker !== "count" && (
                   <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
                     <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()}>
                       <div className="name-picker-popover-header">
@@ -10899,6 +11453,7 @@ ${navPoints}  </navMap>
                               (activeNamePicker === "gender" && option.value === nameGender) ||
                               (activeNamePicker === "structure" && option.value === nameStructure) ||
                               (activeNamePicker === "tone" && option.value === nameTone)
+                            const example = (option as any).example
                             return (
                               <button
                                 key={option.value}
@@ -10916,6 +11471,11 @@ ${navPoints}  </navMap>
                               >
                                 <span>{option.label}</span>
                                 <small>{option.hint}</small>
+                                {example && (activeNamePicker === "style" || activeNamePicker === "style2") && (
+                                  <small style={{ gridColumn: "1 / -1", color: "#a78bfa", fontSize: "0.62rem", fontStyle: "italic", marginTop: "-0.15rem" }}>
+                                    e.g. {example}
+                                  </small>
+                                )}
                                 {isActive && <Check size={14} />}
                               </button>
                             )

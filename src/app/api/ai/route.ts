@@ -221,6 +221,7 @@ function buildFallbackNameOptions(body: Record<string, any>) {
   const structure = String(body.nameStructure || "any").toLowerCase()
   const tone = String(body.nameTone || "memorable")
   const prompt = String(body.customPrompt || "")
+  const requestedCount = Math.min(Math.max(1, Number(body.count) || 5), 20)
   const existing = new Set(
     Array.isArray(body.bibleEntries)
       ? body.bibleEntries.map((entry: any) => normalizeNameForCompare(String(entry?.name || ""))).filter(Boolean)
@@ -457,7 +458,7 @@ function buildFallbackNameOptions(body: Record<string, any>) {
     vibe: string
     bibleContent: string
   }> = []
-  for (let offset = 0; options.length < 5 && offset < 50; offset += 1) {
+  for (let offset = 0; options.length < requestedCount && offset < 200; offset += 1) {
     const name = makeBase(offset)
     const normalized = normalizeNameForCompare(name)
     if (!normalized || existing.has(normalized) || options.some(option => normalizeNameForCompare(option.name) === normalized)) continue
@@ -1118,7 +1119,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "bibleEntries is required for name_generate" }, { status: 400 })
       }
 
-      const requestedCount = typeof count === "number" && count > 0 && count <= 5 ? count : 5
+      const requestedCount = typeof count === "number" && count > 0 && count <= 20 ? count : 5
       const mashupLine = nameStyle2 ? `Mashup with secondary style: ${nameStyle2}. Blend elements from both styles naturally.` : ""
       const genderLine = nameGender && nameGender !== "any" ? `Preferred gender/orientation: ${nameGender}.` : ""
       const syllableLine = nameSyllableBank ? `Incorporate these syllables/roots where possible: ${nameSyllableBank}. Blend them organically into the names.` : ""
@@ -1126,7 +1127,7 @@ export async function POST(req: NextRequest) {
       systemInstruction =
         "You are a fantasy novel naming specialist. Generate fresh, memorable names that fit the user's requested culture, race, creature type, tone, and name length.\n" +
         "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
-        `Generate exactly ${requestedCount} distinct options per request. Names may be Chinese-inspired, Japanese-inspired, invented fantasy, elven, demonic, beast names, sect/faction-style, noble, divine, monstrous, or anything requested.\n` +
+        `Generate exactly ${requestedCount} distinct, varied options per request. Names may be Chinese-inspired, Japanese-inspired, invented fantasy, elven, demonic, beast names, sect/faction-style, noble, divine, monstrous, or anything requested.\n` +
         "Respect the requested name structure: single, double, triple, title-style, clan-style, or any. If the user asks for beasts, make them usable as beast/monster names rather than human names.\n" +
         `${mashupLine ? mashupLine + "\n" : ""}` +
         `${genderLine ? genderLine + "\n" : ""}` +
