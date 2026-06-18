@@ -1152,6 +1152,8 @@ function EditorContent() {
 
   const [backupRestoring, setBackupRestoring] = useState(false)
   const [backupMessage, setBackupMessage] = useState("")
+  const [folderImporting, setFolderImporting] = useState(false)
+  const [folderImportMessage, setFolderImportMessage] = useState("")
   const [databaseImporting, setDatabaseImporting] = useState(false)
   const [databaseImportMessage, setDatabaseImportMessage] = useState("")
 
@@ -12502,9 +12504,62 @@ ${navPoints}  </navMap>
                         />
                       </label>
                     </div>
+                    <div className="modal-divider" style={{ height: '1px', background: 'var(--surface-border)', margin: '0.2rem 0' }} />
+                    <div className="modal-section">
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '0.4rem' }}>
+                        Import chapters from a folder on your computer. Each text file becomes a chapter.
+                      </div>
+                      <label className="btn-ai-sub" style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Upload size={14} />
+                        {folderImporting ? 'Importing...' : 'Import Chapters from Folder'}
+                        <input
+                          type="file"
+                          /* @ts-expect-error webkitdirectory is a non-standard Chrome attribute for folder picker */
+                          webkitdirectory=""
+                          accepts=".txt,.md,.html,.csv"
+                          style={{ display: 'none' }}
+                          disabled={folderImporting}
+                          onChange={async (e) => {
+                            const files = e.target.files
+                            if (!files || files.length === 0) return
+                            setFolderImporting(true)
+                            setFolderImportMessage("")
+                            let imported = 0
+                            try {
+                              const fileList: File[] = []
+                              for (let i = 0; i < files.length; i++) {
+                                const f = files[i]
+                                if (f.name.startsWith('.')) continue
+                                if (f.size === 0) continue
+                                fileList.push(f)
+                              }
+                              fileList.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                              for (const file of fileList) {
+                                const name = file.name.replace(/\.[^/.]+$/, "")
+                                const content = await file.text()
+                                if (!content.trim()) continue
+                                await createNewNoteWithContent(name, content)
+                                imported++
+                              }
+                              setFolderImportMessage(`Imported ${imported} chapter(s) from folder.`)
+                            } catch (err) {
+                              setFolderImportMessage('Failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+                            } finally {
+                              setFolderImporting(false)
+                              e.target.value = ''
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                     {backupMessage && (
                       <div style={{ fontSize: '0.7rem', color: backupMessage.includes('success') ? 'var(--success)' : 'var(--error)', textAlign: 'center' }}>
                         {backupMessage}
+                      </div>
+                    )}
+                    {folderImportMessage && (
+                      <div style={{ fontSize: '0.7rem', color: folderImportMessage.includes('Failed') ? 'var(--error)' : 'var(--success)', textAlign: 'center' }}>
+                        {folderImportMessage}
                       </div>
                     )}
                   </div>
