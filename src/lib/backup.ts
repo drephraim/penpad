@@ -132,10 +132,10 @@ export async function restoreBackup(data: BackupData): Promise<string[]> {
     if (projectData.nameForgeData && projectData.nameForgeData.length > 0) {
       const raw = projectData.nameForgeData[0] as Record<string, unknown>
       ops.push(saveNameForgeDataLocal(projectId, {
-        shortlist: (raw.shortlist as any[]) ?? [],
-        presets: (raw.presets as any[]) ?? [],
-        generationHistory: (raw.generationHistory as any[]) ?? [],
-        nameRatings: (raw.nameRatings as Record<string, any>) ?? {}
+        shortlist: (raw.shortlist as unknown[]) ?? [],
+        presets: (raw.presets as unknown[]) ?? [],
+        generationHistory: (raw.generationHistory as unknown[]) ?? [],
+        nameRatings: (raw.nameRatings as Record<string, unknown>) ?? {}
       }))
     }
     if (projectData.exportHistory) {

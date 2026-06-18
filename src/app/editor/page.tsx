@@ -7230,7 +7230,7 @@ const fillEmptyCustomJsonData = (
         }
       }
     }
-  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds, activeBibleEntry?.characterDetails, saveBibleEntry, projectId])
+  }, [activeBibleEntry, activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds, activeBibleEntry?.characterDetails, saveBibleEntry, projectId])
 
   useEffect(() => {
     if (!isBibleSelectionMode || selectedBibleIds.size === 0) {
