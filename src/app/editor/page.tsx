@@ -16704,18 +16704,31 @@ ${navPoints}  </navMap>
 
         .editor-activity-bar {
           width: 60px;
+          height: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: space-between;
           padding: 1rem 0;
           border-right: 1px solid var(--surface-border);
           background: rgba(8, 8, 12, 0.95);
           flex-shrink: 0;
           z-index: 40;
+          overflow: hidden;
         }
 
-        .activity-top, .activity-bottom {
+        .activity-top {
+          flex: 1;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          align-items: center;
+          width: 100%;
+          min-height: 0;
+        }
+
+        .activity-bottom {
+          flex-shrink: 0;
           display: flex;
           flex-direction: column;
           gap: 0.75rem;
