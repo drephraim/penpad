@@ -17,7 +17,7 @@ import {
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
-  Layout, Clock, StickyNote, Music, Trophy, Upload, HardDrive, BarChart3
+  Clock, Upload, HardDrive, BarChart3
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -71,12 +71,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import JSZip from 'jszip'
 import PomodoroTimer from '@/components/PomodoroTimer'
-import Scratchpad from '@/components/Scratchpad'
 import SoundtrackPlayer from '@/components/SoundtrackPlayer'
-import Storyboard from '@/components/Storyboard'
 import WordUsageReport from '@/components/WordUsageReport'
-import WritingPrompts from '@/components/WritingPrompts'
-import CharacterVoiceReader from '@/components/CharacterVoiceReader'
 import NanoWrimoMode from '@/components/NanoWrimoMode'
 import { createBackup, restoreBackup, downloadBackup, readBackupFile } from '@/lib/backup'
 
@@ -126,7 +122,7 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references' | 'storyboard' | 'wordreport' | 'pomodoro' | 'scratchpad' | 'soundtrack' | 'nanowrimo'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references' | 'wordreport' | 'pomodoro'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -1152,8 +1148,7 @@ function EditorContent() {
   })
   const [isZenMode, setIsZenMode] = useState(false)
   const [showBackupModal, setShowBackupModal] = useState(false)
-  const [showVoiceReader, setShowVoiceReader] = useState(false)
-  const [showPromptsPanel, setShowPromptsPanel] = useState(false)
+
   const [backupRestoring, setBackupRestoring] = useState(false)
   const [backupMessage, setBackupMessage] = useState("")
 
@@ -7468,12 +7463,10 @@ ${navPoints}  </navMap>
     { name: "Name Forge", cmd: "/names", desc: "Generate fresh fantasy names", action: () => { setActiveSidebarTab('names'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
     { name: "Reference Library", cmd: "/ref", desc: "Open Reference Library", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } },
-    { name: "Storyboard", cmd: "/board", desc: "Open Storyboard", action: () => { setActiveSidebarTab('storyboard'); setIsLeftSidebarOpen(true) } },
     { name: "Word Report", cmd: "/words", desc: "Word Usage Report", action: () => { setActiveSidebarTab('wordreport'); setIsLeftSidebarOpen(true) } },
     { name: "Pomodoro", cmd: "/pomo", desc: "Open Pomodoro Timer", action: () => { setActiveSidebarTab('pomodoro'); setIsLeftSidebarOpen(true) } },
-    { name: "Scratchpad", cmd: "/note", desc: "Quick notes", action: () => { setActiveSidebarTab('scratchpad'); setIsLeftSidebarOpen(true) } },
-    { name: "Soundtrack", cmd: "/music", desc: "Background music", action: () => { setActiveSidebarTab('soundtrack'); setIsLeftSidebarOpen(true) } },
-    { name: "NaNoWriMo", cmd: "/nano", desc: "NaNoWriMo mode", action: () => { setActiveSidebarTab('nanowrimo'); setIsLeftSidebarOpen(true) } }
+    { name: "Soundtrack", cmd: "/music", desc: "Background music", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
+    { name: "NaNoWriMo", cmd: "/nano", desc: "NaNoWriMo 2026", action: () => { setActiveSidebarTab('insights'); setIsLeftSidebarOpen(true) } }
   ]
 
   const filteredCommands = slashCommands.filter(c => 
@@ -9024,21 +9017,6 @@ ${navPoints}  </navMap>
               </button>
 
               <button 
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'storyboard' ? 'active' : ''}`}
-                onClick={() => {
-                  if (activeSidebarTab === 'storyboard' && isLeftSidebarOpen) {
-                    setIsLeftSidebarOpen(false)
-                  } else {
-                    setActiveSidebarTab('storyboard')
-                    setIsLeftSidebarOpen(true)
-                   }
-                }}
-                title="Storyboard"
-              >
-                <Layout size={20} />
-              </button>
-
-              <button 
                 className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'wordreport' ? 'active' : ''}`}
                 onClick={() => {
                   if (activeSidebarTab === 'wordreport' && isLeftSidebarOpen) {
@@ -9066,67 +9044,6 @@ ${navPoints}  </navMap>
                 title="Pomodoro Timer"
               >
                 <Clock size={20} />
-              </button>
-
-              <button 
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'scratchpad' ? 'active' : ''}`}
-                onClick={() => {
-                  if (activeSidebarTab === 'scratchpad' && isLeftSidebarOpen) {
-                    setIsLeftSidebarOpen(false)
-                  } else {
-                    setActiveSidebarTab('scratchpad')
-                    setIsLeftSidebarOpen(true)
-                   }
-                }}
-                title="Scratchpad"
-              >
-                <StickyNote size={20} />
-              </button>
-
-              <button 
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'soundtrack' ? 'active' : ''}`}
-                onClick={() => {
-                  if (activeSidebarTab === 'soundtrack' && isLeftSidebarOpen) {
-                    setIsLeftSidebarOpen(false)
-                  } else {
-                    setActiveSidebarTab('soundtrack')
-                    setIsLeftSidebarOpen(true)
-                   }
-                }}
-                title="Soundtrack"
-              >
-                <Music size={20} />
-              </button>
-
-              <button 
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'nanowrimo' ? 'active' : ''}`}
-                onClick={() => {
-                  if (activeSidebarTab === 'nanowrimo' && isLeftSidebarOpen) {
-                    setIsLeftSidebarOpen(false)
-                  } else {
-                    setActiveSidebarTab('nanowrimo')
-                    setIsLeftSidebarOpen(true)
-                   }
-                }}
-                title="NaNoWriMo Mode"
-              >
-                <Trophy size={20} />
-              </button>
-
-              <button
-                className={`activity-btn ${showVoiceReader ? 'active' : ''}`}
-                onClick={() => setShowVoiceReader(!showVoiceReader)}
-                title="Voice Reader"
-              >
-                <Volume2 size={20} />
-              </button>
-
-              <button
-                className={`activity-btn ${showPromptsPanel ? 'active' : ''}`}
-                onClick={() => setShowPromptsPanel(!showPromptsPanel)}
-                title="Writing Prompts"
-              >
-                <Sparkles size={20} />
               </button>
 
               <button
@@ -9733,6 +9650,14 @@ ${navPoints}  </navMap>
                       );
                     })}
                   </div>
+                </div>
+
+                {/* NaNoWriMo 2026 */}
+                <div className="insights-nanowrimo-section">
+                  <NanoWrimoMode
+                    projectId={projectId ?? ''}
+                    allChapters={notes}
+                  />
                 </div>
               </div>
             )}
@@ -11813,6 +11738,11 @@ ${navPoints}  </navMap>
                     )}
                   </div>
                 </div>
+
+                {/* Soundtrack */}
+                <div className="soundscape-soundtrack-section">
+                  <SoundtrackPlayer projectId={projectId ?? ''} />
+                </div>
               </div>
             )}
 
@@ -12292,13 +12222,6 @@ ${navPoints}  </navMap>
               </div>
             )}
 
-            {/* TAB: STORYBOARD */}
-            {activeSidebarTab === 'storyboard' && (
-              <Storyboard
-                projectId={projectId ?? ''}
-              />
-            )}
-
             {/* TAB: WORD USAGE REPORT */}
             {activeSidebarTab === 'wordreport' && (
               <WordUsageReport
@@ -12309,59 +12232,6 @@ ${navPoints}  </navMap>
             {/* TAB: POMODORO TIMER */}
             {activeSidebarTab === 'pomodoro' && (
               <PomodoroTimer projectId={projectId ?? ''} />
-            )}
-
-            {/* TAB: SCRATCHPAD */}
-            {activeSidebarTab === 'scratchpad' && (
-              <Scratchpad />
-            )}
-
-            {/* TAB: SOUNDTRACK */}
-            {activeSidebarTab === 'soundtrack' && (
-              <SoundtrackPlayer projectId={projectId ?? ''} />
-            )}
-
-            {/* TAB: NANOWRIMO */}
-            {activeSidebarTab === 'nanowrimo' && (
-              <NanoWrimoMode
-                projectId={projectId ?? ''}
-                allChapters={notes}
-              />
-            )}
-
-            {/* Floating panels: Voice Reader & Writing Prompts */}
-            {showVoiceReader && (
-              <div className="voice-reader-floating" style={{
-                position: 'absolute', bottom: '60px', left: '60px', width: '280px', maxHeight: '400px',
-                background: 'rgba(10,10,15,0.95)', backdropFilter: 'blur(16px)',
-                border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-lg)',
-                padding: '0.8rem', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
-              }}>
-                <button onClick={() => setShowVoiceReader(false)} style={{
-                  position: 'absolute', top: '0.4rem', right: '0.4rem', background: 'none', border: 0,
-                  color: 'var(--text-dim)', cursor: 'pointer'
-                }}><X size={14} /></button>
-                <CharacterVoiceReader
-                  content={activeNote?.content || ''}
-                  chapterTitle={activeNote?.title}
-                  characters={bibleEntries.filter(e => e.category === 'character').map(e => e.name).filter(Boolean)}
-                />
-              </div>
-            )}
-
-            {showPromptsPanel && (
-              <div className="prompts-floating" style={{
-                position: 'absolute', bottom: '60px', left: '60px', width: '280px', maxHeight: '400px',
-                background: 'rgba(10,10,15,0.95)', backdropFilter: 'blur(16px)',
-                border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-lg)',
-                padding: '0.8rem', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
-              }}>
-                <button onClick={() => setShowPromptsPanel(false)} style={{
-                  position: 'absolute', top: '0.4rem', right: '0.4rem', background: 'none', border: 0,
-                  color: 'var(--text-dim)', cursor: 'pointer'
-                }}><X size={14} /></button>
-                <WritingPrompts />
-              </div>
             )}
 
             {/* Backup & Restore Modal */}
