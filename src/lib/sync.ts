@@ -34,6 +34,19 @@ export interface BibleEntry {
   updatedAt: number
 }
 
+export interface ProjectDatabaseImport {
+  project: Project | null
+  chapters: Note[]
+  bibleEntries: BibleEntry[]
+  brainEntries: BrainEntry[]
+  arcSeeds: ArcSeed[]
+  progressionProfiles: unknown[]
+  progressionSystem: unknown | null
+  referenceLibrary: unknown[]
+  nameForgeData: Record<string, unknown>
+  importedAt: number
+}
+
 export interface BibleCharacterDetails {
   appearance?: string
   attire?: string
@@ -160,6 +173,28 @@ export async function syncProjectsWithCloud(userId: string, localProjects: Proje
     console.error("Failed to sync projects with cloud, falling back to local:", error)
     return localProjects
   }
+}
+
+/**
+ * Pulls a project from PostgreSQL without reconciling local state back into the database.
+ */
+export async function importProjectDataFromCloud(userId: string, projectId: string): Promise<ProjectDatabaseImport> {
+  if (!userId || !projectId) {
+    throw new Error("Missing user or project")
+  }
+
+  const response = await fetch("/api/sync/import-project", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, projectId })
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP error! status: ${response.status}`)
+  }
+
+  return data as ProjectDatabaseImport
 }
 
 /**

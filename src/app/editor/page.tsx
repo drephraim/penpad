@@ -60,6 +60,7 @@ import {
   saveReferenceLibraryToCloud,
   syncNameForgeWithCloud,
   saveNameForgeDataToCloud,
+  importProjectDataFromCloud,
   BibleEntry,
   BrainEntry,
   ArcSeed,
@@ -1151,6 +1152,8 @@ function EditorContent() {
 
   const [backupRestoring, setBackupRestoring] = useState(false)
   const [backupMessage, setBackupMessage] = useState("")
+  const [databaseImporting, setDatabaseImporting] = useState(false)
+  const [databaseImportMessage, setDatabaseImportMessage] = useState("")
 
   // AI Assistant state variables
   const [showAISidebar, setShowAISidebar] = useState(false)
@@ -4783,6 +4786,54 @@ const fillEmptyCustomJsonData = (
     }
   }, [normalizeProgressionTemplateCards])
 
+  const normalizeImportedProgressionProfiles = useCallback((
+    profiles: unknown[],
+    system: ProgressionSystemSettings
+  ): CharacterProgressionProfile[] => {
+    return (profiles as CharacterProgressionProfile[]).map(profile => {
+      const jsonData = profile.customJsonData && typeof profile.customJsonData === "object" ? profile.customJsonData as Record<string, any> : {}
+      const customFields = sanitizeSimpleProgressionCustomFields({
+        ...(profile.customFields && typeof profile.customFields === "object" ? profile.customFields : {})
+      })
+      const abilities = Array.isArray(profile.abilities) ? profile.abilities : []
+      const stats = { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) }
+      const baseProfile = {
+        ...profile,
+        id: profile.id || crypto.randomUUID(),
+        loreEntryId: profile.loreEntryId || "",
+        name: profile.name || String(jsonData.name || "Unnamed"),
+        title: profile.title || String(jsonData.title || ""),
+        className: profile.className || String(jsonData.className || jsonData.class || ""),
+        realm: profile.realm || String(jsonData.realm || ""),
+        stage: profile.stage || String(jsonData.stage || ""),
+        rank: profile.rank || String(jsonData.rank || ""),
+        level: Number.isFinite(Number(profile.level)) ? Number(profile.level) : 1,
+        exp: Number.isFinite(Number(profile.exp)) ? Number(profile.exp) : 0,
+        nextLevelExp: Number.isFinite(Number(profile.nextLevelExp)) ? Number(profile.nextLevelExp) : 100,
+        stats,
+        abilities,
+        traits: Array.isArray(profile.traits) ? profile.traits : [],
+        nicknames: Array.isArray(profile.nicknames) ? profile.nicknames : [],
+        uniqueTrait: profile.uniqueTrait || "",
+        customFields,
+        notes: profile.notes || String(jsonData.lore || jsonData.notes || ""),
+        processedChapterIds: Array.isArray(profile.processedChapterIds) ? profile.processedChapterIds : [],
+        history: Array.isArray(profile.history) ? profile.history : [],
+        createdAt: Number.isFinite(Number(profile.createdAt)) ? Number(profile.createdAt) : Date.now(),
+        updatedAt: Number.isFinite(Number(profile.updatedAt)) ? Number(profile.updatedAt) : Date.now()
+      }
+
+      const customJsonData = system.useCustomJsonTemplate
+        ? fillEmptyCustomJsonData(jsonData, baseProfile)
+        : jsonData
+
+      return {
+        ...baseProfile,
+        customJsonData
+      }
+    }).sort((a, b) => b.updatedAt - a.updatedAt)
+  }, [])
+
   const persistProgressionSystem = useCallback((nextSettings: ProgressionSystemSettings) => {
     if (!projectId) return
     const key = getProgressionSystemStorageKey()
@@ -4795,6 +4846,154 @@ const fillEmptyCustomJsonData = (
       saveProgressionSystemToCloud(user.uid, projectId, normalized)
     }
   }, [getProgressionSystemStorageKey, normalizeProgressionSystem, updateProjectMetadata, user, projectId])
+
+  const cacheImportedProjectMetadata = useCallback((
+    importedProject: Project | null,
+    importedVolumes: ManuscriptVolume[],
+    importedBibleGroups: StoryBibleGroup[],
+    importedProfiles: CharacterProgressionProfile[],
+    importedSystem: ProgressionSystemSettings
+  ) => {
+    if (!user || !projectId) return
+    const key = `penpad_projects_${user.uid}`
+    const stored = localStorage.getItem(key)
+    const projects: Project[] = stored ? JSON.parse(stored) : []
+    const idx = projects.findIndex(project => project.id === projectId)
+    const nextProject: Project = {
+      ...(idx >= 0 ? projects[idx] : {}),
+      ...(importedProject || {}),
+      id: projectId,
+      name: importedProject?.name || projectName || "Untitled",
+      lastUpdated: importedProject?.lastUpdated || Date.now(),
+      volumes: importedVolumes,
+      bibleGroups: importedBibleGroups,
+      progressionProfiles: importedProfiles,
+      progressionSystem: importedSystem
+    }
+    if (idx >= 0) projects[idx] = nextProject
+    else projects.unshift(nextProject)
+    localStorage.setItem(key, JSON.stringify(projects))
+    setProjectName(nextProject.name)
+  }, [projectId, projectName, user])
+
+  const handleImportFromDatabase = useCallback(async () => {
+    if (!user || !projectId || databaseImporting) return
+
+    const confirmed = window.confirm("Import this project from the database? This replaces the local cached manuscript, Brain Map, World Bible, progression data, references, arc seeds, and Name Forge data for this project.")
+    if (!confirmed) return
+
+    setDatabaseImporting(true)
+    setDatabaseImportMessage("")
+    setSyncStatus("saving")
+    try {
+      const data = await importProjectDataFromCloud(user.uid, projectId)
+      const importedVolumes = (Array.isArray(data.project?.volumes) ? data.project?.volumes : [])
+        .map(volume => ({ ...(volume as ManuscriptVolume), isOpen: (volume as ManuscriptVolume).isOpen !== false }))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+      const importedBibleGroups = (Array.isArray(data.project?.bibleGroups) ? data.project?.bibleGroups : [])
+        .map(group => group as StoryBibleGroup)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+      const importedSystem = normalizeProgressionSystem((data.progressionSystem || undefined) as Partial<ProgressionSystemSettings> | undefined)
+      const importedProfiles = normalizeImportedProgressionProfiles(data.progressionProfiles || [], importedSystem)
+      const importedNotes = (data.chapters || []).sort((a, b) => {
+        const aSort = typeof a.sortOrder === "number" ? a.sortOrder : a.createdAt
+        const bSort = typeof b.sortOrder === "number" ? b.sortOrder : b.createdAt
+        return bSort - aSort
+      })
+      const importedBible = (data.bibleEntries || []).sort((a, b) => b.updatedAt - a.updatedAt)
+      const importedBrain = (data.brainEntries || []).sort((a, b) => b.updatedAt - a.updatedAt)
+      const importedArcSeeds = (data.arcSeeds || []).sort((a, b) => b.updatedAt - a.updatedAt)
+      const importedReferences = (Array.isArray(data.referenceLibrary) ? data.referenceLibrary : []) as ReferenceCategory[]
+      const importedNameForge = data.nameForgeData || {}
+      const nameForgeShortlist = Array.isArray(importedNameForge.shortlist) ? importedNameForge.shortlist as GeneratedNameOption[] : []
+      const nameForgePresets = Array.isArray(importedNameForge.presets) ? importedNameForge.presets as NameForgePreset[] : []
+      const nameForgeHistory = Array.isArray(importedNameForge.generationHistory) ? importedNameForge.generationHistory as NameGenRound[] : []
+      const nameForgeRatings = importedNameForge.nameRatings && typeof importedNameForge.nameRatings === "object"
+        ? importedNameForge.nameRatings as Record<string, NameRating>
+        : {}
+
+      await Promise.all([
+        saveManuscriptLocal(projectId, importedNotes),
+        saveStoryBibleLocal(projectId, importedBible),
+        saveStoryBrainLocal(projectId, importedBrain),
+        saveArcSeedsLocal(projectId, importedArcSeeds),
+        saveReferenceLibraryLocal(projectId, importedReferences),
+        saveNameForgeDataLocal(projectId, {
+          shortlist: nameForgeShortlist,
+          presets: nameForgePresets,
+          generationHistory: nameForgeHistory,
+          nameRatings: nameForgeRatings
+        })
+      ])
+
+      localStorage.setItem(getVolumesStorageKey(), JSON.stringify(importedVolumes))
+      localStorage.setItem(getBibleGroupsStorageKey(), JSON.stringify(importedBibleGroups))
+      localStorage.setItem(getProgressionStorageKey(), JSON.stringify(importedProfiles))
+      localStorage.setItem(getProgressionSystemStorageKey(), JSON.stringify(importedSystem))
+      localStorage.setItem(getReferenceStorageKey(), JSON.stringify(importedReferences))
+      cacheImportedProjectMetadata(data.project, importedVolumes, importedBibleGroups, importedProfiles, importedSystem)
+
+      setVolumes(importedVolumes)
+      setBibleGroups(importedBibleGroups)
+      setNotes(importedNotes)
+      setBibleEntries(importedBible)
+      setBrainEntries(importedBrain)
+      setArcSeeds(importedArcSeeds)
+      setProgressionSystem(importedSystem)
+      setProgressionProfiles(importedProfiles)
+      setReferenceCategories(importedReferences.sort((a, b) => b.updatedAt - a.updatedAt))
+      setNameShortlist(nameForgeShortlist)
+      setNamePresets(nameForgePresets)
+      setNameGenHistory(nameForgeHistory)
+      setNameRatings(nameForgeRatings)
+
+      if (importedNotes.length > 0 && !importedNotes.some(note => note.id === activeNoteIdRef.current)) {
+        setActiveNoteId(importedNotes[0].id)
+      }
+      if (activeBibleEntryId && !importedBible.some(entry => entry.id === activeBibleEntryId)) {
+        setActiveBibleEntryId(null)
+        setIsBibleDrawerOpen(false)
+      }
+      if (selectedBrainEntryId && !importedBrain.some(entry => entry.id === selectedBrainEntryId)) {
+        setSelectedBrainEntryId(null)
+      }
+      if (selectedArcSeedId && !importedArcSeeds.some(seed => seed.id === selectedArcSeedId)) {
+        setSelectedArcSeedId(null)
+      }
+      if (importedProfiles.length > 0) {
+        setSelectedProgressionProfileId(importedProfiles[0].id)
+        setProgressionSelectedEntryId(importedProfiles[0].loreEntryId)
+      } else {
+        setSelectedProgressionProfileId(null)
+        setProgressionSelectedEntryId(null)
+      }
+
+      setLastSavedAt(data.importedAt)
+      setSyncStatus("saved")
+      setDatabaseImportMessage(`Imported ${importedNotes.length} chapters, ${importedBible.length} Bible entries, ${importedBrain.length} Brain Map cards, ${importedProfiles.length} progression profiles, ${importedArcSeeds.length} arc seeds, and ${importedReferences.length} reference groups.`)
+    } catch (err) {
+      console.error("Database import failed:", err)
+      setSyncStatus("error")
+      setDatabaseImportMessage(err instanceof Error ? err.message : "Failed to import project data from the database.")
+    } finally {
+      setDatabaseImporting(false)
+    }
+  }, [
+    activeBibleEntryId,
+    cacheImportedProjectMetadata,
+    databaseImporting,
+    getBibleGroupsStorageKey,
+    getProgressionStorageKey,
+    getProgressionSystemStorageKey,
+    getReferenceStorageKey,
+    getVolumesStorageKey,
+    normalizeImportedProgressionProfiles,
+    normalizeProgressionSystem,
+    projectId,
+    selectedArcSeedId,
+    selectedBrainEntryId,
+    user
+  ])
 
   const moveJsonCard = useCallback((key: string, direction: 'up' | 'down') => {
     const currentOrder = progressionSystem.jsonCardOrder || []
@@ -8887,6 +9086,14 @@ ${navPoints}  </navMap>
           >
             <HardDrive size={18} />
           </button>
+          <button
+            className={`btn-icon ${databaseImporting ? 'active' : ''}`}
+            onClick={handleImportFromDatabase}
+            title="Import this project from the database"
+            disabled={databaseImporting}
+          >
+            {databaseImporting ? <Loader2 size={18} className="spin" /> : <Download size={18} />}
+          </button>
           <button 
             className={`btn-icon ${showAISidebar ? 'active' : ''}`}
             onClick={() => setShowAISidebar(!showAISidebar)}
@@ -8912,6 +9119,16 @@ ${navPoints}  </navMap>
           </button>
         </div>
       </header>
+
+      {databaseImportMessage && (
+        <div className={`database-import-toast glass ${syncStatus === 'error' ? 'error' : 'success'}`}>
+          {syncStatus === 'error' ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
+          <span>{databaseImportMessage}</span>
+          <button type="button" onClick={() => setDatabaseImportMessage("")} title="Dismiss import message">
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Floating Zen mode exit button */}
       {isZenMode && (
@@ -16756,6 +16973,56 @@ ${navPoints}  </navMap>
           font-size: 0.72rem;
           font-weight: 700;
           white-space: nowrap;
+        }
+
+        .database-import-toast {
+          position: fixed;
+          top: 72px;
+          right: 18px;
+          z-index: 60;
+          display: flex;
+          align-items: center;
+          gap: 0.55rem;
+          max-width: min(520px, calc(100vw - 32px));
+          padding: 0.7rem 0.8rem;
+          border-radius: 8px;
+          border: 1px solid var(--surface-border);
+          color: var(--text-secondary);
+          font-size: 0.76rem;
+          font-weight: 650;
+          line-height: 1.35;
+          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+        }
+
+        .database-import-toast.success {
+          color: var(--success);
+        }
+
+        .database-import-toast.error {
+          color: var(--error);
+        }
+
+        .database-import-toast span {
+          color: var(--text-primary);
+        }
+
+        .database-import-toast button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          margin-left: 0.15rem;
+          border: 0;
+          border-radius: 6px;
+          color: var(--text-dim);
+          background: transparent;
+          cursor: pointer;
+        }
+
+        .database-import-toast button:hover {
+          color: var(--text-primary);
+          background: rgba(255, 255, 255, 0.08);
         }
 
         .editor-body {
