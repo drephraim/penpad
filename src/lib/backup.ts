@@ -12,6 +12,7 @@ export interface BackupData {
   appVersion: string
   projects: {
     [projectId: string]: {
+      projectName?: string
       manuscript: unknown[] | null
       storyBible: unknown[] | null
       storyBrain: unknown[] | null
@@ -19,6 +20,10 @@ export interface BackupData {
       referenceLibrary: unknown[] | null
       nameForgeData: unknown[] | null
       exportHistory: Record<string, unknown> | null
+      volumes: unknown[] | null
+      bibleGroups: unknown[] | null
+      progressionProfiles: unknown[] | null
+      progressionSystem: unknown | null
     }
   }
   settings: {
@@ -27,7 +32,7 @@ export interface BackupData {
   }
 }
 
-export async function createBackup(projectIds: string[]): Promise<BackupData> {
+export async function createBackup(projectIds: string[], userId?: string): Promise<BackupData> {
   const projects: BackupData['projects'] = {}
 
   for (const projectId of projectIds) {
@@ -41,14 +46,53 @@ export async function createBackup(projectIds: string[]): Promise<BackupData> {
       getExportHistoryLocal(projectId)
     ])
 
+    let projectName: string | undefined
+    let volumes: unknown[] | null = null
+    let bibleGroups: unknown[] | null = null
+    let progressionProfiles: unknown[] | null = null
+    let progressionSystem: unknown | null = null
+
+    try {
+      if (userId) {
+        const stored = localStorage.getItem(`penpad_projects_${userId}`)
+        if (stored) {
+          const projectsList = JSON.parse(stored)
+          const match = projectsList.find((p: { id: string, name: string }) => p.id === projectId)
+          if (match) projectName = match.name
+        }
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const v = localStorage.getItem(`penpad_volumes_${projectId}`)
+      if (v) volumes = JSON.parse(v)
+    } catch { /* ignore */ }
+    try {
+      const g = localStorage.getItem(`penpad_bible_groups_${projectId}`)
+      if (g) bibleGroups = JSON.parse(g)
+    } catch { /* ignore */ }
+    try {
+      const p = localStorage.getItem(`penpad_progression_${projectId}`)
+      if (p) progressionProfiles = JSON.parse(p)
+    } catch { /* ignore */ }
+    try {
+      const s = localStorage.getItem(`penpad_progression_system_${projectId}`)
+      if (s) progressionSystem = JSON.parse(s)
+    } catch { /* ignore */ }
+
     projects[projectId] = {
+      projectName,
       manuscript,
       storyBible: bible,
       storyBrain: brain,
       arcSeeds: arcs,
       referenceLibrary: refs,
       nameForgeData: names ? [names] : null,
-      exportHistory: exports
+      exportHistory: exports,
+      volumes,
+      bibleGroups,
+      progressionProfiles,
+      progressionSystem
     }
   }
 
@@ -85,8 +129,14 @@ export async function restoreBackup(data: BackupData): Promise<string[]> {
     if (projectData.referenceLibrary) {
       ops.push(saveReferenceLibraryLocal(projectId, projectData.referenceLibrary))
     }
-    if (projectData.nameForgeData) {
-      ops.push(saveNameForgeDataLocal(projectId, { shortlist: [], presets: [], generationHistory: [], nameRatings: {} }))
+    if (projectData.nameForgeData && projectData.nameForgeData.length > 0) {
+      const raw = projectData.nameForgeData[0] as Record<string, unknown>
+      ops.push(saveNameForgeDataLocal(projectId, {
+        shortlist: (raw.shortlist as any[]) ?? [],
+        presets: (raw.presets as any[]) ?? [],
+        generationHistory: (raw.generationHistory as any[]) ?? [],
+        nameRatings: (raw.nameRatings as Record<string, any>) ?? {}
+      }))
     }
     if (projectData.exportHistory) {
       ops.push(saveExportHistoryLocal(projectId, projectData.exportHistory as Record<string, unknown>))
@@ -94,6 +144,19 @@ export async function restoreBackup(data: BackupData): Promise<string[]> {
 
     await Promise.all(ops)
     restored.push(projectId)
+
+    if (projectData.volumes) {
+      localStorage.setItem(`penpad_volumes_${projectId}`, JSON.stringify(projectData.volumes))
+    }
+    if (projectData.bibleGroups) {
+      localStorage.setItem(`penpad_bible_groups_${projectId}`, JSON.stringify(projectData.bibleGroups))
+    }
+    if (projectData.progressionProfiles) {
+      localStorage.setItem(`penpad_progression_${projectId}`, JSON.stringify(projectData.progressionProfiles))
+    }
+    if (projectData.progressionSystem) {
+      localStorage.setItem(`penpad_progression_system_${projectId}`, JSON.stringify(projectData.progressionSystem))
+    }
   }
 
   if (data.settings?.theme) {
@@ -119,10 +182,13 @@ export function readBackupFile(file: File): Promise<BackupData> {
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target?.result as string) as BackupData
-        resolve(data)
-      } catch {
-        reject(new Error('Invalid backup file'))
+        const data = JSON.parse(e.target?.result as string)
+        if (!data || typeof data !== 'object' || !data.projects || typeof data.projects !== 'object') {
+          throw new Error('Missing "projects" root key')
+        }
+        resolve(data as BackupData)
+      } catch (err) {
+        reject(new Error(err instanceof SyntaxError ? 'Invalid backup file' : err instanceof Error ? err.message : 'Unknown error'))
       }
     }
     reader.onerror = () => reject(new Error('Failed to read file'))

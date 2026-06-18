@@ -123,7 +123,7 @@ export interface ArcSeed {
  * Helper to execute a fetch request with a timeout.
  */
 async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number } = {}) {
-  const { timeout = 3500, ...fetchOptions } = options
+  const { timeout = 15000, ...fetchOptions } = options
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeout)
 
@@ -155,8 +155,7 @@ export async function syncProjectsWithCloud(userId: string, localProjects: Proje
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ userId, localProjects }),
-      timeout: 3500
+      body: JSON.stringify({ userId, localProjects })
     })
 
     if (!response.ok) {
@@ -210,7 +209,6 @@ export async function syncChaptersWithCloud(userId: string, projectId: string, l
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ userId, projectId, localNotes }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -334,7 +332,6 @@ export async function syncBibleWithCloud(userId: string, projectId: string, loca
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ userId, projectId, localEntries }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -412,7 +409,6 @@ export async function syncBrainWithCloud(userId: string, projectId: string, loca
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ userId, projectId, localEntries }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -489,7 +485,6 @@ export async function syncArcSeedsWithCloud(userId: string, projectId: string, l
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ userId, projectId, localSeeds }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -555,7 +550,6 @@ export async function syncProgressionProfilesWithCloud(userId: string, projectId
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, projectId, localProfiles }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -623,7 +617,6 @@ export async function syncProgressionSystemWithCloud(userId: string, projectId: 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, projectId, localSystem }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -672,7 +665,6 @@ export async function syncReferenceLibraryWithCloud(userId: string, projectId: s
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, projectId, localData }),
-      timeout: 3500
     })
 
     if (!response.ok) {
@@ -722,7 +714,6 @@ export async function syncNameForgeWithCloud(userId: string, projectId: string, 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, projectId, localData }),
-      timeout: 3500
     })
 
     if (!response.ok) {

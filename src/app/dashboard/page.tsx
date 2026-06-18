@@ -340,7 +340,7 @@ export default function Dashboard() {
       stored.unshift(newProject)
       localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(stored))
 
-      saveProjectToCloud(user.uid, newProject)
+      await saveProjectToCloud(user.uid, newProject)
 
       if (createFolderHandle) {
         await saveDirectoryHandleForProject(newProject.id, createFolderHandle)
@@ -369,7 +369,7 @@ export default function Dashboard() {
       const stats = await getStats(filtered)
       setProjectStats(stats)
 
-      deleteProjectFromCloud(user.uid, deleteModal.projectId)
+      await deleteProjectFromCloud(user.uid, deleteModal.projectId)
 
       setDeleteModal({ show: false, projectId: '', projectName: '' })
     } catch (e) {
@@ -390,7 +390,7 @@ export default function Dashboard() {
         const stats = await getStats(stored)
         setProjectStats(stats)
 
-        saveProjectToCloud(user.uid, stored[idx])
+        await saveProjectToCloud(user.uid, stored[idx])
       }
 
       if (editModal.folderHandle) {

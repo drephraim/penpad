@@ -4592,20 +4592,20 @@ const fillEmptyCustomJsonData = (
     return projectId ? `penpad_references_${projectId}` : ""
   }, [projectId])
 
-  const persistReferenceCategories = useCallback((next: ReferenceCategory[]) => {
+  const persistReferenceCategories = useCallback(async (next: ReferenceCategory[]) => {
     if (!projectId) return
     const key = getReferenceStorageKey()
     if (!key) return
     const sorted = [...next].sort((a, b) => b.updatedAt - a.updatedAt)
     localStorage.setItem(key, JSON.stringify(sorted))
     setReferenceCategories(sorted)
-    saveReferenceLibraryLocal(projectId, sorted)
+    await saveReferenceLibraryLocal(projectId, sorted)
     if (user) {
-      saveReferenceLibraryToCloud(user.uid, projectId, sorted)
+      await saveReferenceLibraryToCloud(user.uid, projectId, sorted)
     }
   }, [projectId, getReferenceStorageKey, user])
 
-  const updateProjectMetadata = useCallback((updates: Partial<Project>) => {
+  const updateProjectMetadata = useCallback(async (updates: Partial<Project>) => {
     if (!user || !projectId) return
     try {
       const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
@@ -4621,8 +4621,7 @@ const fillEmptyCustomJsonData = (
           projects[idx] = updatedProject
           localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
           
-          // Save to cloud in background
-          saveProjectToCloud(user.uid, updatedProject)
+          await saveProjectToCloud(user.uid, updatedProject)
         }
       }
     } catch (e) {
@@ -4693,7 +4692,7 @@ const fillEmptyCustomJsonData = (
     }
   }, [user, projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
 
-  const persistProgressionProfiles = useCallback((nextProfiles: CharacterProgressionProfile[]) => {
+  const persistProgressionProfiles = useCallback(async (nextProfiles: CharacterProgressionProfile[]) => {
     if (!projectId) return
     const key = getProgressionStorageKey()
     if (!key) return
@@ -4702,9 +4701,11 @@ const fillEmptyCustomJsonData = (
     setProgressionProfiles(sorted)
     updateProjectMetadata({ progressionProfiles: sorted })
     if (user) {
-      sorted.forEach(profile => {
-        saveProgressionProfileToCloud(user.uid, projectId, profile)
-      })
+      await Promise.allSettled(
+        sorted.map(profile =>
+          saveProgressionProfileToCloud(user.uid, projectId, profile)
+        )
+      )
     }
   }, [getProgressionStorageKey, updateProjectMetadata, user, projectId])
 
@@ -4836,7 +4837,7 @@ const fillEmptyCustomJsonData = (
     }).sort((a, b) => b.updatedAt - a.updatedAt)
   }, [])
 
-  const persistProgressionSystem = useCallback((nextSettings: ProgressionSystemSettings) => {
+  const persistProgressionSystem = useCallback(async (nextSettings: ProgressionSystemSettings) => {
     if (!projectId) return
     const key = getProgressionSystemStorageKey()
     if (!key) return
@@ -4845,7 +4846,7 @@ const fillEmptyCustomJsonData = (
     setProgressionSystem(normalized)
     updateProjectMetadata({ progressionSystem: normalized })
     if (user) {
-      saveProgressionSystemToCloud(user.uid, projectId, normalized)
+      await saveProgressionSystemToCloud(user.uid, projectId, normalized)
     }
   }, [getProgressionSystemStorageKey, normalizeProgressionSystem, updateProjectMetadata, user, projectId])
 
@@ -6491,7 +6492,7 @@ const fillEmptyCustomJsonData = (
     const nextList = arcSeeds.map(seed => seed.id === seedId ? updatedSeed : seed)
     setArcSeeds(nextList)
     await saveArcSeedsLocal(projectId, nextList)
-    saveArcSeedToCloud(user.uid, projectId, updatedSeed)
+    await saveArcSeedToCloud(user.uid, projectId, updatedSeed)
   }
 
   const deleteArcSeed = async (seedId: string) => {
@@ -6599,6 +6600,9 @@ const fillEmptyCustomJsonData = (
         const parentEntityName = data.parentEntityName ? data.parentEntityName.trim() : ""
         const isSubEntity = !!data.isSubEntity
 
+        let cloudEntryToSave: BrainEntry | null = null
+        let cloudEntryToDelete: string | null = null
+
         setBrainEntries(prev => {
           const existingEntry = prev.find(e => e.id !== newEntry.id && e.entityName && e.entityName.trim().toLowerCase() === entityName.toLowerCase())
           const parentEntry = (!existingEntry && isSubEntity && parentEntityName)
@@ -6627,9 +6631,8 @@ const fillEmptyCustomJsonData = (
 
             const remaining = prev.filter(e => e.id !== newEntry.id && e.id !== existingEntry.id)
             list = [updatedExisting, ...remaining]
-
-            saveBrainEntryToCloud(user.uid, projectId, updatedExisting)
-            deleteBrainEntryFromCloud(user.uid, projectId, newEntry.id)
+            cloudEntryToSave = updatedExisting
+            cloudEntryToDelete = newEntry.id
           } else if (parentEntry) {
             const newChapterLabel = chapterNumber ? `Chapter ${chapterNumber}` : activeNote.title || "New Chapter"
             const updatedSummary = `${parentEntry.aiSummary}\r\n\r\n***\r\n\r\n### 📍 Sub-Entity: ${entityName} (${newChapterLabel})\r\n${summary}`
@@ -6651,9 +6654,8 @@ const fillEmptyCustomJsonData = (
 
             const remaining = prev.filter(e => e.id !== newEntry.id && e.id !== parentEntry.id)
             list = [updatedParent, ...remaining]
-
-            saveBrainEntryToCloud(user.uid, projectId, updatedParent)
-            deleteBrainEntryFromCloud(user.uid, projectId, newEntry.id)
+            cloudEntryToSave = updatedParent
+            cloudEntryToDelete = newEntry.id
           } else {
             const finalEntry: BrainEntry = {
               ...newEntry,
@@ -6665,12 +6667,20 @@ const fillEmptyCustomJsonData = (
               updatedAt: Date.now()
             }
             list = prev.map(e => e.id === newEntry.id ? finalEntry : e)
-            saveBrainEntryToCloud(user.uid, projectId, finalEntry)
+            cloudEntryToSave = finalEntry
           }
 
           saveStoryBrainLocal(projectId, list)
           return list
         })
+
+        // Cloud sync after state update
+        if (cloudEntryToSave) {
+          await saveBrainEntryToCloud(user.uid, projectId, cloudEntryToSave)
+        }
+        if (cloudEntryToDelete) {
+          await deleteBrainEntryFromCloud(user.uid, projectId, cloudEntryToDelete)
+        }
       })
       .catch(() => {
         const errorEntry = { ...newEntry, aiSummary: "Analysis failed. Try again.", updatedAt: Date.now() }
@@ -6748,7 +6758,7 @@ const fillEmptyCustomJsonData = (
 
     setBrainEntries(updatedList)
     await saveStoryBrainLocal(projectId, updatedList)
-    saveBrainEntryToCloud(user.uid, projectId, finalEntry)
+    await saveBrainEntryToCloud(user.uid, projectId, finalEntry)
   }
 
   const askBrainMap = async () => {
@@ -6939,7 +6949,7 @@ const fillEmptyCustomJsonData = (
     const updated = [newEntry, ...brainEntries]
     setBrainEntries(updated)
     await saveStoryBrainLocal(projectId, updated)
-    saveBrainEntryToCloud(user.uid, projectId, newEntry)
+    await saveBrainEntryToCloud(user.uid, projectId, newEntry)
 
     setSuggestedEntities(prev => prev.filter(s => s.entityName.toLowerCase() !== suggestion.entityName.toLowerCase()))
   }
@@ -7203,8 +7213,7 @@ const fillEmptyCustomJsonData = (
       }, 1500)
       return () => clearTimeout(timer)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNote?.content, activeNote?.title])
+  }, [activeNote, activeNote?.content, activeNote?.title, syncStatus, saveNote, projectId])
 
   // World Bible AutoSave
   useEffect(() => {
@@ -7215,10 +7224,13 @@ const fillEmptyCustomJsonData = (
       autoSaveBibleTimerRef.current = setTimeout(() => {
         saveBibleEntry(activeBibleEntry)
       }, 1500)
-      return () => clearTimeout(autoSaveBibleTimerRef.current!)
+      return () => {
+        if (autoSaveBibleTimerRef.current) {
+          clearTimeout(autoSaveBibleTimerRef.current)
+        }
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds, activeBibleEntry?.characterDetails])
+  }, [activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds, activeBibleEntry?.characterDetails, saveBibleEntry, projectId])
 
   useEffect(() => {
     if (!isBibleSelectionMode || selectedBibleIds.size === 0) {
@@ -8063,7 +8075,7 @@ ${navPoints}  </navMap>
       setActiveNoteId(newNote.id)
       setViewMode('edit')
 
-      saveChapterToCloud(user.uid, projectId, newNote)
+      await saveChapterToCloud(user.uid, projectId, newNote)
     } catch (e) {
       console.error("Failed to create note with content:", e)
     }
@@ -8251,7 +8263,7 @@ ${navPoints}  </navMap>
       setActiveNoteId(newNote.id)
       setViewMode('edit')
 
-      saveChapterToCloud(user.uid, projectId, newNote)
+      await saveChapterToCloud(user.uid, projectId, newNote)
     } catch (e) {
       console.error("Failed to create note:", e)
     }
@@ -9066,7 +9078,7 @@ ${navPoints}  </navMap>
             ) : (
               <AlertCircle size={12} />
             )}
-            <span>{syncStatus === 'saving' ? 'Saving' : 'Saved'}</span>
+            <span>{syncStatus === 'saving' ? 'Saving' : syncStatus === 'error' ? 'Error' : 'Saved'}</span>
           </div>
           {lastSavedAt && (
             <span className="last-saved-label">
@@ -12464,8 +12476,8 @@ ${navPoints}  </navMap>
                       </div>
                       <button className="btn-ai-sub btn-ai-primary" style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem' }}
                         onClick={async () => {
-                          const projectIds = [projectId].filter((id): id is string => id !== null)
-                          const backup = await createBackup(projectIds)
+                    const projectIds = [projectId].filter((id): id is string => id !== null)
+                    const backup = await createBackup(projectIds, user?.uid)
                           downloadBackup(backup)
                           setShowBackupModal(false)
                         }}
@@ -12493,6 +12505,19 @@ ${navPoints}  </navMap>
                             try {
                               const data = await readBackupFile(file)
                               await restoreBackup(data)
+                              // Restore project entries into the user's project list so they appear in dashboard
+                              if (user) {
+                                try {
+                                  const stored = JSON.parse(localStorage.getItem(`penpad_projects_${user.uid}`) || '[]')
+                                  for (const [pid, pdata] of Object.entries(data.projects)) {
+                                    if (!stored.find((p: any) => p.id === pid)) {
+                                      const pd = pdata as Record<string, unknown>
+                                      stored.unshift({ id: pid, name: (pd.projectName as string) || pid, lastUpdated: Date.now() })
+                                    }
+                                  }
+                                  localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(stored))
+                                } catch { /* ignore project list update errors */ }
+                              }
                               setBackupMessage(`Restored ${Object.keys(data.projects).length} project(s) successfully! Reloading...`)
                               setTimeout(() => window.location.reload(), 1500)
                             } catch (err) {
