@@ -1832,7 +1832,7 @@ function EditorContent() {
     try {
       const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
       const chapterContext = activeNote?.content
-        ? activeNote.content.slice(0, 5000)
+        ? activeNote.content
         : ""
       const activeFormKeys = appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
       const forms: Record<string, string> = {}
@@ -1891,7 +1891,7 @@ function EditorContent() {
     try {
       const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
       const chapterContext = activeNote?.content
-        ? activeNote.content.slice(0, 5000)
+        ? activeNote.content
         : ""
       const activeFormKeys = appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
       const forms: Record<string, string> = {}

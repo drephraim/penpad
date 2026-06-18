@@ -858,13 +858,14 @@ export async function POST(req: NextRequest) {
         "You are an expert character concept prompt engineer for novelists and visual artists. " +
         "The user is describing a character, beast, or shapeshifter from a manuscript and wants polished image-generation prompts.\n" +
         "Guidelines:\n" +
-        "1. Read the Story Bible entry and active chapter context, then infer the character's visual design from appearance notes, abilities, origin, faction, aura, personality, and scene behavior.\n" +
-        "2. Generate separate prompts for each form listed below. If a form is not applicable, still produce a useful alternate visual interpretation based on the lore and clearly preserve shared identity traits.\n" +
-        "3. Include anatomy, silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background when useful.\n" +
-        "4. Do not invent unrelated names, factions, or plot details. Use chapter context only to enrich visual accuracy.\n" +
-        "5. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt, characterDetails. The prompts object must use the following keys: " + formLabelsStr + ". " +
+        "1. Read the entire chapter context thoroughly. Extract every existing detail about the character — appearance, clothing, demeanor, abilities, behavior, dialogue, how others react to them, and their role in the scene. Use ALL of this as the foundation.\n" +
+        "2. Where the chapter leaves gaps (e.g. exact hair color, facial structure, attire specifics, aura, etc.), invent creative but fitting details that match the tone, genre, and setting of the story. Be bold and vivid — these are for image generation, so describe visually.\n" +
+        "3. Generate separate prompts for each form listed below. If a form is not directly described in the chapter, produce a compelling alternate visual interpretation that preserves shared identity traits across forms.\n" +
+        "4. Every prompt must include: anatomy/silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background. Be specific and detailed — aim for 3-5 rich sentences per prompt.\n" +
+        "5. Do NOT invent unrelated names, factions, or plot details. Use chapter context to ground everything. Fill gaps with creative visual detail, never narrative invention.\n" +
+        "6. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt, characterDetails. The prompts object must use the following keys: " + formLabelsStr + ". " +
         "If the user requested per-form negative prompts, also include a 'negativePrompts' object with the same keys, each containing a form-specific negative prompt.\n" +
-        "6. The characterDetails object must contain: appearance (overall look), hair, eyes, body/build, attire, distinguishingFeatures. Extract these from the most humanoid/primary form if multiple forms exist.\n" +
+        "7. The characterDetails object must contain: appearance (overall look), hair, eyes, body/build, attire, distinguishingFeatures. Extract these from the most humanoid/primary form if multiple forms exist. Be thorough — include color, texture, shape, and style details.\n" +
         "No markdown fences."
 
       const chapterContext = chapter && typeof chapter === "object"
