@@ -17,7 +17,7 @@ import {
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
-  Clock, Upload, HardDrive, BarChart3
+  Upload, HardDrive, BarChart3
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -70,7 +70,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import JSZip from 'jszip'
-import PomodoroTimer from '@/components/PomodoroTimer'
+
 import SoundtrackPlayer from '@/components/SoundtrackPlayer'
 import WordUsageReport from '@/components/WordUsageReport'
 import NanoWrimoMode from '@/components/NanoWrimoMode'
@@ -122,7 +122,7 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references' | 'wordreport' | 'pomodoro'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references' | 'wordreport'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -7464,7 +7464,6 @@ ${navPoints}  </navMap>
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
     { name: "Reference Library", cmd: "/ref", desc: "Open Reference Library", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } },
     { name: "Word Report", cmd: "/words", desc: "Word Usage Report", action: () => { setActiveSidebarTab('wordreport'); setIsLeftSidebarOpen(true) } },
-    { name: "Pomodoro", cmd: "/pomo", desc: "Open Pomodoro Timer", action: () => { setActiveSidebarTab('pomodoro'); setIsLeftSidebarOpen(true) } },
     { name: "Soundtrack", cmd: "/music", desc: "Background music", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
     { name: "NaNoWriMo", cmd: "/nano", desc: "NaNoWriMo 2026", action: () => { setActiveSidebarTab('insights'); setIsLeftSidebarOpen(true) } }
   ]
@@ -9029,21 +9028,6 @@ ${navPoints}  </navMap>
                 title="Word Usage Report"
               >
                 <BarChart3 size={20} />
-              </button>
-
-              <button 
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'pomodoro' ? 'active' : ''}`}
-                onClick={() => {
-                  if (activeSidebarTab === 'pomodoro' && isLeftSidebarOpen) {
-                    setIsLeftSidebarOpen(false)
-                  } else {
-                    setActiveSidebarTab('pomodoro')
-                    setIsLeftSidebarOpen(true)
-                   }
-                }}
-                title="Pomodoro Timer"
-              >
-                <Clock size={20} />
               </button>
 
               <button
@@ -12227,11 +12211,6 @@ ${navPoints}  </navMap>
               <WordUsageReport
                 chapters={notes.map(n => ({ id: n.id, title: n.title, content: n.content }))}
               />
-            )}
-
-            {/* TAB: POMODORO TIMER */}
-            {activeSidebarTab === 'pomodoro' && (
-              <PomodoroTimer projectId={projectId ?? ''} />
             )}
 
             {/* Backup & Restore Modal */}
