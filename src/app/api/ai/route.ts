@@ -1141,27 +1141,55 @@ export async function POST(req: NextRequest) {
         : ""
       userPrompt = `Active Chapter Draft:${titleContext}\n\n${chapterContent}${existingContext}`
     } else if (action === "brain_suggest_additions") {
-      const { chapterContent, existingBrainEntries } = body
+      const { chapterContent, existingBrainEntries, chapters, activeChapter, scanMode } = body
       if (!chapterContent) {
         return NextResponse.json({ error: "chapterContent is required for brain_suggest_additions" }, { status: 400 })
       }
+      const chapterWindow = Array.isArray(chapters)
+        ? chapters.slice(0, 10).map((chapter: any) => ({
+            id: String(chapter?.id || ""),
+            title: String(chapter?.title || "Untitled"),
+            chapterNumber: Number.isFinite(Number(chapter?.chapterNumber)) ? Number(chapter.chapterNumber) : null,
+            content: String(chapter?.content || "").slice(0, 12000)
+          })).filter((chapter: any) => chapter.content.trim().length > 0)
+        : []
+      const isPreviousChapterScan = scanMode === "previous_chapters" && chapterWindow.length > 0
 
       systemInstruction =
-        "You are a helpful creative writing assistant. Scan the provided chapter text and extract up to 5 key names, items, places, concepts, or events " +
-        "that are NOT already tracked in the existing Brain Map entries list.\n" +
-        "For each suggestion, provide a name, class classification, importance, and brief context recap from the chapter.\n" +
+        "You are a careful creative writing memory assistant for a novelist's Brain Map.\n" +
+        (isPreviousChapterScan
+          ? "Read the previous chapter window before the active chapter. Suggest up to 8 Brain Map additions or updates that are important because they are referenced repeatedly, gain new details in a later chapter, reveal character progression, establish a promise/foreshadowing, or clarify lore the writer is likely to reuse. Prefer concrete story facts over generic nouns. If an entity is already tracked, only suggest it when the provided chapters add a meaningful new update worth appending.\n"
+          : "Scan the provided chapter text and extract up to 5 key names, items, places, concepts, or events that are NOT already tracked in the existing Brain Map entries list.\n") +
+        "For each suggestion, provide a name, classification, importance, source chapter metadata, and a brief context recap grounded in the chapter text.\n" +
         "Output ONLY a JSON object with key:\n" +
         "- suggestions: an array of objects, each containing:\n" +
         "  - entityName: name of the entity (e.g. 'Arthur')\n" +
         "  - entityType: one of 'character', 'place', 'object', 'concept', 'event', 'foreshadowing'\n" +
         "  - importance: one of 'minor', 'major', 'critical'\n" +
-        "  - aiSummary: a concise 1-2 sentence recap explaining what it is based on the chapter content.\n" +
+        "  - aiSummary: a concise 1-2 sentence recap explaining the important fact or update based on the chapter content\n" +
+        "  - chapterId: id of the most relevant source chapter, when provided\n" +
+        "  - chapterTitle: title of the most relevant source chapter\n" +
+        "  - chapterNumber: number of the most relevant source chapter, or null\n" +
+        "  - evidence: a short paraphrased reason or detail from the text, not a long quote\n" +
+        "  - mentionCount: estimated count of meaningful references across the provided chapters.\n" +
         "Do not include markdown formatting or backticks around the JSON."
 
       const existingContext = Array.isArray(existingBrainEntries) && existingBrainEntries.length > 0
-        ? `\n\nExisting tracked Brain Map entities:\n${existingBrainEntries.map((e: any) => e.entityName || e.highlightedText).filter(Boolean).slice(0, 100).join(", ")}`
+        ? `\n\nExisting tracked Brain Map entries:\n${existingBrainEntries.slice(0, 100).map((entry: any) => {
+            const chapter = entry.chapterNumber ? `Chapter ${entry.chapterNumber}` : entry.chapterTitle || "Unknown chapter"
+            return `- ${chapter}: ${entry.entityName || entry.highlightedText || "Unknown"} (${entry.entityType || "unknown"}, ${entry.importance || "minor"}) - ${String(entry.aiSummary || "").slice(0, 500)}`
+          }).join("\n")}`
         : ""
-      userPrompt = `Chapter Content:\n${chapterContent}${existingContext}`
+      const activeContext = activeChapter
+        ? `Active chapter currently open: ${activeChapter.chapterNumber ? `Chapter ${activeChapter.chapterNumber}` : "Chapter"} "${activeChapter.title || "Untitled"}". Only scan the previous chapters below.\n\n`
+        : ""
+      const previousChapterContext = chapterWindow.length > 0
+        ? chapterWindow.map((chapter: any) => {
+            const label = chapter.chapterNumber ? `Chapter ${chapter.chapterNumber}` : "Chapter"
+            return `### ${label}: ${chapter.title}\nchapterId: ${chapter.id}\n${chapter.content}`
+          }).join("\n\n---\n\n")
+        : String(chapterContent)
+      userPrompt = `${activeContext}Previous Chapter Content:\n${previousChapterContext}${existingContext}`
     } else if (action === "brain_generate_dossier") {
       const { entityName, entityType, brainEntries } = body
       if (!entityName || !Array.isArray(brainEntries)) {
@@ -1448,8 +1476,29 @@ export async function POST(req: NextRequest) {
 
     if (action === "brain_suggest_additions") {
       const result = parseJsonObject<any>(text)
+      const allowedTypes = new Set(["character", "place", "object", "concept", "event", "foreshadowing"])
+      const allowedImportance = new Set(["minor", "major", "critical"])
+      const suggestions = Array.isArray(result?.suggestions)
+        ? result.suggestions.map((suggestion: any) => {
+            const entityType = allowedTypes.has(suggestion?.entityType) ? suggestion.entityType : "concept"
+            const importance = allowedImportance.has(suggestion?.importance) ? suggestion.importance : "minor"
+            const chapterNumber = Number.isFinite(Number(suggestion?.chapterNumber)) ? Number(suggestion.chapterNumber) : null
+            const mentionCount = Number.isFinite(Number(suggestion?.mentionCount)) ? Math.max(1, Number(suggestion.mentionCount)) : undefined
+            return {
+              entityName: String(suggestion?.entityName || "").trim(),
+              entityType,
+              importance,
+              aiSummary: String(suggestion?.aiSummary || "").trim(),
+              chapterId: suggestion?.chapterId ? String(suggestion.chapterId) : undefined,
+              chapterTitle: suggestion?.chapterTitle ? String(suggestion.chapterTitle).slice(0, 160) : undefined,
+              chapterNumber,
+              evidence: suggestion?.evidence ? String(suggestion.evidence).slice(0, 400) : undefined,
+              mentionCount
+            }
+          }).filter((suggestion: any) => suggestion.entityName && suggestion.aiSummary).slice(0, 10)
+        : []
       return NextResponse.json({
-        suggestions: result?.suggestions || []
+        suggestions
       })
     }
 

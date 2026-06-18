@@ -127,6 +127,17 @@ type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bi
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
+type BrainSuggestion = {
+  entityName: string
+  entityType: BrainEntityType
+  importance: BrainImportance
+  aiSummary: string
+  chapterId?: string
+  chapterTitle?: string
+  chapterNumber?: number | null
+  evidence?: string
+  mentionCount?: number
+}
 type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 
@@ -1264,7 +1275,9 @@ function EditorContent() {
   const [consistencyWarnings, setConsistencyWarnings] = useState<{ entityName: string; severity: 'warning' | 'critical'; message: string }[]>([])
   const [consistencyCheckedNoteId, setConsistencyCheckedNoteId] = useState<string | null>(null)
   const [suggestionLoading, setSuggestionLoading] = useState(false)
-  const [suggestedEntities, setSuggestedEntities] = useState<{ entityName: string; entityType: BrainEntityType; importance: BrainImportance; aiSummary: string }[]>([])
+  const [brainSuggestionScanDepth, setBrainSuggestionScanDepth] = useState<5 | 10>(5)
+  const [brainSuggestionMessage, setBrainSuggestionMessage] = useState("")
+  const [suggestedEntities, setSuggestedEntities] = useState<BrainSuggestion[]>([])
   const [dossierLoading, setDossierLoading] = useState(false)
   const [dossierMessage, setDossierMessage] = useState('')
   const [isEditingDossier, setIsEditingDossier] = useState(false)
@@ -6905,53 +6918,131 @@ const fillEmptyCustomJsonData = (
 
   const fetchEntitySuggestions = async () => {
     if (!activeNote || !projectId || suggestionLoading) return
+    const orderedNotes = getManuscriptNotesList(notes)
+    const activeIndex = orderedNotes.findIndex(note => note.id === activeNote.id)
+    const scanNotes = activeIndex >= 0
+      ? orderedNotes.slice(Math.max(0, activeIndex - brainSuggestionScanDepth), activeIndex)
+          .filter(note => (note.content || "").trim().length > 0)
+      : []
+
+    if (scanNotes.length === 0) {
+      setSuggestedEntities([])
+      setBrainSuggestionMessage("No previous chapters with text were found before the active chapter.")
+      return
+    }
+
     setSuggestionLoading(true)
     setSuggestedEntities([])
+    setBrainSuggestionMessage("")
     try {
+      const chapters = scanNotes.map(note => ({
+        id: note.id,
+        title: note.title || "Untitled",
+        chapterNumber: getNoteChapterNumber(note),
+        content: note.content || ""
+      }))
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "brain_suggest_additions",
-          chapterContent: activeNote.content,
+          chapterContent: chapters
+            .map(chapter => `### ${chapter.chapterNumber ? `Chapter ${chapter.chapterNumber}` : "Chapter"}: ${chapter.title}\n${chapter.content}`)
+            .join("\n\n---\n\n"),
+          chapters,
+          activeChapter: {
+            id: activeNote.id,
+            title: activeNote.title || "Untitled",
+            chapterNumber: getNoteChapterNumber(activeNote)
+          },
+          scanMode: "previous_chapters",
           existingBrainEntries: brainEntries.filter(entry => entry.aiSummary !== "Analyzing...")
         })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to fetch suggestions")
-      setSuggestedEntities(data.suggestions || [])
+      const suggestions = Array.isArray(data.suggestions) ? data.suggestions : []
+      setSuggestedEntities(suggestions)
+      setBrainSuggestionMessage(
+        suggestions.length > 0
+          ? `Scanned ${scanNotes.length} previous chapter${scanNotes.length === 1 ? "" : "s"} before this one.`
+          : `Scanned ${scanNotes.length} previous chapter${scanNotes.length === 1 ? "" : "s"} and found no new Brain Map candidates.`
+      )
     } catch (err) {
       console.error(err)
+      setBrainSuggestionMessage(err instanceof Error ? err.message : "Failed to fetch suggestions.")
     } finally {
       setSuggestionLoading(false)
     }
   }
 
-  const quickAddSuggestedEntity = async (suggestion: { entityName: string; entityType: BrainEntityType; importance: BrainImportance; aiSummary: string }) => {
+  const quickAddSuggestedEntity = async (suggestion: BrainSuggestion) => {
     if (!user || !projectId || !activeNote) return
     const now = Date.now()
-    const chapterNumber = getNoteChapterNumber(activeNote)
-    const newEntry: BrainEntry = {
-      id: crypto.randomUUID(),
-      highlightedText: suggestion.entityName,
-      entityName: suggestion.entityName,
-      entityType: suggestion.entityType,
-      importance: suggestion.importance,
-      aiSummary: suggestion.aiSummary,
-      chapterTitle: activeNote.title || "Untitled",
-      chapterId: activeNote.id,
-      ...(chapterNumber ? { chapterNumber } : {}),
-      connections: [],
-      createdAt: now,
-      updatedAt: now
+    const normalizedName = suggestion.entityName.trim().toLowerCase()
+    const chapterNumber = typeof suggestion.chapterNumber === "number" && Number.isFinite(suggestion.chapterNumber)
+      ? suggestion.chapterNumber
+      : getNoteChapterNumber(activeNote)
+    const chapterTitle = suggestion.chapterTitle || activeNote.title || "Untitled"
+    const chapterId = suggestion.chapterId || activeNote.id
+    const evidenceText = suggestion.evidence?.trim()
+    const summaryWithEvidence = evidenceText
+      ? `${suggestion.aiSummary}\n\nEvidence: ${evidenceText}`
+      : suggestion.aiSummary
+    const existingEntry = brainEntries.find(entry =>
+      (entry.entityName || entry.highlightedText || "").trim().toLowerCase() === normalizedName
+    )
+    const importanceRank: Record<BrainImportance, number> = {
+      minor: 1,
+      major: 2,
+      critical: 3
     }
 
-    const updated = [newEntry, ...brainEntries]
-    setBrainEntries(updated)
-    await saveStoryBrainLocal(projectId, updated)
-    await saveBrainEntryToCloud(user.uid, projectId, newEntry)
+    if (existingEntry) {
+      const existingImportance = existingEntry.importance || "minor"
+      const strongerImportance = importanceRank[suggestion.importance] > importanceRank[existingImportance]
+        ? suggestion.importance
+        : existingImportance
+      const chapterLabel = chapterNumber ? `Chapter ${chapterNumber}` : chapterTitle
+      const updatedEntry: BrainEntry = {
+        ...existingEntry,
+        entityName: existingEntry.entityName || suggestion.entityName,
+        entityType: existingEntry.entityType || suggestion.entityType,
+        importance: strongerImportance,
+        aiSummary: `${existingEntry.aiSummary || ""}\n\n---\n\n### 🔄 Update: ${chapterLabel}\n${summaryWithEvidence}`.trim(),
+        updatedAt: now
+      }
+      const updated = [updatedEntry, ...brainEntries.filter(entry => entry.id !== existingEntry.id)]
+      setBrainEntries(updated)
+      await saveStoryBrainLocal(projectId, updated)
+      await saveBrainEntryToCloud(user.uid, projectId, updatedEntry)
+    } else {
+      const newEntry: BrainEntry = {
+        id: crypto.randomUUID(),
+        highlightedText: suggestion.entityName,
+        entityName: suggestion.entityName,
+        entityType: suggestion.entityType,
+        importance: suggestion.importance,
+        aiSummary: summaryWithEvidence,
+        chapterTitle,
+        chapterId,
+        ...(chapterNumber ? { chapterNumber } : {}),
+        connections: [],
+        createdAt: now,
+        updatedAt: now
+      }
 
-    setSuggestedEntities(prev => prev.filter(s => s.entityName.toLowerCase() !== suggestion.entityName.toLowerCase()))
+      const updated = [newEntry, ...brainEntries]
+      setBrainEntries(updated)
+      await saveStoryBrainLocal(projectId, updated)
+      await saveBrainEntryToCloud(user.uid, projectId, newEntry)
+    }
+
+    setSuggestedEntities(prev => prev.filter(s =>
+      s.entityName.trim().toLowerCase() !== normalizedName ||
+      s.chapterNumber !== suggestion.chapterNumber
+    ))
   }
 
   const generateEntityDossier = async (entityName: string, entityType: BrainEntityType) => {
@@ -13925,21 +14016,45 @@ ${navPoints}  </navMap>
               <div className="modal-header">
                 <div>
                   <h2 className="modal-title">Suggested Lore Additions</h2>
-                  <p className="modal-description">Scan active draft to find characters, items, or locations to add.</p>
+                  <p className="modal-description">Scan earlier chapters before the active chapter for recurring or newly important details.</p>
                 </div>
                 <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
               </div>
               
               <div style={{ margin: '0.85rem 0 0.25rem' }}>
-                <button
-                  className="btn-ai-sub btn-ai-secondary"
-                  onClick={fetchEntitySuggestions}
-                  disabled={suggestionLoading || !activeNote}
-                  style={{ width: '100%', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.75rem', cursor: 'pointer' }}
-                >
-                  {suggestionLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-                  Scan Draft for Entities
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  <select
+                    value={brainSuggestionScanDepth}
+                    onChange={event => setBrainSuggestionScanDepth(Number(event.target.value) === 10 ? 10 : 5)}
+                    disabled={suggestionLoading}
+                    style={{
+                      flex: '0 0 150px',
+                      height: '34px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--text-primary)',
+                      padding: '0 0.55rem',
+                      fontSize: '0.76rem'
+                    }}
+                  >
+                    <option value={5}>Previous 5</option>
+                    <option value={10}>Previous 10</option>
+                  </select>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary"
+                    onClick={fetchEntitySuggestions}
+                    disabled={suggestionLoading || !activeNote}
+                    style={{ flex: 1, height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', cursor: 'pointer' }}
+                  >
+                    {suggestionLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                    Scan Previous Chapters
+                  </button>
+                </div>
+
+                {brainSuggestionMessage && (
+                  <p style={{ margin: '0 0 0.75rem', color: 'var(--text-dim)', fontSize: '0.74rem' }}>{brainSuggestionMessage}</p>
+                )}
                 
                 {suggestedEntities.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.2rem' }}>
@@ -13967,6 +14082,14 @@ ${navPoints}  </navMap>
                         >
                           <span>+ {sug.entityName}</span>
                           <small className={`type-${sug.entityType}`} style={{ textTransform: 'uppercase', fontSize: '0.6rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(0,0,0,0.2)' }}>{sug.entityType}</small>
+                          {(sug.chapterNumber || sug.chapterTitle) && (
+                            <small style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)' }}>
+                              {sug.chapterNumber ? `Ch ${sug.chapterNumber}` : sug.chapterTitle}
+                            </small>
+                          )}
+                          {typeof sug.mentionCount === "number" && sug.mentionCount > 1 && (
+                            <small style={{ fontSize: '0.6rem', color: 'var(--text-dim)' }}>{sug.mentionCount} refs</small>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -13974,14 +14097,14 @@ ${navPoints}  </navMap>
                 ) : (
                   !suggestionLoading && (
                     <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                      Click &quot;Scan Draft for Entities&quot; to check your active chapter draft.
+                      Click &quot;Scan Previous Chapters&quot; to read the chapters before your active one.
                     </div>
                   )
                 )}
                 {suggestionLoading && (
                   <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
                     <Loader2 size={16} className="spin" style={{ margin: '0 auto 0.5rem' }} />
-                    Analyzing chapter draft and looking for new entities...
+                    Reading earlier chapters and looking for recurring details...
                   </div>
                 )}
               </div>
