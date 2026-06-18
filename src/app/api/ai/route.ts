@@ -828,67 +828,91 @@ export async function POST(req: NextRequest) {
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm } = body
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
       const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
-      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] !== false)
-      const formKeys = enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : ["beastForm", "demiHumanForm", "humanForm"])
 
       const safeLoreEntry = loreEntry && typeof loreEntry === "object"
-        ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[] }
+        ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[]; aliases?: string[] }
         : null
+      const chapterContext = chapter && typeof chapter === "object"
+        ? chapter as { title?: string; chapterNumber?: number; content?: string; targetEvidence?: string }
+        : null
+      const entryCategory = safeLoreEntry?.category === "beast"
+        ? "beast"
+        : safeLoreEntry?.category === "character"
+          ? "character"
+          : "other"
+      const categoryFormKeys = entryCategory === "beast"
+        ? ["beastForm", "demiHumanForm", "humanForm"]
+        : entryCategory === "character"
+          ? ["humanForm"]
+          : null
+      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] !== false)
+      const requestedFormKey = typeof regenerateForm === "string" && regenerateForm.trim() ? regenerateForm.trim() : ""
+      const baseFormKeys = categoryFormKeys || (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : ["beastForm", "demiHumanForm", "humanForm"]))
+      const formKeys = requestedFormKey && baseFormKeys.includes(requestedFormKey)
+        ? [requestedFormKey]
+        : baseFormKeys
+      const chapterText = String(chapterContext?.content || "").trim()
 
       const hasDescription = Boolean(
-        selectedText ||
-        Object.values(appForms).some(Boolean) ||
-        safeLoreEntry?.content
+        chapterText &&
+        (selectedText || safeLoreEntry?.name || name)
       )
 
       if (!hasDescription) {
-        return NextResponse.json({ error: "At least one appearance description or selected passage is required." }, { status: 400 })
+        return NextResponse.json({ error: "Choose an active chapter with content and a World Bible person or beast before generating appearance prompts." }, { status: 400 })
       }
 
       const formLabelsStr = formKeys.map(k => {
-        const label = safeFormLabels[k] || k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+        const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+        const label = safeFormLabels[k] || fallbackLabel
         return `"${k}": "${label}"`
       }).join(", ")
+      const requiredFormRule = entryCategory === "beast"
+        ? "This Story Bible entry is a BEAST. You must create exactly three prompts: Beast Form, Demi-human Form, and Humanoid Form. The demi-human and humanoid versions are visual evolutions of the beast and must preserve identifying traits from the chapter.\n"
+        : entryCategory === "character"
+          ? "This Story Bible entry is a PERSON/CHARACTER. You must create only the humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
+          : "Use only the requested forms, and ground every form in the active chapter.\n"
 
       systemInstruction =
         "You are an expert character concept prompt engineer for novelists and visual artists. " +
         "The user is describing a character, beast, or shapeshifter from a manuscript and wants polished image-generation prompts.\n" +
         "Guidelines:\n" +
-        "1. Read the entire chapter context thoroughly. Extract every existing detail about the character — appearance, clothing, demeanor, abilities, behavior, dialogue, how others react to them, and their role in the scene. Use ALL of this as the foundation.\n" +
-        "2. Where the chapter leaves gaps (e.g. exact hair color, facial structure, attire specifics, aura, etc.), invent creative but fitting details that match the tone, genre, and setting of the story. Be bold and vivid — these are for image generation, so describe visually.\n" +
-        "3. Generate separate prompts for each form listed below. If a form is not directly described in the chapter, produce a compelling alternate visual interpretation that preserves shared identity traits across forms.\n" +
-        "4. Every prompt must include: anatomy/silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background. Be specific and detailed — aim for 3-5 rich sentences per prompt.\n" +
-        "5. Do NOT invent unrelated names, factions, or plot details. Use chapter context to ground everything. Fill gaps with creative visual detail, never narrative invention.\n" +
-        "6. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt, characterDetails. The prompts object must use the following keys: " + formLabelsStr + ". " +
+        "1. First read the active chapter context and target-focused chapter evidence before writing any prompt. Base the appearance on what the chapter says, then use the Story Bible only as supporting context.\n" +
+        "2. Extract every existing detail about the target: appearance, clothing, beast traits, demeanor, abilities, behavior, dialogue, how others react to them, and their role in the scene. Use ALL relevant chapter evidence as the foundation.\n" +
+        "3. Where the chapter leaves visual gaps (e.g. exact hair color, facial structure, attire specifics, aura, etc.), invent creative but fitting details that match the tone, genre, and setting of the story. Do not override direct chapter evidence.\n" +
+        "4. " + requiredFormRule +
+        "5. Every prompt must include: anatomy/silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background. Be specific and detailed — aim for 3-5 rich sentences per prompt.\n" +
+        "6. Do NOT invent unrelated names, factions, or plot details. Use chapter context to ground everything. Fill gaps with creative visual detail, never narrative invention.\n" +
+        "7. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt, characterDetails. The prompts object must use exactly the following keys: " + formLabelsStr + ". " +
         "If the user requested per-form negative prompts, also include a 'negativePrompts' object with the same keys, each containing a form-specific negative prompt.\n" +
-        "7. The characterDetails object must contain: appearance (overall look), hair, eyes, body/build, attire, distinguishingFeatures. Extract these from the most humanoid/primary form if multiple forms exist. Be thorough — include color, texture, shape, and style details.\n" +
+        "8. The characterDetails object must contain: appearance (overall look), hair, eyes, body/build, attire, distinguishingFeatures. Extract these from the humanoid/primary form for person entries, or the humanoid evolution for beast entries. Be thorough — include color, texture, shape, and style details.\n" +
         "No markdown fences."
 
-      const chapterContext = chapter && typeof chapter === "object"
-        ? chapter as { title?: string; chapterNumber?: number; content?: string }
-        : null
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
         : ""
-      const chapterContent = chapterContext?.content ? `\nChapter Context:\n${chapterContext.content}` : ""
+      const chapterEvidence = chapterContext?.targetEvidence ? `\nTarget-Focused Chapter Evidence:\n${chapterContext.targetEvidence}` : ""
+      const chapterContent = chapterText ? `\nFull Chapter Context:\n${chapterText}` : ""
       const selectedLine = selectedText ? `\nHighlighted Passage:\n${selectedText}` : ""
       const loreLine = safeLoreEntry
-        ? `\nStory Bible Entry:\nName: ${safeLoreEntry.name || name || "Unknown"}\nType: ${safeLoreEntry.category || "unknown"}\nGroups: ${Array.isArray(safeLoreEntry.groups) ? safeLoreEntry.groups.join(", ") : "none"}\nLore Notes:\n${safeLoreEntry.content || ""}`
+        ? `\nStory Bible Entry:\nName: ${safeLoreEntry.name || name || "Unknown"}\nType: ${safeLoreEntry.category || "unknown"}\nAliases: ${Array.isArray(safeLoreEntry.aliases) ? safeLoreEntry.aliases.join(", ") : "none"}\nGroups: ${Array.isArray(safeLoreEntry.groups) ? safeLoreEntry.groups.join(", ") : "none"}\nLore Notes:\n${safeLoreEntry.content || ""}`
         : ""
 
       const formDescriptions = formKeys.map(k => {
-        const label = safeFormLabels[k] || k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+        const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+        const label = safeFormLabels[k] || fallbackLabel
         return `- ${label} (${k}): ${appForms[k] || "Not directly described. Infer from available context."}`
       }).join("\n")
 
       userPrompt =
         `Character or creature name: ${safeLoreEntry?.name || name || "Unknown / infer from context"}\n` +
+        `World Bible category: ${safeLoreEntry?.category || "unknown"}\n` +
         `Preferred visual style: ${style || "cinematic fantasy character concept art"}` +
-        `${chapterLine}${selectedLine}${loreLine}\n\n` +
+        `${chapterLine}${selectedLine}${loreLine}${chapterEvidence}\n\n` +
         `Forms to generate:\n${formDescriptions}` +
         `${chapterContent}${memoryContext}`
     } else if (action === "progression_update") {

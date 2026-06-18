@@ -1562,7 +1562,7 @@ function EditorContent() {
   const [appearanceFormLabels, setAppearanceFormLabels] = useState<Record<string, string>>({
     beastForm: "Beast Form",
     demiHumanForm: "Demi-human Form",
-    humanForm: "Human Form"
+    humanForm: "Humanoid Form"
   })
   const [appearanceFormDescriptions, setAppearanceFormDescriptions] = useState<Record<string, string>>({})
   const [appearanceFormEnabled, setAppearanceFormEnabled] = useState<Record<string, boolean>>({
@@ -1574,12 +1574,12 @@ function EditorContent() {
 
   const getDefaultEntryForms = useCallback((category: string): { keys: string[]; enabled: Record<string, boolean>; labels: Record<string, string>; descriptions: Record<string, string> } => {
     if (category === "beast") {
-      return { keys: ["beastForm"], enabled: { beastForm: true, demiHumanForm: false, humanForm: false }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Human Form" }, descriptions: {} }
+      return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
     }
     if (category === "character") {
-      return { keys: ["humanForm", "demiHumanForm"], enabled: { beastForm: false, humanForm: true, demiHumanForm: true }, labels: { beastForm: "Beast Form", humanForm: "Human Form", demiHumanForm: "Demi-human Form" }, descriptions: {} }
+      return { keys: ["humanForm"], enabled: { beastForm: false, humanForm: true, demiHumanForm: false }, labels: { beastForm: "Beast Form", humanForm: "Humanoid Form", demiHumanForm: "Demi-human Form" }, descriptions: {} }
     }
-    return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Human Form" }, descriptions: {} }
+    return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
   }, [])
 
   const [appearanceEntryForms, setAppearanceEntryForms] = useState<Record<string, { keys: string[]; enabled: Record<string, boolean>; labels: Record<string, string>; descriptions: Record<string, string> }>>({})
@@ -1601,23 +1601,24 @@ function EditorContent() {
     if (!entryId) {
       setAppearanceFormKeys(["beastForm", "demiHumanForm", "humanForm"])
       setAppearanceFormEnabled({ beastForm: true, demiHumanForm: true, humanForm: true })
-      setAppearanceFormLabels({ beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Human Form" })
+      setAppearanceFormLabels({ beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" })
       setAppearanceFormDescriptions({})
       return
     }
     const saved = appearanceEntryForms[entryId]
-    if (saved) {
+    const entry = bibleEntries.find(e => e.id === entryId)
+    const enforceCategoryForms = entry?.category === "beast" || entry?.category === "character"
+    if (saved && !enforceCategoryForms) {
       setAppearanceFormKeys(saved.keys)
       setAppearanceFormEnabled(saved.enabled)
       setAppearanceFormLabels(saved.labels)
       setAppearanceFormDescriptions(saved.descriptions || {})
     } else {
-      const entry = bibleEntries.find(e => e.id === entryId)
       const defaults = getDefaultEntryForms(entry?.category || "character")
       setAppearanceFormKeys(defaults.keys)
       setAppearanceFormEnabled(defaults.enabled)
       setAppearanceFormLabels(defaults.labels)
-      setAppearanceFormDescriptions({})
+      setAppearanceFormDescriptions(saved?.descriptions || {})
     }
   }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
 
@@ -1834,7 +1835,18 @@ function EditorContent() {
       const chapterContext = activeNote?.content
         ? activeNote.content
         : ""
-      const activeFormKeys = appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
+      const appearanceTargetEvidence = buildProgressionTargetEvidence(sourceEntry, chapterContext, selectedText)
+      const defaultFormConfig = getDefaultEntryForms(sourceEntry.category)
+      const enforceCategoryForms = sourceEntry.category === "beast" || sourceEntry.category === "character"
+      const activeFormKeys = enforceCategoryForms
+        ? defaultFormConfig.keys
+        : appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
+      const formLabelsForRequest = enforceCategoryForms
+        ? defaultFormConfig.labels
+        : appearanceFormLabels
+      const formEnabledForRequest = enforceCategoryForms
+        ? defaultFormConfig.enabled
+        : appearanceFormEnabled
       const forms: Record<string, string> = {}
       for (const key of activeFormKeys) {
         if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
@@ -1849,12 +1861,13 @@ function EditorContent() {
           style: styleToUse,
           selectedText,
           forms: Object.keys(forms).length > 0 ? forms : undefined,
-          formLabels: appearanceFormLabels,
-          formEnabled: appearanceFormEnabled,
+          formLabels: formLabelsForRequest,
+          formEnabled: formEnabledForRequest,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
             content: sourceEntry.content,
+            aliases: getLoreAliases(sourceEntry),
             groups: (sourceEntry.groupIds || [])
               .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
               .filter(Boolean)
@@ -1862,7 +1875,8 @@ function EditorContent() {
           chapter: activeNote ? {
             title: activeNote.title,
             chapterNumber: activeChapterNumber,
-            content: chapterContext
+            content: chapterContext,
+            targetEvidence: appearanceTargetEvidence
           } : null,
           memory: buildStoryMemoryContext()
         })
@@ -1893,9 +1907,10 @@ function EditorContent() {
       const chapterContext = activeNote?.content
         ? activeNote.content
         : ""
-      const activeFormKeys = appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
+      const appearanceTargetEvidence = buildProgressionTargetEvidence(sourceEntry, chapterContext, selectedText)
+      const defaultFormConfig = getDefaultEntryForms(sourceEntry.category)
       const forms: Record<string, string> = {}
-      for (const key of activeFormKeys) {
+      for (const key of defaultFormConfig.keys.includes(formKey) ? [formKey] : appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)) {
         if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
@@ -1908,13 +1923,14 @@ function EditorContent() {
           style: styleToUse,
           selectedText,
           forms: Object.keys(forms).length > 0 ? forms : undefined,
-          formLabels: appearanceFormLabels,
+          formLabels: { ...appearanceFormLabels, ...defaultFormConfig.labels },
           formEnabled: { [formKey]: true },
           regenerateForm: formKey,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
             content: sourceEntry.content,
+            aliases: getLoreAliases(sourceEntry),
             groups: (sourceEntry.groupIds || [])
               .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
               .filter(Boolean)
@@ -1922,7 +1938,8 @@ function EditorContent() {
           chapter: activeNote ? {
             title: activeNote.title,
             chapterNumber: activeChapterNumber,
-            content: chapterContext
+            content: chapterContext,
+            targetEvidence: appearanceTargetEvidence
           } : null,
           memory: buildStoryMemoryContext()
         })
