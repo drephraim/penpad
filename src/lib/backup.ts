@@ -18,7 +18,7 @@ export interface BackupData {
       storyBrain: unknown[] | null
       arcSeeds: unknown[] | null
       referenceLibrary: unknown[] | null
-      nameForgeData: unknown[] | null
+      nameForgeData: unknown[] | Record<string, unknown> | null
       exportHistory: Record<string, unknown> | null
       volumes: unknown[] | null
       bibleGroups: unknown[] | null
@@ -108,8 +108,17 @@ export async function createBackup(projectIds: string[], userId?: string): Promi
   }
 }
 
-export async function restoreBackup(data: BackupData): Promise<string[]> {
+export async function restoreBackup(data: BackupData, userId?: string): Promise<string[]> {
   const restored: string[] = []
+  const restoredProjectRecords: Array<{
+    id: string
+    name: string
+    lastUpdated: number
+    volumes: unknown[]
+    bibleGroups: unknown[]
+    progressionProfiles: unknown[]
+    progressionSystem: unknown | null
+  }> = []
 
   for (const [projectId, projectData] of Object.entries(data.projects)) {
     const ops: Promise<void>[] = []
@@ -129,14 +138,18 @@ export async function restoreBackup(data: BackupData): Promise<string[]> {
     if (projectData.referenceLibrary) {
       ops.push(saveReferenceLibraryLocal(projectId, projectData.referenceLibrary))
     }
-    if (projectData.nameForgeData && projectData.nameForgeData.length > 0) {
-      const raw = projectData.nameForgeData[0] as Record<string, unknown>
+    if (projectData.nameForgeData) {
+      const raw = Array.isArray(projectData.nameForgeData)
+        ? projectData.nameForgeData[0] as Record<string, unknown> | undefined
+        : projectData.nameForgeData as Record<string, unknown>
+      if (raw) {
       ops.push(saveNameForgeDataLocal(projectId, {
         shortlist: (raw.shortlist as unknown[]) ?? [],
         presets: (raw.presets as unknown[]) ?? [],
         generationHistory: (raw.generationHistory as unknown[]) ?? [],
         nameRatings: (raw.nameRatings as Record<string, unknown>) ?? {}
       }))
+      }
     }
     if (projectData.exportHistory) {
       ops.push(saveExportHistoryLocal(projectId, projectData.exportHistory as Record<string, unknown>))
@@ -157,11 +170,48 @@ export async function restoreBackup(data: BackupData): Promise<string[]> {
     if (projectData.progressionSystem) {
       localStorage.setItem(`penpad_progression_system_${projectId}`, JSON.stringify(projectData.progressionSystem))
     }
+
+    restoredProjectRecords.push({
+      id: projectId,
+      name: projectData.projectName || projectId,
+      lastUpdated: Date.now(),
+      volumes: Array.isArray(projectData.volumes) ? projectData.volumes : [],
+      bibleGroups: Array.isArray(projectData.bibleGroups) ? projectData.bibleGroups : [],
+      progressionProfiles: Array.isArray(projectData.progressionProfiles) ? projectData.progressionProfiles : [],
+      progressionSystem: projectData.progressionSystem || null
+    })
+  }
+
+  if (userId && restoredProjectRecords.length > 0) {
+    const key = `penpad_projects_${userId}`
+    let projects: Array<Record<string, unknown> & { id: string }> = []
+    try {
+      const stored = localStorage.getItem(key)
+      projects = stored ? JSON.parse(stored) : []
+      if (!Array.isArray(projects)) projects = []
+    } catch {
+      projects = []
+    }
+
+    for (const restoredProject of restoredProjectRecords) {
+      const idx = projects.findIndex(project => project.id === restoredProject.id)
+      const nextProject = {
+        ...(idx >= 0 ? projects[idx] : {}),
+        ...restoredProject
+      }
+      if (idx >= 0) projects[idx] = nextProject
+      else projects.unshift(nextProject)
+    }
+
+    localStorage.setItem(key, JSON.stringify(projects))
   }
 
   if (data.settings?.theme) {
     localStorage.setItem('penpad_theme', data.settings.theme)
     document.documentElement.className = data.settings.theme
+  }
+  if (Number.isFinite(Number(data.settings?.leftSidebarWidth))) {
+    localStorage.setItem('penpad_left_sidebar_width', String(data.settings.leftSidebarWidth))
   }
 
   return restored

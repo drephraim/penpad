@@ -12504,26 +12504,14 @@ ${navPoints}  </navMap>
                             setBackupRestoring(true)
                             try {
                               const data = await readBackupFile(file)
-                              await restoreBackup(data)
-                              // Restore project entries into the user's project list so they appear in dashboard
-                              if (user) {
-                                try {
-                                  const stored = JSON.parse(localStorage.getItem(`penpad_projects_${user.uid}`) || '[]')
-                                  for (const [pid, pdata] of Object.entries(data.projects)) {
-                                    if (!stored.find((p: any) => p.id === pid)) {
-                                      const pd = pdata as Record<string, unknown>
-                                      stored.unshift({ id: pid, name: (pd.projectName as string) || pid, lastUpdated: Date.now() })
-                                    }
-                                  }
-                                  localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(stored))
-                                } catch { /* ignore project list update errors */ }
-                              }
+                              await restoreBackup(data, user?.uid)
                               setBackupMessage(`Restored ${Object.keys(data.projects).length} project(s) successfully! Reloading...`)
                               setTimeout(() => window.location.reload(), 1500)
                             } catch (err) {
                               setBackupMessage('Failed to restore backup: ' + (err instanceof Error ? err.message : 'Unknown error'))
                             } finally {
                               setBackupRestoring(false)
+                              e.currentTarget.value = ""
                             }
                           }}
                         />
