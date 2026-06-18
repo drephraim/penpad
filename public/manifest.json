@@ -1,0 +1,19 @@
+{
+  "name": "PenPad - AI-Powered Writing",
+  "short_name": "PenPad",
+  "description": "AI-powered writing sanctuary for fiction authors. Write, organize, and perfect your stories.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["writing", "productivity", "books"],
+  "lang": "en-US",
+  "orientation": "any"
+}

@@ -16,7 +16,8 @@ import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
-  ThumbsUp, ThumbsDown, Shuffle, Undo2, Users
+  ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
+  Layout, Clock, StickyNote, Music, Trophy, Upload, HardDrive, BarChart3
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -69,6 +70,15 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import JSZip from 'jszip'
+import PomodoroTimer from '@/components/PomodoroTimer'
+import Scratchpad from '@/components/Scratchpad'
+import SoundtrackPlayer from '@/components/SoundtrackPlayer'
+import Storyboard from '@/components/Storyboard'
+import WordUsageReport from '@/components/WordUsageReport'
+import WritingPrompts from '@/components/WritingPrompts'
+import CharacterVoiceReader from '@/components/CharacterVoiceReader'
+import NanoWrimoMode from '@/components/NanoWrimoMode'
+import { createBackup, restoreBackup, downloadBackup, readBackupFile } from '@/lib/backup'
 
 interface Note {
   id: string
@@ -116,7 +126,7 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references' | 'storyboard' | 'wordreport' | 'pomodoro' | 'scratchpad' | 'soundtrack' | 'nanowrimo'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -1141,6 +1151,11 @@ function EditorContent() {
       : DEFAULT_LEFT_SIDEBAR_WIDTH
   })
   const [isZenMode, setIsZenMode] = useState(false)
+  const [showBackupModal, setShowBackupModal] = useState(false)
+  const [showVoiceReader, setShowVoiceReader] = useState(false)
+  const [showPromptsPanel, setShowPromptsPanel] = useState(false)
+  const [backupRestoring, setBackupRestoring] = useState(false)
+  const [backupMessage, setBackupMessage] = useState("")
 
   // AI Assistant state variables
   const [showAISidebar, setShowAISidebar] = useState(false)
@@ -7452,7 +7467,13 @@ ${navPoints}  </navMap>
     { name: "Arc Seeds", cmd: "/arcs", desc: "Open Future Arc Seeds", action: () => { setActiveSidebarTab('arcs'); setIsLeftSidebarOpen(true) } },
     { name: "Name Forge", cmd: "/names", desc: "Generate fresh fantasy names", action: () => { setActiveSidebarTab('names'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
-    { name: "Reference Library", cmd: "/ref", desc: "Open Reference Library", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } }
+    { name: "Reference Library", cmd: "/ref", desc: "Open Reference Library", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } },
+    { name: "Storyboard", cmd: "/board", desc: "Open Storyboard", action: () => { setActiveSidebarTab('storyboard'); setIsLeftSidebarOpen(true) } },
+    { name: "Word Report", cmd: "/words", desc: "Word Usage Report", action: () => { setActiveSidebarTab('wordreport'); setIsLeftSidebarOpen(true) } },
+    { name: "Pomodoro", cmd: "/pomo", desc: "Open Pomodoro Timer", action: () => { setActiveSidebarTab('pomodoro'); setIsLeftSidebarOpen(true) } },
+    { name: "Scratchpad", cmd: "/note", desc: "Quick notes", action: () => { setActiveSidebarTab('scratchpad'); setIsLeftSidebarOpen(true) } },
+    { name: "Soundtrack", cmd: "/music", desc: "Background music", action: () => { setActiveSidebarTab('soundtrack'); setIsLeftSidebarOpen(true) } },
+    { name: "NaNoWriMo", cmd: "/nano", desc: "NaNoWriMo mode", action: () => { setActiveSidebarTab('nanowrimo'); setIsLeftSidebarOpen(true) } }
   ]
 
   const filteredCommands = slashCommands.filter(c => 
@@ -8850,6 +8871,13 @@ ${navPoints}  </navMap>
           >
             <History size={18} />
           </button>
+          <button
+            className="btn-icon"
+            onClick={() => setShowBackupModal(true)}
+            title="Backup & Restore"
+          >
+            <HardDrive size={18} />
+          </button>
           <button 
             className={`btn-icon ${showAISidebar ? 'active' : ''}`}
             onClick={() => setShowAISidebar(!showAISidebar)}
@@ -8993,6 +9021,112 @@ ${navPoints}  </navMap>
                 title="Ambient Focus Sounds"
               >
                 <Headphones size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'storyboard' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'storyboard' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('storyboard')
+                    setIsLeftSidebarOpen(true)
+                   }
+                }}
+                title="Storyboard"
+              >
+                <Layout size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'wordreport' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'wordreport' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('wordreport')
+                    setIsLeftSidebarOpen(true)
+                   }
+                }}
+                title="Word Usage Report"
+              >
+                <BarChart3 size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'pomodoro' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'pomodoro' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('pomodoro')
+                    setIsLeftSidebarOpen(true)
+                   }
+                }}
+                title="Pomodoro Timer"
+              >
+                <Clock size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'scratchpad' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'scratchpad' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('scratchpad')
+                    setIsLeftSidebarOpen(true)
+                   }
+                }}
+                title="Scratchpad"
+              >
+                <StickyNote size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'soundtrack' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'soundtrack' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('soundtrack')
+                    setIsLeftSidebarOpen(true)
+                   }
+                }}
+                title="Soundtrack"
+              >
+                <Music size={20} />
+              </button>
+
+              <button 
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'nanowrimo' ? 'active' : ''}`}
+                onClick={() => {
+                  if (activeSidebarTab === 'nanowrimo' && isLeftSidebarOpen) {
+                    setIsLeftSidebarOpen(false)
+                  } else {
+                    setActiveSidebarTab('nanowrimo')
+                    setIsLeftSidebarOpen(true)
+                   }
+                }}
+                title="NaNoWriMo Mode"
+              >
+                <Trophy size={20} />
+              </button>
+
+              <button
+                className={`activity-btn ${showVoiceReader ? 'active' : ''}`}
+                onClick={() => setShowVoiceReader(!showVoiceReader)}
+                title="Voice Reader"
+              >
+                <Volume2 size={20} />
+              </button>
+
+              <button
+                className={`activity-btn ${showPromptsPanel ? 'active' : ''}`}
+                onClick={() => setShowPromptsPanel(!showPromptsPanel)}
+                title="Writing Prompts"
+              >
+                <Sparkles size={20} />
               </button>
 
               <button
@@ -12154,6 +12288,143 @@ ${navPoints}  </navMap>
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: STORYBOARD */}
+            {activeSidebarTab === 'storyboard' && (
+              <Storyboard
+                projectId={projectId ?? ''}
+              />
+            )}
+
+            {/* TAB: WORD USAGE REPORT */}
+            {activeSidebarTab === 'wordreport' && (
+              <WordUsageReport
+                chapters={notes.map(n => ({ id: n.id, title: n.title, content: n.content }))}
+              />
+            )}
+
+            {/* TAB: POMODORO TIMER */}
+            {activeSidebarTab === 'pomodoro' && (
+              <PomodoroTimer projectId={projectId ?? ''} />
+            )}
+
+            {/* TAB: SCRATCHPAD */}
+            {activeSidebarTab === 'scratchpad' && (
+              <Scratchpad />
+            )}
+
+            {/* TAB: SOUNDTRACK */}
+            {activeSidebarTab === 'soundtrack' && (
+              <SoundtrackPlayer projectId={projectId ?? ''} />
+            )}
+
+            {/* TAB: NANOWRIMO */}
+            {activeSidebarTab === 'nanowrimo' && (
+              <NanoWrimoMode
+                projectId={projectId ?? ''}
+                allChapters={notes}
+              />
+            )}
+
+            {/* Floating panels: Voice Reader & Writing Prompts */}
+            {showVoiceReader && (
+              <div className="voice-reader-floating" style={{
+                position: 'absolute', bottom: '60px', left: '60px', width: '280px', maxHeight: '400px',
+                background: 'rgba(10,10,15,0.95)', backdropFilter: 'blur(16px)',
+                border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-lg)',
+                padding: '0.8rem', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+              }}>
+                <button onClick={() => setShowVoiceReader(false)} style={{
+                  position: 'absolute', top: '0.4rem', right: '0.4rem', background: 'none', border: 0,
+                  color: 'var(--text-dim)', cursor: 'pointer'
+                }}><X size={14} /></button>
+                <CharacterVoiceReader
+                  content={activeNote?.content || ''}
+                  chapterTitle={activeNote?.title}
+                  characters={bibleEntries.filter(e => e.category === 'character').map(e => e.name).filter(Boolean)}
+                />
+              </div>
+            )}
+
+            {showPromptsPanel && (
+              <div className="prompts-floating" style={{
+                position: 'absolute', bottom: '60px', left: '60px', width: '280px', maxHeight: '400px',
+                background: 'rgba(10,10,15,0.95)', backdropFilter: 'blur(16px)',
+                border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-lg)',
+                padding: '0.8rem', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+              }}>
+                <button onClick={() => setShowPromptsPanel(false)} style={{
+                  position: 'absolute', top: '0.4rem', right: '0.4rem', background: 'none', border: 0,
+                  color: 'var(--text-dim)', cursor: 'pointer'
+                }}><X size={14} /></button>
+                <WritingPrompts />
+              </div>
+            )}
+
+            {/* Backup & Restore Modal */}
+            {showBackupModal && (
+              <div className="modal-overlay" onClick={() => setShowBackupModal(false)}>
+                <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+                  <div className="modal-header">
+                    <h3>Backup & Restore</h3>
+                    <button className="modal-close" onClick={() => setShowBackupModal(false)}><X size={18} /></button>
+                  </div>
+                  <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '1rem' }}>
+                    <div className="modal-section">
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '0.4rem' }}>
+                        Export all your projects, world bible, brain map, and settings as a single JSON file.
+                      </div>
+                      <button className="btn-ai-sub btn-ai-primary" style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem' }}
+                        onClick={async () => {
+                          const projectIds = [projectId].filter((id): id is string => id !== null)
+                          const backup = await createBackup(projectIds)
+                          downloadBackup(backup)
+                          setShowBackupModal(false)
+                        }}
+                      >
+                        <Download size={14} /> Export Backup
+                      </button>
+                    </div>
+                    <div className="modal-divider" style={{ height: '1px', background: 'var(--surface-border)', margin: '0.2rem 0' }} />
+                    <div className="modal-section">
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '0.4rem' }}>
+                        Restore from a previously exported backup file. This will overwrite existing data.
+                      </div>
+                      <label className="btn-ai-sub" style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Upload size={14} />
+                        {backupRestoring ? 'Restoring...' : 'Import Backup'}
+                        <input
+                          type="file"
+                          accept=".json"
+                          style={{ display: 'none' }}
+                          disabled={backupRestoring}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            setBackupRestoring(true)
+                            try {
+                              const data = await readBackupFile(file)
+                              await restoreBackup(data)
+                              setBackupMessage(`Restored ${Object.keys(data.projects).length} project(s) successfully! Reloading...`)
+                              setTimeout(() => window.location.reload(), 1500)
+                            } catch (err) {
+                              setBackupMessage('Failed to restore backup: ' + (err instanceof Error ? err.message : 'Unknown error'))
+                            } finally {
+                              setBackupRestoring(false)
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {backupMessage && (
+                      <div style={{ fontSize: '0.7rem', color: backupMessage.includes('success') ? 'var(--success)' : 'var(--error)', textAlign: 'center' }}>
+                        {backupMessage}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
