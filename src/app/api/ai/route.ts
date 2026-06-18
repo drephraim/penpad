@@ -125,6 +125,10 @@ type BibleExtractResponse = {
     summary?: string
     contentPatch?: string
     matchedEntryId?: string
+    chapterId?: string
+    chapterTitle?: string
+    chapterNumber?: number | null
+    mentionCount?: number
     characterDetails?: {
       appearance?: string
       attire?: string
@@ -1237,17 +1241,31 @@ export async function POST(req: NextRequest) {
         `Chapter Content:\n${String(chapterContent).slice(0, 60000)}\n\n` +
         `Story Bible Canon:\n${bibleContext || "No Story Bible entries yet."}`
     } else if (action === "bible_extract_from_chapter") {
-      const { chapterContent, chapterTitle, chapterNumber, bibleEntries } = body
+      const { chapterContent, chapterTitle, chapterNumber, bibleEntries, chapters, activeChapter, scanMode } = body
       if (!chapterContent || !Array.isArray(bibleEntries)) {
         return NextResponse.json({ error: "chapterContent and bibleEntries are required for bible_extract_from_chapter" }, { status: 400 })
       }
+      const chapterWindow = Array.isArray(chapters)
+        ? chapters.slice(0, 10).map((chapter: any) => ({
+            id: String(chapter?.id || ""),
+            title: String(chapter?.title || "Untitled"),
+            chapterNumber: Number.isFinite(Number(chapter?.chapterNumber)) ? Number(chapter.chapterNumber) : null,
+            content: String(chapter?.content || "").slice(0, 12000)
+          })).filter((chapter: any) => chapter.content.trim().length > 0)
+        : []
+      const isPreviousChapterScan = scanMode === "previous_chapters" && chapterWindow.length > 0
 
       systemInstruction =
-        "You are a meticulous Story Bible curator for a novelist. Scan the active chapter and propose high-value canon additions.\n" +
+        "You are a meticulous Story Bible curator for a novelist.\n" +
+        (isPreviousChapterScan
+          ? "Read the previous chapter window before the active chapter and propose high-value World Bible additions or updates. Prefer facts that recur, gain important new detail in a later chapter, change a character or faction status, clarify world rules, or are likely to matter again. Do not extract generic prose details or one-off background unless they establish canon.\n"
+          : "Scan the active chapter and propose high-value canon additions.\n") +
         "Prefer facts that should be remembered later: new characters, beasts, factions, locations, artifacts, vows, relationships, status reveals, rules, secrets, deaths, promotions, appearance details, clothing/attire, and chapter-specific changes.\n" +
         "Match existing Story Bible entries by exact name or obvious alias when possible. For matched entries, provide matchedEntryId and a concise contentPatch to append. For new entries, provide category and starter notes.\n" +
         "For character or beast entries, always capture visual details when the chapter describes them: face, hair color/style, eye color, skin/fur/scales, body shape/build, height, clothing, armor, accessories, scars, aura, posture, or anything that shows how they look in this chapter. Put these in characterDetails with top-level stable fields and a chapterAppearance object with summary and exact evidence.\n" +
-        "Every suggestion must include a timelineFact with summary, evidence, and optional status. Output ONLY valid JSON with key suggestions. Limit to 8 suggestions."
+        "Every suggestion must include a timelineFact with summary, evidence, and optional status.\n" +
+        "Every suggestion must also include chapterId, chapterTitle, chapterNumber, and mentionCount for the most relevant source chapter when those fields are available.\n" +
+        "Output ONLY valid JSON with key suggestions. Limit to 10 suggestions."
 
       const existingContext = bibleEntries.slice(0, 120).map((entry: any) => {
         const facts = Array.isArray(entry.timelineFacts)
@@ -1259,10 +1277,20 @@ export async function POST(req: NextRequest) {
         return `- id=${entry.id}; name=${entry.name}; category=${entry.category}; notes=${String(entry.content || "").slice(0, 800)}; timeline=${facts}${characterDetails}`
       }).join("\n")
 
+      const activeContext = activeChapter
+        ? `Active chapter currently open: ${activeChapter.chapterNumber ? `Chapter ${activeChapter.chapterNumber}` : "Chapter"} "${activeChapter.title || "Untitled"}". Only scan the previous chapters below.\n\n`
+        : `Active Chapter: ${chapterNumber ? `Chapter ${chapterNumber} - ` : ""}${chapterTitle || "Untitled"}\n\n`
+      const previousChapterContext = chapterWindow.length > 0
+        ? chapterWindow.map((chapter: any) => {
+            const label = chapter.chapterNumber ? `Chapter ${chapter.chapterNumber}` : "Chapter"
+            return `### ${label}: ${chapter.title}\nchapterId: ${chapter.id}\n${chapter.content}`
+          }).join("\n\n---\n\n")
+        : String(chapterContent).slice(0, 60000)
+
       userPrompt =
-        `Active Chapter: ${chapterNumber ? `Chapter ${chapterNumber} - ` : ""}${chapterTitle || "Untitled"}\n\n` +
+        `${activeContext}` +
         `Existing Story Bible Entries:\n${existingContext || "No Story Bible entries yet."}\n\n` +
-        `Chapter Content:\n${String(chapterContent).slice(0, 60000)}`
+        `${isPreviousChapterScan ? "Previous Chapter Content" : "Chapter Content"}:\n${previousChapterContext}`
     } else if (action === "arc_seed_extract") {
       const { chapterContent, chapterTitle, chapterNumber, existingArcSeeds, bibleEntries, brainEntries } = body
       if (!chapterContent || typeof chapterContent !== "string") {
@@ -1765,6 +1793,10 @@ export async function POST(req: NextRequest) {
             summary: String(suggestion.summary || "").trim(),
             contentPatch: String(suggestion.contentPatch || suggestion.summary || "").trim(),
             matchedEntryId: String(suggestion.matchedEntryId || "").trim(),
+            chapterId: suggestion.chapterId ? String(suggestion.chapterId).trim() : undefined,
+            chapterTitle: suggestion.chapterTitle ? String(suggestion.chapterTitle).trim().slice(0, 160) : undefined,
+            chapterNumber: Number.isFinite(Number(suggestion.chapterNumber)) ? Number(suggestion.chapterNumber) : null,
+            mentionCount: Number.isFinite(Number(suggestion.mentionCount)) ? Math.max(1, Number(suggestion.mentionCount)) : undefined,
             characterDetails: sanitizeCharacterDetails(suggestion.characterDetails),
             timelineFact: {
               summary: String(suggestion.timelineFact?.summary || suggestion.summary || "").trim(),

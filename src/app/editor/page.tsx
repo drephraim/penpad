@@ -234,6 +234,10 @@ interface BibleExtractionSuggestion {
   summary: string
   contentPatch: string
   matchedEntryId?: string
+  chapterId?: string
+  chapterTitle?: string
+  chapterNumber?: number | null
+  mentionCount?: number
   characterDetails?: {
     appearance?: string
     attire?: string
@@ -1196,6 +1200,8 @@ function EditorContent() {
   const [showMultiBibleDeleteModal, setShowMultiBibleDeleteModal] = useState(false)
   const [activeBiblePopup, setActiveBiblePopup] = useState<"extract" | "canon" | "timeline" | null>(null)
   const [bibleExtractLoading, setBibleExtractLoading] = useState(false)
+  const [bibleExtractionScanDepth, setBibleExtractionScanDepth] = useState<5 | 10>(5)
+  const [bibleExtractionMessage, setBibleExtractionMessage] = useState("")
   const [bibleExtractionSuggestions, setBibleExtractionSuggestions] = useState<BibleExtractionSuggestion[]>([])
   const [bibleCanonLoading, setBibleCanonLoading] = useState(false)
   const [bibleCanonConflicts, setBibleCanonConflicts] = useState<BibleCanonConflict[]>([])
@@ -6239,26 +6245,63 @@ const fillEmptyCustomJsonData = (
 
   const scanChapterForBibleSuggestions = async () => {
     if (!activeNote || bibleExtractLoading) return
+    const orderedNotes = getManuscriptNotesList(notes)
+    const activeIndex = orderedNotes.findIndex(note => note.id === activeNote.id)
+    const scanNotes = activeIndex >= 0
+      ? orderedNotes.slice(Math.max(0, activeIndex - bibleExtractionScanDepth), activeIndex)
+          .filter(note => (note.content || "").trim().length > 0)
+      : []
+
+    if (scanNotes.length === 0) {
+      setBibleExtractionSuggestions([])
+      setBibleExtractionMessage("No previous chapters with text were found before the active chapter.")
+      return
+    }
+
     setBibleExtractLoading(true)
     setBibleExtractionSuggestions([])
+    setBibleExtractionMessage("")
     try {
-      const chapterNumber = getNoteChapterNumber(activeNote)
+      const chapters = scanNotes.map(note => ({
+        id: note.id,
+        title: note.title || "Untitled",
+        chapterNumber: getNoteChapterNumber(note),
+        content: note.content || ""
+      }))
+      const activeChapterNumber = getNoteChapterNumber(activeNote)
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "bible_extract_from_chapter",
-          chapterContent: activeNote.content,
+          chapterContent: chapters
+            .map(chapter => `### ${chapter.chapterNumber ? `Chapter ${chapter.chapterNumber}` : "Chapter"}: ${chapter.title}\n${chapter.content}`)
+            .join("\n\n---\n\n"),
           chapterTitle: activeNote.title,
-          chapterNumber,
+          chapterNumber: activeChapterNumber,
+          chapters,
+          activeChapter: {
+            id: activeNote.id,
+            title: activeNote.title || "Untitled",
+            chapterNumber: activeChapterNumber
+          },
+          scanMode: "previous_chapters",
           bibleEntries
         })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to extract Bible suggestions")
-      setBibleExtractionSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
+      const suggestions = Array.isArray(data.suggestions) ? data.suggestions : []
+      setBibleExtractionSuggestions(suggestions)
+      setBibleExtractionMessage(
+        suggestions.length > 0
+          ? `Scanned ${scanNotes.length} previous chapter${scanNotes.length === 1 ? "" : "s"} before this one.`
+          : `Scanned ${scanNotes.length} previous chapter${scanNotes.length === 1 ? "" : "s"} and found no new World Bible candidates.`
+      )
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to extract Bible suggestions")
+      const message = err instanceof Error ? err.message : "Failed to extract Bible suggestions"
+      setBibleExtractionMessage(message)
+      alert(message)
     } finally {
       setBibleExtractLoading(false)
     }
@@ -6267,14 +6310,18 @@ const fillEmptyCustomJsonData = (
   const approveBibleExtractionSuggestion = async (suggestion: BibleExtractionSuggestion) => {
     if (!projectId || !activeNote) return
     const now = Date.now()
-    const chapterNumber = getNoteChapterNumber(activeNote)
+    const chapterNumber = typeof suggestion.chapterNumber === "number" && Number.isFinite(suggestion.chapterNumber)
+      ? suggestion.chapterNumber
+      : getNoteChapterNumber(activeNote)
+    const chapterTitle = suggestion.chapterTitle || activeNote.title || "Untitled"
+    const chapterId = suggestion.chapterId || activeNote.id
     const matchedEntry = suggestion.matchedEntryId
       ? bibleEntries.find(entry => entry.id === suggestion.matchedEntryId)
       : bibleEntries.find(entry => entry.name.toLowerCase() === suggestion.entryName.toLowerCase())
 
     const timelineFact = {
-      chapterId: activeNote.id,
-      chapterTitle: activeNote.title || "Untitled",
+      chapterId,
+      chapterTitle,
       chapterNumber,
       summary: suggestion.timelineFact?.summary || suggestion.summary,
       evidence: suggestion.timelineFact?.evidence || "",
@@ -6293,8 +6340,8 @@ const fillEmptyCustomJsonData = (
         updatedAt: now
       }, timelineFact)
       nextEntry = mergeBibleCharacterDetails(nextEntry, suggestion, {
-        id: activeNote.id,
-        title: activeNote.title || "Untitled",
+        id: chapterId,
+        title: chapterTitle,
         chapterNumber
       })
     } else {
@@ -6307,8 +6354,8 @@ const fillEmptyCustomJsonData = (
         updatedAt: now
       }, timelineFact)
       nextEntry = mergeBibleCharacterDetails(nextEntry, suggestion, {
-        id: activeNote.id,
-        title: activeNote.title || "Untitled",
+        id: chapterId,
+        title: chapterTitle,
         chapterNumber
       })
     }
@@ -14192,27 +14239,65 @@ ${navPoints}  </navMap>
               <div className="modal-header">
                 <div>
                   <h2 className="modal-title">Auto-Extract From Chapter</h2>
-                  <p className="modal-description">Scan the active chapter for new canon, then approve what enters the Story Bible.</p>
+                  <p className="modal-description">Scan earlier chapters before the active chapter for canon-worthy additions and updates.</p>
                 </div>
                 <button className="btn-close-ai" onClick={() => setActiveBiblePopup(null)} title="Close"><X size={16} /></button>
               </div>
-              <button
-                className="btn-ai-sub btn-ai-primary bible-action-run"
-                onClick={scanChapterForBibleSuggestions}
-                disabled={bibleExtractLoading || !activeNote}
-              >
-                {bibleExtractLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-                Scan Active Chapter
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                <select
+                  value={bibleExtractionScanDepth}
+                  onChange={event => setBibleExtractionScanDepth(Number(event.target.value) === 10 ? 10 : 5)}
+                  disabled={bibleExtractLoading}
+                  style={{
+                    flex: '0 0 150px',
+                    height: '34px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--surface-border)',
+                    background: 'rgba(255,255,255,0.06)',
+                    color: 'var(--text-primary)',
+                    padding: '0 0.55rem',
+                    fontSize: '0.76rem'
+                  }}
+                >
+                  <option value={5}>Previous 5</option>
+                  <option value={10}>Previous 10</option>
+                </select>
+                <button
+                  className="btn-ai-sub btn-ai-primary bible-action-run"
+                  onClick={scanChapterForBibleSuggestions}
+                  disabled={bibleExtractLoading || !activeNote}
+                  style={{ flex: 1, marginBottom: 0 }}
+                >
+                  {bibleExtractLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                  Scan Previous Chapters
+                </button>
+              </div>
+              {bibleExtractionMessage && (
+                <p style={{ margin: '0 0 0.75rem', color: 'var(--text-dim)', fontSize: '0.74rem' }}>{bibleExtractionMessage}</p>
+              )}
               <div className="bible-action-list">
                 {bibleExtractionSuggestions.length === 0 && !bibleExtractLoading ? (
-                  <div className="empty-state-text">No suggestions yet. Run a scan to find canon-worthy facts.</div>
+                  <div className="empty-state-text">No suggestions yet. Scan previous chapters to find canon-worthy facts.</div>
                 ) : bibleExtractionSuggestions.map((suggestion, index) => (
                   <div className="bible-suggestion-card" key={`${suggestion.entryName}-${index}`}>
                     <div className="bible-suggestion-head">
                       <strong>{suggestion.entryName}</strong>
                       <span>{suggestion.category}</span>
                     </div>
+                    {(suggestion.chapterNumber || suggestion.chapterTitle || suggestion.mentionCount) && (
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
+                        {(suggestion.chapterNumber || suggestion.chapterTitle) && (
+                          <span style={{ fontSize: '0.64rem', color: 'var(--text-dim)', border: '1px solid var(--surface-border)', borderRadius: '999px', padding: '1px 6px' }}>
+                            {suggestion.chapterNumber ? `Chapter ${suggestion.chapterNumber}` : suggestion.chapterTitle}
+                          </span>
+                        )}
+                        {typeof suggestion.mentionCount === "number" && suggestion.mentionCount > 1 && (
+                          <span style={{ fontSize: '0.64rem', color: 'var(--text-dim)', border: '1px solid var(--surface-border)', borderRadius: '999px', padding: '1px 6px' }}>
+                            {suggestion.mentionCount} refs
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <p>{suggestion.summary}</p>
                     {suggestion.characterDetails && (
                       <div className="bible-suggestion-appearance">
@@ -14245,7 +14330,7 @@ ${navPoints}  </navMap>
                 {bibleExtractLoading && (
                   <div className="empty-state-text">
                     <Loader2 size={16} className="spin" />
-                    Scanning chapter for Bible additions...
+                    Reading earlier chapters for Bible additions...
                   </div>
                 )}
               </div>
