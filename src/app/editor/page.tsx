@@ -4462,6 +4462,8 @@ const fillEmptyCustomJsonData = (
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveBibleTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const lastAutoSavedNoteFingerprintRef = useRef<Record<string, string>>({})
+  const lastAutoSavedBibleFingerprintRef = useRef<Record<string, string>>({})
   const savedFilenamesRef = useRef<Map<string, string>>(new Map())
 
   // Sound Engine Setup
@@ -7325,6 +7327,24 @@ const fillEmptyCustomJsonData = (
     }
   }, [projectId, nameShortlist, namePresets, nameGenHistory, nameRatings, user])
 
+  const getNoteAutoSaveFingerprint = (note: Note) => JSON.stringify({
+    id: note.id,
+    title: note.title || "",
+    content: note.content || "",
+    wordGoal: note.wordGoal ?? null,
+    volumeId: note.volumeId ?? null,
+    sortOrder: note.sortOrder ?? null
+  })
+
+  const getBibleAutoSaveFingerprint = (entry: BibleEntry) => JSON.stringify({
+    id: entry.id,
+    name: entry.name || "",
+    category: entry.category || "character",
+    content: entry.content || "",
+    groupIds: entry.groupIds || [],
+    characterDetails: entry.characterDetails || null
+  })
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (projectId) saveNameForgeData()
@@ -7345,30 +7365,72 @@ const fillEmptyCustomJsonData = (
   }, [activeNoteId, loadChapterVersions])
 
   useEffect(() => {
-    if (activeNote && syncStatus !== 'saving') {
-      const timer = setTimeout(() => {
-        saveNote(activeNote)
-      }, 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [activeNote, activeNote?.content, activeNote?.title, syncStatus, saveNote, projectId])
+    if (!activeNote || !projectId) return
 
-  // World Bible AutoSave
+    const fingerprint = getNoteAutoSaveFingerprint(activeNote)
+    const previousFingerprint = lastAutoSavedNoteFingerprintRef.current[activeNote.id]
+
+    if (previousFingerprint === undefined) {
+      lastAutoSavedNoteFingerprintRef.current[activeNote.id] = fingerprint
+      return
+    }
+
+    if (previousFingerprint === fingerprint) return
+
+    const timer = setTimeout(async () => {
+      await saveNote(activeNote)
+      lastAutoSavedNoteFingerprintRef.current[activeNote.id] = fingerprint
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [
+    activeNote,
+    activeNote?.id,
+    activeNote?.title,
+    activeNote?.content,
+    activeNote?.wordGoal,
+    activeNote?.volumeId,
+    activeNote?.sortOrder,
+    saveNote,
+    projectId
+  ])
+
   useEffect(() => {
-    if (activeBibleEntry) {
+    if (!activeBibleEntry || !projectId) return
+
+    const fingerprint = getBibleAutoSaveFingerprint(activeBibleEntry)
+    const previousFingerprint = lastAutoSavedBibleFingerprintRef.current[activeBibleEntry.id]
+
+    if (previousFingerprint === undefined) {
+      lastAutoSavedBibleFingerprintRef.current[activeBibleEntry.id] = fingerprint
+      return
+    }
+
+    if (previousFingerprint === fingerprint) return
+
+    if (autoSaveBibleTimerRef.current) {
+      clearTimeout(autoSaveBibleTimerRef.current)
+    }
+
+    autoSaveBibleTimerRef.current = setTimeout(async () => {
+      await saveBibleEntry(activeBibleEntry)
+      lastAutoSavedBibleFingerprintRef.current[activeBibleEntry.id] = fingerprint
+    }, 1500)
+    return () => {
       if (autoSaveBibleTimerRef.current) {
         clearTimeout(autoSaveBibleTimerRef.current)
       }
-      autoSaveBibleTimerRef.current = setTimeout(() => {
-        saveBibleEntry(activeBibleEntry)
-      }, 1500)
-      return () => {
-        if (autoSaveBibleTimerRef.current) {
-          clearTimeout(autoSaveBibleTimerRef.current)
-        }
-      }
     }
-  }, [activeBibleEntry, activeBibleEntry?.name, activeBibleEntry?.content, activeBibleEntry?.category, activeBibleEntry?.groupIds, activeBibleEntry?.characterDetails, saveBibleEntry, projectId])
+  }, [
+    activeBibleEntry,
+    activeBibleEntry?.id,
+    activeBibleEntry?.name,
+    activeBibleEntry?.content,
+    activeBibleEntry?.category,
+    activeBibleEntry?.groupIds,
+    activeBibleEntry?.characterDetails,
+    saveBibleEntry,
+    projectId
+  ])
 
   useEffect(() => {
     if (!isBibleSelectionMode || selectedBibleIds.size === 0) {
