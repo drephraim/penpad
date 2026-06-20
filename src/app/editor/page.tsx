@@ -839,7 +839,7 @@ const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-preset-weapon", label: "Weapon", type: "compound", sourceKey: "Weapon", fields: ["Weapon", "Weapon Grade", "Weapon Status"], color: "rose", enabled: true, repeatable: true },
   { id: "template-preset-resources", label: "Resources", type: "resource", sourceKey: "Resources", fields: ["HP", "Mana / Qi", "Stamina"], color: "blue", enabled: true },
   { id: "template-preset-artifacts", label: "Inventory / Artifacts", type: "compound", sourceKey: "Artifacts", fields: ["Artifact", "Grade", "Status"], color: "rose", enabled: true },
-  { id: "template-preset-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era", "Fate/Legacy"], color: "violet", enabled: true, repeatable: true }
+  { id: "template-preset-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true, repeatable: true }
 ]
 const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name", "Title"], color: "rose", enabled: true },
@@ -848,7 +848,7 @@ const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-class", label: "Class", type: "compound", sourceKey: "className", fields: ["Main Class", "Secondary Class"], color: "fuchsia", enabled: true },
   { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true },
   { id: "template-lore", label: "Lore", type: "text", sourceKey: "notes", fields: ["Lore"], color: "blue", enabled: true },
-  { id: "template-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era", "Fate/Legacy"], color: "violet", enabled: true }
+  { id: "template-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
 ]
 const SIMPLE_PROGRESSION_CUSTOM_FIELDS = [
   "Bloodline",
@@ -954,7 +954,7 @@ const XIANXIA_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "xianxia-laws", label: "Elements & Intents", type: "compound", sourceKey: "Affinities", fields: ["Elements", "Comprehensions / Intents"], color: "cyan", enabled: true },
   { id: "xianxia-techniques", label: "Cultivation Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Layer/Rank", "Description"], color: "amber", enabled: true },
   { id: "xianxia-treasures", label: "Spiritual Treasures", type: "compound", sourceKey: "Artifacts", fields: ["Spiritual Weapon", "Grade"], color: "lime", enabled: true },
-  { id: "xianxia-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era", "Fate/Legacy"], color: "violet", enabled: true }
+  { id: "xianxia-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
 ]
 const SHADOW_SLAVE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "ss-identity", label: "Soul Profile", type: "text", sourceKey: "name", fields: ["Name", "True Name"], color: "rose", enabled: true },
@@ -1029,7 +1029,7 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
         const era = String(record.era || record.age || record.life || record.period || "").trim()
         const fate = String(record.fate || record.legacy || record["Fate/Legacy"] || record.outcome || "").trim()
         if (canonicalKey.startsWith("Incarnation / Past Lives")) {
-          return [name, era, fate].filter(Boolean).join(" - ")
+          return [name, era].filter(Boolean).join(" - ")
         }
         if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
         if (canonicalKey === "Affinity Names" && name) return name
@@ -1047,7 +1047,7 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
     const era = String(record.era || record.age || record.life || record.period || "").trim()
     const fate = String(record.fate || record.legacy || record["Fate/Legacy"] || record.outcome || "").trim()
     if (canonicalKey.startsWith("Incarnation / Past Lives")) {
-      return [name, era, fate].filter(Boolean).join(" - ") || Object.entries(record)
+      return [name, era].filter(Boolean).join(" - ") || Object.entries(record)
         .map(([key, item]) => `${key}: ${String(item || "").trim()}`)
         .filter(item => !item.endsWith(":"))
         .join(", ")
@@ -1063,15 +1063,13 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
   return String(value || "").trim()
 }
 
-const parseIncarnationEntries = (fields: Record<string, string> = {}): Array<{ identity: string; era: string; fate: string }> => {
+const parseIncarnationEntries = (fields: Record<string, string> = {}): Array<{ identity: string; era: string }> => {
   const identities = (fields["Incarnation / Past Lives Identity/Name"] || "").split(";").map(s => s.trim()).filter(Boolean)
   const eras = (fields["Incarnation / Past Lives Era"] || "").split(";").map(s => s.trim()).filter(Boolean)
-  const fates = (fields["Incarnation / Past Lives Fate/Legacy"] || "").split(";").map(s => s.trim()).filter(Boolean)
-  const maxLen = Math.max(identities.length, eras.length, fates.length)
+  const maxLen = Math.max(identities.length, eras.length)
   return Array.from({ length: maxLen }, (_, i) => ({
     identity: identities[i] || "",
-    era: eras[i] || "",
-    fate: fates[i] || ""
+    era: eras[i] || ""
   }))
 }
 
@@ -3972,7 +3970,6 @@ const fillEmptyCustomJsonData = (
             incarnationPastLives: profile.customFields?.["Incarnation / Past Lives"] || "",
             incarnationIdentity: profile.customFields?.["Incarnation / Past Lives Identity/Name"] || "",
             incarnationEra: profile.customFields?.["Incarnation / Past Lives Era"] || "",
-            incarnationFate: profile.customFields?.["Incarnation / Past Lives Fate/Legacy"] || "",
             skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
             lore: profile.notes,
             level: profile.level,
@@ -3995,7 +3992,6 @@ const fillEmptyCustomJsonData = (
           incarnationPastLives: profile.customFields?.["Incarnation / Past Lives"] || "",
           incarnationIdentity: profile.customFields?.["Incarnation / Past Lives Identity/Name"] || "",
           incarnationEra: profile.customFields?.["Incarnation / Past Lives Era"] || "",
-          incarnationFate: profile.customFields?.["Incarnation / Past Lives Fate/Legacy"] || "",
           skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
           lore: profile.notes,
           level: profile.level,
@@ -4138,7 +4134,6 @@ const fillEmptyCustomJsonData = (
       incarnationPastLives: profile.customFields?.["Incarnation / Past Lives"] || "",
       incarnationIdentity: profile.customFields?.["Incarnation / Past Lives Identity/Name"] || "",
       incarnationEra: profile.customFields?.["Incarnation / Past Lives Era"] || "",
-      incarnationFate: profile.customFields?.["Incarnation / Past Lives Fate/Legacy"] || "",
       skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
       lore: profile.notes,
       level: profile.level,
@@ -4211,6 +4206,7 @@ const fillEmptyCustomJsonData = (
   }
 
   const handleProgressionBulkUpdate = async () => {
+    console.log("[PenPad] Bulk update triggered. projectId:", projectId, "notes:", notes.length, "profiles:", progressionProfiles.length)
     if (!projectId) {
       setProgressionError("Open a project first.")
       return
@@ -4231,6 +4227,7 @@ const fillEmptyCustomJsonData = (
 
     try {
       const recentChapters = getManuscriptNotesList(notes).slice(-5)
+      console.log("[PenPad] Recent chapters found:", recentChapters.length, recentChapters.map(n => n.title))
       if (recentChapters.length === 0) {
         setProgressionError("No manuscript chapters found. Add chapters to your project first.")
         return
@@ -4241,21 +4238,52 @@ const fillEmptyCustomJsonData = (
       for (const note of recentChapters) {
         for (const profile of currentProfiles) {
           const entry = bibleEntries.find(e => e.id === profile.loreEntryId)
-          if (!entry) continue
+          if (!entry) {
+            console.log(`[PenPad] No Bible entry found for profile "${profile.name}" (loreEntryId: ${profile.loreEntryId})`)
+            continue
+          }
 
           const isProcessed = profile.processedChapterIds?.includes(note.id)
+          const appears = doesCharacterAppearInChapter(profile, note.content)
+          console.log(`[PenPad] Profile "${profile.name}" in "${note.title}": processed=${isProcessed}, appears=${appears}`)
+          
           if (isProcessed) continue
 
-          const appears = doesCharacterAppearInChapter(profile, note.content)
           if (appears) {
             updatesQueue.push({ note, profileId: profile.id, entry })
           }
         }
       }
 
+      console.log("[PenPad] Updates queue length:", updatesQueue.length)
+
       if (updatesQueue.length === 0) {
-        setProgressionNotice("All profiles are already up-to-date for the 5 recent chapters.")
-        return
+        // If all chapters were already processed, offer to force re-scan
+        const hasProcessedChapters = currentProfiles.some(p => 
+          recentChapters.some(ch => p.processedChapterIds?.includes(ch.id))
+        )
+        if (hasProcessedChapters) {
+          // Force re-scan: clear processedChapterIds for recent chapters and rebuild queue
+          console.log("[PenPad] All chapters already processed. Force re-scanning...")
+          setProgressionBulkUpdateStatus("Re-scanning chapters...")
+          for (const note of recentChapters) {
+            for (const profile of currentProfiles) {
+              const entry = bibleEntries.find(e => e.id === profile.loreEntryId)
+              if (!entry) continue
+              const appears = doesCharacterAppearInChapter(profile, note.content)
+              if (appears) {
+                updatesQueue.push({ note, profileId: profile.id, entry })
+              }
+            }
+          }
+          if (updatesQueue.length === 0) {
+            setProgressionNotice("No characters were detected in the 5 recent chapters.")
+            return
+          }
+        } else {
+          setProgressionNotice("No characters were detected in the 5 recent chapters. Ensure your characters have Story Bible entries and their names appear in the chapter text.")
+          return
+        }
       }
 
       setProgressionBulkUpdateStatus(`Found ${updatesQueue.length} updates. Starting processing...`)
@@ -4274,15 +4302,20 @@ const fillEmptyCustomJsonData = (
         try {
           const updatedProfile = await runSingleProfileUpdate(latestProfile, entry, note)
           currentProfiles = currentProfiles.map(p => p.id === profileId ? updatedProfile : p)
-          persistProgressionProfiles(currentProfiles)
-          learnProgressionProfileShape(updatedProfile)
           succeeded++
+          console.log(`[PenPad] Successfully updated "${latestProfile.name}" from "${note.title}"`)
         } catch (err) {
           failed++
           const msg = err instanceof Error ? err.message : "Unknown error"
           errors.push(`Failed to update ${latestProfile.name} in chapter "${note.title || note.id}": ${msg}`)
-          console.error(err)
+          console.error("[PenPad] Profile update failed:", err)
         }
+      }
+
+      // Persist all updated profiles at the end
+      if (succeeded > 0) {
+        await persistProgressionProfiles(currentProfiles)
+        currentProfiles.forEach(p => learnProgressionProfileShape(p))
       }
 
       if (succeeded > 0) {
@@ -4291,9 +4324,10 @@ const fillEmptyCustomJsonData = (
         setProgressionError(`All ${updatesQueue.length} update${updatesQueue.length > 1 ? "s" : ""} failed. Check console for details.`)
       }
       if (errors.length > 0) {
-        console.warn("Bulk update errors:", errors.join("\n"))
+        console.warn("[PenPad] Bulk update errors:", errors.join("\n"))
       }
     } catch (err) {
+      console.error("[PenPad] Bulk update failed:", err)
       setProgressionError(err instanceof Error ? err.message : "Failed to run bulk update")
     } finally {
       setProgressionBulkUpdating(false)
@@ -11250,12 +11284,6 @@ ${navPoints}  </navMap>
                                             <small>Era</small>
                                             <strong>{entry.era || "Not set"}</strong>
                                           </div>
-                                          {entry.fate ? (
-                                            <div>
-                                              <small>Fate/Legacy</small>
-                                              <strong>{entry.fate}</strong>
-                                            </div>
-                                          ) : null}
                                         </div>
                                       </div>
                                     ))}
@@ -15414,11 +15442,10 @@ ${navPoints}  </navMap>
                           const draftFields = progressionEditProfileDraft.customFields || {}
                           const incarnationEntries = parseIncarnationEntries(draftFields)
 
-                          const syncIncarnationFields = (entries: Array<{ identity: string; era: string; fate: string }>) => {
+                          const syncIncarnationFields = (entries: Array<{ identity: string; era: string }>) => {
                             setProgressionDraftCustomField("Incarnation / Past Lives Identity/Name", entries.map(e => e.identity).filter(Boolean).join("; "))
                             setProgressionDraftCustomField("Incarnation / Past Lives Era", entries.map(e => e.era).filter(Boolean).join("; "))
-                            setProgressionDraftCustomField("Incarnation / Past Lives Fate/Legacy", entries.map(e => e.fate).filter(Boolean).join("; "))
-                            setProgressionDraftCustomField("Incarnation / Past Lives", entries.map(e => [e.identity, e.era, e.fate].filter(Boolean).join(" - ")).filter(Boolean).join("; "))
+                            setProgressionDraftCustomField("Incarnation / Past Lives", entries.map(e => [e.identity, e.era].filter(Boolean).join(" - ")).filter(Boolean).join("; "))
                           }
 
                           return (
@@ -15472,7 +15499,7 @@ ${navPoints}  </navMap>
                                 className="btn-ai-sub btn-ai-secondary"
                                 style={{ marginTop: "0.5rem", fontSize: "0.7rem", padding: "0.25rem 0.6rem" }}
                                 onClick={() => {
-                                  const updated = [...incarnationEntries, { identity: "", era: "", fate: "" }]
+                                  const updated = [...incarnationEntries, { identity: "", era: "" }]
                                   syncIncarnationFields(updated)
                                 }}
                               >
