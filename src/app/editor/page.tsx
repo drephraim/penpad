@@ -850,7 +850,19 @@ const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-lore", label: "Lore", type: "text", sourceKey: "notes", fields: ["Lore"], color: "blue", enabled: true },
   { id: "template-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era", "Fate/Legacy"], color: "violet", enabled: true }
 ]
-const SIMPLE_PROGRESSION_CUSTOM_FIELDS = ["Bloodline", "Bloodline Rank", "Affinity Names", "Affinity Rank", "Secondary Class", "Race", "Affiliation"]
+const SIMPLE_PROGRESSION_CUSTOM_FIELDS = [
+  "Bloodline",
+  "Bloodline Rank",
+  "Affinity Names",
+  "Affinity Rank",
+  "Secondary Class",
+  "Race",
+  "Affiliation",
+  "Incarnation / Past Lives",
+  "Incarnation / Past Lives Identity/Name",
+  "Incarnation / Past Lives Era",
+  "Incarnation / Past Lives Fate/Legacy"
+]
 const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   bloodline: "Bloodline",
   "bloodline name": "Bloodline",
@@ -886,7 +898,36 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "secondary job": "Secondary Class",
   "second job": "Secondary Class",
   race: "Race",
-  affiliation: "Affiliation"
+  affiliation: "Affiliation",
+  incarnation: "Incarnation / Past Lives",
+  incarnations: "Incarnation / Past Lives",
+  "past life": "Incarnation / Past Lives",
+  "past lives": "Incarnation / Past Lives",
+  "previous life": "Incarnation / Past Lives",
+  "previous lives": "Incarnation / Past Lives",
+  reincarnation: "Incarnation / Past Lives",
+  reincarnations: "Incarnation / Past Lives",
+  "incarnation / past lives": "Incarnation / Past Lives",
+  "incarnation/past lives": "Incarnation / Past Lives",
+  "incarnation identity": "Incarnation / Past Lives Identity/Name",
+  "incarnation identity/name": "Incarnation / Past Lives Identity/Name",
+  "incarnation name": "Incarnation / Past Lives Identity/Name",
+  "past life identity": "Incarnation / Past Lives Identity/Name",
+  "past life name": "Incarnation / Past Lives Identity/Name",
+  "identity/name": "Incarnation / Past Lives Identity/Name",
+  "incarnation / past lives identity/name": "Incarnation / Past Lives Identity/Name",
+  "incarnation / past lives identity": "Incarnation / Past Lives Identity/Name",
+  "incarnation / past lives name": "Incarnation / Past Lives Identity/Name",
+  "incarnation era": "Incarnation / Past Lives Era",
+  "past life era": "Incarnation / Past Lives Era",
+  era: "Incarnation / Past Lives Era",
+  "incarnation / past lives era": "Incarnation / Past Lives Era",
+  "incarnation fate": "Incarnation / Past Lives Fate/Legacy",
+  "incarnation legacy": "Incarnation / Past Lives Fate/Legacy",
+  "past life fate": "Incarnation / Past Lives Fate/Legacy",
+  "past life legacy": "Incarnation / Past Lives Fate/Legacy",
+  "fate/legacy": "Incarnation / Past Lives Fate/Legacy",
+  "incarnation / past lives fate/legacy": "Incarnation / Past Lives Fate/Legacy"
 }
 const LITRPG_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "litrpg-name", label: "Character Profile", type: "text", sourceKey: "name", fields: ["Name", "Race", "Class"], color: "rose", enabled: true },
@@ -983,8 +1024,13 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
     const formatted = value.map(item => {
       if (item && typeof item === "object") {
         const record = item as Record<string, unknown>
-        const name = String(record.name || record.affinity || record.value || record.title || "").trim()
+        const name = String(record.name || record.identity || record["Identity/Name"] || record.affinity || record.value || record.title || "").trim()
         const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
+        const era = String(record.era || record.age || record.life || record.period || "").trim()
+        const fate = String(record.fate || record.legacy || record["Fate/Legacy"] || record.outcome || "").trim()
+        if (canonicalKey.startsWith("Incarnation / Past Lives")) {
+          return [name, era, fate].filter(Boolean).join(" - ")
+        }
         if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
         if (canonicalKey === "Affinity Names" && name) return name
         if (name && rank) return `${name} (${rank})`
@@ -996,8 +1042,16 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
   }
   if (typeof value === "object") {
     const record = value as Record<string, unknown>
-    const name = String(record.name || record.affinity || record.value || record.title || "").trim()
+    const name = String(record.name || record.identity || record["Identity/Name"] || record.affinity || record.value || record.title || "").trim()
     const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
+    const era = String(record.era || record.age || record.life || record.period || "").trim()
+    const fate = String(record.fate || record.legacy || record["Fate/Legacy"] || record.outcome || "").trim()
+    if (canonicalKey.startsWith("Incarnation / Past Lives")) {
+      return [name, era, fate].filter(Boolean).join(" - ") || Object.entries(record)
+        .map(([key, item]) => `${key}: ${String(item || "").trim()}`)
+        .filter(item => !item.endsWith(":"))
+        .join(", ")
+    }
     if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
     if (canonicalKey === "Affinity Names" && name) return name
     if (name && rank) return `${name} (${rank})`
@@ -1732,6 +1786,7 @@ function EditorContent() {
   const [progressionNewFieldValue, setProgressionNewFieldValue] = useState("")
   const [progressionNewFieldType, setProgressionNewFieldType] = useState<ProgressionTemplateCardType>("text")
   const [showProgressionCharactersModal, setShowProgressionCharactersModal] = useState(false)
+  const [progressionCharacterSearch, setProgressionCharacterSearch] = useState("")
   const [showProgressionTemplateModal, setShowProgressionTemplateModal] = useState(false)
   const [showLoreHistoryModal, setShowLoreHistoryModal] = useState(false)
   const [draggedProgressionTemplateCardId, setDraggedProgressionTemplateCardId] = useState<string | null>(null)
@@ -2262,6 +2317,29 @@ function EditorContent() {
   const selectedProgressionBibleEntry = progressionSelectedEntryId
     ? bibleEntries.find(entry => entry.id === progressionSelectedEntryId) || null
     : null
+  const filteredProgressionProfiles = useMemo(() => {
+    const query = progressionCharacterSearch.trim().toLowerCase()
+    if (!query) return progressionProfiles
+
+    return progressionProfiles.filter(profile => {
+      const searchable = [
+        profile.name,
+        profile.title,
+        profile.className,
+        profile.realm,
+        profile.stage,
+        profile.rank,
+        profile.cultivationPath,
+        profile.uniqueTrait,
+        profile.notes,
+        ...(profile.nicknames || []),
+        ...Object.entries(profile.customFields || {}).flatMap(([key, value]) => [key, value]),
+        ...(profile.abilities || []).flatMap(ability => [ability.name, ability.rank || "", ability.description || ""])
+      ].join(" ").toLowerCase()
+
+      return searchable.includes(query)
+    })
+  }, [progressionCharacterSearch, progressionProfiles])
 
   useEffect(() => {
     if (selectedProgressionProfile) {
@@ -3879,6 +3957,10 @@ const fillEmptyCustomJsonData = (
             affinityRank: profile.customFields?.["Affinity Rank"] || "",
             className: profile.className,
             secondaryClass: profile.customFields?.["Secondary Class"] || "",
+            incarnationPastLives: profile.customFields?.["Incarnation / Past Lives"] || "",
+            incarnationIdentity: profile.customFields?.["Incarnation / Past Lives Identity/Name"] || "",
+            incarnationEra: profile.customFields?.["Incarnation / Past Lives Era"] || "",
+            incarnationFate: profile.customFields?.["Incarnation / Past Lives Fate/Legacy"] || "",
             skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
             lore: profile.notes,
             level: profile.level,
@@ -3898,6 +3980,10 @@ const fillEmptyCustomJsonData = (
           affinityRank: profile.customFields?.["Affinity Rank"] || "",
           className: profile.className,
           secondaryClass: profile.customFields?.["Secondary Class"] || "",
+          incarnationPastLives: profile.customFields?.["Incarnation / Past Lives"] || "",
+          incarnationIdentity: profile.customFields?.["Incarnation / Past Lives Identity/Name"] || "",
+          incarnationEra: profile.customFields?.["Incarnation / Past Lives Era"] || "",
+          incarnationFate: profile.customFields?.["Incarnation / Past Lives Fate/Legacy"] || "",
           skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
           lore: profile.notes,
           level: profile.level,
@@ -4037,6 +4123,10 @@ const fillEmptyCustomJsonData = (
       affinityRank: profile.customFields?.["Affinity Rank"] || "",
       className: profile.className,
       secondaryClass: profile.customFields?.["Secondary Class"] || "",
+      incarnationPastLives: profile.customFields?.["Incarnation / Past Lives"] || "",
+      incarnationIdentity: profile.customFields?.["Incarnation / Past Lives Identity/Name"] || "",
+      incarnationEra: profile.customFields?.["Incarnation / Past Lives Era"] || "",
+      incarnationFate: profile.customFields?.["Incarnation / Past Lives Fate/Legacy"] || "",
       skills: profile.abilities?.map(ability => ability.name).filter(Boolean),
       lore: profile.notes,
       level: profile.level,
@@ -15323,10 +15413,32 @@ ${navPoints}  </navMap>
                 <h2 className="modal-title">Characters</h2>
                 <p className="modal-description">Open a progression profile without filling the sidebar with every character.</p>
               </div>
+              <div className="progression-character-search">
+                <Search size={15} />
+                <input
+                  className="ai-input"
+                  value={progressionCharacterSearch}
+                  onChange={(e) => setProgressionCharacterSearch(e.target.value)}
+                  placeholder="Search by name, title, class, realm, past life..."
+                  autoFocus
+                />
+                {progressionCharacterSearch.trim() && (
+                  <button
+                    type="button"
+                    className="btn-icon-mini"
+                    onClick={() => setProgressionCharacterSearch("")}
+                    title="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
               <div className="progression-character-modal-list">
                 {progressionProfiles.length === 0 ? (
                   <div className="empty-state-text">No progression profiles yet.</div>
-                ) : progressionProfiles.map(profile => (
+                ) : filteredProgressionProfiles.length === 0 ? (
+                  <div className="empty-state-text">No characters match this search.</div>
+                ) : filteredProgressionProfiles.map(profile => (
                   <button
                     key={profile.id}
                     className={`progression-character-row ${selectedProgressionProfileId === profile.id ? "active" : ""}`}
@@ -20499,6 +20611,30 @@ ${navPoints}  </navMap>
           max-height: min(88vh, 860px);
           display: flex;
           flex-direction: column;
+        }
+
+        .progression-character-search {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.55rem 0.65rem;
+          margin-bottom: 0.8rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.035);
+        }
+
+        .progression-character-search svg {
+          flex-shrink: 0;
+          color: var(--text-dim);
+        }
+
+        .progression-character-search .ai-input {
+          min-height: 32px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          box-shadow: none;
         }
 
         .modal.progression-template-modal {
