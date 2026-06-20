@@ -333,7 +333,11 @@ const NAME_CATEGORY_OPTIONS: Array<{ value: string; label: string; hint: string 
 ]
 
 const SUBTYPE_OPTIONS: Record<string, string[]> = {
-  character: ["Humanoid", "Alien", "Beast", "Spirit", "Demon", "Undead", "Dragon", "Divine Being", "Hybrid"],
+  character: [
+    "Humanoid", "Alien", "Beast", "Spirit", "Demon", "Undead", "Dragon", 
+    "Divine Being", "Hybrid", "Celestial/Angelic", "Specter/Wraith", 
+    "Slime/Ooze", "Golem/Automaton", "Fey/Sprite"
+  ],
   bloodline: [],
   title: [],
   city: [],
@@ -367,9 +371,20 @@ const HUMANOID_CULTURE_OPTIONS = [
   { value: "Persian", label: "Persian", hint: "Achaemenid grandeur" },
   { value: "Russian", label: "Russian", hint: "Snow-bound folklore tales" },
   { value: "Nordic", label: "Nordic", hint: "Sagas, runes, and fjords" },
+  { value: "Celtic/Irish", label: "Celtic: Irish", hint: "Gaelic and druidic folklore" },
   { value: "Celtic", label: "Celtic", hint: "Misty druids and high kings" },
   { value: "Roman", label: "Roman", hint: "Legionnaires and senators" },
   { value: "Greek", label: "Greek", hint: "Hellenic mythic heroes" },
+  { value: "Mesoamerican/Aztec", label: "Mesoamerican: Aztec", hint: "Nahuatl, jade and sun temples" },
+  { value: "Mesoamerican/Mayan", label: "Mesoamerican: Mayan", hint: "Jungle-shrouded calendar priests" },
+  { value: "Anglo-Saxon", label: "Anglo-Saxon", hint: "Old English mead halls and runes" },
+  { value: "French/Gallic", label: "French/Gallic", hint: "Chivalric romance and troubadours" },
+  { value: "Germanic/Teutonic", label: "Germanic/Teutonic", hint: "Deep forest iron clans" },
+  { value: "Polynesian/Maori", label: "Polynesian: Maori", hint: "Oceanic voyagers, volcanic mana" },
+  { value: "Lovecraftian/Cosmic", label: "Lovecraftian", hint: "Eldritch whispers and deep roots" },
+  { value: "Steampunk/Victorian", label: "Steampunk", hint: "Brass, gears, and coal smoke" },
+  { value: "Cyberpunk/Neon", label: "Cyberpunk", hint: "Synthetic, gritty corporate dystopia" },
+  { value: "Fey/Faerie", label: "Fey/Faerie", hint: "Sleek, whimsical, untamed magic" },
   { value: "Fantasy Mixed", label: "Fantasy Mixed", hint: "Blend of multiple styles" }
 ]
 
@@ -500,6 +515,13 @@ const TITLE_STYLE_OPTIONS = [
 // 7. City Generator
 const CITY_TYPE_OPTIONS = [
   { value: "human", label: "Human", hint: "Brick, stone, bustling streets" },
+  { value: "elven", label: "Elven", hint: "Living tree arches, silver spires" },
+  { value: "dwarven", label: "Dwarven", hint: "Subterranean stone-carved fortresses" },
+  { value: "cyber", label: "Cyber", hint: "Neon-lit steel grids, hologram signs" },
+  { value: "orcish", label: "Orcish/Feral", hint: "Iron-spiked walls, beast cages" },
+  { value: "celestial", label: "Celestial/Angelic", hint: "White marble, floating golden rings" },
+  { value: "clockwork", label: "Clockwork/Steampunk", hint: "Brass pipes, steam vents, gears" },
+  { value: "arcane", label: "Crystal/Arcane", hint: "Ley line wells, floating crystal shields" },
   { value: "beast", label: "Beast", hint: "Raw wood, bone structures, nests" },
   { value: "demon", label: "Demon", hint: "Obsidian, dark flames, hellfire" },
   { value: "undead", label: "Undead", hint: "Bones, mausoleums, cold fog" },
@@ -513,6 +535,12 @@ const CITY_THEME_OPTIONS = [
   { value: "ocean", label: "Ocean", hint: "Underwater domes, docks, coral" },
   { value: "floating", label: "Floating", hint: "Cloud steps, gravity crystals" },
   { value: "underground", label: "Underground", hint: "Lava lighting, cavern halls" },
+  { value: "coastal", label: "Coastal/Port", hint: "Bustling docks, salty breeze, taverns" },
+  { value: "volcanic", label: "Volcanic", hint: "Black obsidian, lava moats, sulfur vents" },
+  { value: "swamp", label: "Swamp/Marsh", hint: "Sunken moss, stilt houses, fog" },
+  { value: "frozen", label: "Frozen/Tundra", hint: "Glacial spires, snow-packed roofs" },
+  { value: "ruins", label: "Lost Ruins", hint: "Archaic columns, moss-covered history" },
+  { value: "toxic", label: "Toxic/Wasteland", hint: "Corrosive pools, survival shelters" },
   { value: "void", label: "Void", hint: "Space station, dimensional cracks" }
 ]
 
@@ -525,7 +553,14 @@ const PLANET_THEME_OPTIONS = [
   { value: "desert", label: "Desert", hint: "Endless dunes, scorching suns" },
   { value: "death", label: "Death", hint: "Graveyard atmosphere, decaying soil" },
   { value: "machine", label: "Machine", hint: "Cybernetic grids, factory crusts" },
-  { value: "dragon", label: "Dragon", hint: "Giant nesting peaks, elemental ley lines" }
+  { value: "dragon", label: "Dragon", hint: "Giant nesting peaks, elemental ley lines" },
+  { value: "gas_giant", label: "Gas Giant", hint: "Swirling atmosphere, floating platforms" },
+  { value: "crystal", label: "Crystal", hint: "Prismatic landscape, singing wind" },
+  { value: "radioactive", label: "Radioactive", hint: "Mutagenic storms, glowing fissures" },
+  { value: "magma", label: "Magma", hint: "Cracked crust, river of liquid metal" },
+  { value: "ringworld", label: "Ringworld", hint: "Artificial ribbon encircling a star" },
+  { value: "living", label: "Living/Sentient", hint: "Organic planet-wide intelligence" },
+  { value: "shattered", label: "Shattered/Asteroid", hint: "Broken planet pieces in orbit belt" }
 ]
 
 const PLANET_CIV_OPTIONS = [
@@ -553,6 +588,13 @@ const GALAXY_THEME_OPTIONS = [
   { value: "darkness", label: "Darkness", hint: "Dark matter, black holes" },
   { value: "chaos", label: "Chaos", hint: "Crashing stars, wild cosmic winds" },
   { value: "order", label: "Order", hint: "Harmonious orbits, crystal spheres" },
+  { value: "spiral", label: "Spiral/Cosmic", hint: "Majestic galactic arms, star density" },
+  { value: "nebula", label: "Nebula/Gas", hint: "Stellar nurseries, dense color gas clouds" },
+  { value: "black_hole", label: "Black Hole/Void", hint: "Gravitational devouring, collapsing rays" },
+  { value: "chrono", label: "Chrono/Temporal", hint: "Time-dilation zones, cosmic echoes" },
+  { value: "astral_dragon", label: "Astral Dragon", hint: "Constellations forming dragon bodies" },
+  { value: "antimatter", label: "Antimatter", hint: "Exotic charges, high annihilation risk" },
+  { value: "mirror", label: "Mirror/Dimensional", hint: "Phased between parallel universes" },
   { value: "elemental", label: "Elemental", hint: "Cosmic fire, ice dust, nebula streams" }
 ]
 
@@ -12599,388 +12641,737 @@ ${navPoints}  </navMap>
             {/* TAB 4: BRAIN MAP */}
             {activeSidebarTab === 'brain' && (
               <div className="sidebar-tab-content brain-panel fade-in">
-                <div className="brain-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexShrink: 0 }}>
-                  <span className="section-title text-xs font-bold uppercase tracking-wider text-dim" style={{ marginBottom: 0 }}>Brain Map</span>
-                  <button
-                    className="brain-graph-btn glass-light"
-                    onClick={() => setShowBrainGraph(true)}
-                    title="Open Interactive Visual Graph"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--surface-border)',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      color: 'var(--text-secondary)',
-                      fontSize: '0.68rem',
-                      fontWeight: '700',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <Network size={11} />
-                    <span>View Graph</span>
-                  </button>
-                </div>
-
-                {/* Compact Quick Action Badges */}
-                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
-                  <button
-                    className="brain-action-card glass-light"
-                    onClick={() => setActiveBrainPopup('ask')}
-                    title="Ask Brain Map"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.35rem',
-                      padding: '0.55rem 0.25rem',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--surface-border)',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'var(--transition)'
-                    }}
-                  >
-                    <MessageSquare size={14} />
-                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ask Brain</span>
-                  </button>
-
-                  <button
-                    className="brain-action-card glass-light"
-                    onClick={() => setActiveBrainPopup('suggestions')}
-                    title="Suggested Lore Additions"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.35rem',
-                      padding: '0.55rem 0.25rem',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--surface-border)',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'var(--transition)',
-                      position: 'relative'
-                    }}
-                  >
-                    <Sparkles size={14} style={{ color: '#c084fc' }} />
-                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Suggestions</span>
-                    {suggestedEntities.length > 0 && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-4px',
-                        right: '-4px',
-                        background: 'var(--primary)',
-                        color: 'white',
-                        fontSize: '0.55rem',
-                        fontWeight: 'bold',
-                        borderRadius: '50%',
-                        width: '14px',
-                        height: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 0 6px var(--primary)'
-                      }}>{suggestedEntities.length}</span>
-                    )}
-                  </button>
-
-                  <button
-                    className="brain-action-card glass-light"
-                    onClick={() => setActiveBrainPopup('continuity')}
-                    title="Lore Continuity Checker"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.35rem',
-                      padding: '0.55rem 0.25rem',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--surface-border)',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'var(--transition)',
-                      position: 'relative'
-                    }}
-                  >
-                    <ShieldAlert size={14} style={{ color: '#fbbf24' }} />
-                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Continuity</span>
-                    {consistencyWarnings.length > 0 && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-4px',
-                        right: '-4px',
-                        background: '#ef4444',
-                        color: 'white',
-                        fontSize: '0.55rem',
-                        fontWeight: 'bold',
-                        borderRadius: '50%',
-                        width: '14px',
-                        height: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 0 6px #ef4444'
-                      }}>{consistencyWarnings.length}</span>
-                    )}
-                  </button>
-
-                </div>
-
-                {brainEntityGroups.length > 0 && (
-                  <div className="brain-entity-strip">
-                    {brainEntityGroups.slice(0, 6).map(group => (
-                      <button
-                        key={group.name}
-                        className="brain-entity-chip"
-                        onClick={() => setSelectedBrainEntityName(group.name)}
-                        title={group.name}
-                      >
-                        {renderBrainTypeIcon(group.type, 11)}
-                        <span>{group.name}</span>
-                        <strong>{group.entries.length}</strong>
+                {selectedBrainEntry ? (
+                  <div className="brain-detail-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.75rem', flexShrink: 0 }}>
+                      <button className="btn-ai-sub btn-ai-secondary" onClick={() => setSelectedBrainEntryId(null)} style={{ padding: '0.35rem 0.6rem', fontSize: '0.72rem' }}>
+                        ← Back
                       </button>
-                    ))}
-                  </div>
-                )}
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginLeft: 'auto' }}>Brain Detail</strong>
+                    </div>
 
-                <p className="ai-instructions">Highlight text and click Brain to save with AI context.</p>
-                
-                <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
-                  <Search size={14} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search brain entries..."
-                    value={brainSearchQuery}
-                    onChange={(e) => setBrainSearchQuery(e.target.value)}
-                    className="search-input"
-                  />
-                </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '-0.4rem' }}>
+                      {getBrainEntryChapterLabel(selectedBrainEntry)} — {getBrainEntryChapterTitle(selectedBrainEntry)}
+                    </div>
 
-                <select
-                  value={brainTypeFilter}
-                  onChange={(e) => setBrainTypeFilter(e.target.value as BrainTypeFilter)}
-                  className="brain-type-filter"
-                >
-                  {brainTypeOptions.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
+                    <div className="brain-detail-meta" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.7rem', alignItems: 'center' }}>
+                      <span className={`brain-type-badge type-${getBrainEntryType(selectedBrainEntry)}`}>
+                        {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 11)}
+                        {getBrainTypeLabel(getBrainEntryType(selectedBrainEntry))}
+                      </span>
+                      <span className={`brain-importance-badge importance-${getBrainEntryImportance(selectedBrainEntry)}`}>
+                        <Star size={10} />
+                        {getBrainEntryImportance(selectedBrainEntry)}
+                      </span>
+                      {formatBrainEntryDate(selectedBrainEntry) && (
+                        <span className="brain-detail-date" style={{ color: 'var(--text-dim)', marginLeft: 'auto' }}>{formatBrainEntryDate(selectedBrainEntry)}</span>
+                      )}
+                    </div>
 
-                <div className="brain-entries-list">
-                  {(() => {
-                    const filtered = filteredBrainEntries
-                    
-                    if (filtered.length === 0) {
-                      return <div className="empty-state-text">No brain entries yet. Highlight text and click Brain to add.</div>
-                    }
+                    <div className="ai-form-field">
+                      <label>Entity Link</label>
+                      <button
+                        className="brain-detail-entity-link"
+                        onClick={() => {
+                          setSelectedBrainEntryId(null)
+                          setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry))
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          padding: '0.5rem',
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--surface-border)',
+                          borderRadius: 'var(--radius-md)',
+                          fontSize: '0.78rem',
+                          color: 'var(--text-accent)'
+                        }}
+                      >
+                        {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 13)}
+                        <span>{getBrainEntryEntityName(selectedBrainEntry)}</span>
+                      </button>
+                    </div>
 
-                    let lastChapter = ""
-                    return filtered.map((entry) => {
-                      const showDivider = entry.chapterTitle !== lastChapter
-                      lastChapter = entry.chapterTitle
-                      return (
-                        <div key={entry.id}>
-                          {showDivider && (
-                            <div className="brain-chapter-divider">
-                              <span className="brain-chapter-label">— {entry.chapterTitle || "Untitled"} —</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                        <label>Type</label>
+                        <select
+                          value={getBrainEntryType(selectedBrainEntry)}
+                          onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { entityType: e.target.value as BrainEntityType })}
+                          className="ai-select"
+                          style={{ padding: '0.35rem' }}
+                        >
+                          {brainTypeOptions.filter(option => option.value !== 'all').map(option => (
+                            <option key={option.value} value={option.value}>{option.label.replace(/s$/, '')}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                        <label>Importance</label>
+                        <select
+                          value={getBrainEntryImportance(selectedBrainEntry)}
+                          onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { importance: e.target.value as BrainImportance })}
+                          className="ai-select"
+                          style={{ padding: '0.35rem' }}
+                        >
+                          <option value="minor">Minor</option>
+                          <option value="major">Major</option>
+                          <option value="critical">Critical</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Keyword / Highlight</label>
+                      <div style={{
+                        padding: '0.6rem',
+                        background: 'rgba(0,0,0,0.15)',
+                        border: '1px solid var(--surface-border)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.74rem',
+                        color: 'var(--text-secondary)',
+                        fontStyle: 'italic',
+                        lineHeight: 1.4
+                      }}>
+                        &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
+                      </div>
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>AI Analysis History</label>
+                      {selectedBrainEntry.aiSummary === "Analyzing..." ? (
+                        <div className="brain-loading" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                          <Loader2 size={13} className="spin" />
+                          <span>Analyzing...</span>
+                        </div>
+                      ) : (
+                        <div className="brain-segments-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
+                            <div 
+                              key={seg.id} 
+                              className="brain-segment-card"
+                              onClick={() => setSelectedSegment(seg)}
+                              style={{
+                                padding: '0.6rem',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--surface-border)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.25rem',
+                                background: 'rgba(255,255,255,0.02)',
+                                transition: 'all 0.2s ease',
+                                textAlign: 'left'
+                              }}
+                            >
+                              <strong style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                {seg.title.includes('Update') || seg.title.includes('🔄') ? <RefreshCw size={10} /> : seg.title.includes('Sub-Entity') || seg.title.includes('📍') ? <MapPin size={10} /> : seg.title.includes('Merged') || seg.title.includes('🔗') ? <Link2 size={10} /> : <FileText size={10} />}
+                                {seg.title}
+                              </strong>
+                              <p style={{ 
+                                fontSize: '0.68rem', 
+                                color: 'var(--text-secondary)', 
+                                margin: 0,
+                                overflow: 'hidden',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                lineHeight: '1.4'
+                              }}>
+                                {seg.content.replace(/[#*`\n]/g, ' ').trim()}
+                              </p>
                             </div>
-                          )}
-                          <div 
-                            className="brain-entry-card glass-light"
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => setSelectedBrainEntryId(entry.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                setSelectedBrainEntryId(entry.id)
-                              }
-                            }}
-                            aria-label={`Open Brain Map entry for ${entry.highlightedText}`}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {(selectedBrainEntry.connections || []).length > 0 && (
+                      <div className="ai-form-field">
+                        <label>Connections</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {selectedBrainEntry.connections?.map(connection => (
+                            <div 
+                              key={connection} 
+                              className="brain-connection-item clickable"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.4rem',
+                                padding: '0.4rem 0.5rem',
+                                background: 'rgba(255,255,255,0.03)',
+                                border: '1px solid var(--surface-border)',
+                                borderRadius: 'var(--radius-md)',
+                                fontSize: '0.74rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                              onClick={() => {
+                                const found = brainEntries.find(e => e.entityName && e.entityName.trim().toLowerCase() === connection.trim().toLowerCase());
+                                if (found) {
+                                  setSelectedBrainEntryId(found.id);
+                                } else {
+                                  const foundAlt = brainEntries.find(e => e.highlightedText && e.highlightedText.trim().toLowerCase() === connection.trim().toLowerCase());
+                                  if (foundAlt) {
+                                    setSelectedBrainEntryId(foundAlt.id);
+                                  }
+                                }
+                              }}
+                            >
+                              <Link2 size={11} style={{ color: 'var(--text-dim)' }} />
+                              <span style={{ textDecoration: 'underline', color: 'var(--text-accent)' }}>{connection}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', marginTop: 'auto', flexShrink: 0 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Merge Into Another Entry</label>
+                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                        <select 
+                          value={mergeTargetId}
+                          onChange={(e) => setMergeTargetId(e.target.value)}
+                          className="ai-select"
+                          style={{ flex: 1, padding: '0.35rem', fontSize: '0.74rem' }}
+                        >
+                          <option value="">-- Merge Into --</option>
+                          {brainEntries
+                            .filter(e => e.id !== selectedBrainEntry.id)
+                            .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
+                            .map(e => (
+                              <option key={e.id} value={e.id}>
+                                {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
+                              </option>
+                            ))
+                          }
+                        </select>
+                        <button
+                          className="btn-ai-sub btn-ai-secondary"
+                          disabled={!mergeTargetId}
+                          onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
+                          style={{ padding: '0.38rem 0.6rem', fontSize: '0.72rem' }}
+                        >
+                          Merge
+                        </button>
+                      </div>
+                      <button
+                        className="btn-ai-sub btn-ai-secondary danger-text"
+                        onClick={() => {
+                          const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
+                          if (confirmed) deleteBrainEntry(selectedBrainEntry.id)
+                        }}
+                        style={{ marginTop: '0.5rem', width: '100%', justifyContent: 'center' }}
+                      >
+                        Delete Entry
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="brain-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexShrink: 0 }}>
+                      <span className="section-title text-xs font-bold uppercase tracking-wider text-dim" style={{ marginBottom: 0 }}>Brain Map</span>
+                      <button
+                        className="brain-graph-btn glass-light"
+                        onClick={() => setShowBrainGraph(true)}
+                        title="Open Interactive Visual Graph"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--surface-border)',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          color: 'var(--text-secondary)',
+                          fontSize: '0.68rem',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Network size={11} />
+                        <span>View Graph</span>
+                      </button>
+                    </div>
+
+                    <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                      <button
+                        className="brain-action-card glass-light"
+                        onClick={() => setActiveBrainPopup('ask')}
+                        title="Ask Brain Map"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.35rem',
+                          padding: '0.55rem 0.25rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--surface-border)',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          transition: 'var(--transition)'
+                        }}
+                      >
+                        <MessageSquare size={14} />
+                        <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ask Brain</span>
+                      </button>
+
+                      <button
+                        className="brain-action-card glass-light"
+                        onClick={() => setActiveBrainPopup('suggestions')}
+                        title="Suggested Lore Additions"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.35rem',
+                          padding: '0.55rem 0.25rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--surface-border)',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          transition: 'var(--transition)',
+                          position: 'relative'
+                        }}
+                      >
+                        <Sparkles size={14} style={{ color: '#c084fc' }} />
+                        <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Suggestions</span>
+                        {suggestedEntities.length > 0 && (
+                          <span style={{
+                            position: 'absolute',
+                            top: '-4px',
+                            right: '-4px',
+                            background: 'var(--primary)',
+                            color: 'white',
+                            fontSize: '0.55rem',
+                            fontWeight: 'bold',
+                            borderRadius: '50%',
+                            width: '14px',
+                            height: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 6px var(--primary)'
+                          }}>{suggestedEntities.length}</span>
+                        )}
+                      </button>
+
+                      <button
+                        className="brain-action-card glass-light"
+                        onClick={() => setActiveBrainPopup('continuity')}
+                        title="Lore Continuity Checker"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.35rem',
+                          padding: '0.55rem 0.25rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--surface-border)',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          transition: 'var(--transition)',
+                          position: 'relative'
+                        }}
+                      >
+                        <ShieldAlert size={14} style={{ color: '#fbbf24' }} />
+                        <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Continuity</span>
+                        {consistencyWarnings.length > 0 && (
+                          <span style={{
+                            position: 'absolute',
+                            top: '-4px',
+                            right: '-4px',
+                            background: '#ef4444',
+                            color: 'white',
+                            fontSize: '0.55rem',
+                            fontWeight: 'bold',
+                            borderRadius: '50%',
+                            width: '14px',
+                            height: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 6px #ef4444'
+                          }}>{consistencyWarnings.length}</span>
+                        )}
+                      </button>
+                    </div>
+
+                    {brainEntityGroups.length > 0 && (
+                      <div className="brain-entity-strip">
+                        {brainEntityGroups.slice(0, 6).map(group => (
+                          <button
+                            key={group.name}
+                            className="brain-entity-chip"
+                            onClick={() => setSelectedBrainEntityName(group.name)}
+                            title={group.name}
                           >
-                            <div className="brain-entry-header">
-                              <div className="brain-entry-card-main">
-                                <div className="brain-entry-meta-row">
-                                  <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
-                                  <button
-                                    className={`brain-type-badge type-${getBrainEntryType(entry)}`}
+                            {renderBrainTypeIcon(group.type, 11)}
+                            <span>{group.name}</span>
+                            <strong>{group.entries.length}</strong>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="ai-instructions">Highlight text and click Brain to save with AI context.</p>
+                    
+                    <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
+                      <Search size={14} className="search-icon" />
+                      <input
+                        type="text"
+                        placeholder="Search brain entries..."
+                        value={brainSearchQuery}
+                        onChange={(e) => setBrainSearchQuery(e.target.value)}
+                        className="search-input"
+                      />
+                    </div>
+
+                    <select
+                      value={brainTypeFilter}
+                      onChange={(e) => setBrainTypeFilter(e.target.value as BrainTypeFilter)}
+                      className="brain-type-filter"
+                    >
+                      {brainTypeOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+
+                    <div className="brain-entries-list">
+                      {(() => {
+                        const filtered = filteredBrainEntries
+                        
+                        if (filtered.length === 0) {
+                          return <div className="empty-state-text">No brain entries yet. Highlight text and click Brain to add.</div>
+                        }
+
+                        let lastChapter = ""
+                        return filtered.map((entry) => {
+                          const showDivider = entry.chapterTitle !== lastChapter
+                          lastChapter = entry.chapterTitle
+                          return (
+                            <div key={entry.id}>
+                              {showDivider && (
+                                <div className="brain-chapter-divider">
+                                  <span className="brain-chapter-label">— {entry.chapterTitle || "Untitled"} —</span>
+                                </div>
+                              )}
+                              <div 
+                                className="brain-entry-card glass-light"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedBrainEntryId(entry.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault()
+                                    setSelectedBrainEntryId(entry.id)
+                                  }
+                                }}
+                                aria-label={`Open Brain Map entry for ${entry.highlightedText}`}
+                              >
+                                <div className="brain-entry-header">
+                                  <div className="brain-entry-card-main">
+                                    <div className="brain-entry-meta-row">
+                                      <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
+                                      <button
+                                        className={`brain-type-badge type-${getBrainEntryType(entry)}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setBrainTypeFilter(getBrainEntryType(entry))
+                                        }}
+                                        title={getBrainTypeLabel(getBrainEntryType(entry))}
+                                      >
+                                        {renderBrainTypeIcon(getBrainEntryType(entry), 11)}
+                                        {getBrainTypeLabel(getBrainEntryType(entry))}
+                                      </button>
+                                      <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
+                                        <Star size={10} />
+                                        {getBrainEntryImportance(entry)}
+                                      </span>
+                                      {entry.aiSummary === "Analyzing..." && (
+                                        <span className="brain-pending-badge">
+                                          <Loader2 size={11} className="spin" />
+                                          Analyzing
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button
+                                      className="brain-entity-name"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedBrainEntityName(getBrainEntryEntityName(entry))
+                                      }}
+                                    >
+                                      {getBrainEntryEntityName(entry)}
+                                    </button>
+                                    <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
+                                    {(entry.connections || []).length > 0 && (
+                                      <span className="brain-connection-count">
+                                        <Link2 size={10} />
+                                        {entry.connections?.length} link{entry.connections?.length === 1 ? '' : 's'}
+                                      </span>
+                                    )}
+                                    {(() => {
+                                      const updateCount = (entry.aiSummary.match(/### 🔄 Update:/g) || []).length
+                                      if (updateCount > 0) {
+                                        return (
+                                          <span className="brain-connection-count" style={{ color: '#c084fc', marginLeft: '0.4rem' }}>
+                                            <RefreshCw size={10} />
+                                            {updateCount} update{updateCount === 1 ? '' : 's'}
+                                          </span>
+                                        )
+                                      }
+                                      return null
+                                    })()}
+                                  </div>
+                                  <button 
+                                    className="btn-delete-chapter brain-card-delete"
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      setBrainTypeFilter(getBrainEntryType(entry))
+                                      const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
+                                      if (confirmed) deleteBrainEntry(entry.id)
                                     }}
-                                    title={getBrainTypeLabel(getBrainEntryType(entry))}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    title="Delete"
                                   >
-                                    {renderBrainTypeIcon(getBrainEntryType(entry), 11)}
-                                    {getBrainTypeLabel(getBrainEntryType(entry))}
+                                    <Trash2 size={12} />
                                   </button>
-                                  <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
-                                    <Star size={10} />
-                                    {getBrainEntryImportance(entry)}
-                                  </span>
-                                  {entry.aiSummary === "Analyzing..." && (
-                                    <span className="brain-pending-badge">
-                                      <Loader2 size={11} className="spin" />
-                                      Analyzing
-                                    </span>
+                                </div>
+                                <div className="brain-entry-summary">
+                                  {entry.aiSummary === "Analyzing..." ? (
+                                    <span className="brain-loading"><Loader2 size={12} className="spin" /> Analyzing...</span>
+                                  ) : (
+                                    <p>{entry.aiSummary}</p>
                                   )}
                                 </div>
-                                <button
-                                  className="brain-entity-name"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setSelectedBrainEntityName(getBrainEntryEntityName(entry))
-                                  }}
-                                >
-                                  {getBrainEntryEntityName(entry)}
-                                </button>
-                                <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
-                                {(entry.connections || []).length > 0 && (
-                                  <span className="brain-connection-count">
-                                    <Link2 size={10} />
-                                    {entry.connections?.length} link{entry.connections?.length === 1 ? '' : 's'}
-                                  </span>
-                                )}
-                                {(() => {
-                                  const updateCount = (entry.aiSummary.match(/### 🔄 Update:/g) || []).length
-                                  if (updateCount > 0) {
-                                    return (
-                                      <span className="brain-connection-count" style={{ color: '#c084fc', marginLeft: '0.4rem' }}>
-                                        <RefreshCw size={10} />
-                                        {updateCount} update{updateCount === 1 ? '' : 's'}
-                                      </span>
-                                    )
-                                  }
-                                  return null
-                                })()}
                               </div>
-                              <button 
-                                className="btn-delete-chapter brain-card-delete"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
-                                  if (confirmed) deleteBrainEntry(entry.id)
-                                }}
-                                onKeyDown={(e) => e.stopPropagation()}
-                                title="Delete"
-                              >
-                                <Trash2 size={12} />
-                              </button>
                             </div>
-                            <div className="brain-entry-summary">
-                              {entry.aiSummary === "Analyzing..." ? (
-                                <span className="brain-loading"><Loader2 size={12} className="spin" /> Analyzing...</span>
-                              ) : (
-                                <p>{entry.aiSummary}</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
             {/* TAB: ARC SEEDS */}
             {activeSidebarTab === 'arcs' && (
               <div className="sidebar-tab-content arc-seeds-page fade-in">
-                <div className="arc-seeds-page-header">
-                  <div>
-                    <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Arc Seeds</span>
-                    <p>Future threads captured from completed chapters.</p>
-                  </div>
-                  <button
-                    className="btn-new arc-seed-generate-btn"
-                    onClick={generateArcSeedFromChapter}
-                    disabled={arcSeedLoading || !activeNote}
-                    title="Extract one future arc seed from the active chapter"
-                  >
-                    {arcSeedLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-                    {arcSeedLoading ? "Scanning..." : "Scan Chapter"}
-                  </button>
-                </div>
-
-                {arcSeedError && <div className="arc-seed-error">{arcSeedError}</div>}
-
-                <div className="arc-seed-stat-grid">
-                  <div className="arc-seed-stat-card">
-                    <small>All Seeds</small>
-                    <strong>{arcSeeds.length}</strong>
-                  </div>
-                  <div className="arc-seed-stat-card active">
-                    <small>Open</small>
-                    <strong>{openArcSeedCount}</strong>
-                  </div>
-                  <div className="arc-seed-stat-card">
-                    <small>Developing</small>
-                    <strong>{arcSeeds.filter(seed => seed.status === "developing").length}</strong>
-                  </div>
-                </div>
-
-                <div className="arc-seed-toolbar">
-                  <div className="search-bar">
-                    <Search size={14} className="search-icon" />
-                    <input
-                      type="text"
-                      placeholder="Search arc seeds..."
-                      value={arcSeedSearchQuery}
-                      onChange={(e) => setArcSeedSearchQuery(e.target.value)}
-                      className="search-input"
-                    />
-                  </div>
-                  <select
-                    value={arcSeedStatusFilter}
-                    onChange={(e) => setArcSeedStatusFilter(e.target.value as ArcSeedStatus | 'all')}
-                    className="brain-type-filter"
-                  >
-                    <option value="all">All Statuses</option>
-                    <option value="open">Open</option>
-                    <option value="developing">Developing</option>
-                    <option value="paid_off">Paid Off</option>
-                    <option value="dropped">Dropped</option>
-                  </select>
-                </div>
-
-                <div className="arc-seeds-panel">
-                  <div className="arc-seeds-header">
-                    <div>
-                      <strong>Saved Arc Seeds</strong>
-                      <span>{filteredArcSeeds.length} shown</span>
-                    </div>
-                    <em>{openArcSeedCount} open</em>
-                  </div>
-                  <div className="arc-seeds-list arc-seeds-page-list">
-                    {filteredArcSeeds.length === 0 ? (
-                      <div className="empty-state-text compact">
-                        {arcSeeds.length === 0 ? "No Arc Seeds yet." : "No Arc Seeds match this filter."}
-                      </div>
-                    ) : filteredArcSeeds.map(seed => (
-                      <button
-                        key={seed.id}
-                        type="button"
-                        className={`arc-seed-card status-${seed.status}`}
-                        onClick={() => setSelectedArcSeedId(seed.id)}
-                      >
-                        <div>
-                          <small>{getArcSeedChapterLabel(seed)}</small>
-                          <strong>{seed.title}</strong>
-                          <p>{seed.summary || seed.futurePayoff}</p>
-                        </div>
-                        <span>{seed.status.replace("_", " ")}</span>
+                {selectedArcSeed ? (
+                  <div className="arc-seed-detail-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.75rem', flexShrink: 0 }}>
+                      <button className="btn-ai-sub btn-ai-secondary" onClick={() => setSelectedArcSeedId(null)} style={{ padding: '0.35rem 0.6rem', fontSize: '0.72rem' }}>
+                        ← Back
                       </button>
-                    ))}
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginLeft: 'auto' }}>Arc Seed Detail</strong>
+                    </div>
+
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                      {getArcSeedChapterLabel(selectedArcSeed)} - {selectedArcSeed.chapterTitle || "Untitled"}
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Seed Title</label>
+                      <input
+                        className="ai-input"
+                        value={selectedArcSeed.title}
+                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { title: e.target.value })}
+                        style={{ padding: '0.45rem 0.6rem' }}
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Status</label>
+                      <select
+                        className="ai-select"
+                        value={selectedArcSeed.status}
+                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { status: e.target.value as ArcSeedStatus })}
+                        style={{ padding: '0.45rem' }}
+                      >
+                        <option value="open">Open</option>
+                        <option value="developing">Developing</option>
+                        <option value="paid_off">Paid Off</option>
+                        <option value="dropped">Dropped</option>
+                      </select>
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>What Happened</label>
+                      <textarea
+                        className="ai-textarea compact"
+                        value={selectedArcSeed.summary}
+                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { summary: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Why It Matters</label>
+                      <textarea
+                        className="ai-textarea compact"
+                        value={selectedArcSeed.whyItMatters}
+                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { whyItMatters: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Possible Future Payoff</label>
+                      <textarea
+                        className="ai-textarea compact"
+                        value={selectedArcSeed.futurePayoff}
+                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { futurePayoff: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+
+                    {((selectedArcSeed.relatedCharacters || []).length > 0 || (selectedArcSeed.relatedEntities || []).length > 0) && (
+                      <div className="ai-form-field">
+                        <label>Related Entities</label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {[...(selectedArcSeed.relatedCharacters || []), ...(selectedArcSeed.relatedEntities || [])].slice(0, 10).map(item => (
+                            <span key={item} style={{
+                              padding: '0.2rem 0.45rem',
+                              background: 'rgba(255,255,255,0.04)',
+                              border: '1px solid var(--surface-border)',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: '0.68rem',
+                              color: 'var(--text-secondary)'
+                            }}>{item}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="ai-form-field">
+                      <label>Chapter Evidence</label>
+                      <div style={{
+                        padding: '0.6rem',
+                        background: 'rgba(0,0,0,0.15)',
+                        border: '1px solid var(--surface-border)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.74rem',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.4
+                      }}>
+                        {selectedArcSeed.evidence || "No direct evidence saved."}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', marginTop: 'auto', flexShrink: 0 }}>
+                      <button
+                        className="btn-ai-sub btn-ai-secondary danger-text"
+                        onClick={() => {
+                          const confirmed = window.confirm("Delete this Arc Seed? This cannot be undone.")
+                          if (confirmed) deleteArcSeed(selectedArcSeed.id)
+                        }}
+                        style={{ width: '100%', justifyContent: 'center' }}
+                      >
+                        Delete Arc Seed
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="arc-seeds-page-header">
+                      <div>
+                        <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Arc Seeds</span>
+                        <p>Future threads captured from completed chapters.</p>
+                      </div>
+                      <button
+                        className="btn-new arc-seed-generate-btn"
+                        onClick={generateArcSeedFromChapter}
+                        disabled={arcSeedLoading || !activeNote}
+                        title="Extract one future arc seed from the active chapter"
+                      >
+                        {arcSeedLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                        {arcSeedLoading ? "Scanning..." : "Scan Chapter"}
+                      </button>
+                    </div>
+
+                    {arcSeedError && <div className="arc-seed-error">{arcSeedError}</div>}
+
+                    <div className="arc-seed-stat-grid">
+                      <div className="arc-seed-stat-card">
+                        <small>All Seeds</small>
+                        <strong>{arcSeeds.length}</strong>
+                      </div>
+                      <div className="arc-seed-stat-card active">
+                        <small>Open</small>
+                        <strong>{openArcSeedCount}</strong>
+                      </div>
+                      <div className="arc-seed-stat-card">
+                        <small>Developing</small>
+                        <strong>{arcSeeds.filter(seed => seed.status === "developing").length}</strong>
+                      </div>
+                    </div>
+
+                    <div className="arc-seed-toolbar">
+                      <div className="search-bar">
+                        <Search size={14} className="search-icon" />
+                        <input
+                          type="text"
+                          placeholder="Search arc seeds..."
+                          value={arcSeedSearchQuery}
+                          onChange={(e) => setArcSeedSearchQuery(e.target.value)}
+                          className="search-input"
+                        />
+                      </div>
+                      <select
+                        value={arcSeedStatusFilter}
+                        onChange={(e) => setArcSeedStatusFilter(e.target.value as ArcSeedStatus | 'all')}
+                        className="brain-type-filter"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="open">Open</option>
+                        <option value="developing">Developing</option>
+                        <option value="paid_off">Paid Off</option>
+                        <option value="dropped">Dropped</option>
+                      </select>
+                    </div>
+
+                    <div className="arc-seeds-panel">
+                      <div className="arc-seeds-header">
+                        <div>
+                          <strong>Saved Arc Seeds</strong>
+                          <span>{filteredArcSeeds.length} shown</span>
+                        </div>
+                        <em>{openArcSeedCount} open</em>
+                      </div>
+                      <div className="arc-seeds-list arc-seeds-page-list">
+                        {filteredArcSeeds.length === 0 ? (
+                          <div className="empty-state-text compact">
+                            {arcSeeds.length === 0 ? "No Arc Seeds yet." : "No Arc Seeds match this filter."}
+                          </div>
+                        ) : filteredArcSeeds.map(seed => (
+                          <button
+                            key={seed.id}
+                            type="button"
+                            className={`arc-seed-card status-${seed.status}`}
+                            onClick={() => setSelectedArcSeedId(seed.id)}
+                          >
+                            <div>
+                              <small>{getArcSeedChapterLabel(seed)}</small>
+                              <strong>{seed.title}</strong>
+                              <p>{seed.summary || seed.futurePayoff}</p>
+                            </div>
+                            <span>{seed.status.replace("_", " ")}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -13966,326 +14357,7 @@ ${navPoints}  </navMap>
           </aside>
         )}
 
-        {selectedArcSeed && (
-          <div className="modal-overlay" onClick={() => setSelectedArcSeedId(null)}>
-            <div className="modal arc-seed-detail-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header brain-detail-header">
-                <div>
-                  <h2 className="modal-title">Arc Seed</h2>
-                  <p className="modal-description">{getArcSeedChapterLabel(selectedArcSeed)} - {selectedArcSeed.chapterTitle || "Untitled"}</p>
-                </div>
-                <button className="btn-close-ai" onClick={() => setSelectedArcSeedId(null)} title="Close"><X size={16} /></button>
-              </div>
 
-              <div className="arc-seed-detail-body">
-                <label className="ai-form-field">
-                  <span>Seed Title</span>
-                  <input
-                    className="ai-input"
-                    value={selectedArcSeed.title}
-                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { title: e.target.value })}
-                  />
-                </label>
-
-                <label className="ai-form-field">
-                  <span>Status</span>
-                  <select
-                    className="ai-select"
-                    value={selectedArcSeed.status}
-                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { status: e.target.value as ArcSeedStatus })}
-                  >
-                    <option value="open">Open</option>
-                    <option value="developing">Developing</option>
-                    <option value="paid_off">Paid Off</option>
-                    <option value="dropped">Dropped</option>
-                  </select>
-                </label>
-
-                <label className="ai-form-field">
-                  <span>What Happened</span>
-                  <textarea
-                    className="ai-textarea compact"
-                    value={selectedArcSeed.summary}
-                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { summary: e.target.value })}
-                  />
-                </label>
-
-                <label className="ai-form-field">
-                  <span>Why It Matters</span>
-                  <textarea
-                    className="ai-textarea compact"
-                    value={selectedArcSeed.whyItMatters}
-                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { whyItMatters: e.target.value })}
-                  />
-                </label>
-
-                <label className="ai-form-field">
-                  <span>Possible Future Payoff</span>
-                  <textarea
-                    className="ai-textarea compact"
-                    value={selectedArcSeed.futurePayoff}
-                    onChange={(e) => updateArcSeed(selectedArcSeed.id, { futurePayoff: e.target.value })}
-                  />
-                </label>
-
-                {(selectedArcSeed.relatedCharacters?.length || selectedArcSeed.relatedEntities?.length) ? (
-                  <div className="arc-seed-chip-row">
-                    {[...(selectedArcSeed.relatedCharacters || []), ...(selectedArcSeed.relatedEntities || [])].slice(0, 10).map(item => (
-                      <span key={item}>{item}</span>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className="brain-detail-section">
-                  <span className="brain-detail-label">Chapter Evidence</span>
-                  <div className="brain-detail-summary">
-                    {selectedArcSeed.evidence || "No direct evidence saved."}
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  className="btn btn-ghost danger-text"
-                  onClick={() => {
-                    const confirmed = window.confirm("Delete this Arc Seed? This cannot be undone.")
-                    if (confirmed) deleteArcSeed(selectedArcSeed.id)
-                  }}
-                >
-                  Delete
-                </button>
-                <button className="btn btn-primary" onClick={() => setSelectedArcSeedId(null)}>Done</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {selectedBrainEntry && (
-          <div className="modal-overlay" onClick={() => setSelectedBrainEntryId(null)}>
-            <div className="modal brain-detail-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header brain-detail-header">
-                <div>
-                  <h2 className="modal-title">Brain Map Entry</h2>
-                  <p className="modal-description">
-                    {getBrainEntryChapterLabel(selectedBrainEntry)} - {getBrainEntryChapterTitle(selectedBrainEntry)}
-                  </p>
-                </div>
-                <button 
-                  className="btn-close-ai" 
-                  onClick={() => setSelectedBrainEntryId(null)}
-                  title="Close"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="brain-detail-meta">
-                <span className="brain-chapter-badge">{getBrainEntryChapterLabel(selectedBrainEntry)}</span>
-                <span className={`brain-type-badge type-${getBrainEntryType(selectedBrainEntry)}`}>
-                  {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 11)}
-                  {getBrainTypeLabel(getBrainEntryType(selectedBrainEntry))}
-                </span>
-                <span className={`brain-importance-badge importance-${getBrainEntryImportance(selectedBrainEntry)}`}>
-                  <Star size={10} />
-                  {getBrainEntryImportance(selectedBrainEntry)}
-                </span>
-                {formatBrainEntryDate(selectedBrainEntry) && (
-                  <span className="brain-detail-date">{formatBrainEntryDate(selectedBrainEntry)}</span>
-                )}
-              </div>
-
-              <div className="brain-detail-section">
-                <span className="brain-detail-label">Entity</span>
-                <button
-                  className="brain-detail-entity-link"
-                  onClick={() => {
-                    setSelectedBrainEntryId(null)
-                    setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry))
-                  }}
-                >
-                  {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 14)}
-                  {getBrainEntryEntityName(selectedBrainEntry)}
-                </button>
-              </div>
-
-              <div className="brain-detail-controls">
-                <label>
-                  <span className="brain-detail-label">Type</span>
-                  <select
-                    value={getBrainEntryType(selectedBrainEntry)}
-                    onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { entityType: e.target.value as BrainEntityType })}
-                    className="brain-detail-select"
-                  >
-                    {brainTypeOptions.filter(option => option.value !== 'all').map(option => (
-                      <option key={option.value} value={option.value}>{option.label.replace(/s$/, '')}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span className="brain-detail-label">Importance</span>
-                  <select
-                    value={getBrainEntryImportance(selectedBrainEntry)}
-                    onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { importance: e.target.value as BrainImportance })}
-                    className="brain-detail-select"
-                  >
-                    <option value="minor">Minor</option>
-                    <option value="major">Major</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="brain-detail-section">
-                <span className="brain-detail-label">Keyword / Highlight</span>
-                <div className="brain-detail-keyword">
-                  &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
-                </div>
-              </div>
-
-              <div className="brain-detail-section">
-                <span className="brain-detail-label">AI Analysis History</span>
-                {selectedBrainEntry.aiSummary === "Analyzing..." ? (
-                  <div className="brain-detail-summary">
-                    <span className="brain-loading">
-                      <Loader2 size={14} className="spin" />
-                      Analyzing...
-                    </span>
-                  </div>
-                ) : (
-                  <div className="brain-segments-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.65rem', marginTop: '0.4rem' }}>
-                    {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
-                      <div 
-                        key={seg.id} 
-                        className="brain-segment-card"
-                        onClick={() => setSelectedSegment(seg)}
-                        style={{
-                          padding: '0.75rem',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--surface-border)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.4rem',
-                          minHeight: '80px',
-                          textAlign: 'left'
-                        }}
-                      >
-                        <strong style={{ fontSize: '0.74rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          {seg.title.includes('Update') || seg.title.includes('🔄') ? <RefreshCw size={10} /> : seg.title.includes('Sub-Entity') || seg.title.includes('📍') ? <MapPin size={10} /> : seg.title.includes('Merged') || seg.title.includes('🔗') ? <Link2 size={10} /> : <FileText size={10} />}
-                          {seg.title}
-                        </strong>
-                        <p style={{ 
-                          fontSize: '0.7rem', 
-                          color: 'var(--text-secondary)', 
-                          margin: 0,
-                          overflow: 'hidden',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: 'vertical',
-                          lineHeight: '1.4'
-                        }}>
-                          {seg.content.replace(/[#*`\n]/g, ' ').trim()}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {(selectedBrainEntry.connections || []).length > 0 && (
-                <div className="brain-detail-section">
-                  <span className="brain-detail-label">Connections</span>
-                  <div className="brain-connection-list">
-                    {selectedBrainEntry.connections?.map(connection => (
-                      <div 
-                        key={connection} 
-                        className="brain-connection-item clickable"
-                        style={{ cursor: 'pointer', opacity: 0.85, transition: 'opacity 0.2s' }}
-                        onClick={() => {
-                          const found = brainEntries.find(e => e.entityName && e.entityName.trim().toLowerCase() === connection.trim().toLowerCase());
-                          if (found) {
-                            setSelectedBrainEntryId(found.id);
-                          } else {
-                            const foundAlt = brainEntries.find(e => e.highlightedText && e.highlightedText.trim().toLowerCase() === connection.trim().toLowerCase());
-                            if (foundAlt) {
-                              setSelectedBrainEntryId(foundAlt.id);
-                            }
-                          }
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.85'}
-                      >
-                        <Link2 size={12} />
-                        <span style={{ textDecoration: 'underline', color: 'var(--text-accent)' }}>{connection}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="brain-detail-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', width: '100%', borderTop: '1px solid var(--surface-border)', paddingTop: '0.85rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flex: 1, minWidth: '200px' }}>
-                  <select 
-                    value={mergeTargetId}
-                    onChange={(e) => setMergeTargetId(e.target.value)}
-                    style={{ 
-                      flex: 1, 
-                      fontSize: '0.74rem', 
-                      padding: '0.4rem 0.5rem', 
-                      background: 'rgba(255,255,255,0.04)', 
-                      border: '1px solid var(--surface-border)', 
-                      borderRadius: 'var(--radius-md)', 
-                      color: 'var(--text-primary)',
-                      outline: 'none',
-                      minWidth: '120px'
-                    }}
-                  >
-                    <option value="" style={{ background: '#0a0a0f' }}>-- Merge Into --</option>
-                    {brainEntries
-                      .filter(e => e.id !== selectedBrainEntry.id)
-                      .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
-                      .map(e => (
-                        <option key={e.id} value={e.id} style={{ background: '#0a0a0f' }}>
-                          {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
-                        </option>
-                      ))
-                    }
-                  </select>
-                  <button
-                    className="btn-ai-sub btn-ai-secondary"
-                    disabled={!mergeTargetId}
-                    onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
-                    style={{ 
-                      fontSize: '0.72rem', 
-                      padding: '0.42rem 0.8rem', 
-                      whiteSpace: 'nowrap', 
-                      cursor: mergeTargetId ? 'pointer' : 'not-allowed',
-                      opacity: mergeTargetId ? 1 : 0.5
-                    }}
-                  >
-                    Merge Into
-                  </button>
-                </div>
-                <button
-                  className="btn-ai-sub btn-ai-secondary danger-text"
-                  onClick={() => {
-                    const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
-                    if (confirmed) deleteBrainEntry(selectedBrainEntry.id)
-                  }}
-                  style={{ 
-                    fontSize: '0.72rem', 
-                    padding: '0.42rem 0.8rem', 
-                    whiteSpace: 'nowrap',
-                    marginLeft: 'auto'
-                  }}
-                >
-                  <Trash2 size={13} style={{ marginRight: '0.25rem' }} />
-                  Delete Entry
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {selectedBrainEntity && (() => {
           const linkedBibleEntry = bibleEntries.find(e => e.name.toLowerCase() === selectedBrainEntity.name.toLowerCase());
@@ -16732,6 +16804,8 @@ ${navPoints}  </navMap>
           color: var(--text-primary);
           position: relative;
           transition: background 0.5s ease;
+          overflow: hidden;
+          max-width: 100vw;
         }
 
         /* World Bible Integration Styles */
@@ -17785,7 +17859,9 @@ ${navPoints}  </navMap>
           flex: 1;
           display: flex;
           overflow-y: auto;
+          overflow-x: hidden;
           position: relative;
+          min-width: 0;
         }
 
         .mobile-fab {
@@ -23774,6 +23850,7 @@ ${navPoints}  </navMap>
           display: flex;
           flex-direction: column;
           background: var(--background);
+          min-width: 0;
         }
 
         .editor-workspace {
