@@ -12641,526 +12641,293 @@ ${navPoints}  </navMap>
             {/* TAB 4: BRAIN MAP */}
             {activeSidebarTab === 'brain' && (
               <div className="sidebar-tab-content brain-panel fade-in">
-                {selectedBrainEntry ? (
-                  <div className="brain-detail-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.75rem', flexShrink: 0 }}>
-                      <button className="btn-ai-sub btn-ai-secondary" onClick={() => setSelectedBrainEntryId(null)} style={{ padding: '0.35rem 0.6rem', fontSize: '0.72rem' }}>
-                        ← Back
-                      </button>
-                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginLeft: 'auto' }}>Brain Detail</strong>
-                    </div>
+                <div className="brain-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexShrink: 0 }}>
+                  <span className="section-title text-xs font-bold uppercase tracking-wider text-dim" style={{ marginBottom: 0 }}>Brain Map</span>
+                  <button
+                    className="brain-graph-btn glass-light"
+                    onClick={() => setShowBrainGraph(true)}
+                    title="Open Interactive Visual Graph"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.68rem',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Network size={11} />
+                    <span>View Graph</span>
+                  </button>
+                </div>
 
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '-0.4rem' }}>
-                      {getBrainEntryChapterLabel(selectedBrainEntry)} — {getBrainEntryChapterTitle(selectedBrainEntry)}
-                    </div>
+                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={() => setActiveBrainPopup('ask')}
+                    title="Ask Brain Map"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)'
+                    }}
+                  >
+                    <MessageSquare size={14} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ask Brain</span>
+                  </button>
 
-                    <div className="brain-detail-meta" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.7rem', alignItems: 'center' }}>
-                      <span className={`brain-type-badge type-${getBrainEntryType(selectedBrainEntry)}`}>
-                        {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 11)}
-                        {getBrainTypeLabel(getBrainEntryType(selectedBrainEntry))}
-                      </span>
-                      <span className={`brain-importance-badge importance-${getBrainEntryImportance(selectedBrainEntry)}`}>
-                        <Star size={10} />
-                        {getBrainEntryImportance(selectedBrainEntry)}
-                      </span>
-                      {formatBrainEntryDate(selectedBrainEntry) && (
-                        <span className="brain-detail-date" style={{ color: 'var(--text-dim)', marginLeft: 'auto' }}>{formatBrainEntryDate(selectedBrainEntry)}</span>
-                      )}
-                    </div>
-
-                    <div className="ai-form-field">
-                      <label>Entity Link</label>
-                      <button
-                        className="brain-detail-entity-link"
-                        onClick={() => {
-                          setSelectedBrainEntryId(null)
-                          setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry))
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          padding: '0.5rem',
-                          background: 'rgba(255,255,255,0.03)',
-                          border: '1px solid var(--surface-border)',
-                          borderRadius: 'var(--radius-md)',
-                          fontSize: '0.78rem',
-                          color: 'var(--text-accent)'
-                        }}
-                      >
-                        {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 13)}
-                        <span>{getBrainEntryEntityName(selectedBrainEntry)}</span>
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      <div className="ai-form-field" style={{ marginBottom: 0 }}>
-                        <label>Type</label>
-                        <select
-                          value={getBrainEntryType(selectedBrainEntry)}
-                          onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { entityType: e.target.value as BrainEntityType })}
-                          className="ai-select"
-                          style={{ padding: '0.35rem' }}
-                        >
-                          {brainTypeOptions.filter(option => option.value !== 'all').map(option => (
-                            <option key={option.value} value={option.value}>{option.label.replace(/s$/, '')}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="ai-form-field" style={{ marginBottom: 0 }}>
-                        <label>Importance</label>
-                        <select
-                          value={getBrainEntryImportance(selectedBrainEntry)}
-                          onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { importance: e.target.value as BrainImportance })}
-                          className="ai-select"
-                          style={{ padding: '0.35rem' }}
-                        >
-                          <option value="minor">Minor</option>
-                          <option value="major">Major</option>
-                          <option value="critical">Critical</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="ai-form-field">
-                      <label>Keyword / Highlight</label>
-                      <div style={{
-                        padding: '0.6rem',
-                        background: 'rgba(0,0,0,0.15)',
-                        border: '1px solid var(--surface-border)',
-                        borderRadius: 'var(--radius-md)',
-                        fontSize: '0.74rem',
-                        color: 'var(--text-secondary)',
-                        fontStyle: 'italic',
-                        lineHeight: 1.4
-                      }}>
-                        &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
-                      </div>
-                    </div>
-
-                    <div className="ai-form-field">
-                      <label>AI Analysis History</label>
-                      {selectedBrainEntry.aiSummary === "Analyzing..." ? (
-                        <div className="brain-loading" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                          <Loader2 size={13} className="spin" />
-                          <span>Analyzing...</span>
-                        </div>
-                      ) : (
-                        <div className="brain-segments-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
-                            <div 
-                              key={seg.id} 
-                              className="brain-segment-card"
-                              onClick={() => setSelectedSegment(seg)}
-                              style={{
-                                padding: '0.6rem',
-                                borderRadius: 'var(--radius-md)',
-                                border: '1px solid var(--surface-border)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '0.25rem',
-                                background: 'rgba(255,255,255,0.02)',
-                                transition: 'all 0.2s ease',
-                                textAlign: 'left'
-                              }}
-                            >
-                              <strong style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                {seg.title.includes('Update') || seg.title.includes('🔄') ? <RefreshCw size={10} /> : seg.title.includes('Sub-Entity') || seg.title.includes('📍') ? <MapPin size={10} /> : seg.title.includes('Merged') || seg.title.includes('🔗') ? <Link2 size={10} /> : <FileText size={10} />}
-                                {seg.title}
-                              </strong>
-                              <p style={{ 
-                                fontSize: '0.68rem', 
-                                color: 'var(--text-secondary)', 
-                                margin: 0,
-                                overflow: 'hidden',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                lineHeight: '1.4'
-                              }}>
-                                {seg.content.replace(/[#*`\n]/g, ' ').trim()}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {(selectedBrainEntry.connections || []).length > 0 && (
-                      <div className="ai-form-field">
-                        <label>Connections</label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          {selectedBrainEntry.connections?.map(connection => (
-                            <div 
-                              key={connection} 
-                              className="brain-connection-item clickable"
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.4rem',
-                                padding: '0.4rem 0.5rem',
-                                background: 'rgba(255,255,255,0.03)',
-                                border: '1px solid var(--surface-border)',
-                                borderRadius: 'var(--radius-md)',
-                                fontSize: '0.74rem',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s'
-                              }}
-                              onClick={() => {
-                                const found = brainEntries.find(e => e.entityName && e.entityName.trim().toLowerCase() === connection.trim().toLowerCase());
-                                if (found) {
-                                  setSelectedBrainEntryId(found.id);
-                                } else {
-                                  const foundAlt = brainEntries.find(e => e.highlightedText && e.highlightedText.trim().toLowerCase() === connection.trim().toLowerCase());
-                                  if (foundAlt) {
-                                    setSelectedBrainEntryId(foundAlt.id);
-                                  }
-                                }
-                              }}
-                            >
-                              <Link2 size={11} style={{ color: 'var(--text-dim)' }} />
-                              <span style={{ textDecoration: 'underline', color: 'var(--text-accent)' }}>{connection}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={() => setActiveBrainPopup('suggestions')}
+                    title="Suggested Lore Additions"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)',
+                      position: 'relative'
+                    }}
+                  >
+                    <Sparkles size={14} style={{ color: '#c084fc' }} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Suggestions</span>
+                    {suggestedEntities.length > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        background: 'var(--primary)',
+                        color: 'white',
+                        fontSize: '0.55rem',
+                        fontWeight: 'bold',
+                        borderRadius: '50%',
+                        width: '14px',
+                        height: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 6px var(--primary)'
+                      }}>{suggestedEntities.length}</span>
                     )}
+                  </button>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', marginTop: 'auto', flexShrink: 0 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Merge Into Another Entry</label>
-                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                        <select 
-                          value={mergeTargetId}
-                          onChange={(e) => setMergeTargetId(e.target.value)}
-                          className="ai-select"
-                          style={{ flex: 1, padding: '0.35rem', fontSize: '0.74rem' }}
-                        >
-                          <option value="">-- Merge Into --</option>
-                          {brainEntries
-                            .filter(e => e.id !== selectedBrainEntry.id)
-                            .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
-                            .map(e => (
-                              <option key={e.id} value={e.id}>
-                                {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
-                              </option>
-                            ))
-                          }
-                        </select>
-                        <button
-                          className="btn-ai-sub btn-ai-secondary"
-                          disabled={!mergeTargetId}
-                          onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
-                          style={{ padding: '0.38rem 0.6rem', fontSize: '0.72rem' }}
-                        >
-                          Merge
-                        </button>
-                      </div>
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={() => setActiveBrainPopup('continuity')}
+                    title="Lore Continuity Checker"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)',
+                      position: 'relative'
+                    }}
+                  >
+                    <ShieldAlert size={14} style={{ color: '#fbbf24' }} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Continuity</span>
+                    {consistencyWarnings.length > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        background: '#ef4444',
+                        color: 'white',
+                        fontSize: '0.55rem',
+                        fontWeight: 'bold',
+                        borderRadius: '50%',
+                        width: '14px',
+                        height: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 6px #ef4444'
+                      }}>{consistencyWarnings.length}</span>
+                    )}
+                  </button>
+                </div>
+
+                {brainEntityGroups.length > 0 && (
+                  <div className="brain-entity-strip">
+                    {brainEntityGroups.slice(0, 6).map(group => (
                       <button
-                        className="btn-ai-sub btn-ai-secondary danger-text"
-                        onClick={() => {
-                          const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
-                          if (confirmed) deleteBrainEntry(selectedBrainEntry.id)
-                        }}
-                        style={{ marginTop: '0.5rem', width: '100%', justifyContent: 'center' }}
+                        key={group.name}
+                        className="brain-entity-chip"
+                        onClick={() => setSelectedBrainEntityName(group.name)}
+                        title={group.name}
                       >
-                        Delete Entry
+                        {renderBrainTypeIcon(group.type, 11)}
+                        <span>{group.name}</span>
+                        <strong>{group.entries.length}</strong>
                       </button>
-                    </div>
+                    ))}
                   </div>
-                ) : (
-                  <>
-                    <div className="brain-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexShrink: 0 }}>
-                      <span className="section-title text-xs font-bold uppercase tracking-wider text-dim" style={{ marginBottom: 0 }}>Brain Map</span>
-                      <button
-                        className="brain-graph-btn glass-light"
-                        onClick={() => setShowBrainGraph(true)}
-                        title="Open Interactive Visual Graph"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--surface-border)',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          color: 'var(--text-secondary)',
-                          fontSize: '0.68rem',
-                          fontWeight: '700',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Network size={11} />
-                        <span>View Graph</span>
-                      </button>
-                    </div>
+                )}
 
-                    <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
-                      <button
-                        className="brain-action-card glass-light"
-                        onClick={() => setActiveBrainPopup('ask')}
-                        title="Ask Brain Map"
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.35rem',
-                          padding: '0.55rem 0.25rem',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--surface-border)',
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          transition: 'var(--transition)'
-                        }}
-                      >
-                        <MessageSquare size={14} />
-                        <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ask Brain</span>
-                      </button>
+                <p className="ai-instructions">Highlight text and click Brain to save with AI context.</p>
+                
+                <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
+                  <Search size={14} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search brain entries..."
+                    value={brainSearchQuery}
+                    onChange={(e) => setBrainSearchQuery(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
 
-                      <button
-                        className="brain-action-card glass-light"
-                        onClick={() => setActiveBrainPopup('suggestions')}
-                        title="Suggested Lore Additions"
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.35rem',
-                          padding: '0.55rem 0.25rem',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--surface-border)',
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          transition: 'var(--transition)',
-                          position: 'relative'
-                        }}
-                      >
-                        <Sparkles size={14} style={{ color: '#c084fc' }} />
-                        <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Suggestions</span>
-                        {suggestedEntities.length > 0 && (
-                          <span style={{
-                            position: 'absolute',
-                            top: '-4px',
-                            right: '-4px',
-                            background: 'var(--primary)',
-                            color: 'white',
-                            fontSize: '0.55rem',
-                            fontWeight: 'bold',
-                            borderRadius: '50%',
-                            width: '14px',
-                            height: '14px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 0 6px var(--primary)'
-                          }}>{suggestedEntities.length}</span>
-                        )}
-                      </button>
+                <select
+                  value={brainTypeFilter}
+                  onChange={(e) => setBrainTypeFilter(e.target.value as BrainTypeFilter)}
+                  className="brain-type-filter"
+                >
+                  {brainTypeOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
 
-                      <button
-                        className="brain-action-card glass-light"
-                        onClick={() => setActiveBrainPopup('continuity')}
-                        title="Lore Continuity Checker"
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.35rem',
-                          padding: '0.55rem 0.25rem',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--surface-border)',
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          transition: 'var(--transition)',
-                          position: 'relative'
-                        }}
-                      >
-                        <ShieldAlert size={14} style={{ color: '#fbbf24' }} />
-                        <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Continuity</span>
-                        {consistencyWarnings.length > 0 && (
-                          <span style={{
-                            position: 'absolute',
-                            top: '-4px',
-                            right: '-4px',
-                            background: '#ef4444',
-                            color: 'white',
-                            fontSize: '0.55rem',
-                            fontWeight: 'bold',
-                            borderRadius: '50%',
-                            width: '14px',
-                            height: '14px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 0 6px #ef4444'
-                          }}>{consistencyWarnings.length}</span>
-                        )}
-                      </button>
-                    </div>
-
-                    {brainEntityGroups.length > 0 && (
-                      <div className="brain-entity-strip">
-                        {brainEntityGroups.slice(0, 6).map(group => (
-                          <button
-                            key={group.name}
-                            className="brain-entity-chip"
-                            onClick={() => setSelectedBrainEntityName(group.name)}
-                            title={group.name}
-                          >
-                            {renderBrainTypeIcon(group.type, 11)}
-                            <span>{group.name}</span>
-                            <strong>{group.entries.length}</strong>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <p className="ai-instructions">Highlight text and click Brain to save with AI context.</p>
+                <div className="brain-entries-list">
+                  {(() => {
+                    const filtered = filteredBrainEntries
                     
-                    <div className="search-bar" style={{ marginBottom: '0.75rem' }}>
-                      <Search size={14} className="search-icon" />
-                      <input
-                        type="text"
-                        placeholder="Search brain entries..."
-                        value={brainSearchQuery}
-                        onChange={(e) => setBrainSearchQuery(e.target.value)}
-                        className="search-input"
-                      />
-                    </div>
+                    if (filtered.length === 0) {
+                      return <div className="empty-state-text">No brain entries yet. Highlight text and click Brain to add.</div>
+                    }
 
-                    <select
-                      value={brainTypeFilter}
-                      onChange={(e) => setBrainTypeFilter(e.target.value as BrainTypeFilter)}
-                      className="brain-type-filter"
-                    >
-                      {brainTypeOptions.map(option => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-
-                    <div className="brain-entries-list">
-                      {(() => {
-                        const filtered = filteredBrainEntries
-                        
-                        if (filtered.length === 0) {
-                          return <div className="empty-state-text">No brain entries yet. Highlight text and click Brain to add.</div>
-                        }
-
-                        let lastChapter = ""
-                        return filtered.map((entry) => {
-                          const showDivider = entry.chapterTitle !== lastChapter
-                          lastChapter = entry.chapterTitle
-                          return (
-                            <div key={entry.id}>
-                              {showDivider && (
-                                <div className="brain-chapter-divider">
-                                  <span className="brain-chapter-label">— {entry.chapterTitle || "Untitled"} —</span>
-                                </div>
-                              )}
-                              <div 
-                                className="brain-entry-card glass-light"
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => setSelectedBrainEntryId(entry.id)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault()
-                                    setSelectedBrainEntryId(entry.id)
-                                  }
-                                }}
-                                aria-label={`Open Brain Map entry for ${entry.highlightedText}`}
-                              >
-                                <div className="brain-entry-header">
-                                  <div className="brain-entry-card-main">
-                                    <div className="brain-entry-meta-row">
-                                      <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
-                                      <button
-                                        className={`brain-type-badge type-${getBrainEntryType(entry)}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          setBrainTypeFilter(getBrainEntryType(entry))
-                                        }}
-                                        title={getBrainTypeLabel(getBrainEntryType(entry))}
-                                      >
-                                        {renderBrainTypeIcon(getBrainEntryType(entry), 11)}
-                                        {getBrainTypeLabel(getBrainEntryType(entry))}
-                                      </button>
-                                      <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
-                                        <Star size={10} />
-                                        {getBrainEntryImportance(entry)}
-                                      </span>
-                                      {entry.aiSummary === "Analyzing..." && (
-                                        <span className="brain-pending-badge">
-                                          <Loader2 size={11} className="spin" />
-                                          Analyzing
-                                        </span>
-                                      )}
-                                    </div>
-                                    <button
-                                      className="brain-entity-name"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setSelectedBrainEntityName(getBrainEntryEntityName(entry))
-                                      }}
-                                    >
-                                      {getBrainEntryEntityName(entry)}
-                                    </button>
-                                    <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
-                                    {(entry.connections || []).length > 0 && (
-                                      <span className="brain-connection-count">
-                                        <Link2 size={10} />
-                                        {entry.connections?.length} link{entry.connections?.length === 1 ? '' : 's'}
-                                      </span>
-                                    )}
-                                    {(() => {
-                                      const updateCount = (entry.aiSummary.match(/### 🔄 Update:/g) || []).length
-                                      if (updateCount > 0) {
-                                        return (
-                                          <span className="brain-connection-count" style={{ color: '#c084fc', marginLeft: '0.4rem' }}>
-                                            <RefreshCw size={10} />
-                                            {updateCount} update{updateCount === 1 ? '' : 's'}
-                                          </span>
-                                        )
-                                      }
-                                      return null
-                                    })()}
-                                  </div>
-                                  <button 
-                                    className="btn-delete-chapter brain-card-delete"
+                    let lastChapter = ""
+                    return filtered.map((entry) => {
+                      const showDivider = entry.chapterTitle !== lastChapter
+                      lastChapter = entry.chapterTitle
+                      return (
+                        <div key={entry.id}>
+                          {showDivider && (
+                            <div className="brain-chapter-divider">
+                              <span className="brain-chapter-label">— {entry.chapterTitle || "Untitled"} —</span>
+                            </div>
+                          )}
+                          <div 
+                            className="brain-entry-card glass-light"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedBrainEntryId(entry.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                setSelectedBrainEntryId(entry.id)
+                              }
+                            }}
+                            aria-label={`Open Brain Map entry for ${entry.highlightedText}`}
+                          >
+                            <div className="brain-entry-header">
+                              <div className="brain-entry-card-main">
+                                <div className="brain-entry-meta-row">
+                                  <span className="brain-chapter-badge">{getBrainEntryChapterLabel(entry)}</span>
+                                  <button
+                                    className={`brain-type-badge type-${getBrainEntryType(entry)}`}
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
-                                      if (confirmed) deleteBrainEntry(entry.id)
+                                      setBrainTypeFilter(getBrainEntryType(entry))
                                     }}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    title="Delete"
+                                    title={getBrainTypeLabel(getBrainEntryType(entry))}
                                   >
-                                    <Trash2 size={12} />
+                                    {renderBrainTypeIcon(getBrainEntryType(entry), 11)}
+                                    {getBrainTypeLabel(getBrainEntryType(entry))}
                                   </button>
-                                </div>
-                                <div className="brain-entry-summary">
-                                  {entry.aiSummary === "Analyzing..." ? (
-                                    <span className="brain-loading"><Loader2 size={12} className="spin" /> Analyzing...</span>
-                                  ) : (
-                                    <p>{entry.aiSummary}</p>
+                                  <span className={`brain-importance-badge importance-${getBrainEntryImportance(entry)}`}>
+                                    <Star size={10} />
+                                    {getBrainEntryImportance(entry)}
+                                  </span>
+                                  {entry.aiSummary === "Analyzing..." && (
+                                    <span className="brain-pending-badge">
+                                      <Loader2 size={11} className="spin" />
+                                      Analyzing
+                                    </span>
                                   )}
                                 </div>
+                                <button
+                                  className="brain-entity-name"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedBrainEntityName(getBrainEntryEntityName(entry))
+                                  }}
+                                >
+                                  {getBrainEntryEntityName(entry)}
+                                </button>
+                                <span className="brain-highlight-text">&ldquo;{entry.highlightedText}&rdquo;</span>
+                                {(entry.connections || []).length > 0 && (
+                                  <span className="brain-connection-count">
+                                    <Link2 size={10} />
+                                    {entry.connections?.length} link{entry.connections?.length === 1 ? '' : 's'}
+                                  </span>
+                                )}
+                                {(() => {
+                                  const updateCount = (entry.aiSummary.match(/### 🔄 Update:/g) || []).length
+                                  if (updateCount > 0) {
+                                    return (
+                                      <span className="brain-connection-count" style={{ color: '#c084fc', marginLeft: '0.4rem' }}>
+                                        <RefreshCw size={10} />
+                                        {updateCount} update{updateCount === 1 ? '' : 's'}
+                                      </span>
+                                    )
+                                  }
+                                  return null
+                                })()}
                               </div>
+                              <button 
+                                className="btn-delete-chapter brain-card-delete"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
+                                  if (confirmed) deleteBrainEntry(entry.id)
+                                }}
+                                onKeyDown={(e) => e.stopPropagation()}
+                                title="Delete"
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             </div>
-                          )
-                        })
-                      })()}
-                    </div>
-                  </>
-                )}
+                            <div className="brain-entry-summary">
+                              {entry.aiSummary === "Analyzing..." ? (
+                                <span className="brain-loading"><Loader2 size={12} className="spin" /> Analyzing...</span>
+                              ) : (
+                                <p>{entry.aiSummary}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
               </div>
             )}
 
@@ -14535,6 +14302,248 @@ ${navPoints}  </navMap>
             </div>
           );
         })()}
+
+        {selectedBrainEntry && (
+          <div className="modal-overlay" onClick={() => { setSelectedBrainEntryId(null); setMergeTargetId(""); }}>
+            <div className="modal brain-detail-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', width: '90vw' }}>
+              <div className="modal-header brain-detail-header">
+                <div>
+                  <h2 className="modal-title">Brain Entry Detail</h2>
+                  <p className="modal-description">
+                    {getBrainEntryChapterLabel(selectedBrainEntry)} — {getBrainEntryChapterTitle(selectedBrainEntry)}
+                  </p>
+                </div>
+                <button
+                  className="btn-close-ai"
+                  onClick={() => { setSelectedBrainEntryId(null); setMergeTargetId(""); }}
+                  title="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="modal-body scrollbar" style={{ maxHeight: '70vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '4px' }}>
+                <div className="brain-detail-meta" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.7rem', alignItems: 'center' }}>
+                  <span className={`brain-type-badge type-${getBrainEntryType(selectedBrainEntry)}`}>
+                    {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 11)}
+                    {getBrainTypeLabel(getBrainEntryType(selectedBrainEntry))}
+                  </span>
+                  <span className={`brain-importance-badge importance-${getBrainEntryImportance(selectedBrainEntry)}`}>
+                    <Star size={10} />
+                    {getBrainEntryImportance(selectedBrainEntry)}
+                  </span>
+                  {formatBrainEntryDate(selectedBrainEntry) && (
+                    <span className="brain-detail-date" style={{ color: 'var(--text-dim)', marginLeft: 'auto' }}>{formatBrainEntryDate(selectedBrainEntry)}</span>
+                  )}
+                </div>
+
+                <div className="ai-form-field">
+                  <label>Entity Link</label>
+                  <button
+                    className="brain-detail-entity-link"
+                    onClick={() => {
+                      setSelectedBrainEntryId(null)
+                      setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry))
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.5rem',
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid var(--surface-border)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.78rem',
+                      color: 'var(--text-accent)'
+                    }}
+                  >
+                    {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 13)}
+                    <span>{getBrainEntryEntityName(selectedBrainEntry)}</span>
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                    <label>Type</label>
+                    <select
+                      value={getBrainEntryType(selectedBrainEntry)}
+                      onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { entityType: e.target.value as BrainEntityType })}
+                      className="ai-select"
+                      style={{ padding: '0.35rem' }}
+                    >
+                      {brainTypeOptions.filter(option => option.value !== 'all').map(option => (
+                        <option key={option.value} value={option.value}>{option.label.replace(/s$/, '')}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                    <label>Importance</label>
+                    <select
+                      value={getBrainEntryImportance(selectedBrainEntry)}
+                      onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { importance: e.target.value as BrainImportance })}
+                      className="ai-select"
+                      style={{ padding: '0.35rem' }}
+                    >
+                      <option value="minor">Minor</option>
+                      <option value="major">Major</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="ai-form-field">
+                  <label>Keyword / Highlight</label>
+                  <div style={{
+                    padding: '0.6rem',
+                    background: 'rgba(0,0,0,0.15)',
+                    border: '1px solid var(--surface-border)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '0.74rem',
+                    color: 'var(--text-secondary)',
+                    fontStyle: 'italic',
+                    lineHeight: 1.4
+                  }}>
+                    &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
+                  </div>
+                </div>
+
+                <div className="ai-form-field">
+                  <label>AI Analysis History</label>
+                  {selectedBrainEntry.aiSummary === "Analyzing..." ? (
+                    <div className="brain-loading" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                      <Loader2 size={13} className="spin" />
+                      <span>Analyzing...</span>
+                    </div>
+                  ) : (
+                    <div className="brain-segments-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
+                        <div 
+                          key={seg.id} 
+                          className="brain-segment-card"
+                          onClick={() => setSelectedSegment(seg)}
+                          style={{
+                            padding: '0.6rem',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--surface-border)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.25rem',
+                            background: 'rgba(255,255,255,0.02)',
+                            transition: 'all 0.2s ease',
+                            textAlign: 'left'
+                          }}
+                        >
+                          <strong style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            {seg.title.includes('Update') || seg.title.includes('🔄') ? <RefreshCw size={10} /> : seg.title.includes('Sub-Entity') || seg.title.includes('📍') ? <MapPin size={10} /> : seg.title.includes('Merged') || seg.title.includes('🔗') ? <Link2 size={10} /> : <FileText size={10} />}
+                            {seg.title}
+                          </strong>
+                          <p style={{ 
+                            fontSize: '0.68rem', 
+                            color: 'var(--text-secondary)', 
+                            margin: 0,
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            lineHeight: '1.4'
+                          }}>
+                            {seg.content.replace(/[#*`\n]/g, ' ').trim()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {(selectedBrainEntry.connections || []).length > 0 && (
+                  <div className="ai-form-field">
+                    <label>Connections</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {selectedBrainEntry.connections?.map(connection => (
+                        <div 
+                          key={connection} 
+                          className="brain-connection-item clickable"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            padding: '0.4rem 0.5rem',
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid var(--surface-border)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: '0.74rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onClick={() => {
+                            const found = brainEntries.find(e => e.entityName && e.entityName.trim().toLowerCase() === connection.trim().toLowerCase());
+                            if (found) {
+                              setSelectedBrainEntryId(found.id);
+                            } else {
+                              const foundAlt = brainEntries.find(e => e.highlightedText && e.highlightedText.trim().toLowerCase() === connection.trim().toLowerCase());
+                              if (foundAlt) {
+                                setSelectedBrainEntryId(foundAlt.id);
+                              }
+                            }
+                          }}
+                        >
+                          <Link2 size={11} style={{ color: 'var(--text-dim)' }} />
+                          <span style={{ textDecoration: 'underline', color: 'var(--text-accent)' }}>{connection}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', marginTop: 'auto', flexShrink: 0 }}>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Merge Into Another Entry</label>
+                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                    <select 
+                      value={mergeTargetId}
+                      onChange={(e) => setMergeTargetId(e.target.value)}
+                      className="ai-select"
+                      style={{ flex: 1, padding: '0.35rem', fontSize: '0.74rem' }}
+                    >
+                      <option value="">-- Merge Into --</option>
+                      {brainEntries
+                        .filter(e => e.id !== selectedBrainEntry.id)
+                        .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
+                        .map(e => (
+                          <option key={e.id} value={e.id}>
+                            {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
+                          </option>
+                        ))
+                      }
+                    </select>
+                    <button
+                      className="btn-ai-sub btn-ai-secondary"
+                      disabled={!mergeTargetId}
+                      onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
+                      style={{ padding: '0.38rem 0.6rem', fontSize: '0.72rem' }}
+                    >
+                      Merge
+                    </button>
+                  </div>
+                  <button
+                    className="btn-ai-sub btn-ai-secondary danger-text"
+                    onClick={() => {
+                      const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
+                      if (confirmed) {
+                        deleteBrainEntry(selectedBrainEntry.id)
+                      }
+                    }}
+                    style={{ marginTop: '0.5rem', width: '100%', justifyContent: 'center' }}
+                  >
+                    Delete Entry
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <BrainGraphModalComponent
           isOpen={showBrainGraph}
