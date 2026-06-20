@@ -1063,6 +1063,18 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
   return String(value || "").trim()
 }
 
+const parseIncarnationEntries = (fields: Record<string, string> = {}): Array<{ identity: string; era: string; fate: string }> => {
+  const identities = (fields["Incarnation / Past Lives Identity/Name"] || "").split(";").map(s => s.trim()).filter(Boolean)
+  const eras = (fields["Incarnation / Past Lives Era"] || "").split(";").map(s => s.trim()).filter(Boolean)
+  const fates = (fields["Incarnation / Past Lives Fate/Legacy"] || "").split(";").map(s => s.trim()).filter(Boolean)
+  const maxLen = Math.max(identities.length, eras.length, fates.length)
+  return Array.from({ length: maxLen }, (_, i) => ({
+    identity: identities[i] || "",
+    era: eras[i] || "",
+    fate: fates[i] || ""
+  }))
+}
+
 const sanitizeSimpleProgressionCustomFields = (fields?: Record<string, unknown>) => {
   const cleaned: Record<string, string> = {}
   Object.entries(fields || {}).forEach(([key, value]) => {
@@ -4219,6 +4231,10 @@ const fillEmptyCustomJsonData = (
 
     try {
       const recentChapters = getManuscriptNotesList(notes).slice(-5)
+      if (recentChapters.length === 0) {
+        setProgressionError("No manuscript chapters found. Add chapters to your project first.")
+        return
+      }
       let currentProfiles = [...progressionProfiles]
       const updatesQueue: { note: Note; profileId: string; entry: BibleEntry }[] = []
       
@@ -4244,6 +4260,10 @@ const fillEmptyCustomJsonData = (
 
       setProgressionBulkUpdateStatus(`Found ${updatesQueue.length} updates. Starting processing...`)
 
+      let succeeded = 0
+      let failed = 0
+      const errors: string[] = []
+
       for (let i = 0; i < updatesQueue.length; i++) {
         const { note, profileId, entry } = updatesQueue[i]
         const latestProfile = currentProfiles.find(p => p.id === profileId)
@@ -4256,12 +4276,23 @@ const fillEmptyCustomJsonData = (
           currentProfiles = currentProfiles.map(p => p.id === profileId ? updatedProfile : p)
           persistProgressionProfiles(currentProfiles)
           learnProgressionProfileShape(updatedProfile)
+          succeeded++
         } catch (err) {
-          console.error(`Failed to update ${latestProfile.name} in chapter ${note.title || note.id}:`, err)
+          failed++
+          const msg = err instanceof Error ? err.message : "Unknown error"
+          errors.push(`Failed to update ${latestProfile.name} in chapter "${note.title || note.id}": ${msg}`)
+          console.error(err)
         }
       }
 
-      setProgressionNotice(`Successfully processed ${updatesQueue.length} character profile updates.`)
+      if (succeeded > 0) {
+        setProgressionNotice(`Successfully processed ${succeeded} character profile update${succeeded > 1 ? "s" : ""}.${failed > 0 ? ` ${failed} update${failed > 1 ? "s" : ""} failed.` : ""}`)
+      } else {
+        setProgressionError(`All ${updatesQueue.length} update${updatesQueue.length > 1 ? "s" : ""} failed. Check console for details.`)
+      }
+      if (errors.length > 0) {
+        console.warn("Bulk update errors:", errors.join("\n"))
+      }
     } catch (err) {
       setProgressionError(err instanceof Error ? err.message : "Failed to run bulk update")
     } finally {
@@ -11194,37 +11225,74 @@ ${navPoints}  </navMap>
                                     )}
                                   </div>
                                 )
-                              }
+                            }
 
-                              const isLoreCard = templateCard.id === "template-lore" || templateCard.label.toLowerCase() === "lore" || templateCard.sourceKey.toLowerCase() === "notes" || templateCard.sourceKey.toLowerCase() === "lore";
+                            const isIncarnationCard = templateCard.sourceKey === "Incarnation / Past Lives"
 
+                            if (isIncarnationCard) {
+                              const incarnationEntries = parseIncarnationEntries(selectedProgressionProfile.customFields || {})
                               return (
-                                <div 
-                                  key={templateCard.id} 
-                                  className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)} ${isLoreCard ? 'clickable' : ''}`}
-                                  onClick={isLoreCard ? () => setShowLoreHistoryModal(true) : undefined}
-                                >
+                                <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
                                   <span>{templateCard.label}</span>
-                                  {templateCard.fields.length > 1 || templateCard.type === "compound" || templateCard.type === "stat" || templateCard.type === "rank" ? (
-                                    <div className="progression-template-field-list">
-                                      {cardFields.map(field => (
-                                        <div key={field.label}>
-                                          <small>{field.label}</small>
-                                          <strong>{typeof field.value === "object" ? JSON.stringify(field.value) : (field.value || "Not set")}</strong>
+                                  <div className="progression-incarnation-list">
+                                    {incarnationEntries.length === 0 ? (
+                                      <div className="progression-template-field-list">
+                                        <p style={{ opacity: 0.5, fontSize: "0.75rem" }}>No past lives recorded yet.</p>
+                                      </div>
+                                    ) : incarnationEntries.map((entry, idx) => (
+                                      <div key={idx} className="progression-incarnation-item" style={{ padding: "0.45rem 0", borderBottom: idx < incarnationEntries.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none" }}>
+                                        <div className="progression-template-field-list">
+                                          <div>
+                                            <small>Identity/Name</small>
+                                            <strong>{entry.identity || "Not set"}</strong>
+                                          </div>
+                                          <div>
+                                            <small>Era</small>
+                                            <strong>{entry.era || "Not set"}</strong>
+                                          </div>
+                                          {entry.fate ? (
+                                            <div>
+                                              <small>Fate/Legacy</small>
+                                              <strong>{entry.fate}</strong>
+                                            </div>
+                                          ) : null}
                                         </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <strong>{typeof cardValue === "object" ? JSON.stringify(cardValue) : (cardValue || "Not set")}</strong>
-                                  )}
-                                  {ratio && (
-                                    <div className="progression-template-progress">
-                                      <div><i style={{ width: `${progressPercent}%` }} /></div>
-                                      <small>{progressPercent}%</small>
-                                    </div>
-                                  )}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               )
+                            }
+
+                            const isLoreCard = templateCard.id === "template-lore" || templateCard.label.toLowerCase() === "lore" || templateCard.sourceKey.toLowerCase() === "notes" || templateCard.sourceKey.toLowerCase() === "lore";
+
+                            return (
+                              <div 
+                                key={templateCard.id} 
+                                className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)} ${isLoreCard ? 'clickable' : ''}`}
+                                onClick={isLoreCard ? () => setShowLoreHistoryModal(true) : undefined}
+                              >
+                                <span>{templateCard.label}</span>
+                                {templateCard.fields.length > 1 || templateCard.type === "compound" || templateCard.type === "stat" || templateCard.type === "rank" ? (
+                                  <div className="progression-template-field-list">
+                                    {cardFields.map(field => (
+                                      <div key={field.label}>
+                                        <small>{field.label}</small>
+                                        <strong>{typeof field.value === "object" ? JSON.stringify(field.value) : (field.value || "Not set")}</strong>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <strong>{typeof cardValue === "object" ? JSON.stringify(cardValue) : (cardValue || "Not set")}</strong>
+                                )}
+                                {ratio && (
+                                  <div className="progression-template-progress">
+                                    <div><i style={{ width: `${progressPercent}%` }} /></div>
+                                    <small>{progressPercent}%</small>
+                                  </div>
+                                )}
+                              </div>
+                            )
                             })
                           )}
                         </div>
@@ -15291,7 +15359,7 @@ ${navPoints}  </navMap>
                       </div>
                     )}
                     {Array.from(new Set([...progressionSystem.customFields, ...Object.keys(progressionEditProfileDraft.customFields || {})]))
-                      .filter(fieldName => !["Affiliation", "Bloodline", "Bloodline Rank", "Bloodline Grade", "Affinity", "Affinity Names", "Affinity Rank", "Affinity Grade", "Rank", "Secondary Class", "Race"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
+                      .filter(fieldName => !["Affiliation", "Bloodline", "Bloodline Rank", "Bloodline Grade", "Affinity", "Affinity Names", "Affinity Rank", "Affinity Grade", "Rank", "Secondary Class", "Race", "Incarnation / Past Lives", "Incarnation / Past Lives Identity/Name", "Incarnation / Past Lives Era", "Incarnation / Past Lives Fate/Legacy"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
                       .map(fieldName => (
                         <div className="progression-profile-edit-card" key={fieldName}>
                           <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><Trash2 size={12} /></button>
@@ -15339,6 +15407,82 @@ ${navPoints}  </navMap>
                       .filter(templateCard => templateCard.enabled && templateCard.type !== "ability")
                       .map(templateCard => {
                         const fields = templateCard.fields.length > 0 ? templateCard.fields : [templateCard.label]
+
+                        const isIncarnationCard = templateCard.sourceKey === "Incarnation / Past Lives"
+
+                        if (isIncarnationCard) {
+                          const draftFields = progressionEditProfileDraft.customFields || {}
+                          const incarnationEntries = parseIncarnationEntries(draftFields)
+
+                          const syncIncarnationFields = (entries: Array<{ identity: string; era: string; fate: string }>) => {
+                            setProgressionDraftCustomField("Incarnation / Past Lives Identity/Name", entries.map(e => e.identity).filter(Boolean).join("; "))
+                            setProgressionDraftCustomField("Incarnation / Past Lives Era", entries.map(e => e.era).filter(Boolean).join("; "))
+                            setProgressionDraftCustomField("Incarnation / Past Lives Fate/Legacy", entries.map(e => e.fate).filter(Boolean).join("; "))
+                            setProgressionDraftCustomField("Incarnation / Past Lives", entries.map(e => [e.identity, e.era, e.fate].filter(Boolean).join(" - ")).filter(Boolean).join("; "))
+                          }
+
+                          return (
+                            <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
+                              <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><Trash2 size={12} /></button>
+                              <span>{templateCard.label}</span>
+                              <div className="progression-template-value-fields">
+                                {incarnationEntries.length === 0 ? (
+                                  <p style={{ opacity: 0.5, fontSize: "0.75rem" }}>No past lives recorded yet.</p>
+                                ) : incarnationEntries.map((entry, idx) => (
+                                  <div key={idx} className="progression-incarnation-edit-item" style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.35rem", padding: "0.4rem", background: "rgba(255,255,255,0.03)", borderRadius: "var(--radius-sm)" }}>
+                                    <label style={{ flex: 1 }}>
+                                      <small>Name/Title</small>
+                                      <input
+                                        className="ai-input"
+                                        value={entry.identity}
+                                        onChange={(e) => {
+                                          const updated = incarnationEntries.map((item, i) => i === idx ? { ...item, identity: e.target.value } : item)
+                                          syncIncarnationFields(updated)
+                                        }}
+                                        placeholder="The Phoenix Empress, The Void Walker..."
+                                      />
+                                    </label>
+                                    <label style={{ flex: 1 }}>
+                                      <small>Era</small>
+                                      <input
+                                        className="ai-input"
+                                        value={entry.era}
+                                        onChange={(e) => {
+                                          const updated = incarnationEntries.map((item, i) => i === idx ? { ...item, era: e.target.value } : item)
+                                          syncIncarnationFields(updated)
+                                        }}
+                                        placeholder="Age of Embers, Era of Shadows..."
+                                      />
+                                    </label>
+                                    <button
+                                      className="btn-icon-mini danger"
+                                      onClick={() => {
+                                        const updated = incarnationEntries.filter((_, i) => i !== idx)
+                                        syncIncarnationFields(updated)
+                                      }}
+                                      title="Remove this incarnation"
+                                      style={{ marginTop: "1rem", flexShrink: 0 }}
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                              <button
+                                className="btn-ai-sub btn-ai-secondary"
+                                style={{ marginTop: "0.5rem", fontSize: "0.7rem", padding: "0.25rem 0.6rem" }}
+                                onClick={() => {
+                                  const updated = [...incarnationEntries, { identity: "", era: "", fate: "" }]
+                                  syncIncarnationFields(updated)
+                                }}
+                              >
+                                <Plus size={11} />
+                                Add Incarnation
+                              </button>
+                            </div>
+                          )
+                        }
+
                         return (
                           <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
                             <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><Trash2 size={12} /></button>
