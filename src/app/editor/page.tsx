@@ -3604,7 +3604,17 @@ const fillEmptyCustomJsonData = (
     
     // Capture lore history
     const incomingNotes = String(aiProfile?.notes || "").trim()
-    const existingLoreEntries = existingProfile?.loreEntries || []
+    let existingLoreEntries = existingProfile?.loreEntries || []
+    if (existingLoreEntries.length === 0 && existingProfile?.notes && existingProfile.notes.trim()) {
+      existingLoreEntries = [{
+        id: crypto.randomUUID(),
+        chapterId: "legacy",
+        chapterTitle: "Legacy Notes",
+        chapterNumber: null,
+        text: existingProfile.notes.trim(),
+        timestamp: (existingProfile.updatedAt || existingProfile.createdAt || now) - 1
+      }]
+    }
     const nextLoreEntries = [...existingLoreEntries]
     if (incomingNotes) {
       const existingEntryForChapter = nextLoreEntries.find(entry => entry.chapterId === historyEntry.chapterId)
@@ -3626,6 +3636,9 @@ const fillEmptyCustomJsonData = (
         })
       }
     }
+
+    const sortedLoreEntries = [...nextLoreEntries].sort((a, b) => a.timestamp - b.timestamp)
+    const computedNotes = sortedLoreEntries.map(entry => entry.text).filter(Boolean).join("\n\n")
 
     const aiCustomFields = aiProfile?.customFields && typeof aiProfile.customFields === "object" ? aiProfile.customFields as Record<string, unknown> : {}
     const rawSkillFallback = aiCustomFields.Skills || aiCustomFields.Skill || aiCustomFields.Techniques || aiCustomFields.Abilities
@@ -3681,7 +3694,7 @@ const fillEmptyCustomJsonData = (
       abilities,
       traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || sharedTemplate.defaultTraits || [],
       customFields,
-      notes: incomingNotes || existingProfile?.notes || sharedTemplate.notes || "",
+      notes: computedNotes || sharedTemplate.notes || "",
       loreEntries: nextLoreEntries,
       customJsonData: (() => {
         const baseCustomJson = {
