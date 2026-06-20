@@ -672,11 +672,13 @@ function parseCultivationSettingsFromText(rawText: string, currentSettings?: unk
   }
 }
 
-async function generateWithGroq(systemInstruction: string, userPrompt: string, jsonMode: boolean) {
+async function generateWithGroq(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number) {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
     throw new Error("Groq API key is not configured on the server. Please add GROQ_API_KEY to your environment.")
   }
+
+  const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.15 : 0.7)
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -690,7 +692,7 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
         { role: "system", content: systemInstruction },
         { role: "user", content: userPrompt }
       ],
-      temperature: jsonMode ? 0.15 : 0.7,
+      temperature,
       max_tokens: jsonMode ? 8192 : 4096,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {})
     })
@@ -706,6 +708,46 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
     throw new Error("Groq returned an empty response.")
   }
   return text
+}
+
+// Maps user-facing style labels to image-generator quality modifier tokens
+const APPEARANCE_STYLE_MODIFIERS: Record<string, string> = {
+  "cinematic fantasy character concept art": "cinematic fantasy concept art, highly detailed, dramatic lighting, volumetric fog, artstation trending, sharp focus, 8k resolution, professional illustration",
+  "anime": "anime style, vibrant colors, clean line art, cel shading, dynamic pose, expressive eyes, studio quality, 4k, detailed background",
+  "dark fantasy": "dark fantasy concept art, gritty atmosphere, ominous lighting, oil painting style, dramatic chiaroscuro, highly detailed, artstation, 8k",
+  "watercolor": "watercolor illustration, soft edges, painterly style, flowing color washes, delicate linework, storybook quality, dreamy atmosphere",
+  "realistic portrait": "ultra-realistic portrait, photorealistic rendering, subsurface scattering, detailed skin texture, professional photography lighting, 8k, sharp focus",
+  "concept art": "character concept art, turnaround sheet, multiple views, clean lines, flat color blocking, professional game art style, artstation",
+  "comic book": "comic book style, bold outlines, dynamic pose, inked illustration, vibrant flat colors, action pose, Marvel/DC style",
+  "oil painting": "oil painting, classical portrait style, rich color saturation, visible brushstrokes, master painter quality, museum-quality artwork",
+  "chibi": "chibi style, super deformed, big expressive eyes, small body, cute proportions, pastel colors, kawaii aesthetic"
+}
+
+function expandAppearanceStyle(style: string): string {
+  if (!style) return "cinematic fantasy concept art, highly detailed, dramatic lighting, artstation trending, 8k resolution"
+  const normalized = style.trim().toLowerCase()
+  for (const [key, expansion] of Object.entries(APPEARANCE_STYLE_MODIFIERS)) {
+    if (normalized.includes(key) || key.includes(normalized)) return expansion
+  }
+  // Fallback: append generic quality boosters to whatever the user typed
+  return `${style}, highly detailed, professional quality, artstation trending, sharp focus, 8k`
+}
+
+function extractKnownAppearanceDetails(loreContent: string): string {
+  if (!loreContent) return ""
+  // Look for structured appearance sections commonly written by the AI Bible Extract
+  const lines: string[] = []
+  const hairMatch = loreContent.match(/\b(?:hair|fur)\b[^.\n]{0,120}/i)
+  const eyeMatch = loreContent.match(/\beyes?\b[^.\n]{0,120}/i)
+  const attireMatch = loreContent.match(/\b(?:wear(?:s|ing)?|cloth(?:es|ing)|robe|armor|attire|dress(?:es)?|outfit)\b[^.\n]{0,150}/i)
+  const bodyMatch = loreContent.match(/\b(?:build|stature|height|tall|muscular|slender|lithe|stocky|frame|figure|physique)\b[^.\n]{0,120}/i)
+  const skinMatch = loreContent.match(/\b(?:skin|complexion|scales?|hide|fur color)\b[^.\n]{0,120}/i)
+  if (hairMatch) lines.push(`- Hair/Fur: ${hairMatch[0].trim()}`)
+  if (eyeMatch) lines.push(`- Eyes: ${eyeMatch[0].trim()}`)
+  if (skinMatch) lines.push(`- Skin/Scales: ${skinMatch[0].trim()}`)
+  if (bodyMatch) lines.push(`- Build: ${bodyMatch[0].trim()}`)
+  if (attireMatch) lines.push(`- Attire: ${attireMatch[0].trim()}`)
+  return lines.length > 0 ? lines.join("\n") : ""
 }
 
 function formatMemoryContext(memory: unknown) {
@@ -876,32 +918,69 @@ export async function POST(req: NextRequest) {
         return `"${k}": "${label}"`
       }).join(", ")
       const requiredFormRule = entryCategory === "beast"
-        ? "This Story Bible entry is a BEAST. You must create exactly three prompts: Beast Form, Demi-human Form, and Humanoid Form. The demi-human and humanoid versions are visual evolutions of the beast and must preserve identifying traits from the chapter.\n"
+        ? "This Story Bible entry is a BEAST. You must create prompts for Beast Form, Demi-human Form, and Humanoid Form. The demi-human and humanoid versions are visual evolutions of the beast — they must preserve the beast's signature identifying traits (markings, colors, aura, eyes) while introducing an increasingly humanoid silhouette.\n"
         : entryCategory === "character"
-          ? "This Story Bible entry is a PERSON/CHARACTER. You must create only the humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
+          ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
           : "Use only the requested forms, and ground every form in the active chapter.\n"
 
+      // Build per-form negative prompt guidance
+      const formNegativeGuidance = formKeys.map(k => {
+        const label = safeFormLabels[k] || k
+        if (k === "beastForm") return `  - ${label}: exclude human face, smooth skin, humanoid clothing, upright posture, anthropomorphic features`
+        if (k === "demiHumanForm") return `  - ${label}: exclude fully animal anatomy, four-legged stance, complete fur coverage obscuring humanoid shape`
+        if (k === "humanForm" || k === "humanoidForm") return `  - ${label}: exclude animal features, visible fur/scales/claws/fangs unless they are a signature trait explicitly mentioned in the chapter`
+        return `  - ${label}: exclude anything not grounded in the chapter description`
+      }).join("\n")
+
+      // Extract any pre-existing appearance facts from the Bible entry to use as hard constraints
+      const knownDetails = extractKnownAppearanceDetails(safeLoreEntry?.content || "")
+      const knownDetailsBlock = knownDetails
+        ? `\nKnown appearance facts from Story Bible (do NOT contradict these):\n${knownDetails}`
+        : ""
+
+      // Expand the style into image-gen quality tokens
+      const expandedStyle = expandAppearanceStyle(style || "cinematic fantasy character concept art")
+
       systemInstruction =
-        "You are an expert character concept prompt engineer for novelists and visual artists. " +
-        "The user is describing a character, beast, or shapeshifter from a manuscript and wants polished image-generation prompts.\n" +
-        "Guidelines:\n" +
-        "1. First read the active chapter context and target-focused chapter evidence before writing any prompt. Base the appearance on what the chapter says, then use the Story Bible only as supporting context.\n" +
-        "2. Extract every existing detail about the target: appearance, clothing, beast traits, demeanor, abilities, behavior, dialogue, how others react to them, and their role in the scene. Use ALL relevant chapter evidence as the foundation.\n" +
-        "3. Where the chapter leaves visual gaps (e.g. exact hair color, facial structure, attire specifics, aura, etc.), invent creative but fitting details that match the tone, genre, and setting of the story. Do not override direct chapter evidence.\n" +
+        "You are an expert image-generation prompt engineer specializing in character concept art for novelists.\n" +
+        "Your output prompts are fed directly into Stable Diffusion / SDXL or similar image generators, so they MUST follow image-generator prompt conventions — NOT prose writing.\n\n" +
+        "PROMPT FORMAT RULES (critical):\n" +
+        "- Write each prompt as a sequence of SHORT, COMMA-SEPARATED descriptive tags and phrases — NOT full sentences.\n" +
+        "- Order tags by visual priority: (1) art style + quality modifiers, (2) subject type + race + gender + age, (3) face + expression, (4) hair/fur/skin/scales color and style, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n" +
+        "- Be specific: prefer 'waist-length silver hair with black streaks' over 'long hair'. Prefer 'glowing amber slitted eyes' over 'interesting eyes'.\n" +
+        "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
+        "- Each prompt should be 60-120 words worth of tags — rich but not padded.\n\n" +
+        "CONTENT RULES:\n" +
+        "1. Read the Target-Focused Chapter Evidence and highlighted passage FIRST. They are the most reliable source of visual truth.\n" +
+        "2. Use the Story Bible as supporting context. Never contradict hard facts from the chapter.\n" +
+        "3. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
         "4. " + requiredFormRule +
-        "5. Every prompt must include: anatomy/silhouette, face, eyes, hair/fur/skin/scales, clothing or armor, aura, pose, lighting, mood, and background. Be specific and detailed — aim for 3-5 rich sentences per prompt.\n" +
-        "6. Do NOT invent unrelated names, factions, or plot details. Use chapter context to ground everything. Fill gaps with creative visual detail, never narrative invention.\n" +
-        "7. Output ONLY valid JSON with keys: characterName, overview, prompts, consistencyNotes, negativePrompt, characterDetails. The prompts object must use exactly the following keys: " + formLabelsStr + ". " +
-        "If the user requested per-form negative prompts, also include a 'negativePrompts' object with the same keys, each containing a form-specific negative prompt.\n" +
-        "8. The characterDetails object must contain: appearance (overall look), hair, eyes, body/build, attire, distinguishingFeatures. Extract these from the humanoid/primary form for person entries, or the humanoid evolution for beast entries. Be thorough — include color, texture, shape, and style details.\n" +
-        "No markdown fences."
+        "5. Where the chapter leaves visual gaps, invent fitting, specific, creative details consistent with the story's tone and genre. Do not invent plot details or names.\n" +
+        "6. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
+        formNegativeGuidance + "\n" +
+        "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n" +
+        "OUTPUT RULES:\n" +
+        "7. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
+        "   - prompts: object with keys " + formLabelsStr + " — each value is the tag-style image prompt string.\n" +
+        "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n" +
+        "   - overview: 2-3 sentence prose summary of the character's overall visual identity (this is NOT a prompt — it is a human-readable description).\n" +
+        "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or had to be invented.\n" +
+        "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
+        "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — short prose phrases extracted from the humanoid/primary form.\n" +
+        "8. No markdown fences. No prose inside the prompts values."
 
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
         : ""
-      const chapterEvidence = chapterContext?.targetEvidence ? `\nTarget-Focused Chapter Evidence:\n${chapterContext.targetEvidence}` : ""
-      const chapterContent = chapterText ? `\nFull Chapter Context:\n${chapterText}` : ""
-      const selectedLine = selectedText ? `\nHighlighted Passage:\n${selectedText}` : ""
+      // Prioritise targetEvidence (dense, already extracted) and only include full chapter if evidence is sparse
+      const chapterEvidence = chapterContext?.targetEvidence
+        ? `\nTarget-Focused Chapter Evidence (highest priority — use this first):\n${chapterContext.targetEvidence}`
+        : ""
+      const evidenceIsSparse = !chapterContext?.targetEvidence || chapterContext.targetEvidence.trim().length < 200
+      const chapterContent = evidenceIsSparse && chapterText
+        ? `\nFull Chapter Context (secondary reference):\n${chapterText.slice(0, 6000)}`
+        : ""
+      const selectedLine = selectedText ? `\nHighlighted Passage (highest priority):\n${selectedText}` : ""
       const loreLine = safeLoreEntry
         ? `\nStory Bible Entry:\nName: ${safeLoreEntry.name || name || "Unknown"}\nType: ${safeLoreEntry.category || "unknown"}\nAliases: ${Array.isArray(safeLoreEntry.aliases) ? safeLoreEntry.aliases.join(", ") : "none"}\nGroups: ${Array.isArray(safeLoreEntry.groups) ? safeLoreEntry.groups.join(", ") : "none"}\nLore Notes:\n${safeLoreEntry.content || ""}`
         : ""
@@ -909,15 +988,16 @@ export async function POST(req: NextRequest) {
       const formDescriptions = formKeys.map(k => {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
-        return `- ${label} (${k}): ${appForms[k] || "Not directly described. Infer from available context."}`
+        return `- ${label} (${k}): ${appForms[k] || "Not directly described. Infer from all available context."}`
       }).join("\n")
 
       userPrompt =
         `Character or creature name: ${safeLoreEntry?.name || name || "Unknown / infer from context"}\n` +
         `World Bible category: ${safeLoreEntry?.category || "unknown"}\n` +
-        `Preferred visual style: ${style || "cinematic fantasy character concept art"}` +
+        `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n` +
+        `${knownDetailsBlock}` +
         `${chapterLine}${selectedLine}${loreLine}${chapterEvidence}\n\n` +
-        `Forms to generate:\n${formDescriptions}` +
+        `Forms to generate prompts for:\n${formDescriptions}` +
         `${chapterContent}${memoryContext}`
     } else if (action === "progression_update") {
       const { selectedText, loreEntry, chapter, existingProfile, progressionSystem, candidateProfiles, candidateLoreEntries } = body
@@ -1485,7 +1565,9 @@ export async function POST(req: NextRequest) {
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
       text = JSON.stringify({ settings: parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings })
     } else {
-      text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action))
+      // appearance_prompts needs creative temperature — higher than standard JSON extraction
+      const appearanceTemp = action === "appearance_prompts" ? 0.60 : undefined
+      text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), appearanceTemp)
     }
 
     if (action === "brain_consistency_check") {
