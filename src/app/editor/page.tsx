@@ -142,7 +142,7 @@ type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
-type NameForgePicker = 'category' | 'style' | 'style2' | 'structure' | 'tone' | 'gender' | 'count'
+type NameForgePicker = string
 
 interface ReferenceEntry {
   id: string
@@ -311,7 +311,7 @@ interface ProgressionTemplateCard {
 
 interface GeneratedNameOption {
   name: string
-  category: BibleEntry["category"]
+  category: string
   style: string
   raceOrOrigin: string
   structure: string
@@ -321,105 +321,275 @@ interface GeneratedNameOption {
   bibleContent: string
 }
 
-const NAME_CATEGORY_OPTIONS: Array<{ value: BibleEntry["category"]; label: string; hint: string }> = [
-  { value: "character", label: "Character", hint: "People, rivals, allies" },
-  { value: "beast", label: "Beast", hint: "Monsters and creatures" },
-  { value: "world", label: "Faction / World", hint: "Sects, clans, powers" },
-  { value: "place", label: "Place", hint: "Cities, realms, ruins" },
-  { value: "item", label: "Artifact / Item", hint: "Weapons, relics, objects" }
+const NAME_CATEGORY_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
+  { value: "character", label: "Character", hint: "Humanoid, Alien, Beast, Spirit, Demon..." },
+  { value: "bloodline", label: "Bloodline", hint: "Flame, Qilin, Star, Leviathan, Chaos rank..." },
+  { value: "title", label: "Title", hint: "Heroic, Emperor, God, Fearsome, Ancient titles" },
+  { value: "city", label: "City", hint: "Human, Demon, Underground, Floating cities" },
+  { value: "planet", label: "Planet", hint: "Ice, Jungle, Futuristic, Dragon planets" },
+  { value: "realm", label: "Realm", hint: "Mortal, Immortal, Void, Chaos realms" },
+  { value: "galaxy", label: "Galaxy", hint: "Light, Order, Elemental galaxies" },
+  { value: "universe", label: "Universe", hint: "Cultivation, Scientific, Infinite universes" }
 ]
 
-const NAME_STYLE_OPTIONS = [
-  { value: "fantasy", label: "Wild Fantasy", hint: "Flexible invented names", example: "Kaelen Draven" },
-  { value: "chinese", label: "Chinese Inspired", hint: "Cultivation-friendly", example: "Shen Qingxuan" },
-  { value: "japanese", label: "Japanese Inspired", hint: "Elegant and sharp", example: "Renka Kurogane" },
-  { value: "korean", label: "Korean Inspired", hint: "Clean fantasy tone", example: "Hyejin Baek" },
-  { value: "elven", label: "Elven", hint: "Lyrical and ancient", example: "Liora Aeltharyn" },
-  { value: "demonic", label: "Demonic", hint: "Dark and severe", example: "Kaelrix Varkhazar" },
-  { value: "beast", label: "Beast / Monster", hint: "Feral creature names", example: "Ravok Ironmane" },
-  { value: "cultivation", label: "Cultivation Sect", hint: "Sects and realms", example: "Azure Peak Sect" },
-  { value: "noble", label: "Noble House", hint: "Aristocratic names", example: "Alistair Vance" },
-  { value: "divine", label: "Divine / Celestial", hint: "Holy and mythic", example: "Orison Seraphyne" },
-  { value: "grimdark", label: "Grimdark", hint: "Harsh and grounded", example: "Malek Graves" },
-  { value: "invented", label: "Fully Invented", hint: "No real-world anchor", example: "Vael Kyr Vale" },
-  { value: "viking", label: "Viking / Norse", hint: "Sagas and fjords", example: "Eirik Ironsson" },
-  { value: "slavic", label: "Slavic", hint: "Eastern fairy-tale tone", example: "Dobromir Zarubin" },
-  { value: "celtic", label: "Celtic", hint: "Misty druidic names", example: "Aisling O'Morain" },
-  { value: "egyptian", label: "Egyptian", hint: "Sands of antiquity", example: "Neferu Amun-Ra" },
-  { value: "mesoamerican", label: "Mesoamerican", hint: "Jungle-empire feel", example: "Cuauhtli Chimal" },
-  { value: "arabian", label: "Arabian / Persian", hint: "Silk-road mystique", example: "Farid Al-Rashid" },
-  { value: "hindi", label: "Indian / Hindi", hint: "Epic mythology weight", example: "Arjun Devaraja" },
-  { value: "greek", label: "Greco-Roman", hint: "Classical mythic names", example: "Cassandra Aetos" },
-  { value: "steampunk", label: "Steampunk", hint: "Gears, brass, fog", example: "Cogsworth Brasswick" },
-  { value: "cyberpunk", label: "Cyberpunk", hint: "Neon-drenched future", example: "Kai-7 Neon" },
-  { value: "celestial", label: "Celestial Body", hint: "Stars, moons, cosmic", example: "Nova Stardust" },
-  { value: "elemental", label: "Elemental", hint: "Fire, water, stone, storm", example: "Ignis Flamestrike" },
-  { value: "fey", label: "Fey / Faerie", hint: "Whimsical and tricksy", example: "Twilight Glimmerdew" },
-  { value: "undead", label: "Undead / Lich", hint: "Barrow-cold and haunting", example: "Marrow Gravebone" },
-  { value: "dwarf", label: "Dwarven", hint: "Stone and forge", example: "Durin Stonehelm" },
-  { value: "void", label: "Void / Abyss", hint: "Eldritch and alien", example: "Xul Abyssal" },
-  { value: "african", label: "African", hint: "Tribal and ancestral", example: "Zuri Mwangi" },
-  { value: "polynesian", label: "Polynesian / Oceanic", hint: "Island voyager names", example: "Moana Tane" },
-  { value: "mongolian", label: "Mongolian / Steppe", hint: "Horse-lord and sky", example: "Temujin Khatun" },
-  { value: "tibetan", label: "Tibetan / Himalayan", hint: "Mountain monastery", example: "Tenzin Lhamo" },
-  { value: "roman", label: "Roman / Latin", hint: "Legion and senate", example: "Marcus Aurelius" },
-  { value: "lovecraftian", label: "Lovecraftian / Cosmic Horror", hint: "Unspeakable entities", example: "Nyarlathotep" },
-  { value: "gothic", label: "Gothic / Dark Romantic", hint: "Victorian gloom", example: "Victor von Hellsing" },
-  { value: "pirate", label: "Pirate / Swashbuckler", hint: "High seas adventure", example: "Captain Blackthorn" },
-  { value: "western", label: "Western / Frontier", hint: "Wild west grit", example: "Wyatt Cassidy" },
-  { value: "postapocalyptic", label: "Post-Apocalyptic", hint: "Wasteland survivors", example: "Wren Ashford" },
-  { value: "biopunk", label: "Bio-Punk / Genetic", hint: "Gene-spliced futures", example: "Xyla Gen-7" },
-  { value: "clockwork", label: "Clockwork / Automaton", hint: "Gears and cogs", example: "Gearhart Brass" },
-  { value: "tropical", label: "Tropical / Island", hint: "Sun-drenched shores", example: "Kai Lani" },
-  { value: "arctic", label: "Arctic / Frozen", hint: "Permafrost and blizzards", example: "Bjorn Icevein" },
-  { value: "desert", label: "Desert / Sand", hint: "Dune and oasis", example: "Zephyr Dustwalker" },
-  { value: "forest", label: "Forest / Woodland", hint: "Deep green wilds", example: "Bramble Mossheart" },
-  { value: "swamp", label: "Swamp / Bog", hint: "Murky and fetid", example: "Mire Grimwater" },
-  { value: "angelic", label: "Angelic / Seraphic", hint: "Radiant heavenly", example: "Raphael Morningstar" }
-]
-
-const NAME_STRUCTURE_OPTIONS = [
-  { value: "any", label: "Any Structure", hint: "Let the forge decide" },
-  { value: "single", label: "Single Name", hint: "One-word names" },
-  { value: "double", label: "First + Last", hint: "Two-part names" },
-  { value: "triple", label: "First + Middle + Last", hint: "Three-part names" },
-  { value: "clan", label: "Clan / House Name", hint: "Family or group names" },
-  { value: "title", label: "Title Name", hint: "The-style names" },
-  { value: "epithet", label: "Name + Epithet", hint: "Name with a legend" }
-]
-
-const NAME_TONE_OPTIONS = [
-  { value: "memorable", label: "Memorable", hint: "Strong first impression" },
-  { value: "elegant", label: "Elegant", hint: "Graceful and refined" },
-  { value: "sinister", label: "Sinister", hint: "Dangerous undertone" },
-  { value: "ancient", label: "Ancient", hint: "Old-world weight" },
-  { value: "heroic", label: "Heroic", hint: "Bright and bold" },
-  { value: "mysterious", label: "Mysterious", hint: "Secretive aura" },
-  { value: "feral", label: "Feral", hint: "Wild and predatory" },
-  { value: "royal", label: "Royal", hint: "Noble authority" }
-]
-
-const NAME_GENDER_OPTIONS = [
-  { value: "any", label: "Any", hint: "No preference" },
-  { value: "masculine", label: "Masculine", hint: "Male-leaning names" },
-  { value: "feminine", label: "Feminine", hint: "Female-leaning names" },
-  { value: "neutral", label: "Neutral", hint: "Androgynous / unisex" }
-]
-
-const CATEGORY_STYLE_FILTER: Record<string, string[]> = {
-  character: [],
-  beast: ["beast", "demonic", "fey", "undead", "viking", "void", "grimdark", "lovecraftian", "swamp", "arctic", "desert", "forest", "postapocalyptic", "biopunk"],
-  world: ["cultivation", "noble", "arabian", "viking", "slavic", "celtic", "egyptian", "mesoamerican", "hindi", "greek", "steampunk", "cyberpunk", "african", "polynesian", "mongolian", "tibetan", "roman", "gothic", "western", "clockwork", "tropical"],
-  place: ["elven", "celestial", "viking", "egyptian", "mesoamerican", "arabian", "hindi", "greek", "dwarf", "elemental", "fey", "tropical", "arctic", "desert", "forest", "swamp", "tibetan", "polynesian", "gothic"],
-  item: ["divine", "steampunk", "elemental", "celestial", "dwarf", "noble", "fey", "angelic", "lovecraftian", "biopunk", "clockwork", "postapocalyptic", "pirate"]
+const SUBTYPE_OPTIONS: Record<string, string[]> = {
+  character: ["Humanoid", "Alien", "Beast", "Spirit", "Demon", "Undead", "Dragon", "Divine Being", "Hybrid"],
+  bloodline: [],
+  title: [],
+  city: [],
+  planet: [],
+  realm: [],
+  galaxy: [],
+  universe: []
 }
 
+// 2. Humanoid Generator
+const HUMANOID_CULTURE_OPTIONS = [
+  { value: "African/Swahili", label: "African: Swahili", hint: "Coastal East African" },
+  { value: "African/Ghanaian", label: "African: Ghanaian", hint: "West African heritage" },
+  { value: "African/Nigerian", label: "African: Nigerian", hint: "Yoruba/Igbo/Hausa inspired" },
+  { value: "African/Ethiopian", label: "African: Ethiopian", hint: "East African antiquity" },
+  { value: "African/Zulu", label: "African: Zulu", hint: "Southern African warriors" },
+  { value: "African/Egyptian", label: "African: Egyptian", hint: "Sands of the Pharaohs" },
+  { value: "American/Modern", label: "American: Modern", hint: "Contemporary English style" },
+  { value: "American/Native", label: "American: Native", hint: "Tribal nature-connected" },
+  { value: "American/Fantasy", label: "American: Fantasy", hint: "High fantasy colonial/western" },
+  { value: "Asian/Chinese", label: "Asian: Chinese", hint: "Cultivation / Wuxia theme" },
+  { value: "Asian/Japanese", label: "Asian: Japanese", hint: "Shogun / Anime flavor" },
+  { value: "Asian/Korean", label: "Asian: Korean", hint: "Joseon / Manhwa aesthetic" },
+  { value: "Asian/Vietnamese", label: "Asian: Vietnamese", hint: "Southeast Asian legacy" },
+  { value: "Asian/Thai", label: "Asian: Thai", hint: "Siam-inspired elegance" },
+  { value: "Asian/Hindu", label: "Asian: Hindu Inspired", hint: "Divine Sanskrit names" },
+  { value: "Asian/Ancient Indian", label: "Asian: Ancient Indian", hint: "Vedic antiquity weights" },
+  { value: "Asian/Modern Indian", label: "Asian: Modern Indian", hint: "Contemporary Indian flavor" },
+  { value: "Asian/Mongolian", label: "Asian: Mongolian", hint: "Steppe horse-lord titles" },
+  { value: "Arabic", label: "Arabic", hint: "Silk Road / Islamic golden age" },
+  { value: "Persian", label: "Persian", hint: "Achaemenid grandeur" },
+  { value: "Russian", label: "Russian", hint: "Snow-bound folklore tales" },
+  { value: "Nordic", label: "Nordic", hint: "Sagas, runes, and fjords" },
+  { value: "Celtic", label: "Celtic", hint: "Misty druids and high kings" },
+  { value: "Roman", label: "Roman", hint: "Legionnaires and senators" },
+  { value: "Greek", label: "Greek", hint: "Hellenic mythic heroes" },
+  { value: "Fantasy Mixed", label: "Fantasy Mixed", hint: "Blend of multiple styles" }
+]
+
+const HUMANOID_GENDER_OPTIONS = [
+  { value: "male", label: "Male", hint: "Masculine tone" },
+  { value: "female", label: "Female", hint: "Feminine tone" },
+  { value: "neutral", label: "Neutral", hint: "Gender-neutral / unisex" }
+]
+
+const HUMANOID_STRUCTURE_OPTIONS = [
+  { value: "single", label: "Single Name", hint: "e.g., Rhazor, Kaizo, Nyrela" },
+  { value: "double", label: "Double Name", hint: "e.g., Kael Draven, Elina Frost" },
+  { value: "triple", label: "Triple Name", hint: "e.g., Asha Nightveil Dawnstar" }
+]
+
+const HUMANOID_ADDITIONAL_OPTIONS = [
+  { value: "noble", label: "Noble sounding", hint: "Aristocratic poise" },
+  { value: "royal", label: "Royal sounding", hint: "King/Queen grandeur" },
+  { value: "villain", label: "Villain sounding", hint: "Dark and severe" },
+  { value: "hero", label: "Hero sounding", hint: "Bright and righteous" },
+  { value: "ancient", label: "Ancient sounding", hint: "Old-world weight" },
+  { value: "modern", label: "Modern sounding", hint: "Clean and sharp" },
+  { value: "cultivator", label: "Cultivator sounding", hint: "Xianxia/Wuxia flavor" },
+  { value: "mage", label: "Mage sounding", hint: "Arcane and runic" },
+  { value: "warrior", label: "Warrior sounding", hint: "Martial and solid" }
+]
+
+// 3. Alien Generator
+const ALIEN_STYLE_OPTIONS = [
+  { value: "insectoid", label: "Insectoid", hint: "Chitinous, hive-mind clicks" },
+  { value: "reptilian", label: "Reptilian", hint: "Sibilant, cold-blooded sounds" },
+  { value: "energy", label: "Energy Being", hint: "Resonant, vibrating names" },
+  { value: "mechanical", label: "Mechanical", hint: "Clicks, whirs, numeric codes" },
+  { value: "aquatic", label: "Aquatic", hint: "Bubbling, fluid syllables" },
+  { value: "cosmic", label: "Cosmic", hint: "Stellar, nebula-themed sounds" },
+  { value: "voidborn", label: "Voidborn", hint: "Eldritch, deep abyss echoes" },
+  { value: "crystal", label: "Crystal", hint: "Sharp, resonant, chime-like" },
+  { value: "hive_mind", label: "Hive Mind", hint: "Overlapping, collective tones" },
+  { value: "eldritch", label: "Eldritch", hint: "Lovecraftian unpronounceables" }
+]
+
+const ALIEN_NAMING_STYLE_OPTIONS = [
+  { value: "harsh", label: "Harsh", hint: "Guttural, sharp consonants" },
+  { value: "elegant", label: "Elegant", hint: "Sleek, vowel-rich flows" },
+  { value: "unpronounceable", label: "Unpronounceable", hint: "Apostrophes and strange glyphs" },
+  { value: "scientific", label: "Scientific", hint: "Systematic, codename-like" },
+  { value: "ancient", label: "Ancient", hint: "Eons-old primordial sounds" }
+]
+
+// 4. Beast Generator
+const BEAST_FAMILY_OPTIONS = [
+  { value: "wolf", label: "Wolf", hint: "Feral, pack-oriented names" },
+  { value: "lion", label: "Lion", hint: "Proud, solar, roaring themes" },
+  { value: "tiger", label: "Tiger", hint: "Predatory, striped, forest stalkers" },
+  { value: "dragon", label: "Dragon", hint: "Draconic, fire-breathing weight" },
+  { value: "phoenix", label: "Phoenix", hint: "Fiery, immortal, solar birds" },
+  { value: "serpent", label: "Serpent", hint: "Venomous, slithering, deep coils" },
+  { value: "eagle", label: "Eagle", hint: "Sky-soaring, sharp-eyed avian" },
+  { value: "whale", label: "Whale", hint: "Deep sea, echoic giants" },
+  { value: "kraken", label: "Kraken", hint: "Abyssal tentacles, ocean dread" },
+  { value: "turtle", label: "Turtle", hint: "Enduring, earth-shield, slow giants" },
+  { value: "spider", label: "Spider", hint: "Web-weaving, venomous, dark chitin" },
+  { value: "fox", label: "Fox", hint: "Sly, illusion, multi-tailed spirits" }
+]
+
+const BEAST_TIER_OPTIONS = [
+  { value: "common", label: "Common", hint: "Wild animal strength" },
+  { value: "elite", label: "Elite", hint: "Mutated or pack leaders" },
+  { value: "king", label: "King", hint: "Ruler of a beast territory" },
+  { value: "emperor", label: "Emperor", hint: "Gained human intelligence" },
+  { value: "sovereign", label: "Sovereign", hint: "Ancient beast lord" },
+  { value: "mythical", label: "Mythical", hint: "Rare creature of legend" },
+  { value: "divine", label: "Divine", hint: "God-touched sacred beasts" },
+  { value: "primordial", label: "Primordial", hint: "Creatures of genesis chaos" }
+]
+
+// 5. Bloodline Generator
+const BLOODLINE_CATEGORY_OPTIONS = [
+  { value: "Flame", label: "Elemental: Flame", hint: "Fiery wrath and sun embers" },
+  { value: "Ice", label: "Elemental: Ice", hint: "Absolute zero, frost souls" },
+  { value: "Lightning", label: "Elemental: Lightning", hint: "Heavenly tribulation arcs" },
+  { value: "Earth", label: "Elemental: Earth", hint: "Unshakable mountains, iron core" },
+  { value: "Wind", label: "Elemental: Wind", hint: "Storm tempests, gale wings" },
+  { value: "Water", label: "Elemental: Water", hint: "Endless rivers, abyssal tide" },
+  { value: "Light", label: "Elemental: Light", hint: "Sacred dawn, blinding halo" },
+  { value: "Darkness", label: "Elemental: Darkness", hint: "Eternal eclipse, shadow devouring" },
+  { value: "Dragon", label: "Beast: Dragon", hint: "Draconic majesty, supreme scales" },
+  { value: "Phoenix", label: "Beast: Phoenix", hint: "Nirvana rebirth, eternal flames" },
+  { value: "Qilin", label: "Beast: Qilin", hint: "Sacred luck, elemental balance" },
+  { value: "Leviathan", label: "Beast: Leviathan", hint: "Ocean monarch, deep devouring" },
+  { value: "Roc", label: "Beast: Roc", hint: "Sky-splitting wings, speed limits" },
+  { value: "Titan", label: "Divine: Titan", hint: "Gigantic raw power, ancient rules" },
+  { value: "Celestial", label: "Divine: Celestial", hint: "High heaven stardust blessings" },
+  { value: "Eternal", label: "Divine: Eternal", hint: "Undying lifespan, immortal aura" },
+  { value: "Primordial", label: "Divine: Primordial", hint: "Original gods from genesis" },
+  { value: "Void", label: "Cosmic: Void", hint: "Nullification, dark energy folds" },
+  { value: "Star", label: "Cosmic: Star", hint: "Nebula shards, burning cores" },
+  { value: "Galaxy", label: "Cosmic: Galaxy", hint: "Spinning star belts, massive scale" },
+  { value: "Chaos", label: "Cosmic: Chaos", hint: "Genesis soup, unformed creation" }
+]
+
+const BLOODLINE_RANK_OPTIONS = [
+  { value: "mortal", label: "Mortal", hint: "Standard human limits" },
+  { value: "rare", label: "Rare", hint: "Noticeable elemental affinity" },
+  { value: "ancient", label: "Ancient", hint: "Passed down from early eras" },
+  { value: "legendary", label: "Legendary", hint: "Heroic lineages of old" },
+  { value: "mythical", label: "Mythical", hint: "Legendary beasts or demi-gods" },
+  { value: "divine", label: "Divine", hint: "True god-level lineages" },
+  { value: "primordial", label: "Primordial", hint: "Dating back to universe genesis" }
+]
+
+// 6. Title Generator
+const TITLE_CATEGORY_OPTIONS = [
+  { value: "hero", label: "Hero", hint: "Righteous protectors" },
+  { value: "villain", label: "Villain", hint: "Scourges of the world" },
+  { value: "emperor", label: "Emperor", hint: "Supreme rulers of empires" },
+  { value: "cultivator", label: "Cultivator", hint: "Daoist seekers of immortality" },
+  { value: "mage", label: "Mage", hint: "Scholars of arcane circles" },
+  { value: "warrior", label: "Warrior", hint: "Master fighters, generals" },
+  { value: "assassin", label: "Assassin", hint: "Shadow death-dealers" },
+  { value: "god", label: "God", hint: "Divine rulers of domains" }
+]
+
+const TITLE_STYLE_OPTIONS = [
+  { value: "fearsome", label: "Fearsome", hint: "Strike terror into foes" },
+  { value: "noble", label: "Noble", hint: "Refined and prestigious" },
+  { value: "elegant", label: "Elegant", hint: "Beautiful and artistic flow" },
+  { value: "ancient", label: "Ancient", hint: "Draped in history and myth" },
+  { value: "cosmic", label: "Cosmic", hint: "Beyond planetary bounds" }
+]
+
+// 7. City Generator
+const CITY_TYPE_OPTIONS = [
+  { value: "human", label: "Human", hint: "Brick, stone, bustling streets" },
+  { value: "beast", label: "Beast", hint: "Raw wood, bone structures, nests" },
+  { value: "demon", label: "Demon", hint: "Obsidian, dark flames, hellfire" },
+  { value: "undead", label: "Undead", hint: "Bones, mausoleums, cold fog" },
+  { value: "alien", label: "Alien", hint: "Bioluminescent organic towers" }
+]
+
+const CITY_THEME_OPTIONS = [
+  { value: "desert", label: "Desert", hint: "Sands, oases, sandstone walls" },
+  { value: "forest", label: "Forest", hint: "Treehouse canopies, druid wood" },
+  { value: "mountain", label: "Mountain", hint: "Cliffside fortress, deep mines" },
+  { value: "ocean", label: "Ocean", hint: "Underwater domes, docks, coral" },
+  { value: "floating", label: "Floating", hint: "Cloud steps, gravity crystals" },
+  { value: "underground", label: "Underground", hint: "Lava lighting, cavern halls" },
+  { value: "void", label: "Void", hint: "Space station, dimensional cracks" }
+]
+
+// 8. Planet Generator
+const PLANET_THEME_OPTIONS = [
+  { value: "fire", label: "Fire", hint: "Lava oceans, ash clouds" },
+  { value: "ice", label: "Ice", hint: "Glaciers, frost storms, white wastes" },
+  { value: "jungle", label: "Jungle", hint: "Overgrown flora, toxic spores" },
+  { value: "ocean", label: "Ocean", hint: "No landmass, high tides, deep trenches" },
+  { value: "desert", label: "Desert", hint: "Endless dunes, scorching suns" },
+  { value: "death", label: "Death", hint: "Graveyard atmosphere, decaying soil" },
+  { value: "machine", label: "Machine", hint: "Cybernetic grids, factory crusts" },
+  { value: "dragon", label: "Dragon", hint: "Giant nesting peaks, elemental ley lines" }
+]
+
+const PLANET_CIV_OPTIONS = [
+  { value: "primitive", label: "Primitive", hint: "Stone age, tribal beasts" },
+  { value: "medieval", label: "Medieval", hint: "Castles, steel swords, kingdoms" },
+  { value: "magical", label: "Magical", hint: "Floating spires, wizard towers" },
+  { value: "futuristic", label: "Futuristic", hint: "Neon skyscrapers, spaceships" },
+  { value: "divine", label: "Divine", hint: "Holy realm, high immortal palace" }
+]
+
+// 9. Realm Generator
+const REALM_TYPE_OPTIONS = [
+  { value: "mortal", label: "Mortal", hint: "Physical limits, cultivation starts" },
+  { value: "immortal", label: "Immortal", hint: "High spiritual energy, sects" },
+  { value: "divine", label: "Divine", hint: "Gods, absolute laws, stars" },
+  { value: "demon", label: "Demon", hint: "Abyssal pits, survival of fittest" },
+  { value: "beast", label: "Beast", hint: "Wild rules, massive animal lords" },
+  { value: "void", label: "Void", hint: "Emptiness, dimensional chaos" },
+  { value: "chaos", label: "Chaos", hint: "Unformed laws, genesis fog" }
+]
+
+// 10. Galaxy Generator
+const GALAXY_THEME_OPTIONS = [
+  { value: "light", label: "Light", hint: "Brilliant nebula, starlight" },
+  { value: "darkness", label: "Darkness", hint: "Dark matter, black holes" },
+  { value: "chaos", label: "Chaos", hint: "Crashing stars, wild cosmic winds" },
+  { value: "order", label: "Order", hint: "Harmonious orbits, crystal spheres" },
+  { value: "elemental", label: "Elemental", hint: "Cosmic fire, ice dust, nebula streams" }
+]
+
+// 11. Universe Generator
+const UNIVERSE_TYPE_OPTIONS = [
+  { value: "magical", label: "Magical", hint: "Runes and mana dictate physics" },
+  { value: "scientific", label: "Scientific", hint: "Hard science, star exploration" },
+  { value: "cultivation", label: "Cultivation", hint: "The Dao and cultivation reigns" },
+  { value: "apocalypse", label: "Apocalypse", hint: "Decaying laws, dying stars" },
+  { value: "primordial", label: "Primordial", hint: "Freshly birthed from genesis chaos" }
+]
+
+const UNIVERSE_SCALE_OPTIONS = [
+  { value: "small", label: "Small", hint: "Few galaxies, easily travelled" },
+  { value: "large", label: "Large", hint: "Vast expanse, multiple clusters" },
+  { value: "infinite", label: "Infinite", hint: "Endless dimensions and bounds" }
+]
+
+
+
 const CATEGORY_COLORS: Record<string, string> = {
-  character: "#60a5fa",
-  beast: "#f87171",
+  character: "#f87171",
+  bloodline: "#f472b6",
+  title: "#fb923c",
+  city: "#34d399",
+  planet: "#60a5fa",
+  realm: "#a78bfa",
+  galaxy: "#fbbf24",
+  universe: "#2dd4bf",
   world: "#34d399",
+  item: "#a78bfa",
   place: "#fbbf24",
-  item: "#a78bfa"
+  cosmic: "#a78bfa"
 }
 
 const NAME_GEN_COUNT_OPTIONS = [
@@ -435,6 +605,8 @@ interface NameForgePreset {
   name: string
   params: {
     category: string
+    subtype: string
+    generatorConfig?: Record<string, string>
     style: string
     style2: string
     structure: string
@@ -1207,7 +1379,9 @@ function EditorContent() {
   const [bibleCanonConflicts, setBibleCanonConflicts] = useState<BibleCanonConflict[]>([])
   const [bibleCanonCheckedNoteId, setBibleCanonCheckedNoteId] = useState<string | null>(null)
   const [nameStyle, setNameStyle] = useState("fantasy")
-  const [nameCategory, setNameCategory] = useState<BibleEntry["category"]>("character")
+  const [nameCategory, setNameCategory] = useState<string>("character")
+  const [nameSubType, setNameSubType] = useState<string>("")
+  const [nameGeneratorConfig, setNameGeneratorConfig] = useState<Record<string, string>>({})
   const [nameStructure, setNameStructure] = useState("any")
   const [nameTone, setNameTone] = useState("memorable")
   const [nameCustomPrompt, setNameCustomPrompt] = useState("")
@@ -1230,7 +1404,6 @@ function EditorContent() {
   const [nameVariantLoading, setNameVariantLoading] = useState(false)
   const [showNamePrompt, setShowNamePrompt] = useState(false)
   const [showNameSyllables, setShowNameSyllables] = useState(false)
-  const [nameStyle2Options, setNameStyle2Options] = useState(NAME_STYLE_OPTIONS)
   const [nameGenCount, setNameGenCount] = useState(5)
   const [nameSearchQuery, setNameSearchQuery] = useState("")
   const [nameCategoryFilter, setNameCategoryFilter] = useState<string | null>(null)
@@ -1244,16 +1417,7 @@ function EditorContent() {
   const [showSavePresetInput, setShowSavePresetInput] = useState(false)
   const [nameUndoEntry, setNameUndoEntry] = useState<BibleEntry | null>(null)
 
-  useEffect(() => {
-    const allowed = CATEGORY_STYLE_FILTER[nameCategory]
-    if (allowed && allowed.length > 0) {
-      setNameStyle2Options(NAME_STYLE_OPTIONS.filter(s => allowed.includes(s.value)))
-      if (nameStyle2 && !allowed.includes(nameStyle2)) setNameStyle2("")
-    } else {
-      setNameStyle2Options(NAME_STYLE_OPTIONS)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameCategory])
+
 
   const activeBibleEntry = bibleEntries.find(e => e.id === activeBibleEntryId)
 
@@ -5694,6 +5858,8 @@ const fillEmptyCustomJsonData = (
           nameStyle,
           nameStyle2: nameStyle2 || undefined,
           nameCategory,
+          nameSubType: nameSubType || undefined,
+          nameGeneratorConfig,
           nameStructure,
           nameTone,
           nameGender,
@@ -5719,7 +5885,7 @@ const fillEmptyCustomJsonData = (
         if (append && generatedNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
         uniqueNames.push({
           name,
-          category: ["character", "world", "beast", "place", "item"].includes(String(option.category)) ? option.category : nameCategory,
+          category: ["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact"].includes(String(option.category)) ? option.category : nameCategory,
           style: String(option.style || nameStyle).trim(),
           raceOrOrigin: String(option.raceOrOrigin || "").trim(),
           structure: String(option.structure || nameStructure).trim(),
@@ -5740,7 +5906,7 @@ const fillEmptyCustomJsonData = (
       if (newBatch.length > 0) {
         const round: NameGenRound = {
           timestamp: Date.now(),
-          params: { style: nameStyle, style2: nameStyle2, category: nameCategory, structure: nameStructure, tone: nameTone, gender: nameGender, count: nameGenCount },
+          params: { style: nameStyle, style2: nameStyle2, category: nameCategory, subtype: nameSubType, structure: nameStructure, tone: nameTone, gender: nameGender, count: nameGenCount },
           results: newBatch
         }
         setNameGenHistory(prev => [round, ...prev].slice(0, 20))
@@ -5755,6 +5921,18 @@ const fillEmptyCustomJsonData = (
     } finally {
       setNameGenerateLoading(false)
     }
+  }
+
+  const mapCategoryToBibleCategory = (forgeCategory: string, subtype?: string): BibleEntry["category"] => {
+    const cat = String(forgeCategory).toLowerCase()
+    const sub = String(subtype || "").toLowerCase()
+    if (cat === "character") {
+      if (sub === "beast") return "beast"
+      return "character"
+    }
+    if (cat === "bloodline" || cat === "title") return "world"
+    if (cat === "city" || cat === "planet" || cat === "realm" || cat === "galaxy" || cat === "universe") return "place"
+    return "character"
   }
 
   const acceptGeneratedName = async (option: GeneratedNameOption) => {
@@ -5777,7 +5955,7 @@ const fillEmptyCustomJsonData = (
     const newEntry: BibleEntry = {
       id: crypto.randomUUID(),
       name: option.name,
-      category: option.category,
+      category: mapCategoryToBibleCategory(option.category, nameSubType),
       content: contentParts.join("\n\n"),
       createdAt: now,
       updatedAt: now
@@ -5882,16 +6060,56 @@ const fillEmptyCustomJsonData = (
 
   const randomizeNameForgeParams = () => {
     const cats = NAME_CATEGORY_OPTIONS
-    const styles = NAME_STYLE_OPTIONS
-    const structs = NAME_STRUCTURE_OPTIONS
-    const tones = NAME_TONE_OPTIONS
-    const genders = NAME_GENDER_OPTIONS
-    setNameCategory(cats[Math.floor(Math.random() * cats.length)].value as BibleEntry["category"])
-    setNameStyle(styles[Math.floor(Math.random() * styles.length)].value)
-    setNameStyle2(Math.random() < 0.4 ? styles[Math.floor(Math.random() * styles.length)].value : "")
-    setNameStructure(structs[Math.floor(Math.random() * structs.length)].value)
-    setNameTone(tones[Math.floor(Math.random() * tones.length)].value)
-    setNameGender(genders[Math.floor(Math.random() * genders.length)].value)
+    const cat = cats[Math.floor(Math.random() * cats.length)].value
+    setNameCategory(cat)
+    const newConfig: Record<string, string> = {}
+    
+    if (cat === "character") {
+      const charTypes = SUBTYPE_OPTIONS.character
+      const charType = charTypes[Math.floor(Math.random() * charTypes.length)]
+      setNameSubType(charType.toLowerCase())
+      
+      if (charType === "Humanoid") {
+        newConfig.culture = HUMANOID_CULTURE_OPTIONS[Math.floor(Math.random() * HUMANOID_CULTURE_OPTIONS.length)].value
+        newConfig.gender = HUMANOID_GENDER_OPTIONS[Math.floor(Math.random() * HUMANOID_GENDER_OPTIONS.length)].value
+        newConfig.structure = HUMANOID_STRUCTURE_OPTIONS[Math.floor(Math.random() * HUMANOID_STRUCTURE_OPTIONS.length)].value
+        newConfig.additionalOption = HUMANOID_ADDITIONAL_OPTIONS[Math.floor(Math.random() * HUMANOID_ADDITIONAL_OPTIONS.length)].value
+      } else if (charType === "Alien") {
+        newConfig.alienStyle = ALIEN_STYLE_OPTIONS[Math.floor(Math.random() * ALIEN_STYLE_OPTIONS.length)].value
+        newConfig.alienNamingStyle = ALIEN_NAMING_STYLE_OPTIONS[Math.floor(Math.random() * ALIEN_NAMING_STYLE_OPTIONS.length)].value
+      } else if (charType === "Beast") {
+        newConfig.beastFamily = BEAST_FAMILY_OPTIONS[Math.floor(Math.random() * BEAST_FAMILY_OPTIONS.length)].value
+        newConfig.beastTier = BEAST_TIER_OPTIONS[Math.floor(Math.random() * BEAST_TIER_OPTIONS.length)].value
+      }
+    } else if (cat === "bloodline") {
+      setNameSubType("")
+      newConfig.bloodlineCategory = BLOODLINE_CATEGORY_OPTIONS[Math.floor(Math.random() * BLOODLINE_CATEGORY_OPTIONS.length)].value
+      newConfig.bloodlineRank = BLOODLINE_RANK_OPTIONS[Math.floor(Math.random() * BLOODLINE_RANK_OPTIONS.length)].value
+    } else if (cat === "title") {
+      setNameSubType("")
+      newConfig.titleCategory = TITLE_CATEGORY_OPTIONS[Math.floor(Math.random() * TITLE_CATEGORY_OPTIONS.length)].value
+      newConfig.titleStyle = TITLE_STYLE_OPTIONS[Math.floor(Math.random() * TITLE_STYLE_OPTIONS.length)].value
+    } else if (cat === "city") {
+      setNameSubType("")
+      newConfig.cityType = CITY_TYPE_OPTIONS[Math.floor(Math.random() * CITY_TYPE_OPTIONS.length)].value
+      newConfig.cityTheme = CITY_THEME_OPTIONS[Math.floor(Math.random() * CITY_THEME_OPTIONS.length)].value
+    } else if (cat === "planet") {
+      setNameSubType("")
+      newConfig.planetTheme = PLANET_THEME_OPTIONS[Math.floor(Math.random() * PLANET_THEME_OPTIONS.length)].value
+      newConfig.planetCiv = PLANET_CIV_OPTIONS[Math.floor(Math.random() * PLANET_CIV_OPTIONS.length)].value
+    } else if (cat === "realm") {
+      setNameSubType("")
+      newConfig.realmType = REALM_TYPE_OPTIONS[Math.floor(Math.random() * REALM_TYPE_OPTIONS.length)].value
+    } else if (cat === "galaxy") {
+      setNameSubType("")
+      newConfig.galaxyTheme = GALAXY_THEME_OPTIONS[Math.floor(Math.random() * GALAXY_THEME_OPTIONS.length)].value
+    } else if (cat === "universe") {
+      setNameSubType("")
+      newConfig.universeType = UNIVERSE_TYPE_OPTIONS[Math.floor(Math.random() * UNIVERSE_TYPE_OPTIONS.length)].value
+      newConfig.universeScale = UNIVERSE_SCALE_OPTIONS[Math.floor(Math.random() * UNIVERSE_SCALE_OPTIONS.length)].value
+    }
+    
+    setNameGeneratorConfig(newConfig)
     setNameCustomPrompt("")
     setNameSyllableBank("")
     setTimeout(() => generateNameOptions(false), 50)
@@ -5945,6 +6163,8 @@ const fillEmptyCustomJsonData = (
       name: savePresetName.trim(),
       params: {
         category: nameCategory,
+        subtype: nameSubType,
+        generatorConfig: nameGeneratorConfig,
         style: nameStyle,
         style2: nameStyle2,
         structure: nameStructure,
@@ -5962,7 +6182,9 @@ const fillEmptyCustomJsonData = (
   }
 
   const loadPreset = (preset: NameForgePreset) => {
-    setNameCategory(preset.params.category as BibleEntry["category"])
+    setNameCategory(preset.params.category)
+    setNameSubType(preset.params.subtype || "")
+    setNameGeneratorConfig(preset.params.generatorConfig || {})
     setNameStyle(preset.params.style)
     setNameStyle2(preset.params.style2)
     setNameStructure(preset.params.structure)
@@ -8017,7 +8239,7 @@ ${navPoints}  </navMap>
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setAutocompleteIndex(prev => (prev - 1 + Math.min(5, autocompleteSuggestions.length)) % Math.min(5, autocompleteSuggestions.length))
-      } else if (e.key === 'Enter' || e.key === 'Tab') {
+      } else if (e.key === 'Tab') {
         e.preventDefault()
         if (autocompleteSuggestions[autocompleteIndex]) {
           handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex])
@@ -11446,31 +11668,151 @@ ${navPoints}  </navMap>
                 </div>
 
                 <div className="name-forge-controls">
-                  {[
-                    { key: "category" as const, label: "Type", value: NAME_CATEGORY_OPTIONS.find(option => option.value === nameCategory)?.label || "Character" },
-                    { key: "style" as const, label: "Style", value: NAME_STYLE_OPTIONS.find(option => option.value === nameStyle)?.label || "Wild Fantasy" },
-                    { key: "style2" as const, label: "Mashup", value: nameStyle2 ? (NAME_STYLE_OPTIONS.find(option => option.value === nameStyle2)?.label || "Wild Fantasy") : "None" },
-                    { key: "gender" as const, label: "Gender", value: NAME_GENDER_OPTIONS.find(option => option.value === nameGender)?.label || "Any" },
-                    { key: "structure" as const, label: "Shape", value: NAME_STRUCTURE_OPTIONS.find(option => option.value === nameStructure)?.label || "Any Structure" },
-                    { key: "tone" as const, label: "Tone", value: NAME_TONE_OPTIONS.find(option => option.value === nameTone)?.label || "Memorable" },
-                    { key: "count" as const, label: "Count", value: `${nameGenCount}` },
-                    { key: "presets" as const, label: "Presets", value: namePresets.length > 0 ? `${namePresets.length} saved` : "Save / Load" }
-                  ].map(item => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      className="name-picker-card"
-                      onClick={() => {
-                        if (item.key === "presets") setShowPresetsPanel(!showPresetsPanel)
-                        else if (item.key === "count") setActiveNamePicker("count" as any)
-                        else setActiveNamePicker(item.key as NameForgePicker)
-                      }}
-                    >
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                      <ChevronDown size={13} />
-                    </button>
-                  ))}
+                  {(() => {
+                    const items: Array<{ key: string; label: string; value: string }> = [
+                      { key: "category", label: "Generator", value: NAME_CATEGORY_OPTIONS.find(option => option.value === nameCategory)?.label || "Character" }
+                    ]
+                    
+                    if (nameCategory === "character") {
+                      items.push({
+                        key: "subtype",
+                        label: "Character Type",
+                        value: nameSubType ? (nameSubType.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")) : "Choose..."
+                      })
+                      const sub = String(nameSubType).toLowerCase()
+                      if (sub === "humanoid") {
+                        items.push({
+                          key: "culture",
+                          label: "Culture/Origin",
+                          value: nameGeneratorConfig.culture || "Fantasy Mixed"
+                        })
+                        items.push({
+                          key: "gender",
+                          label: "Gender",
+                          value: HUMANOID_GENDER_OPTIONS.find(opt => opt.value === nameGeneratorConfig.gender)?.label || "Male"
+                        })
+                        items.push({
+                          key: "structure",
+                          label: "Structure",
+                          value: HUMANOID_STRUCTURE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.structure)?.label || "Single Name"
+                        })
+                        items.push({
+                          key: "additionalOption",
+                          label: "Option",
+                          value: HUMANOID_ADDITIONAL_OPTIONS.find(opt => opt.value === nameGeneratorConfig.additionalOption)?.label || "Warrior sounding"
+                        })
+                      } else if (sub === "alien") {
+                        items.push({
+                          key: "alienStyle",
+                          label: "Alien Style",
+                          value: ALIEN_STYLE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.alienStyle)?.label || "Cosmic"
+                        })
+                        items.push({
+                          key: "alienNamingStyle",
+                          label: "Naming Style",
+                          value: ALIEN_NAMING_STYLE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.alienNamingStyle)?.label || "Harsh"
+                        })
+                      } else if (sub === "beast") {
+                        items.push({
+                          key: "beastFamily",
+                          label: "Beast Family",
+                          value: BEAST_FAMILY_OPTIONS.find(opt => opt.value === nameGeneratorConfig.beastFamily)?.label || "Dragon"
+                        })
+                        items.push({
+                          key: "beastTier",
+                          label: "Beast Tier",
+                          value: BEAST_TIER_OPTIONS.find(opt => opt.value === nameGeneratorConfig.beastTier)?.label || "Primordial"
+                        })
+                      }
+                    } else if (nameCategory === "bloodline") {
+                      items.push({
+                        key: "bloodlineCategory",
+                        label: "Category",
+                        value: BLOODLINE_CATEGORY_OPTIONS.find(opt => opt.value === nameGeneratorConfig.bloodlineCategory)?.label || "Elemental: Flame"
+                      })
+                      items.push({
+                        key: "bloodlineRank",
+                        label: "Rank",
+                        value: BLOODLINE_RANK_OPTIONS.find(opt => opt.value === nameGeneratorConfig.bloodlineRank)?.label || "Ancient"
+                      })
+                    } else if (nameCategory === "title") {
+                      items.push({
+                        key: "titleCategory",
+                        label: "Category",
+                        value: TITLE_CATEGORY_OPTIONS.find(opt => opt.value === nameGeneratorConfig.titleCategory)?.label || "Emperor"
+                      })
+                      items.push({
+                        key: "titleStyle",
+                        label: "Style",
+                        value: TITLE_STYLE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.titleStyle)?.label || "Cosmic"
+                      })
+                    } else if (nameCategory === "city") {
+                      items.push({
+                        key: "cityType",
+                        label: "City Type",
+                        value: CITY_TYPE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.cityType)?.label || "Human"
+                      })
+                      items.push({
+                        key: "cityTheme",
+                        label: "Theme",
+                        value: CITY_THEME_OPTIONS.find(opt => opt.value === nameGeneratorConfig.cityTheme)?.label || "Mountain"
+                      })
+                    } else if (nameCategory === "planet") {
+                      items.push({
+                        key: "planetTheme",
+                        label: "Planet Theme",
+                        value: PLANET_THEME_OPTIONS.find(opt => opt.value === nameGeneratorConfig.planetTheme)?.label || "Ice"
+                      })
+                      items.push({
+                        key: "planetCiv",
+                        label: "Civilization Level",
+                        value: PLANET_CIV_OPTIONS.find(opt => opt.value === nameGeneratorConfig.planetCiv)?.label || "Magical"
+                      })
+                    } else if (nameCategory === "realm") {
+                      items.push({
+                        key: "realmType",
+                        label: "Realm Type",
+                        value: REALM_TYPE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.realmType)?.label || "Immortal"
+                      })
+                    } else if (nameCategory === "galaxy") {
+                      items.push({
+                        key: "galaxyTheme",
+                        label: "Theme",
+                        value: GALAXY_THEME_OPTIONS.find(opt => opt.value === nameGeneratorConfig.galaxyTheme)?.label || "Elemental"
+                      })
+                    } else if (nameCategory === "universe") {
+                      items.push({
+                        key: "universeType",
+                        label: "Universe Type",
+                        value: UNIVERSE_TYPE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.universeType)?.label || "Cultivation"
+                      })
+                      items.push({
+                        key: "universeScale",
+                        label: "Scale",
+                        value: UNIVERSE_SCALE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.universeScale)?.label || "Infinite"
+                      })
+                    }
+
+                    items.push({ key: "count", label: "Count", value: `${nameGenCount}` })
+                    items.push({ key: "presets", label: "Presets", value: namePresets.length > 0 ? `${namePresets.length} saved` : "Save / Load" })
+
+                    return items.map(item => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className="name-picker-card"
+                        onClick={() => {
+                          if (item.key === "presets") setShowPresetsPanel(!showPresetsPanel)
+                          else if (item.key === "count") setActiveNamePicker("count")
+                          else setActiveNamePicker(item.key)
+                        }}
+                      >
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                        <ChevronDown size={13} />
+                      </button>
+                    ))
+                  })()}
                   {/* Collapsible custom prompt */}
                   <div className="name-collapsible-card" onClick={() => setShowNamePrompt(!showNamePrompt)}>
                     <div className="name-collapsible-header">
@@ -11793,7 +12135,8 @@ ${navPoints}  </navMap>
                                   const p = round.params
                                   setNameStyle(String(p.style))
                                   setNameStyle2(String(p.style2 || ""))
-                                  setNameCategory(String(p.category) as BibleEntry["category"])
+                                  setNameCategory(String(p.category))
+                                  setNameSubType(String((p as any).subtype || ""))
                                   setNameStructure(String(p.structure))
                                   setNameTone(String(p.tone))
                                   setNameGender(String(p.gender))
@@ -11943,66 +12286,132 @@ ${navPoints}  </navMap>
                   </div>
                 )}
 
-                {activeNamePicker && activeNamePicker !== "count" && (
-                  <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
-                    <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()}>
-                      <div className="name-picker-popover-header">
-                        <strong>
-                          {activeNamePicker === "category" ? "Choose Type" :
-                           activeNamePicker === "style" ? "Choose Style" :
-                           activeNamePicker === "style2" ? "Choose Mashup Style (optional)" :
-                           activeNamePicker === "gender" ? "Choose Gender" :
-                           activeNamePicker === "structure" ? "Choose Shape" : "Choose Tone"}
-                        </strong>
-                        <button type="button" onClick={() => setActiveNamePicker(null)} title="Close">
-                          <X size={16} />
-                        </button>
-                      </div>
-                      <div className="name-picker-options">
-                        {(activeNamePicker === "category" ? NAME_CATEGORY_OPTIONS :
-                          activeNamePicker === "style" ? NAME_STYLE_OPTIONS :
-                          activeNamePicker === "style2" ? [{ value: "", label: "None (single style)", hint: "No mashup" }, ...nameStyle2Options] :
-                          activeNamePicker === "gender" ? NAME_GENDER_OPTIONS :
-                          activeNamePicker === "structure" ? NAME_STRUCTURE_OPTIONS :
-                          NAME_TONE_OPTIONS).map(option => {
-                            const isActive =
-                              (activeNamePicker === "category" && option.value === nameCategory) ||
-                              (activeNamePicker === "style" && option.value === nameStyle) ||
-                              (activeNamePicker === "style2" && option.value === nameStyle2) ||
-                              (activeNamePicker === "gender" && option.value === nameGender) ||
-                              (activeNamePicker === "structure" && option.value === nameStructure) ||
-                              (activeNamePicker === "tone" && option.value === nameTone)
-                            const example = (option as any).example
+                {activeNamePicker && activeNamePicker !== "count" && (() => {
+                  const getPopoverData = () => {
+                    switch (activeNamePicker) {
+                      case "category":
+                        return { title: "Choose Generator", options: NAME_CATEGORY_OPTIONS }
+                      case "subtype":
+                        return {
+                          title: "Choose Character Type",
+                          options: SUBTYPE_OPTIONS.character.map(s => ({ value: s.toLowerCase(), label: s, hint: `Names for ${s}s` }))
+                        }
+                      case "culture":
+                        return { title: "Choose Culture/Origin", options: HUMANOID_CULTURE_OPTIONS }
+                      case "gender":
+                        return { title: "Choose Gender", options: HUMANOID_GENDER_OPTIONS }
+                      case "structure":
+                        return { title: "Choose Structure", options: HUMANOID_STRUCTURE_OPTIONS }
+                      case "additionalOption":
+                        return { title: "Choose Option", options: HUMANOID_ADDITIONAL_OPTIONS }
+                      case "alienStyle":
+                        return { title: "Choose Alien Style", options: ALIEN_STYLE_OPTIONS }
+                      case "alienNamingStyle":
+                        return { title: "Choose Naming Style", options: ALIEN_NAMING_STYLE_OPTIONS }
+                      case "beastFamily":
+                        return { title: "Choose Beast Family", options: BEAST_FAMILY_OPTIONS }
+                      case "beastTier":
+                        return { title: "Choose Beast Tier", options: BEAST_TIER_OPTIONS }
+                      case "bloodlineCategory":
+                        return { title: "Choose Bloodline Category", options: BLOODLINE_CATEGORY_OPTIONS }
+                      case "bloodlineRank":
+                        return { title: "Choose Bloodline Rank", options: BLOODLINE_RANK_OPTIONS }
+                      case "titleCategory":
+                        return { title: "Choose Category", options: TITLE_CATEGORY_OPTIONS }
+                      case "titleStyle":
+                        return { title: "Choose Style", options: TITLE_STYLE_OPTIONS }
+                      case "cityType":
+                        return { title: "Choose City Type", options: CITY_TYPE_OPTIONS }
+                      case "cityTheme":
+                        return { title: "Choose Theme", options: CITY_THEME_OPTIONS }
+                      case "planetTheme":
+                        return { title: "Choose Planet Theme", options: PLANET_THEME_OPTIONS }
+                      case "planetCiv":
+                        return { title: "Choose Civilization Level", options: PLANET_CIV_OPTIONS }
+                      case "realmType":
+                        return { title: "Choose Realm Type", options: REALM_TYPE_OPTIONS }
+                      case "galaxyTheme":
+                        return { title: "Choose Galaxy Theme", options: GALAXY_THEME_OPTIONS }
+                      case "universeType":
+                        return { title: "Choose Universe Type", options: UNIVERSE_TYPE_OPTIONS }
+                      case "universeScale":
+                        return { title: "Choose Universe Scale", options: UNIVERSE_SCALE_OPTIONS }
+                      default:
+                        return { title: "Choose Option", options: [] }
+                    }
+                  }
+
+                  const popoverData = getPopoverData()
+                  const currentValue =
+                    activeNamePicker === "category" ? nameCategory :
+                    activeNamePicker === "subtype" ? nameSubType :
+                    nameGeneratorConfig[activeNamePicker] || ""
+
+                  return (
+                    <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
+                      <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()}>
+                        <div className="name-picker-popover-header">
+                          <strong>{popoverData.title}</strong>
+                          <button type="button" onClick={() => setActiveNamePicker(null)} title="Close">
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <div className="name-picker-options">
+                          {popoverData.options.map(option => {
+                            const isActive = option.value === currentValue
                             return (
                               <button
                                 key={option.value}
                                 type="button"
                                 className={`name-picker-option ${isActive ? "active" : ""}`}
                                 onClick={() => {
-                                  if (activeNamePicker === "category") setNameCategory(option.value as BibleEntry["category"])
-                                  else if (activeNamePicker === "style") setNameStyle(option.value)
-                                  else if (activeNamePicker === "style2") setNameStyle2(option.value)
-                                  else if (activeNamePicker === "gender") setNameGender(option.value)
-                                  else if (activeNamePicker === "structure") setNameStructure(option.value)
-                                  else if (activeNamePicker === "tone") setNameTone(option.value)
-                                  setActiveNamePicker(null)
+                                  if (activeNamePicker === "category") {
+                                    const nextCat = option.value
+                                    setNameCategory(nextCat)
+                                    setNameSubType("")
+                                    if (SUBTYPE_OPTIONS[nextCat]?.length > 0) {
+                                      setTimeout(() => setActiveNamePicker("subtype"), 50)
+                                    } else {
+                                      setActiveNamePicker(null)
+                                    }
+                                  } else if (activeNamePicker === "subtype") {
+                                    setNameSubType(option.value)
+                                    const sub = option.value.toLowerCase()
+                                    const newConfig = { ...nameGeneratorConfig }
+                                    if (sub === "humanoid") {
+                                      newConfig.culture = newConfig.culture || "Fantasy Mixed"
+                                      newConfig.gender = newConfig.gender || "male"
+                                      newConfig.structure = newConfig.structure || "single"
+                                      newConfig.additionalOption = newConfig.additionalOption || "warrior"
+                                    } else if (sub === "alien") {
+                                      newConfig.alienStyle = newConfig.alienStyle || "cosmic"
+                                      newConfig.alienNamingStyle = newConfig.alienNamingStyle || "harsh"
+                                    } else if (sub === "beast") {
+                                      newConfig.beastFamily = newConfig.beastFamily || "dragon"
+                                      newConfig.beastTier = newConfig.beastTier || "primordial"
+                                    }
+                                    setNameGeneratorConfig(newConfig)
+                                    setActiveNamePicker(null)
+                                  } else {
+                                    setNameGeneratorConfig(prev => ({
+                                      ...prev,
+                                      [activeNamePicker]: option.value
+                                    }))
+                                    setActiveNamePicker(null)
+                                  }
                                 }}
                               >
                                 <span>{option.label}</span>
                                 <small>{option.hint}</small>
-                                {example && (activeNamePicker === "style" || activeNamePicker === "style2") && (
-                                  <small style={{ gridColumn: "1 / -1", color: "#a78bfa", fontSize: "0.62rem", fontStyle: "italic", marginTop: "-0.15rem" }}>
-                                    e.g. {example}
-                                  </small>
-                                )}
                                 {isActive && <Check size={14} />}
                               </button>
                             )
                           })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             )}
 

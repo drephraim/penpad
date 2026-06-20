@@ -1401,7 +1401,7 @@ export async function POST(req: NextRequest) {
         `Relevant Brain Map Memory:\n${brainContext || "No Brain Map entries yet."}\n\n` +
         `Chapter Content:\n${chapterContent.slice(0, 60000)}`
     } else if (action === "name_generate") {
-      const { nameStyle, nameStyle2, nameCategory, nameStructure, nameTone, nameGender, nameSyllableBank, customPrompt, bibleEntries, chapterContent, chapterTitle, count } = body
+      const { nameStyle, nameStyle2, nameCategory, nameSubType, nameGeneratorConfig, nameStructure, nameTone, nameGender, nameSyllableBank, customPrompt, bibleEntries, chapterContent, chapterTitle, count } = body
       if (!Array.isArray(bibleEntries)) {
         return NextResponse.json({ error: "bibleEntries is required for name_generate" }, { status: 400 })
       }
@@ -1410,6 +1410,64 @@ export async function POST(req: NextRequest) {
       const mashupLine = nameStyle2 ? `Mashup with secondary style: ${nameStyle2}. Blend elements from both styles naturally.` : ""
       const genderLine = nameGender && nameGender !== "any" ? `Preferred gender/orientation: ${nameGender}.` : ""
       const syllableLine = nameSyllableBank ? `Incorporate these syllables/roots where possible: ${nameSyllableBank}. Blend them organically into the names.` : ""
+
+      let subtypeGuidance = ""
+      const sub = String(nameSubType).toLowerCase()
+      const cat = String(nameCategory).toLowerCase()
+
+      if (cat === "character") {
+        subtypeGuidance += `Category is CHARACTER (Type: ${nameSubType || "General"}).\n`
+        if (sub === "humanoid") {
+          const culture = nameGeneratorConfig?.culture || "Fantasy Mixed"
+          const gender = nameGeneratorConfig?.gender || "male"
+          const struct = nameGeneratorConfig?.structure || "single"
+          const opt = nameGeneratorConfig?.additionalOption || "warrior"
+          subtypeGuidance += `Generate Humanoid names matching culture/origin "${culture}", gender "${gender}", name structure "${struct}", and sound style "${opt}".\n`
+          if (culture.toLowerCase().includes("african")) {
+            subtypeGuidance += `African cultural naming roots apply (e.g. Swahili, Yoruba, Zulu, or ancient Egyptian naming sounds depending on sub-culture).\n`
+          } else if (culture.toLowerCase().includes("asian")) {
+            subtypeGuidance += `Asian naming roots apply (Chinese cultivation pinyin, Japanese kanji sound mappings, Korean Joseon sounds, Thai, Indian/Hindu Sanskrit roots, or Mongolian steppe feel).\n`
+          }
+        } else if (sub === "alien") {
+          const style = nameGeneratorConfig?.alienStyle || "cosmic"
+          const naming = nameGeneratorConfig?.alienNamingStyle || "harsh"
+          subtypeGuidance += `Generate Alien names of style "${style}" (e.g., Insectoid clicks, mechanical whirs, aquatic bubbles, or eldritch monstrosities) with a naming style of "${naming}" (e.g., Harsh/Zhythos, elegant, scientific, unpronounceable with apostrophes like Xal'Thor, Veyrakk). Examples: Xal'Thor, Veyrakk, Zhythos.\n`
+        } else if (sub === "beast") {
+          const family = nameGeneratorConfig?.beastFamily || "wolf"
+          const tier = nameGeneratorConfig?.beastTier || "primordial"
+          subtypeGuidance += `Generate Beast names of family "${family}" and tier "${tier}" (e.g., common, elite, emperor, divine, primordial) in formats like "Voidfang Wolf", "Celestial Frost Lion", "Primordial Chaos Dragon". Examples: Voidfang Wolf, Celestial Frost Lion, Primordial Chaos Dragon.\n`
+        } else {
+          subtypeGuidance += `Generate names suitable for character type: ${nameSubType || "Spirit/Demon/Undead/Dragon/Divine/Hybrid"}.\n`
+        }
+      } else if (cat === "bloodline") {
+        const bloodlineCat = nameGeneratorConfig?.bloodlineCategory || "Elemental: Flame"
+        const bloodlineRank = nameGeneratorConfig?.bloodlineRank || "Ancient"
+        subtypeGuidance += `Category is BLOODLINE. Generate bloodlines/lineages of Category "${bloodlineCat}" (e.g., Flame, Ice, Dragon, Titan, Void, Star, Chaos) and Rank "${bloodlineRank}" (e.g., Mortal, Rare, Ancient, Mythical, Primordial). Examples: Primordial Chaos Dragon Bloodline, Eternal Frost Phoenix Bloodline, Void Leviathan Bloodline.\n`
+      } else if (cat === "title") {
+        const titleCat = nameGeneratorConfig?.titleCategory || "Hero"
+        const titleStyle = nameGeneratorConfig?.titleStyle || "Cosmic"
+        subtypeGuidance += `Category is TITLE. Generate grand fantasy novel titles of class "${titleCat}" (e.g., Hero, Villain, Cultivator, God, Assassin) and style "${titleStyle}" (e.g., Fearsome, Noble, Ancient, Cosmic). Examples: The Void Emperor, Frost Sovereign, Dragon of Endless Night, Star Devourer.\n`
+      } else if (["city", "planet", "realm", "galaxy", "universe"].includes(cat)) {
+        if (cat === "city") {
+          const cityType = nameGeneratorConfig?.cityType || "Human"
+          const cityTheme = nameGeneratorConfig?.cityTheme || "Desert"
+          subtypeGuidance += `Category is CITY. Generate city/settlement names of type "${cityType}" and theme "${cityTheme}" (e.g. desert, forest, floating, underground, void). Examples: Astravale, Frosthaven, Blackspire, Verdantis.\n`
+        } else if (cat === "planet") {
+          const planetTheme = nameGeneratorConfig?.planetTheme || "Fire"
+          const planetCiv = nameGeneratorConfig?.planetCiv || "Futuristic"
+          subtypeGuidance += `Category is PLANET. Generate planet names of theme "${planetTheme}" and civilization level "${planetCiv}" (e.g. primitive, magical, futuristic, divine). Examples: Planet Sonox, Planet Vorthis, Planet Drakoria, Planet Nythara.\n`
+        } else if (cat === "realm") {
+          const realmType = nameGeneratorConfig?.realmType || "Immortal"
+          subtypeGuidance += `Category is REALM. Generate mystical plane/realm names of type "${realmType}" (e.g., Mortal, Immortal, Divine, Demon, Beast, Void, Chaos). Examples: Eternal Frost Realm, Abyssal Demon Realm, Primordial Beast Realm.\n`
+        } else if (cat === "galaxy") {
+          const galaxyTheme = nameGeneratorConfig?.galaxyTheme || "Light"
+          subtypeGuidance += `Category is GALAXY. Generate galaxy names of theme/style "${galaxyTheme}" (e.g. light, darkness, chaos, order, elemental). Examples: Celestial Veil Galaxy, Crimson Void Galaxy, Astral Dragon Galaxy.\n`
+        } else if (cat === "universe") {
+          const universeType = nameGeneratorConfig?.universeType || "Magical"
+          const universeScale = nameGeneratorConfig?.universeScale || "Infinite"
+          subtypeGuidance += `Category is UNIVERSE. Generate universe names of type "${universeType}" and scale "${universeScale}" (e.g., magical, cultivation, apocalypse, primordial). Examples: Universe of Endless Chaos, Eternal Astral Universe, Primordial Genesis Universe.\n`
+        }
+      }
 
       const allStyles = [
         "Wild Fantasy", "Chinese-inspired", "Japanese-inspired", "Korean-inspired",
@@ -1432,7 +1490,8 @@ export async function POST(req: NextRequest) {
         `Available styles: ${allStyles.join(", ")}.\n` +
         "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
         `Generate exactly ${requestedCount} distinct, varied options per request.\n` +
-        "Respect the requested name structure: single, double, triple, title-style, clan-style, or any. If the user asks for beasts, make them usable as beast/monster names rather than human names.\n" +
+        "Respect the requested name structure: single, double, triple, title-style, clan-style, or any.\n" +
+        `${subtypeGuidance ? subtypeGuidance + "\n" : ""}` +
         `${mashupLine ? mashupLine + "\n" : ""}` +
         `${genderLine ? genderLine + "\n" : ""}` +
         `${syllableLine ? syllableLine + "\n" : ""}` +
@@ -1447,6 +1506,7 @@ export async function POST(req: NextRequest) {
         `Requested Style: ${nameStyle || "wild fantasy mix"}\n` +
         `${mashupLine ? `Secondary Style Mashup: ${nameStyle2}\n` : ""}` +
         `Requested Category: ${nameCategory || "character"}\n` +
+        `${nameSubType ? `Requested Sub-type: ${nameSubType}\n` : ""}` +
         `Requested Structure: ${nameStructure || "any"}\n` +
         `Requested Tone: ${nameTone || "memorable fantasy"}\n` +
         `${nameGender && nameGender !== "any" ? `Gender: ${nameGender}\n` : ""}` +
@@ -1926,7 +1986,7 @@ export async function POST(req: NextRequest) {
 
     if (action === "name_generate") {
       const result = parseJsonValue<NameGenerateResponse | unknown[]>(text)
-      const allowedCategories = new Set(["character", "beast", "world", "place", "item"])
+      const allowedCategories = new Set(["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact"])
       const rawNames: unknown[] = Array.isArray(result)
         ? result
         : Array.isArray((result as any)?.names)
@@ -1936,10 +1996,12 @@ export async function POST(req: NextRequest) {
             : Array.isArray((result as any)?.suggestions)
               ? (result as any).suggestions
               : []
+      const requestedCount = typeof body?.count === "number" && body.count > 0 && body.count <= 20 ? body.count : 5
+      const fallbackCat = String(body?.nameCategory || "character")
       const sanitizedNames = rawNames
         .map((option: unknown) => {
           const record = typeof option === "string" ? { name: option } : (option || {}) as Record<string, unknown>
-          const category = allowedCategories.has(String(record.category)) ? String(record.category) : "character"
+          const category = allowedCategories.has(String(record.category)) ? String(record.category) : fallbackCat
           const meaning = String(record.meaning || record.description || record.reason || "").trim()
           const vibe = String(record.vibe || record.tone || record.feel || "").trim()
           return {
@@ -1955,7 +2017,7 @@ export async function POST(req: NextRequest) {
           }
         })
         .filter((option: { name: string }) => option.name)
-        .slice(0, 5)
+        .slice(0, requestedCount)
 
       return NextResponse.json({
         names: sanitizedNames.length > 0 ? sanitizedNames : buildFallbackNameOptions(body)
