@@ -750,6 +750,78 @@ function extractKnownAppearanceDetails(loreContent: string): string {
   return lines.length > 0 ? lines.join("\n") : ""
 }
 
+function formatKnownCharacterDetails(details: unknown, activeChapterNumber?: number): string {
+  if (!details || typeof details !== "object") return ""
+
+  const record = details as Record<string, unknown>
+  const lines: string[] = []
+  const addField = (label: string, key: string) => {
+    const value = record[key]
+    if (typeof value === "string" && value.trim()) {
+      lines.push(`- ${label}: ${value.trim()}`)
+    }
+  }
+
+  addField("Overall appearance", "appearance")
+  addField("Hair/Fur", "hair")
+  addField("Eyes", "eyes")
+  addField("Body/Silhouette", "body")
+  addField("Attire", "attire")
+  addField("Distinguishing features", "distinguishingFeatures")
+
+  const chapterAppearances = Array.isArray(record.chapterAppearances)
+    ? record.chapterAppearances.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : []
+
+  if (chapterAppearances.length > 0) {
+    const exactChapter = Number.isFinite(activeChapterNumber)
+      ? chapterAppearances.filter(item => Number(item.chapterNumber) === Number(activeChapterNumber))
+      : []
+    const recentChapters = chapterAppearances.slice(-3)
+    const prioritized = [...exactChapter, ...recentChapters].filter((item, index, array) => {
+      const id = String(item.id || `${item.chapterNumber || ""}-${item.summary || ""}`)
+      return array.findIndex(other => String(other.id || `${other.chapterNumber || ""}-${other.summary || ""}`) === id) === index
+    })
+
+    prioritized.forEach(item => {
+      const chapterLabel = item.chapterNumber ? `Chapter ${item.chapterNumber}` : item.chapterTitle || "Chapter appearance"
+      const detailsLine = [
+        item.summary,
+        item.appearance,
+        item.hair,
+        item.eyes,
+        item.body,
+        item.attire,
+        item.distinguishingFeatures,
+        item.evidence ? `evidence: ${item.evidence}` : ""
+      ].filter(value => typeof value === "string" && value.trim()).join("; ")
+
+      if (detailsLine) {
+        lines.push(`- ${chapterLabel}: ${detailsLine}`)
+      }
+    })
+  }
+
+  return lines.join("\n")
+}
+
+function countPromptWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function expandShortAppearancePrompt(prompt: string, formKey: string): string {
+  if (countPromptWords(prompt) >= 145) return prompt
+
+  const normalizedKey = formKey.toLowerCase()
+  const formSpecific = normalizedKey.includes("beast")
+    ? "For this beast form, keep the anatomy unmistakably non-human: a readable full-body creature silhouette, visible head structure, limbs, spine or tail logic where appropriate, natural hide or scale texture, and a stance that communicates intelligence, danger, and story role."
+    : normalizedKey.includes("demi")
+      ? "For this demi-human form, show the bridge between creature and person: humanoid posture with preserved signature markings, eyes, aura, textures, and body traits that clearly connect it back to the original non-human design."
+      : "For this humanoid form, keep the design grounded in the character's story identity: face, expression, body language, clothing, accessories, aura, and any signature non-human lineage traits should remain visible without turning them into a generic human."
+
+  return `${prompt} Full head-to-toe composition, complete visual design with face, silhouette, skin or surface texture, clothing or natural covering, accessories, posture, atmosphere, and surrounding environment all clearly readable. ${formSpecific} Preserve every explicit trait from the chapter, Story Bible, and user notes while adding coherent secondary details that fit the scene mood, power level, social status, materials, lighting, and background.`
+}
+
 function formatMemoryContext(memory: unknown) {
   if (!memory || typeof memory !== "object") return ""
 
@@ -880,7 +952,7 @@ export async function POST(req: NextRequest) {
       const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
 
       const safeLoreEntry = loreEntry && typeof loreEntry === "object"
-        ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[]; aliases?: string[] }
+        ? loreEntry as { name?: string; category?: string; content?: string; groups?: string[]; aliases?: string[]; characterDetails?: unknown }
         : null
       const chapterContext = chapter && typeof chapter === "object"
         ? chapter as { title?: string; chapterNumber?: number; content?: string; targetEvidence?: string }
@@ -933,7 +1005,10 @@ export async function POST(req: NextRequest) {
       }).join("\n")
 
       // Extract any pre-existing appearance facts from the Bible entry to use as hard constraints
-      const knownDetails = extractKnownAppearanceDetails(safeLoreEntry?.content || "")
+      const knownDetails = [
+        extractKnownAppearanceDetails(safeLoreEntry?.content || ""),
+        formatKnownCharacterDetails(safeLoreEntry?.characterDetails, chapterContext?.chapterNumber)
+      ].filter(Boolean).join("\n")
       const knownDetailsBlock = knownDetails
         ? `\nKnown appearance facts from Story Bible (do NOT contradict these):\n${knownDetails}`
         : ""
@@ -943,37 +1018,38 @@ export async function POST(req: NextRequest) {
 
       systemInstruction =
         "You are an expert image-generation prompt engineer specializing in character concept art for novelists.\n" +
-        "Your output prompts are fed directly into Stable Diffusion / SDXL or similar image generators, so they MUST follow image-generator prompt conventions — NOT prose writing.\n\n" +
+        "Your output prompts are fed directly into Stable Diffusion / SDXL or similar image generators, so they must be vivid, concrete, and visually complete enough for an image model to understand the character without extra explanation.\n\n" +
         "PROMPT FORMAT RULES (critical):\n" +
-        "- Write each prompt as a sequence of SHORT, COMMA-SEPARATED descriptive tags and phrases — NOT full sentences.\n" +
-        "- Order tags by visual priority: (1) art style + quality modifiers, (2) subject type + race + gender + age, (3) face + expression, (4) hair/fur/skin/scales color and style, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n" +
+        "- Write each prompt as ONE long descriptive image-generation prompt with 3-5 dense sentences. It must read like a complete visual art direction paragraph, not a checklist and not a short tag dump.\n" +
+        "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) subject type + species/race + gender/age only when supported or safely inferable, (3) face + expression, (4) hair/fur/skin/scales color and texture, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n" +
         "- Be specific: prefer 'waist-length silver hair with black streaks' over 'long hair'. Prefer 'glowing amber slitted eyes' over 'interesting eyes'.\n" +
         "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
-        "- Each prompt should be 100-180 words worth of descriptive tags — extremely rich, vivid, detailed, and comprehensive. Do not generate short, minimal, or generic prompts.\n\n" +
+        "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
         "CONTENT & MERGING RULES (critical):\n" +
         "1. PRIORITIZE AND MERGE USER INPUTS: Any details the user explicitly typed in the form description (e.g., hair, eyes, clothing, or style in the 'Forms to generate prompts for' section) must be treated as absolute truth and included. Integrate them perfectly.\n" +
         "2. READ CHAPTER EVIDENCE & STORY BIBLE FOR ADDITIONAL DETAILS: Read the highlighted passage, Target-Focused Chapter Evidence, and Story Bible. Extract any other details described there (e.g., their species, robes, armor, scars, weapons, auras) and combine them with the user's explicit inputs.\n" +
-        "3. PRESERVE NON-HUMAN & FANTASTICAL TRAITS: Pay close attention to non-human elements, magical mutations, beast traits, or cultivation auras mentioned in the chapter or Story Bible (e.g., wings, horns, scales, claws, pointy ears, tails, glowing markings, fangs, animal ears, or celestial auras). DO NOT default to a plain human. A humanoid form/silhouette (especially for cultivation, Xianxia, or fantasy characters) can and should possess these fantastical features if they are part of the character's design.\n" +
-        "4. INTELLIGENT EXTRAPOLATION: If the combined details from the user, chapter, and Story Bible are still sparse (e.g., the user only specified hair and eye color), you MUST creatively fill in all other visual details to generate a comprehensive, head-to-toe concept. Do not leave clothing, build, pose, lighting, or background undefined. Extrapolate them appropriately for the character and story genre:\n" +
+        "3. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
+        "4. PRESERVE NON-HUMAN & FANTASTICAL TRAITS: Pay close attention to non-human elements, magical mutations, beast traits, or cultivation auras mentioned in the chapter or Story Bible (e.g., wings, horns, scales, claws, pointy ears, tails, glowing markings, fangs, animal ears, celestial auras, serpentine bodies, insectoid limbs, stone hide, shadow bodies, multiple eyes). A humanoid form/silhouette can and should preserve these traits if they are part of the character's design.\n" +
+        "5. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background. Mark invented-but-plausible choices in consistencyNotes.\n" +
         "   - Cultivation/Xianxia: flowing Daoist silk robes with gold/silver embroidery, elaborate hairpins/crowns, dynamic hand gestures (sword seals), swirling Qi energy, floating spiritual talismans, and backgrounds like mist-shrouded mountain peaks or ancient temples.\n" +
         "   - Dark Fantasy: weathered leather, heavy plate armor with battle damage, dark hooded cloaks, rugged or scarred features, dramatic chiaroscuro lighting, and gothic, ruined, or stormy environments.\n" +
         "   - LitRPG/Sci-Fi: sleek armor plates, glowing runes or neon accents, holographic displays, athletic build, and high-tech or cybernetic backgrounds.\n" +
-        "5. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, or demi-human race, or has a special lineage, ensure the prompts reflect this. The character's visual concept must feel authentic to their portrayal in the story.\n" +
-        "6. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
-        "7. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
-        "8. " + requiredFormRule +
-        "9. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
+        "6. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, divine race, spirit race, bloodline, or demi-human lineage, the prompt must visibly reflect that. The concept should feel like the character being portrayed, not a generic attractive human in fantasy clothes.\n" +
+        "7. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
+        "8. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
+        "9. " + requiredFormRule +
+        "10. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
         formNegativeGuidance + "\n" +
         "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n" +
         "OUTPUT RULES:\n" +
-        "10. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
-        "   - prompts: object with keys " + formLabelsStr + " — each value is the tag-style image prompt string.\n" +
+        "11. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
+        "   - prompts: object with keys " + formLabelsStr + " — each value is the long descriptive image prompt string.\n" +
         "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n" +
-        "   - overview: 2-3 sentence prose summary of the character's overall visual identity (this is NOT a prompt — it is a human-readable description).\n" +
-        "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or had to be invented.\n" +
+        "   - overview: 3-5 sentence prose summary of the character's overall visual identity and why the inferred design fits the chapter/lore.\n" +
+        "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
-        "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — short prose phrases extracted from the humanoid/primary form.\n" +
-        "11. No markdown fences. No prose inside the prompts values."
+        "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — descriptive prose phrases extracted from the strongest/primary form.\n" +
+        "12. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
 
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
@@ -995,7 +1071,7 @@ export async function POST(req: NextRequest) {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
         const userProvided = appForms[k]?.trim()
-        return `- ${label} (${k}): ${userProvided ? `User-specified traits: "${userProvided}"` : "No specific traits provided by user. Infer from all available context."}`
+        return `- ${label} (${k}): ${userProvided ? `User-specified traits: "${userProvided}"` : "No specific traits provided by user. Infer a complete visual design from all available context, preserving category and non-human clues."}`
       }).join("\n")
 
       userPrompt =
@@ -1741,7 +1817,7 @@ export async function POST(req: NextRequest) {
       if (appearance.prompts && typeof appearance.prompts === "object") {
         for (const key of Object.keys(appearance.prompts)) {
           const text = extractString(appearance.prompts[key], key)
-          if (text) prompts[key] = text
+          if (text) prompts[key] = expandShortAppearancePrompt(text, key)
         }
       }
       if (appearance.negativePrompts && typeof appearance.negativePrompts === "object") {

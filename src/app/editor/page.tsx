@@ -2104,7 +2104,8 @@ function EditorContent() {
             aliases: getLoreAliases(sourceEntry),
             groups: (sourceEntry.groupIds || [])
               .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
-              .filter(Boolean)
+              .filter(Boolean),
+            characterDetails: sourceEntry.characterDetails
           },
           chapter: activeNote ? {
             title: activeNote.title,
@@ -2167,7 +2168,8 @@ function EditorContent() {
             aliases: getLoreAliases(sourceEntry),
             groups: (sourceEntry.groupIds || [])
               .map(groupId => bibleGroups.find(group => group.id === groupId)?.name)
-              .filter(Boolean)
+              .filter(Boolean),
+            characterDetails: sourceEntry.characterDetails
           },
           chapter: activeNote ? {
             title: activeNote.title,
