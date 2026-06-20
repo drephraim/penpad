@@ -379,11 +379,7 @@ const HUMANOID_GENDER_OPTIONS = [
   { value: "neutral", label: "Neutral", hint: "Gender-neutral / unisex" }
 ]
 
-const HUMANOID_STRUCTURE_OPTIONS = [
-  { value: "single", label: "Single Name", hint: "e.g., Rhazor, Kaizo, Nyrela" },
-  { value: "double", label: "Double Name", hint: "e.g., Kael Draven, Elina Frost" },
-  { value: "triple", label: "Triple Name", hint: "e.g., Asha Nightveil Dawnstar" }
-]
+
 
 const HUMANOID_ADDITIONAL_OPTIONS = [
   { value: "noble", label: "Noble sounding", hint: "Aristocratic poise" },
@@ -575,7 +571,12 @@ const UNIVERSE_SCALE_OPTIONS = [
   { value: "infinite", label: "Infinite", hint: "Endless dimensions and bounds" }
 ]
 
-
+const GENERAL_STRUCTURE_OPTIONS = [
+  { value: "any", label: "Any Structure", hint: "Let the forge decide" },
+  { value: "single", label: "Single Name", hint: "First name only (e.g. Kaelen)" },
+  { value: "double", label: "Double Name", hint: "First and Last name (e.g. Kaelen Draven)" },
+  { value: "title", label: "Name + Title", hint: "Name with title (e.g. Kaelen the Brave)" }
+]
 
 const CATEGORY_COLORS: Record<string, string> = {
   character: "#f87171",
@@ -6062,6 +6063,8 @@ const fillEmptyCustomJsonData = (
     const cats = NAME_CATEGORY_OPTIONS
     const cat = cats[Math.floor(Math.random() * cats.length)].value
     setNameCategory(cat)
+    const structures = ["any", "single", "double", "title"]
+    setNameStructure(structures[Math.floor(Math.random() * structures.length)])
     const newConfig: Record<string, string> = {}
     
     if (cat === "character") {
@@ -6072,7 +6075,6 @@ const fillEmptyCustomJsonData = (
       if (charType === "Humanoid") {
         newConfig.culture = HUMANOID_CULTURE_OPTIONS[Math.floor(Math.random() * HUMANOID_CULTURE_OPTIONS.length)].value
         newConfig.gender = HUMANOID_GENDER_OPTIONS[Math.floor(Math.random() * HUMANOID_GENDER_OPTIONS.length)].value
-        newConfig.structure = HUMANOID_STRUCTURE_OPTIONS[Math.floor(Math.random() * HUMANOID_STRUCTURE_OPTIONS.length)].value
         newConfig.additionalOption = HUMANOID_ADDITIONAL_OPTIONS[Math.floor(Math.random() * HUMANOID_ADDITIONAL_OPTIONS.length)].value
       } else if (charType === "Alien") {
         newConfig.alienStyle = ALIEN_STYLE_OPTIONS[Math.floor(Math.random() * ALIEN_STYLE_OPTIONS.length)].value
@@ -11679,6 +11681,15 @@ ${navPoints}  </navMap>
                         label: "Character Type",
                         value: nameSubType ? (nameSubType.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")) : "Choose..."
                       })
+                    }
+
+                    items.push({
+                      key: "structure",
+                      label: "Structure",
+                      value: GENERAL_STRUCTURE_OPTIONS.find(opt => opt.value === nameStructure)?.label || "Any Structure"
+                    })
+
+                    if (nameCategory === "character") {
                       const sub = String(nameSubType).toLowerCase()
                       if (sub === "humanoid") {
                         items.push({
@@ -11690,11 +11701,6 @@ ${navPoints}  </navMap>
                           key: "gender",
                           label: "Gender",
                           value: HUMANOID_GENDER_OPTIONS.find(opt => opt.value === nameGeneratorConfig.gender)?.label || "Male"
-                        })
-                        items.push({
-                          key: "structure",
-                          label: "Structure",
-                          value: HUMANOID_STRUCTURE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.structure)?.label || "Single Name"
                         })
                         items.push({
                           key: "additionalOption",
@@ -12301,7 +12307,7 @@ ${navPoints}  </navMap>
                       case "gender":
                         return { title: "Choose Gender", options: HUMANOID_GENDER_OPTIONS }
                       case "structure":
-                        return { title: "Choose Structure", options: HUMANOID_STRUCTURE_OPTIONS }
+                        return { title: "Choose Structure", options: GENERAL_STRUCTURE_OPTIONS }
                       case "additionalOption":
                         return { title: "Choose Option", options: HUMANOID_ADDITIONAL_OPTIONS }
                       case "alienStyle":
@@ -12345,6 +12351,7 @@ ${navPoints}  </navMap>
                   const currentValue =
                     activeNamePicker === "category" ? nameCategory :
                     activeNamePicker === "subtype" ? nameSubType :
+                    activeNamePicker === "structure" ? nameStructure :
                     nameGeneratorConfig[activeNamePicker] || ""
 
                   return (
@@ -12381,7 +12388,6 @@ ${navPoints}  </navMap>
                                     if (sub === "humanoid") {
                                       newConfig.culture = newConfig.culture || "Fantasy Mixed"
                                       newConfig.gender = newConfig.gender || "male"
-                                      newConfig.structure = newConfig.structure || "single"
                                       newConfig.additionalOption = newConfig.additionalOption || "warrior"
                                     } else if (sub === "alien") {
                                       newConfig.alienStyle = newConfig.alienStyle || "cosmic"
@@ -12391,6 +12397,9 @@ ${navPoints}  </navMap>
                                       newConfig.beastTier = newConfig.beastTier || "primordial"
                                     }
                                     setNameGeneratorConfig(newConfig)
+                                    setActiveNamePicker(null)
+                                  } else if (activeNamePicker === "structure") {
+                                    setNameStructure(option.value)
                                     setActiveNamePicker(null)
                                   } else {
                                     setNameGeneratorConfig(prev => ({
