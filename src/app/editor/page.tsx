@@ -1027,7 +1027,6 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
         const name = String(record.name || record.identity || record["Identity/Name"] || record.affinity || record.value || record.title || "").trim()
         const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
         const era = String(record.era || record.age || record.life || record.period || "").trim()
-        const fate = String(record.fate || record.legacy || record["Fate/Legacy"] || record.outcome || "").trim()
         if (canonicalKey.startsWith("Incarnation / Past Lives")) {
           return [name, era].filter(Boolean).join(" - ")
         }
@@ -1045,7 +1044,6 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
     const name = String(record.name || record.identity || record["Identity/Name"] || record.affinity || record.value || record.title || "").trim()
     const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
     const era = String(record.era || record.age || record.life || record.period || "").trim()
-    const fate = String(record.fate || record.legacy || record["Fate/Legacy"] || record.outcome || "").trim()
     if (canonicalKey.startsWith("Incarnation / Past Lives")) {
       return [name, era].filter(Boolean).join(" - ") || Object.entries(record)
         .map(([key, item]) => `${key}: ${String(item || "").trim()}`)
