@@ -1027,40 +1027,40 @@ export async function POST(req: NextRequest) {
         "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
         "CONTENT & MERGING RULES (critical):\n" +
         "1. PRIORITIZE AND MERGE USER INPUTS: Any details the user explicitly typed in the form description (e.g., hair, eyes, clothing, or style in the 'Forms to generate prompts for' section) must be treated as absolute truth and included. Integrate them perfectly.\n" +
-        "2. READ CHAPTER EVIDENCE & STORY BIBLE FOR ADDITIONAL DETAILS: Read the highlighted passage, Target-Focused Chapter Evidence, and Story Bible. Extract any other details described there (e.g., their species, robes, armor, scars, weapons, auras) and combine them with the user's explicit inputs.\n" +
-        "3. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
-        "4. PRESERVE NON-HUMAN & FANTASTICAL TRAITS: Pay close attention to non-human elements, magical mutations, beast traits, or cultivation auras mentioned in the chapter or Story Bible (e.g., wings, horns, scales, claws, pointy ears, tails, glowing markings, fangs, animal ears, celestial auras, serpentine bodies, insectoid limbs, stone hide, shadow bodies, multiple eyes). A humanoid form/silhouette can and should preserve these traits if they are part of the character's design.\n" +
-        "5. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background. Mark invented-but-plausible choices in consistencyNotes.\n" +
+        "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this character or beast: hair/fur, eyes, skin/scales/hide, attire, armor, ornaments, weapons, body shape, height, posture, expression, scent, aura, power effects, wounds, movement, species, transformation state, and surroundings. These chapter-written details outrank generic fantasy defaults.\n" +
+        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: Use the highlighted passage and Target-Focused Chapter Evidence as the strongest local evidence, but do not ignore the rest of the chapter. Combine those details with Story Bible facts and saved chapter appearance memory. If the chapter says hair color, eye color, attire, beast anatomy, aura, or any distinguishing feature, it MUST appear in the prompt.\n" +
+        "4. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
+        "5. PRESERVE NON-HUMAN & FANTASTICAL TRAITS: Pay close attention to non-human elements, magical mutations, beast traits, or cultivation auras mentioned in the chapter or Story Bible (e.g., wings, horns, scales, claws, pointy ears, tails, glowing markings, fangs, animal ears, celestial auras, serpentine bodies, insectoid limbs, stone hide, shadow bodies, multiple eyes). A humanoid form/silhouette can and should preserve these traits if they are part of the character's design.\n" +
+        "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background. Mark invented-but-plausible choices in consistencyNotes.\n" +
         "   - Cultivation/Xianxia: flowing Daoist silk robes with gold/silver embroidery, elaborate hairpins/crowns, dynamic hand gestures (sword seals), swirling Qi energy, floating spiritual talismans, and backgrounds like mist-shrouded mountain peaks or ancient temples.\n" +
         "   - Dark Fantasy: weathered leather, heavy plate armor with battle damage, dark hooded cloaks, rugged or scarred features, dramatic chiaroscuro lighting, and gothic, ruined, or stormy environments.\n" +
         "   - LitRPG/Sci-Fi: sleek armor plates, glowing runes or neon accents, holographic displays, athletic build, and high-tech or cybernetic backgrounds.\n" +
-        "6. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, divine race, spirit race, bloodline, or demi-human lineage, the prompt must visibly reflect that. The concept should feel like the character being portrayed, not a generic attractive human in fantasy clothes.\n" +
-        "7. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
-        "8. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
-        "9. " + requiredFormRule +
-        "10. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
+        "7. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, divine race, spirit race, bloodline, or demi-human lineage, the prompt must visibly reflect that. The concept should feel like the character being portrayed, not a generic attractive human in fantasy clothes.\n" +
+        "8. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
+        "9. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
+        "10. " + requiredFormRule +
+        "11. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
         formNegativeGuidance + "\n" +
         "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n" +
         "OUTPUT RULES:\n" +
-        "11. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
+        "12. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
         "   - prompts: object with keys " + formLabelsStr + " — each value is the long descriptive image prompt string.\n" +
         "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n" +
         "   - overview: 3-5 sentence prose summary of the character's overall visual identity and why the inferred design fits the chapter/lore.\n" +
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
         "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — descriptive prose phrases extracted from the strongest/primary form.\n" +
-        "12. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
+        "13. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
 
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
         : ""
-      // Prioritise targetEvidence (dense, already extracted) and only include full chapter if evidence is sparse
+      // Always include chapter context so appearance generation can pick up visual clues beyond the selected mention.
+      const chapterContent = chapterText
+        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this character/beast before inventing anything):\n${chapterText.slice(0, 14000)}`
+        : ""
       const chapterEvidence = chapterContext?.targetEvidence
         ? `\nTarget-Focused Chapter Evidence (highest priority — use this first):\n${chapterContext.targetEvidence}`
-        : ""
-      const evidenceIsSparse = !chapterContext?.targetEvidence || chapterContext.targetEvidence.trim().length < 200
-      const chapterContent = evidenceIsSparse && chapterText
-        ? `\nFull Chapter Context (secondary reference):\n${chapterText.slice(0, 6000)}`
         : ""
       const selectedLine = selectedText ? `\nHighlighted Passage (highest priority):\n${selectedText}` : ""
       const loreLine = safeLoreEntry
@@ -1079,9 +1079,9 @@ export async function POST(req: NextRequest) {
         `World Bible category: ${safeLoreEntry?.category || "unknown"}\n` +
         `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n` +
         `${knownDetailsBlock}` +
-        `${chapterLine}${selectedLine}${loreLine}${chapterEvidence}\n\n` +
+        `${chapterLine}${chapterContent}${selectedLine}${chapterEvidence}${loreLine}\n\n` +
         `Forms to generate prompts for:\n${formDescriptions}` +
-        `${chapterContent}${memoryContext}`
+        `${memoryContext}`
     } else if (action === "progression_update") {
       const { selectedText, loreEntry, chapter, existingProfile, progressionSystem, candidateProfiles, candidateLoreEntries } = body
       const safeLoreEntry = loreEntry && typeof loreEntry === "object"
