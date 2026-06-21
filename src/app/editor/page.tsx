@@ -839,7 +839,7 @@ const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-preset-weapon", label: "Weapon", type: "compound", sourceKey: "Weapon", fields: ["Weapon", "Weapon Grade", "Weapon Status"], color: "rose", enabled: true, repeatable: true },
   { id: "template-preset-resources", label: "Resources", type: "resource", sourceKey: "Resources", fields: ["HP", "Mana / Qi", "Stamina"], color: "blue", enabled: true },
   { id: "template-preset-artifacts", label: "Inventory / Artifacts", type: "compound", sourceKey: "Artifacts", fields: ["Artifact", "Grade", "Status"], color: "rose", enabled: true },
-  { id: "template-preset-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true, repeatable: true }
+  { id: "template-preset-incarnation", label: "Incarnations", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true, repeatable: true }
 ]
 const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name", "Title"], color: "rose", enabled: true },
@@ -847,8 +847,7 @@ const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-affinity", label: "Affinity", type: "compound", sourceKey: "Affinity", fields: ["Affinity Names", "Rank"], color: "cyan", enabled: true },
   { id: "template-class", label: "Class", type: "compound", sourceKey: "className", fields: ["Main Class", "Secondary Class"], color: "fuchsia", enabled: true },
   { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true },
-  { id: "template-lore", label: "Lore", type: "text", sourceKey: "notes", fields: ["Lore"], color: "blue", enabled: true },
-  { id: "template-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
+  { id: "template-incarnation", label: "Incarnations", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
 ]
 const SIMPLE_PROGRESSION_CUSTOM_FIELDS = [
   "Bloodline",
@@ -954,7 +953,7 @@ const XIANXIA_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "xianxia-laws", label: "Elements & Intents", type: "compound", sourceKey: "Affinities", fields: ["Elements", "Comprehensions / Intents"], color: "cyan", enabled: true },
   { id: "xianxia-techniques", label: "Cultivation Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Layer/Rank", "Description"], color: "amber", enabled: true },
   { id: "xianxia-treasures", label: "Spiritual Treasures", type: "compound", sourceKey: "Artifacts", fields: ["Spiritual Weapon", "Grade"], color: "lime", enabled: true },
-  { id: "xianxia-incarnation", label: "Incarnation / Past Lives", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
+  { id: "xianxia-incarnation", label: "Incarnations", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
 ]
 const SHADOW_SLAVE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "ss-identity", label: "Soul Profile", type: "text", sourceKey: "name", fields: ["Name", "True Name"], color: "rose", enabled: true },
@@ -2848,7 +2847,12 @@ function EditorContent() {
           repeatable: card.repeatable === true
         }
       })
-      .filter(Boolean) as ProgressionTemplateCard[]
+      .filter(card => {
+        if (!card) return false
+        const id = card.id || ""
+        const label = card.label || ""
+        return id !== "template-lore" && label.toLowerCase() !== "lore"
+      }) as ProgressionTemplateCard[]
 
     const seen = new Set<string>()
     const uniqueCards = normalized.filter(card => {
@@ -2865,9 +2869,21 @@ function EditorContent() {
         cleanName = "Affinity"
       }
       const belongsToExistingCard = uniqueCards.some(card => {
-        const cardKeys = [card.label, card.sourceKey, ...card.fields]
+        const cardLabelKey = normalizeProgressionTemplateLookupKey(card.label)
+        const cardSourceKey = normalizeProgressionTemplateLookupKey(card.sourceKey)
+        const cleanNameKey = normalizeProgressionTemplateLookupKey(cleanName)
+        
+        // Direct match
+        const directKeys = [card.label, card.sourceKey, ...card.fields]
           .map(item => normalizeProgressionTemplateLookupKey(item))
-        return cardKeys.includes(normalizeProgressionTemplateLookupKey(cleanName))
+        if (directKeys.includes(cleanNameKey)) return true
+        
+        // Match pattern card.label + field or card.sourceKey + field
+        return card.fields.some(field => {
+          const fieldKey = normalizeProgressionTemplateLookupKey(field)
+          return cleanNameKey === `${cardLabelKey}${fieldKey}` || 
+                 cleanNameKey === `${cardSourceKey}${fieldKey}`
+        })
       })
       if (belongsToExistingCard) return
       const companionKind = getRankedProgressionFieldKind(cleanName)
@@ -3028,6 +3044,8 @@ function EditorContent() {
       || getProgressionCustomFieldValue(profile, `${card.label} ${fieldName}`)
       || getProgressionCustomFieldValue(profile, `${card.label} - ${fieldName}`)
       || getProgressionCustomFieldValue(profile, `${cleanCard}.${cleanField}`)
+      || getProgressionCustomFieldValue(profile, `${card.sourceKey} ${fieldName}`)
+      || getProgressionCustomFieldValue(profile, `${card.sourceKey} - ${fieldName}`)
   }
 
   const getProgressionTemplateCardFields = (profile: CharacterProgressionProfile, card: ProgressionTemplateCard) => {
