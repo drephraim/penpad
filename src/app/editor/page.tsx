@@ -334,7 +334,9 @@ const NAME_CATEGORY_OPTIONS: Array<{ value: string; label: string; hint: string 
 
 const SUBTYPE_OPTIONS: Record<string, string[]> = {
   character: [
-    "Humanoid", "Alien", "Beast", "Spirit", "Demon", "Undead", "Dragon", 
+    "Humanoid", "Alien", "Beast", "Magical Beast", "Demonic Beast", "Spirit Beast",
+    "Divine Beast", "Void Beast", "Eldritch Beast", "Mutated Beast", "Insectoid",
+    "Spirit", "Demon", "Undead", "Dragon", 
     "Divine Being", "Hybrid", "Celestial/Angelic", "Specter/Wraith", 
     "Slime/Ooze", "Golem/Automaton", "Fey/Sprite"
   ],
@@ -443,7 +445,18 @@ const BEAST_FAMILY_OPTIONS = [
   { value: "kraken", label: "Kraken", hint: "Abyssal tentacles, ocean dread" },
   { value: "turtle", label: "Turtle", hint: "Enduring, earth-shield, slow giants" },
   { value: "spider", label: "Spider", hint: "Web-weaving, venomous, dark chitin" },
-  { value: "fox", label: "Fox", hint: "Sly, illusion, multi-tailed spirits" }
+  { value: "fox", label: "Fox", hint: "Sly, illusion, multi-tailed spirits" },
+  { value: "bear", label: "Bear", hint: "Ursine, crushing strength, earth claws" },
+  { value: "monkey", label: "Ape / Monkey", hint: "Simian, clever, weapon-wielding" },
+  { value: "hawk", label: "Falcon / Hawk", hint: "Lightning speed, wind element raptors" },
+  { value: "qilin", label: "Qilin / Kirin", hint: "Auspicious, thunder & lightning horn" },
+  { value: "basilisk", label: "Basilisk", hint: "Petrifying gaze, venomous lizard scale" },
+  { value: "raven", label: "Raven / Crow", hint: "Shadow wings, death omen, gloom magic" },
+  { value: "toad", label: "Toad / Frog", hint: "Swallowing heavens, sound wave croaks" },
+  { value: "bat", label: "Bat", hint: "Echolocation, blood-drinking shadow swarm" },
+  { value: "shark", label: "Shark", hint: "Ocean apex predators, blood frenzy, razor teeth" },
+  { value: "panther", label: "Panther / Leopard", hint: "Shadow stalkers, dark speed, stealth" },
+  { value: "scorpion", label: "Scorpion / Centipede", hint: "Chitin armor, stingers, poison pincers" }
 ]
 
 const BEAST_TIER_OPTIONS = [
@@ -6159,7 +6172,7 @@ const fillEmptyCustomJsonData = (
     const cat = String(forgeCategory).toLowerCase()
     const sub = String(subtype || "").toLowerCase()
     if (cat === "character") {
-      if (sub === "beast") return "beast"
+      if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") return "beast"
       return "character"
     }
     if (cat === "bloodline" || cat === "title") return "world"
@@ -11980,7 +11993,7 @@ ${navPoints}  </navMap>
                           label: "Naming Style",
                           value: ALIEN_NAMING_STYLE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.alienNamingStyle)?.label || "Harsh"
                         })
-                      } else if (sub === "beast") {
+                      } else if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") {
                         items.push({
                           key: "beastFamily",
                           label: "Beast Family",
@@ -12654,7 +12667,7 @@ ${navPoints}  </navMap>
                                     } else if (sub === "alien") {
                                       newConfig.alienStyle = newConfig.alienStyle || "cosmic"
                                       newConfig.alienNamingStyle = newConfig.alienNamingStyle || "harsh"
-                                    } else if (sub === "beast") {
+                                    } else if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") {
                                       newConfig.beastFamily = newConfig.beastFamily || "dragon"
                                       newConfig.beastTier = newConfig.beastTier || "primordial"
                                     }
