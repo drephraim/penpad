@@ -931,16 +931,14 @@ const PROGRESSION_PRESET_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-preset-titles", label: "Titles", type: "compound", sourceKey: "Titles", fields: ["Title", "Reputation"], color: "amber", enabled: true },
   { id: "template-preset-weapon", label: "Weapon", type: "compound", sourceKey: "Weapon", fields: ["Weapon", "Weapon Grade", "Weapon Status"], color: "rose", enabled: true, repeatable: true },
   { id: "template-preset-resources", label: "Resources", type: "resource", sourceKey: "Resources", fields: ["HP", "Mana / Qi", "Stamina"], color: "blue", enabled: true },
-  { id: "template-preset-artifacts", label: "Inventory / Artifacts", type: "compound", sourceKey: "Artifacts", fields: ["Artifact", "Grade", "Status"], color: "rose", enabled: true },
-  { id: "template-preset-incarnation", label: "Incarnations", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true, repeatable: true }
+  { id: "template-preset-artifacts", label: "Inventory / Artifacts", type: "compound", sourceKey: "Artifacts", fields: ["Artifact", "Grade", "Status"], color: "rose", enabled: true }
 ]
 const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-name", label: "Name", type: "text", sourceKey: "name", fields: ["Name", "Title"], color: "rose", enabled: true },
   { id: "template-bloodline", label: "Bloodline", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Bloodline Rank"], color: "emerald", enabled: true },
   { id: "template-affinity", label: "Affinity", type: "compound", sourceKey: "Affinity", fields: ["Affinity Names", "Rank"], color: "cyan", enabled: true },
   { id: "template-class", label: "Class", type: "compound", sourceKey: "className", fields: ["Main Class", "Secondary Class"], color: "fuchsia", enabled: true },
-  { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true },
-  { id: "template-incarnation", label: "Incarnations", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
+  { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true }
 ]
 const SIMPLE_PROGRESSION_CUSTOM_FIELDS = [
   "Bloodline",
@@ -949,11 +947,7 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELDS = [
   "Affinity Rank",
   "Secondary Class",
   "Race",
-  "Affiliation",
-  "Incarnation / Past Lives",
-  "Incarnation / Past Lives Identity/Name",
-  "Incarnation / Past Lives Era",
-  "Incarnation / Past Lives Fate/Legacy"
+  "Affiliation"
 ]
 const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   bloodline: "Bloodline",
@@ -990,36 +984,7 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "secondary job": "Secondary Class",
   "second job": "Secondary Class",
   race: "Race",
-  affiliation: "Affiliation",
-  incarnation: "Incarnation / Past Lives",
-  incarnations: "Incarnation / Past Lives",
-  "past life": "Incarnation / Past Lives",
-  "past lives": "Incarnation / Past Lives",
-  "previous life": "Incarnation / Past Lives",
-  "previous lives": "Incarnation / Past Lives",
-  reincarnation: "Incarnation / Past Lives",
-  reincarnations: "Incarnation / Past Lives",
-  "incarnation / past lives": "Incarnation / Past Lives",
-  "incarnation/past lives": "Incarnation / Past Lives",
-  "incarnation identity": "Incarnation / Past Lives Identity/Name",
-  "incarnation identity/name": "Incarnation / Past Lives Identity/Name",
-  "incarnation name": "Incarnation / Past Lives Identity/Name",
-  "past life identity": "Incarnation / Past Lives Identity/Name",
-  "past life name": "Incarnation / Past Lives Identity/Name",
-  "identity/name": "Incarnation / Past Lives Identity/Name",
-  "incarnation / past lives identity/name": "Incarnation / Past Lives Identity/Name",
-  "incarnation / past lives identity": "Incarnation / Past Lives Identity/Name",
-  "incarnation / past lives name": "Incarnation / Past Lives Identity/Name",
-  "incarnation era": "Incarnation / Past Lives Era",
-  "past life era": "Incarnation / Past Lives Era",
-  era: "Incarnation / Past Lives Era",
-  "incarnation / past lives era": "Incarnation / Past Lives Era",
-  "incarnation fate": "Incarnation / Past Lives Fate/Legacy",
-  "incarnation legacy": "Incarnation / Past Lives Fate/Legacy",
-  "past life fate": "Incarnation / Past Lives Fate/Legacy",
-  "past life legacy": "Incarnation / Past Lives Fate/Legacy",
-  "fate/legacy": "Incarnation / Past Lives Fate/Legacy",
-  "incarnation / past lives fate/legacy": "Incarnation / Past Lives Fate/Legacy"
+  affiliation: "Affiliation"
 }
 const LITRPG_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "litrpg-name", label: "Character Profile", type: "text", sourceKey: "name", fields: ["Name", "Race", "Class"], color: "rose", enabled: true },
@@ -1045,8 +1010,7 @@ const XIANXIA_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "xianxia-lineage", label: "Bloodline & Physique", type: "compound", sourceKey: "Bloodline", fields: ["Bloodline", "Physique"], color: "emerald", enabled: true },
   { id: "xianxia-laws", label: "Elements & Intents", type: "compound", sourceKey: "Affinities", fields: ["Elements", "Comprehensions / Intents"], color: "cyan", enabled: true },
   { id: "xianxia-techniques", label: "Cultivation Techniques", type: "ability", sourceKey: "abilities", fields: ["Technique Name", "Layer/Rank", "Description"], color: "amber", enabled: true },
-  { id: "xianxia-treasures", label: "Spiritual Treasures", type: "compound", sourceKey: "Artifacts", fields: ["Spiritual Weapon", "Grade"], color: "lime", enabled: true },
-  { id: "xianxia-incarnation", label: "Incarnations", type: "compound", sourceKey: "Incarnation / Past Lives", fields: ["Identity/Name", "Era"], color: "violet", enabled: true }
+  { id: "xianxia-treasures", label: "Spiritual Treasures", type: "compound", sourceKey: "Artifacts", fields: ["Spiritual Weapon", "Grade"], color: "lime", enabled: true }
 ]
 const SHADOW_SLAVE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "ss-identity", label: "Soul Profile", type: "text", sourceKey: "name", fields: ["Name", "True Name"], color: "rose", enabled: true },
@@ -1118,10 +1082,6 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
         const record = item as Record<string, unknown>
         const name = String(record.name || record.identity || record["Identity/Name"] || record.affinity || record.value || record.title || "").trim()
         const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
-        const era = String(record.era || record.age || record.life || record.period || "").trim()
-        if (canonicalKey.startsWith("Incarnation / Past Lives")) {
-          return [name, era].filter(Boolean).join(" - ")
-        }
         if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
         if (canonicalKey === "Affinity Names" && name) return name
         if (name && rank) return `${name} (${rank})`
@@ -1135,13 +1095,6 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
     const record = value as Record<string, unknown>
     const name = String(record.name || record.identity || record["Identity/Name"] || record.affinity || record.value || record.title || "").trim()
     const rank = String(record.rank || record.grade || record.tier || record.quality || "").trim()
-    const era = String(record.era || record.age || record.life || record.period || "").trim()
-    if (canonicalKey.startsWith("Incarnation / Past Lives")) {
-      return [name, era].filter(Boolean).join(" - ") || Object.entries(record)
-        .map(([key, item]) => `${key}: ${String(item || "").trim()}`)
-        .filter(item => !item.endsWith(":"))
-        .join(", ")
-    }
     if (canonicalKey === "Affinity Rank" && name && rank) return `${name} (${rank})`
     if (canonicalKey === "Affinity Names" && name) return name
     if (name && rank) return `${name} (${rank})`
@@ -1153,15 +1106,51 @@ const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string)
   return String(value || "").trim()
 }
 
-const parseIncarnationEntries = (fields: Record<string, string> = {}): Array<{ identity: string; era: string }> => {
-  const identities = (fields["Incarnation / Past Lives Identity/Name"] || "").split(";").map(s => s.trim()).filter(Boolean)
-  const eras = (fields["Incarnation / Past Lives Era"] || "").split(";").map(s => s.trim()).filter(Boolean)
-  const maxLen = Math.max(identities.length, eras.length)
-  return Array.from({ length: maxLen }, (_, i) => ({
-    identity: identities[i] || "",
-    era: eras[i] || ""
-  }))
-}
+const parseMarkdownIncarnations = (content: string): Array<{ identity: string; era: string }> => {
+  const match = content.match(/## Incarnations\r?\n([\s\S]*?)(?:\r?\n##|$)/);
+  if (!match) return [];
+  const section = match[1];
+  const entries: Array<{ identity: string; era: string }> = [];
+  const lines = section.split("\n");
+  for (const line of lines) {
+    const cleanLine = line.trim();
+    if (cleanLine.startsWith("-")) {
+      const boldMatch = cleanLine.match(/^-\s*\*\*([^*]+)\*\*(?:\s*-\s*(.+))?$/);
+      if (boldMatch) {
+        entries.push({
+          identity: boldMatch[1].trim(),
+          era: (boldMatch[2] || "").trim()
+        });
+      } else {
+        const cleanNoBullet = cleanLine.substring(1).trim();
+        const parts = cleanNoBullet.split(" - ");
+        if (parts.length > 0) {
+          entries.push({
+            identity: parts[0].replace(/\*\*/g, "").trim(),
+            era: parts.slice(1).join(" - ").trim()
+          });
+        }
+      }
+    }
+  }
+  return entries;
+};
+
+const serializeMarkdownIncarnations = (content: string, entries: Array<{ identity: string; era: string }>): string => {
+  const sectionHeader = "## Incarnations";
+  const sectionContent = entries
+    .filter(e => e.identity.trim() !== "")
+    .map(e => `- **${e.identity.trim()}**${e.era.trim() ? ` - ${e.era.trim()}` : ''}`)
+    .join("\n");
+  const fullSection = `${sectionHeader}\n${sectionContent}`;
+  
+  const hasSection = content.includes(sectionHeader);
+  if (hasSection) {
+    return content.replace(/## Incarnations\r?\n([\s\S]*?)(?:\r?\n##|$)/, `${fullSection}\n\n`);
+  } else {
+    return content.trim() + `\n\n${fullSection}\n`;
+  }
+};
 
 const sanitizeSimpleProgressionCustomFields = (fields?: Record<string, unknown>) => {
   const cleaned: Record<string, string> = {}
@@ -1652,6 +1641,7 @@ function EditorContent() {
   const [dossierMessage, setDossierMessage] = useState('')
   const [isEditingDossier, setIsEditingDossier] = useState(false)
   const [dossierEditText, setDossierEditText] = useState('')
+  const [brainScanUpdatesLoading, setBrainScanUpdatesLoading] = useState(false)
   const [activeBrainPopup, setActiveBrainPopup] = useState<'ask' | 'suggestions' | 'continuity' | null>(null)
   const [arcSeeds, setArcSeeds] = useState<ArcSeed[]>([])
   const [arcSeedLoading, setArcSeedLoading] = useState(false)
@@ -4335,7 +4325,7 @@ const fillEmptyCustomJsonData = (
     setProgressionBulkUpdateStatus("Scanning chapters...")
 
     try {
-      const recentChapters = getManuscriptNotesList(notes).slice(-5)
+      const recentChapters = getManuscriptNotesList(notes).slice(-2)
       console.log("[PenPad] Recent chapters found:", recentChapters.length, recentChapters.map(n => n.title))
       if (recentChapters.length === 0) {
         setProgressionError("No manuscript chapters found. Add chapters to your project first.")
@@ -4367,12 +4357,10 @@ const fillEmptyCustomJsonData = (
       console.log("[PenPad] Updates queue length:", updatesQueue.length)
 
       if (updatesQueue.length === 0) {
-        // If all chapters were already processed, offer to force re-scan
         const hasProcessedChapters = currentProfiles.some(p => 
           recentChapters.some(ch => p.processedChapterIds?.includes(ch.id))
         )
         if (hasProcessedChapters) {
-          // Force re-scan: clear processedChapterIds for recent chapters and rebuild queue
           console.log("[PenPad] All chapters already processed. Force re-scanning...")
           setProgressionBulkUpdateStatus("Re-scanning chapters...")
           for (const note of recentChapters) {
@@ -4386,11 +4374,11 @@ const fillEmptyCustomJsonData = (
             }
           }
           if (updatesQueue.length === 0) {
-            setProgressionNotice("No characters were detected in the 5 recent chapters.")
+            setProgressionNotice("No characters were detected in the 2 recent chapters.")
             return
           }
         } else {
-          setProgressionNotice("No characters were detected in the 5 recent chapters. Ensure your characters have Story Bible entries and their names appear in the chapter text.")
+          setProgressionNotice("No characters were detected in the 2 recent chapters. Ensure your characters have Story Bible entries and their names appear in the chapter text.")
           return
         }
       }
@@ -7640,6 +7628,110 @@ const fillEmptyCustomJsonData = (
       s.entityName.trim().toLowerCase() !== normalizedName ||
       s.chapterNumber !== suggestion.chapterNumber
     ))
+  }
+
+  const handleScanBrainUpdates = async () => {
+    if (!projectId || !user || brainScanUpdatesLoading) return
+    const orderedNotes = getManuscriptNotesList(notes)
+    const recentNotes = orderedNotes.slice(-2) // Scan the last 2 chapters
+    if (recentNotes.length === 0) {
+      alert("No chapters found in the manuscript to scan.")
+      return
+    }
+
+    if (brainEntries.length === 0) {
+      alert("No existing Brain Map entries found. Add some entries first before scanning for updates.")
+      return
+    }
+
+    setBrainScanUpdatesLoading(true)
+    try {
+      const chapters = recentNotes.map(note => ({
+        id: note.id,
+        title: note.title || "Untitled",
+        chapterNumber: getNoteChapterNumber(note),
+        content: note.content || ""
+      }))
+
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "brain_scan_updates",
+          chapters,
+          existingBrainEntries: brainEntries
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to scan for updates")
+
+      const updates = Array.isArray(data.updates) ? data.updates : []
+      if (updates.length === 0) {
+        alert("Scanned the last 2 chapters and found no updates for existing Brain Map entries.")
+        return
+      }
+
+      let updatedCount = 0
+      const now = Date.now()
+      const importanceRank: Record<BrainImportance, number> = {
+        minor: 1,
+        major: 2,
+        critical: 3
+      }
+
+      const updatedList = [...brainEntries]
+      const updatedEntriesToSave: BrainEntry[] = []
+
+      for (const update of updates) {
+        const normalizedName = update.entityName.trim().toLowerCase()
+        const existingIdx = updatedList.findIndex(entry =>
+          (entry.entityName || entry.highlightedText || "").trim().toLowerCase() === normalizedName
+        )
+
+        if (existingIdx !== -1) {
+          const existingEntry = updatedList[existingIdx]
+          const existingImportance = existingEntry.importance || "minor"
+          const strongerImportance = update.importance && importanceRank[update.importance as BrainImportance] > importanceRank[existingImportance]
+            ? update.importance as BrainImportance
+            : existingImportance
+
+          const evidenceText = update.evidence?.trim()
+          const summaryWithEvidence = evidenceText
+            ? `${update.updatedSummary}\n\nEvidence: ${evidenceText}`
+            : update.updatedSummary
+
+          const updatedEntry: BrainEntry = {
+            ...existingEntry,
+            importance: strongerImportance,
+            aiSummary: summaryWithEvidence,
+            updatedAt: now
+          }
+
+          updatedList[existingIdx] = updatedEntry
+          updatedEntriesToSave.push(updatedEntry)
+          updatedCount++
+        }
+      }
+
+      if (updatedCount > 0) {
+        // Sort updated list by updatedAt/createdAt descending
+        updatedList.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+        setBrainEntries(updatedList)
+        await saveStoryBrainLocal(projectId, updatedList)
+        for (const entry of updatedEntriesToSave) {
+          await saveBrainEntryToCloud(user.uid, projectId, entry)
+        }
+        alert(`Successfully updated ${updatedCount} Brain Map entries!`)
+      } else {
+        alert("Scanned the last 2 chapters but couldn't match any suggested updates to existing Brain Map entries.")
+      }
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Failed to scan for updates.")
+    } finally {
+      setBrainScanUpdatesLoading(false)
+    }
   }
 
   const generateEntityDossier = async (entityName: string, entityType: BrainEntityType) => {
@@ -11144,7 +11236,7 @@ ${navPoints}  </navMap>
                   className={`progression-action-banner ${progressionBulkUpdating ? 'scanning' : ''}`}
                   onClick={handleProgressionBulkUpdate} 
                   disabled={progressionBulkUpdating || progressionLoading}
-                  title="Scan 5 recent chapters and update character profiles"
+                  title="Scan 2 recent chapters and update character profiles"
                 >
                   <div className="progression-banner-icon-container">
                     {progressionBulkUpdating ? (
@@ -11155,7 +11247,7 @@ ${navPoints}  </navMap>
                   </div>
                   <div className="progression-banner-content">
                     <h4>Update Character Profiles</h4>
-                    <p>{progressionBulkUpdating ? progressionBulkUpdateStatus : "Scan the 5 recent chapters to detect and apply character growth automatically."}</p>
+                    <p>{progressionBulkUpdating ? progressionBulkUpdateStatus : "Scan the 2 recent chapters to detect and apply character growth automatically."}</p>
                   </div>
                   {!progressionBulkUpdating && <span className="progression-banner-badge">Scan</span>}
                 </button>
@@ -11368,37 +11460,6 @@ ${navPoints}  </navMap>
                                     )}
                                   </div>
                                 )
-                            }
-
-                            const isIncarnationCard = templateCard.sourceKey === "Incarnation / Past Lives"
-
-                            if (isIncarnationCard) {
-                              const incarnationEntries = parseIncarnationEntries(selectedProgressionProfile.customFields || {})
-                              return (
-                                <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
-                                  <span>{templateCard.label}</span>
-                                  <div className="progression-incarnation-list">
-                                    {incarnationEntries.length === 0 ? (
-                                      <div className="progression-template-field-list">
-                                        <p style={{ opacity: 0.5, fontSize: "0.75rem" }}>No past lives recorded yet.</p>
-                                      </div>
-                                    ) : incarnationEntries.map((entry, idx) => (
-                                      <div key={idx} className="progression-incarnation-item" style={{ padding: "0.45rem 0", borderBottom: idx < incarnationEntries.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none" }}>
-                                        <div className="progression-template-field-list">
-                                          <div>
-                                            <small>Identity/Name</small>
-                                            <strong>{entry.identity || "Not set"}</strong>
-                                          </div>
-                                          <div>
-                                            <small>Era</small>
-                                            <strong>{entry.era || "Not set"}</strong>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )
                             }
 
                             const isLoreCard = templateCard.id === "template-lore" || templateCard.label.toLowerCase() === "lore" || templateCard.sourceKey.toLowerCase() === "notes" || templateCard.sourceKey.toLowerCase() === "lore";
@@ -12979,7 +13040,7 @@ ${navPoints}  </navMap>
                   </button>
                 </div>
 
-                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                <div className="brain-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.45rem', marginBottom: '0.75rem', flexShrink: 0 }}>
                   <button
                     className="brain-action-card glass-light"
                     onClick={() => setActiveBrainPopup('ask')}
@@ -13085,6 +13146,34 @@ ${navPoints}  </navMap>
                         boxShadow: '0 0 6px #ef4444'
                       }}>{consistencyWarnings.length}</span>
                     )}
+                  </button>
+
+                  <button
+                    className="brain-action-card glass-light"
+                    onClick={handleScanBrainUpdates}
+                    disabled={brainScanUpdatesLoading}
+                    title="Scan last 2 chapters for Brain Map updates"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      padding: '0.55rem 0.25rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--surface-border)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'var(--transition)'
+                    }}
+                  >
+                    {brainScanUpdatesLoading ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <RefreshCw size={14} style={{ color: '#60a5fa' }} />
+                    )}
+                    <span style={{ fontSize: '0.62rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scan Updates</span>
                   </button>
                 </div>
 
@@ -14549,6 +14638,79 @@ ${navPoints}  </navMap>
                         </div>
                       )}
                     </div>
+
+                    {selectedBrainEntity.type === 'character' && !isEditingDossier && linkedBibleEntry && (
+                      <div className="dossier-incarnations-section" style={{ marginTop: '1rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem' }}>
+                        <span className="brain-detail-label" style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-dim)', display: 'block', marginBottom: '0.5rem' }}>Incarnations & Past Lives</span>
+                        
+                        {(() => {
+                          const incarnationEntries = parseMarkdownIncarnations(linkedBibleEntry.content || "");
+                          const syncIncarnationFields = (entries: Array<{ identity: string; era: string }>) => {
+                            const updatedContent = serializeMarkdownIncarnations(linkedBibleEntry.content || "", entries);
+                            handleSaveDossierText(selectedBrainEntity.name, updatedContent);
+                          };
+
+                          return (
+                            <div className="glass-light" style={{ padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--surface-border)' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {incarnationEntries.length === 0 ? (
+                                  <p style={{ opacity: 0.5, fontSize: '0.75rem', margin: 0 }}>No incarnations recorded in Story Bible yet. Add one below.</p>
+                                ) : incarnationEntries.map((entry, idx) => (
+                                  <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <div style={{ flex: 1 }}>
+                                      <input
+                                        className="ai-input"
+                                        style={{ width: '100%', fontSize: '0.78rem', padding: '0.35rem 0.5rem' }}
+                                        value={entry.identity}
+                                        onChange={(e) => {
+                                          const updated = incarnationEntries.map((item, i) => i === idx ? { ...item, identity: e.target.value } : item);
+                                          syncIncarnationFields(updated);
+                                        }}
+                                        placeholder="Name of Incarnation"
+                                      />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                      <input
+                                        className="ai-input"
+                                        style={{ width: '100%', fontSize: '0.78rem', padding: '0.35rem 0.5rem' }}
+                                        value={entry.era}
+                                        onChange={(e) => {
+                                          const updated = incarnationEntries.map((item, i) => i === idx ? { ...item, era: e.target.value } : item);
+                                          syncIncarnationFields(updated);
+                                        }}
+                                        placeholder="Era lived in"
+                                      />
+                                    </div>
+                                    <button
+                                      className="btn-icon-mini danger"
+                                      onClick={() => {
+                                        const updated = incarnationEntries.filter((_, i) => i !== idx);
+                                        syncIncarnationFields(updated);
+                                      }}
+                                      title="Remove this incarnation"
+                                      style={{ padding: '0.35rem', flexShrink: 0 }}
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                              <button
+                                className="btn-ai-sub btn-ai-secondary"
+                                style={{ marginTop: '0.65rem', fontSize: '0.7rem', padding: '0.25rem 0.6rem', width: '100%', justifyContent: 'center' }}
+                                onClick={() => {
+                                  const updated = [...incarnationEntries, { identity: "", era: "" }];
+                                  syncIncarnationFields(updated);
+                                }}
+                              >
+                                <Plus size={11} />
+                                Add Incarnation
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   {/* Right Column: Occurrence Timeline */}
@@ -15545,79 +15707,7 @@ ${navPoints}  </navMap>
                       .map(templateCard => {
                         const fields = templateCard.fields.length > 0 ? templateCard.fields : [templateCard.label]
 
-                        const isIncarnationCard = templateCard.sourceKey === "Incarnation / Past Lives"
 
-                        if (isIncarnationCard) {
-                          const draftFields = progressionEditProfileDraft.customFields || {}
-                          const incarnationEntries = parseIncarnationEntries(draftFields)
-
-                          const syncIncarnationFields = (entries: Array<{ identity: string; era: string }>) => {
-                            setProgressionDraftCustomField("Incarnation / Past Lives Identity/Name", entries.map(e => e.identity).filter(Boolean).join("; "))
-                            setProgressionDraftCustomField("Incarnation / Past Lives Era", entries.map(e => e.era).filter(Boolean).join("; "))
-                            setProgressionDraftCustomField("Incarnation / Past Lives", entries.map(e => [e.identity, e.era].filter(Boolean).join(" - ")).filter(Boolean).join("; "))
-                          }
-
-                          return (
-                            <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
-                              <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><Trash2 size={12} /></button>
-                              <span>{templateCard.label}</span>
-                              <div className="progression-template-value-fields">
-                                {incarnationEntries.length === 0 ? (
-                                  <p style={{ opacity: 0.5, fontSize: "0.75rem" }}>No past lives recorded yet.</p>
-                                ) : incarnationEntries.map((entry, idx) => (
-                                  <div key={idx} className="progression-incarnation-edit-item" style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.35rem", padding: "0.4rem", background: "rgba(255,255,255,0.03)", borderRadius: "var(--radius-sm)" }}>
-                                    <label style={{ flex: 1 }}>
-                                      <small>Name/Title</small>
-                                      <input
-                                        className="ai-input"
-                                        value={entry.identity}
-                                        onChange={(e) => {
-                                          const updated = incarnationEntries.map((item, i) => i === idx ? { ...item, identity: e.target.value } : item)
-                                          syncIncarnationFields(updated)
-                                        }}
-                                        placeholder="The Phoenix Empress, The Void Walker..."
-                                      />
-                                    </label>
-                                    <label style={{ flex: 1 }}>
-                                      <small>Era</small>
-                                      <input
-                                        className="ai-input"
-                                        value={entry.era}
-                                        onChange={(e) => {
-                                          const updated = incarnationEntries.map((item, i) => i === idx ? { ...item, era: e.target.value } : item)
-                                          syncIncarnationFields(updated)
-                                        }}
-                                        placeholder="Age of Embers, Era of Shadows..."
-                                      />
-                                    </label>
-                                    <button
-                                      className="btn-icon-mini danger"
-                                      onClick={() => {
-                                        const updated = incarnationEntries.filter((_, i) => i !== idx)
-                                        syncIncarnationFields(updated)
-                                      }}
-                                      title="Remove this incarnation"
-                                      style={{ marginTop: "1rem", flexShrink: 0 }}
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                              <button
-                                className="btn-ai-sub btn-ai-secondary"
-                                style={{ marginTop: "0.5rem", fontSize: "0.7rem", padding: "0.25rem 0.6rem" }}
-                                onClick={() => {
-                                  const updated = [...incarnationEntries, { identity: "", era: "" }]
-                                  syncIncarnationFields(updated)
-                                }}
-                              >
-                                <Plus size={11} />
-                                Add Incarnation
-                              </button>
-                            </div>
-                          )
-                        }
 
                         return (
                           <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
@@ -22179,127 +22269,211 @@ ${navPoints}  </navMap>
           }
         }
         
-        /* Graph Modal CSS styles */
+        /* --- Futuristic Redesigned Graph Modal CSS styles --- */
+        @keyframes link-flow {
+          to {
+            stroke-dashoffset: -24;
+          }
+        }
+        @keyframes pulse-ring {
+          0% {
+            transform: scale(0.95);
+            opacity: 0.7;
+          }
+          50% {
+            transform: scale(1.08);
+            opacity: 0.35;
+          }
+          100% {
+            transform: scale(0.95);
+            opacity: 0.7;
+          }
+        }
+        @keyframes panel-slide-in {
+          from {
+            transform: translateX(40px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
         .graph-modal-overlay {
-          background: rgba(4, 4, 6, 0.88) !important;
+          background: rgba(3, 3, 5, 0.85) !important;
+          backdrop-filter: blur(14px) !important;
+          transition: all 0.3s ease-in-out;
         }
         .brain-graph-modal {
-          max-width: 960px !important;
-          width: 95vw !important;
-          height: 88vh !important;
-          max-height: 800px !important;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden !important;
-          border: 1px solid rgba(168, 85, 247, 0.25) !important;
-          box-shadow: 0 0 30px rgba(168, 85, 247, 0.18) !important;
+          background: linear-gradient(135deg, rgba(14, 14, 26, 0.85) 0%, rgba(8, 8, 14, 0.96) 100%) !important;
+          backdrop-filter: blur(28px) !important;
+          border: 1px solid rgba(168, 85, 247, 0.28) !important;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 50px rgba(168, 85, 247, 0.12) !important;
+          border-radius: 16px !important;
         }
         .brain-graph-header {
           flex-shrink: 0;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding-bottom: 0.75rem;
-          border-bottom: 1px solid var(--surface-border);
+          padding: 1.25rem 1.75rem 1rem !important;
+          background: rgba(20, 20, 35, 0.35);
+          border-bottom: 1px solid rgba(168, 85, 247, 0.15) !important;
+        }
+        .brain-graph-header h2 {
+          background: linear-gradient(to right, #ffffff, #d8b4fe);
+          -webkit-background-clip: text;
+          -webkit-fill-color: transparent;
+          -webkit-text-fill-color: transparent;
+          font-weight: 800 !important;
+        }
+        .brain-graph-header p {
+          color: rgba(168, 85, 247, 0.65) !important;
+          font-size: 0.74rem !important;
+          font-weight: 500;
         }
         .graph-controls {
           display: flex;
           align-items: center;
-          gap: 0.4rem;
+          gap: 0.5rem;
         }
-        .graph-controls button {
-          padding: 0.35rem 0.65rem;
-          font-size: 0.72rem;
-          font-weight: 700;
+        .graph-btn {
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(168, 85, 247, 0.25);
+          color: #c084fc;
+          font-weight: 600;
           cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .graph-btn:hover {
+          background: rgba(168, 85, 247, 0.15);
+          border-color: rgba(168, 85, 247, 0.5);
+          color: #e9d5ff;
+          box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+          transform: translateY(-1px);
+        }
+        .graph-btn:active {
+          transform: translateY(0);
+        }
+        .graph-btn-close {
+          background: rgba(239, 68, 68, 0.06) !important;
+          border: 1px solid rgba(239, 68, 68, 0.25) !important;
+          color: #f87171 !important;
+        }
+        .graph-btn-close:hover {
+          background: rgba(239, 68, 68, 0.2) !important;
+          border-color: rgba(239, 68, 68, 0.6) !important;
+          color: #fca5a5 !important;
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.35) !important;
         }
         .graph-workspace-wrapper {
           flex: 1;
           display: flex;
           position: relative;
-          height: calc(100% - 60px);
-          background: rgba(0, 0, 0, 0.22);
-          border-radius: var(--radius-md);
+          height: calc(100% - 65px);
+          background: radial-gradient(circle at center, #0e0e1a 0%, #06060c 100%) !important;
+          border-radius: 12px;
           overflow: hidden;
         }
-        .graph-legend {
-          position: absolute;
-          bottom: 10px;
-          left: 10px;
-          background: rgba(10, 10, 15, 0.85);
-          backdrop-filter: blur(8px);
-          border: 1px solid var(--surface-border);
-          border-radius: var(--radius-sm);
-          padding: 0.5rem 0.65rem;
-          display: flex;
-          flex-direction: column;
-          gap: 0.35rem;
-          z-index: 10;
+        .graph-legend-horizontal {
+          background: rgba(10, 10, 20, 0.7) !important;
+          backdrop-filter: blur(14px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.05) !important;
+          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.04) !important;
+          border-radius: 24px !important;
         }
         .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 0.4rem;
+          padding: 0.3rem 0.65rem;
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.02);
+          transition: all 0.2s ease;
+        }
+        .legend-item:hover {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(255, 255, 255, 0.08);
+          transform: translateY(-2px);
         }
         .legend-color {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-        }
-        .legend-color.type-character { background: #a855f7; }
-        .legend-color.type-place { background: #22c55e; }
-        .legend-color.type-object { background: #3b82f6; }
-        .legend-color.type-concept { background: #eab308; }
-        .legend-color.type-event { background: #f97316; }
-        .legend-color.type-foreshadowing { background: #ec4899; }
-        .legend-label {
-          font-size: 0.68rem;
-          color: var(--text-secondary);
-          font-weight: 600;
+          box-shadow: 0 0 8px currentColor;
         }
         .graph-svg-container {
           width: 100%;
           height: 100%;
         }
         .graph-link-line {
-          stroke: rgba(168, 85, 247, 0.25);
+          stroke: rgba(168, 85, 247, 0.18);
           stroke-width: 1.5px;
-          stroke-dasharray: 4, 3;
+          stroke-dasharray: 6, 4;
+          animation: link-flow 1.5s linear infinite;
+          transition: stroke 0.3s, stroke-width 0.3s, filter 0.3s;
+        }
+        .graph-link-line.active-link {
+          stroke: #c084fc;
+          stroke-width: 2.2px;
+          filter: drop-shadow(0 0 4px #a855f7);
+          animation-duration: 0.75s;
         }
         .graph-node-circle {
-          stroke-width: 1.5px;
+          stroke-width: 1.8px;
           cursor: pointer;
-          transition: r 0.2s, stroke-width 0.2s;
-        }
-        .graph-node-circle:hover {
-          stroke-width: 3px;
+          transform-box: fill-box;
+          transform-origin: center;
+          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .graph-node-circle.type-character {
-          fill: rgba(168, 85, 247, 0.16);
-          stroke: #c084fc;
+          fill: rgba(168, 85, 247, 0.06);
+          stroke: #a855f7;
+          filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.55));
         }
         .graph-node-circle.type-place {
-          fill: rgba(34, 197, 94, 0.16);
-          stroke: #4ade80;
+          fill: rgba(34, 197, 94, 0.06);
+          stroke: #22c55e;
+          filter: drop-shadow(0 0 8px rgba(34, 197, 94, 0.55));
         }
         .graph-node-circle.type-object {
-          fill: rgba(59, 130, 246, 0.16);
-          stroke: #60a5fa;
+          fill: rgba(59, 130, 246, 0.06);
+          stroke: #3b82f6;
+          filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.55));
         }
         .graph-node-circle.type-concept {
-          fill: rgba(234, 179, 8, 0.16);
-          stroke: #fde047;
+          fill: rgba(234, 179, 8, 0.06);
+          stroke: #eab308;
+          filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.55));
         }
         .graph-node-circle.type-event {
-          fill: rgba(249, 115, 22, 0.16);
-          stroke: #fb923c;
+          fill: rgba(249, 115, 22, 0.06);
+          stroke: #f97316;
+          filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.55));
         }
         .graph-node-circle.type-foreshadowing {
-          fill: rgba(236, 72, 153, 0.16);
-          stroke: #f472b6;
+          fill: rgba(236, 72, 153, 0.06);
+          stroke: #ec4899;
+          filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.55));
         }
         .graph-node-group:hover .graph-node-circle {
-          r: 35px;
+          transform: scale(1.12);
+          stroke-width: 2.5px;
+          filter: drop-shadow(0 0 12px currentColor);
+        }
+        .graph-node-circle.selected {
+          stroke-width: 3px !important;
+          stroke: #ffffff !important;
+          filter: drop-shadow(0 0 12px currentColor) !important;
+        }
+        .graph-node-selected-ring {
+          fill: none;
+          stroke: #ffffff;
+          stroke-width: 1.5px;
+          stroke-dasharray: 4, 3;
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: pulse-ring 2.5s ease-in-out infinite;
         }
         .graph-node-icon-wrapper {
           width: 100%;
@@ -22309,14 +22483,119 @@ ${navPoints}  </navMap>
           justify-content: center;
           color: var(--text-primary);
           opacity: 0.85;
+          transition: all 0.3s ease;
+        }
+        .graph-node-group:hover .graph-node-icon-wrapper {
+          transform: scale(1.1);
+          opacity: 1;
         }
         .graph-node-label {
-          font-size: 0.72rem;
+          font-size: 0.74rem;
           font-weight: 800;
           fill: rgb(241, 245, 249);
           stroke: rgb(15, 15, 18);
-          stroke-width: 2.5px;
+          stroke-width: 3.5px;
           paint-order: stroke fill;
+          transition: all 0.3s ease;
+        }
+        .graph-node-group:hover .graph-node-label {
+          transform: translateY(3px);
+          fill: #ffffff;
+        }
+        .graph-node-preview-panel {
+          position: absolute;
+          top: 15px;
+          right: 15px;
+          width: 310px;
+          max-height: calc(100% - 30px);
+          background: linear-gradient(180deg, rgba(14, 14, 28, 0.8) 0%, rgba(8, 8, 16, 0.95) 100%) !important;
+          backdrop-filter: blur(20px) !important;
+          border: 1px solid rgba(168, 85, 247, 0.22) !important;
+          border-left: 3px solid rgba(168, 85, 247, 0.6) !important;
+          border-radius: var(--radius-lg);
+          padding: 1.25rem !important;
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem !important;
+          z-index: 20;
+          box-shadow: 0 15px 45px rgba(0, 0, 0, 0.7), 0 0 25px rgba(168, 85, 247, 0.1) !important;
+          overflow: hidden;
+          animation: panel-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .brain-type-badge {
+          padding: 0.25rem 0.55rem;
+          border-radius: 6px;
+          font-weight: 750;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          border: 1px solid currentColor;
+        }
+        .brain-type-badge.type-character {
+          color: #c084fc;
+          background: rgba(168, 85, 247, 0.08);
+          border-color: rgba(168, 85, 247, 0.2);
+        }
+        .brain-type-badge.type-place {
+          color: #4ade80;
+          background: rgba(34, 197, 94, 0.08);
+          border-color: rgba(34, 197, 94, 0.2);
+        }
+        .brain-type-badge.type-object {
+          color: #60a5fa;
+          background: rgba(59, 130, 246, 0.08);
+          border-color: rgba(59, 130, 246, 0.2);
+        }
+        .brain-type-badge.type-concept {
+          color: #fde047;
+          background: rgba(234, 179, 8, 0.08);
+          border-color: rgba(234, 179, 8, 0.2);
+        }
+        .brain-type-badge.type-event {
+          color: #fb923c;
+          background: rgba(249, 115, 22, 0.08);
+          border-color: rgba(249, 115, 22, 0.2);
+        }
+        .brain-type-badge.type-foreshadowing {
+          color: #f472b6;
+          background: rgba(236, 72, 153, 0.08);
+          border-color: rgba(236, 72, 153, 0.2);
+        }
+        .brain-importance-badge {
+          padding: 0.2rem 0.45rem;
+          border-radius: 4px;
+          font-weight: 750;
+          text-transform: uppercase;
+          border: 1px solid currentColor;
+        }
+        .brain-importance-badge.importance-critical {
+          color: #f87171;
+          background: rgba(239, 68, 68, 0.1);
+          border-color: rgba(239, 68, 68, 0.25);
+          filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.2));
+        }
+        .brain-importance-badge.importance-major {
+          color: #fb923c;
+          background: rgba(249, 115, 22, 0.1);
+          border-color: rgba(249, 115, 22, 0.2);
+        }
+        .brain-importance-badge.importance-minor {
+          color: #94a3b8;
+          background: rgba(148, 163, 184, 0.1);
+          border-color: rgba(148, 163, 184, 0.25);
+        }
+        .brain-markdown-view::-webkit-scrollbar {
+          width: 5px;
+        }
+        .brain-markdown-view::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.01);
+          border-radius: 4px;
+        }
+        .brain-markdown-view::-webkit-scrollbar-thumb {
+          background: rgba(168, 85, 247, 0.22);
+          border-radius: 4px;
+        }
+        .brain-markdown-view::-webkit-scrollbar-thumb:hover {
+          background: rgba(168, 85, 247, 0.4);
         }
         .dossier-textarea:focus {
           box-shadow: none !important;
@@ -25663,23 +25942,23 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
 
   return (
     <div className="modal-overlay graph-modal-overlay" onClick={onClose} style={{ zIndex: 110 }}>
-      <div className="modal brain-graph-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '960px', width: '95vw', height: '88vh', maxHeight: '800px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="modal-header brain-graph-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid var(--surface-border)' }}>
+      <div className="modal brain-graph-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header brain-graph-header">
           <div>
             <h2 className="modal-title">Interactive Brain Map Graph</h2>
             <p className="modal-description">Drag nodes to explore connections. Scroll to zoom, drag background to pan.</p>
           </div>
           <div className="graph-controls-panel" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <button onClick={() => setScale(s => Math.min(2.5, s + 0.1))} title="Zoom In" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--surface-border)', color: '#c084fc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 'bold' }}>+</button>
-            <button onClick={() => setScale(s => Math.max(0.4, s - 0.1))} title="Zoom Out" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--surface-border)', color: '#c084fc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 'bold' }}>-</button>
-            <button onClick={resetViewport} style={{ padding: '0 0.75rem', height: '32px', borderRadius: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--surface-border)', color: 'var(--text-secondary)', fontSize: '0.74rem', fontWeight: 'bold', cursor: 'pointer' }}>Reset View</button>
-            <button onClick={onClose} title="Close" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={15} /></button>
+            <button onClick={() => setScale(s => Math.min(2.5, s + 0.1))} title="Zoom In" className="graph-btn" style={{ width: '32px', borderRadius: '50%' }}>+</button>
+            <button onClick={() => setScale(s => Math.max(0.4, s - 0.1))} title="Zoom Out" className="graph-btn" style={{ width: '32px', borderRadius: '50%' }}>-</button>
+            <button onClick={resetViewport} className="graph-btn" style={{ padding: '0 0.85rem', borderRadius: '16px', fontSize: '0.74rem' }}>Reset View</button>
+            <button onClick={onClose} title="Close" className="graph-btn graph-btn-close" style={{ width: '32px', borderRadius: '50%' }}><X size={15} /></button>
           </div>
         </div>
 
-        <div className="graph-workspace-wrapper" style={{ flex: 1, display: 'flex', position: 'relative', height: 'calc(100% - 60px)', background: '#0a0a0f', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+        <div className="graph-workspace-wrapper">
           {/* Horizontal Legend at Bottom */}
-          <div className="graph-legend-horizontal" style={{ position: 'absolute', bottom: '15px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(10, 10, 15, 0.85)', backdropFilter: 'blur(8px)', border: '1px solid var(--surface-border)', borderRadius: '20px', padding: '0.45rem 1rem', display: 'flex', gap: '0.85rem', zIndex: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div className="graph-legend-horizontal" style={{ position: 'absolute', bottom: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.85rem', zIndex: 10, flexWrap: 'wrap', justifyContent: 'center', padding: '0.45rem 1rem' }}>
             {['character', 'place', 'object', 'concept', 'event', 'foreshadowing'].map(type => (
               <div key={type} className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.68rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
                 <span className="legend-color" style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', background: type === 'character' ? '#a855f7' : type === 'place' ? '#22c55e' : type === 'object' ? '#3b82f6' : type === 'concept' ? '#eab308' : type === 'event' ? '#f97316' : '#ec4899' }}></span>
@@ -25688,7 +25967,7 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
             ))}
           </div>
 
-          <div className="graph-svg-container" style={{ width: '100%', height: '100%' }}>
+          <div className="graph-svg-container">
             <svg
               width="100%"
               height="100%"
@@ -25704,12 +25983,10 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
               style={{ cursor: isPanning ? 'grabbing' : draggingNodeIdRef.current ? 'grabbing' : 'grab' }}
             >
               <defs>
-                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="4" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
+                {/* Futuristic dotted HUD pattern */}
                 <pattern id="graph-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.025)" strokeWidth="1" />
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(168, 85, 247, 0.03)" strokeWidth="1" />
+                  <circle cx="0" cy="0" r="1.5" fill="rgba(168, 85, 247, 0.15)" />
                 </pattern>
               </defs>
 
@@ -25720,6 +25997,8 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
                   const sourceNode = nodes.find(n => n.id === link.source);
                   const targetNode = nodes.find(n => n.id === link.target);
                   if (!sourceNode || !targetNode) return null;
+                  
+                  const isConnectionActive = selectedGraphNodeId === link.source || selectedGraphNodeId === link.target;
                   return (
                     <line
                       key={idx}
@@ -25727,85 +26006,73 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
                       y1={sourceNode.y}
                       x2={targetNode.x}
                       y2={targetNode.y}
-                      className="graph-link-line"
+                      className={`graph-link-line ${isConnectionActive ? 'active-link' : ''}`}
                     />
                   );
                 })}
 
-                {nodes.map(node => (
-                  <g
-                    key={node.id}
-                    transform={`translate(${node.x}, ${node.y})`}
-                    className="graph-node-group"
-                    onMouseDown={(e) => handleNodeMouseDown(e, node)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedGraphNodeId(node.id);
-                    }}
-                    onDoubleClick={() => {
-                      onSelectEntity(node.name);
-                      onClose();
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <circle
-                      r={node.size}
-                      className={`graph-node-circle type-${node.type} importance-${node.importance}`}
-                      filter="url(#glow)"
-                    />
-                    <foreignObject
-                      x={-node.size * 0.6}
-                      y={-node.size * 0.6}
-                      width={node.size * 1.2}
-                      height={node.size * 1.2}
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      <div className="graph-node-icon-wrapper">
-                        {renderIcon(node.type, node.size * 0.75)}
-                      </div>
-                    </foreignObject>
-                    <text
-                      y={node.size + 14}
-                      textAnchor="middle"
-                      className="graph-node-label"
-                      style={{
-                        fontSize: '0.75rem',
-                        fontWeight: '800',
-                        fill: '#f8fafc',
-                        stroke: '#08080c',
-                        strokeWidth: '4px',
-                        strokeLinejoin: 'round',
-                        paintOrder: 'stroke fill',
-                        pointerEvents: 'none'
+                {nodes.map(node => {
+                  const isNodeSelected = selectedGraphNodeId === node.id;
+                  return (
+                    <g
+                      key={node.id}
+                      transform={`translate(${node.x}, ${node.y})`}
+                      className="graph-node-group"
+                      onMouseDown={(e) => handleNodeMouseDown(e, node)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedGraphNodeId(node.id);
                       }}
+                      onDoubleClick={() => {
+                        onSelectEntity(node.name);
+                        onClose();
+                      }}
+                      style={{ cursor: 'pointer' }}
                     >
-                      {node.name}
-                    </text>
-                  </g>
-                ))}
+                      {/* Holographic orbital selection ring */}
+                      {isNodeSelected && (
+                        <circle
+                          r={node.size + 6}
+                          className="graph-node-selected-ring"
+                        />
+                      )}
+                      <circle
+                        r={node.size}
+                        className={`graph-node-circle type-${node.type} importance-${node.importance} ${isNodeSelected ? 'selected' : ''}`}
+                        style={{ color: node.type === 'character' ? '#a855f7' : node.type === 'place' ? '#22c55e' : node.type === 'object' ? '#3b82f6' : node.type === 'concept' ? '#eab308' : node.type === 'event' ? '#f97316' : '#ec4899' }}
+                      />
+                      <foreignObject
+                        x={-node.size * 0.6}
+                        y={-node.size * 0.6}
+                        width={node.size * 1.2}
+                        height={node.size * 1.2}
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        <div className="graph-node-icon-wrapper">
+                          {renderIcon(node.type, node.size * 0.75)}
+                        </div>
+                      </foreignObject>
+                      <text
+                        y={node.size + 15}
+                        textAnchor="middle"
+                        className="graph-node-label"
+                        style={{
+                          strokeLinejoin: 'round',
+                          paintOrder: 'stroke fill',
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        {node.name}
+                      </text>
+                    </g>
+                  );
+                })}
               </g>
             </svg>
           </div>
 
           {selectedGraphNode && (
-            <div className="graph-node-preview-panel glass fade-in" style={{
-              position: 'absolute',
-              top: '15px',
-              right: '15px',
-              width: '290px',
-              maxHeight: 'calc(100% - 30px)',
-              background: 'rgba(10, 10, 15, 0.88)',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid var(--surface-border)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '1.1rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.65rem',
-              zIndex: 20,
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-              overflow: 'hidden'
-            }}>
+            <div className="graph-node-preview-panel">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className={`brain-type-badge type-${selectedGraphNode.type}`} style={{ fontSize: '0.64rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   {renderIcon(selectedGraphNode.type, 11)}
@@ -25819,7 +26086,7 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
                 </button>
               </div>
               
-              <h3 style={{ margin: '0.15rem 0 0', fontSize: '1.05rem', fontWeight: '800', color: 'var(--text-primary)' }}>{selectedGraphNode.name}</h3>
+              <h3 style={{ margin: '0.15rem 0 0', fontSize: '1.1rem', fontWeight: '800', color: '#ffffff' }}>{selectedGraphNode.name}</h3>
               
               <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
                 <span className={`brain-importance-badge importance-${selectedGraphNode.importance}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem' }}>
@@ -25830,20 +26097,20 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
                 <span>{selectedGraphNode.entriesCount} occurrence{selectedGraphNode.entriesCount === 1 ? '' : 's'}</span>
               </div>
               
-              <div className="brain-markdown-view scrollbar" style={{ flex: 1, fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: '1.5', overflowY: 'auto', borderTop: '1px solid var(--surface-border)', paddingTop: '0.65rem', marginTop: '0.2rem', paddingRight: '0.2rem' }}>
+              <div className="brain-markdown-view scrollbar" style={{ flex: 1, fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: '1.5', overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.75rem', marginTop: '0.25rem', paddingRight: '0.2rem' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{displaySummaryContent}</ReactMarkdown>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.45rem', borderTop: '1px solid var(--surface-border)', paddingTop: '0.75rem', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.45rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.75rem', flexShrink: 0 }}>
                 <button
                   onClick={() => {
                     onSelectEntity(selectedGraphNode.name);
                     onClose();
                   }}
                   className="btn-ai-sub btn-ai-secondary"
-                  style={{ flex: 1, fontSize: '0.7rem', padding: '0.45rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', cursor: 'pointer', background: 'rgba(255,255,255,0.04)' }}
+                  style={{ flex: 1, fontSize: '0.72rem', padding: '0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', cursor: 'pointer' }}
                 >
-                  <BookOpen size={12} />
+                  <BookOpen size={13} />
                   Open Bible Dossier
                 </button>
               </div>

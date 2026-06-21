@@ -1125,12 +1125,11 @@ export async function POST(req: NextRequest) {
         "7. Put affinity names in profile.customFields['Affinity Names'] as a comma-separated list, such as Fire, Ice, Void. Put paired affinity ranks in profile.customFields['Affinity Rank'], such as Fire (High), Ice (Celestial), Void (Supreme). Preserve pairings when multiple affinities have different ranks. Do not put affinities in bloodline or class.\n" +
         "8. Put the character's cultivation realm (such as Demigod, God) in profile.realm. Put their cultivation stage/sub-rank (such as Low, Medium, High, Peak) in profile.stage. If the system uses a non-cultivation rank (or if realm is not applicable), put it in profile.rank. Use the Configured Cultivation Realms, Configured Stage Labels, and Uploaded Cultivation Guide when available to match and normalize these values. Any term that appears in the uploaded cultivation ladder is cultivation, not className, unless the chapter explicitly says it is a class/job. Be extremely smart and precise to pick up on even the smallest error or detail in character growth and cultivation advancements.\n" +
         "9. Put skills, techniques, powers, spells, and signature abilities in profile.abilities. Each ability must include name, rank if known, level set to 1 when no number is stated, description, and evidence when available. Do not turn class names, bloodlines, or affinities into skills unless the chapter explicitly calls them skills/techniques.\n" +
-        "10. Detect reincarnation and past-life information intelligently. Trigger this when the chapter uses phrases such as incarnation, incarnations, reincarnation, past life, past lives, previous life, former life, life as, in her life as, in his life as, when she was, when he was, she had once been, he had once been, soul memory, former self, previous self, prior existence, or names/titles explicitly framed as an earlier identity. Store this in profile.customFields['Incarnation / Past Lives'] as a concise readable summary. Also fill profile.customFields['Incarnation / Past Lives Identity/Name'] and profile.customFields['Incarnation / Past Lives Era'] when those parts can be inferred. Preserve multiple past lives separated by semicolons. Do not confuse ordinary aliases, disguises, family ancestry, titles, or metaphors with a real past life unless the chapter frames it as a previous incarnation or former life.\n" +
-        "11. Extract and return ONLY new, interesting reusable lore details discovered in this chapter in profile.notes (such as reputation, prophecy, rumor, weakness, relationship, hidden identity, origin, temperament, or an unusual detail). Do not return existing/past lore notes. If no new details exist in the chapter, return \"\" (an empty string) in profile.notes.\n" +
-        "12. Preserve existing values when the current chapter gives no direct evidence. If the chapter has no meaningful progression or new character detail, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
-        "13. Never double-count previous profile history. Use the existing profile and processed chapter history as current truth.\n" +
-        "14. In update.evidence, include short exact snippets that justify every changed card field, especially class, secondary class, cultivation realm (realm), stage, bloodline, bloodline rank, affinity names, affinity rank, Incarnation / Past Lives, and skills.\n" +
-        "15. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, abilities, customFields, notes, level, exp, nextLevelExp, stats, traits, nicknames, uniqueTrait, cultivationPath, and optionally customJsonData. customFields must include Bloodline, Bloodline Rank, Affinity Names, Affinity Rank, Secondary Class, Incarnation / Past Lives, Incarnation / Past Lives Identity/Name, Incarnation / Past Lives Era, and any observed extra title/class/weapon fields. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, and evidence." +
+        "10. Extract and return ONLY new, interesting reusable lore details discovered in this chapter in profile.notes (such as reputation, prophecy, rumor, weakness, relationship, hidden identity, origin, temperament, or an unusual detail). Do not return existing/past lore notes. If no new details exist in the chapter, return \"\" (an empty string) in profile.notes.\n" +
+        "11. Preserve existing values when the current chapter gives no direct evidence. If the chapter has no meaningful progression or new character detail, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
+        "12. Never double-count previous profile history. Use the existing profile and processed chapter history as current truth.\n" +
+        "13. In update.evidence, include short exact snippets that justify every changed card field, especially class, secondary class, cultivation realm (realm), stage, bloodline, bloodline rank, affinity names, affinity rank, and skills.\n" +
+        "14. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, abilities, customFields, notes, level, exp, nextLevelExp, stats, traits, nicknames, uniqueTrait, cultivationPath, and optionally customJsonData. customFields must include Bloodline, Bloodline Rank, Affinity Names, Affinity Rank, Secondary Class, and any observed extra title/class/weapon fields. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges, rewards, and evidence." +
         customJsonInstruction
 
       const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
@@ -1159,15 +1158,14 @@ export async function POST(req: NextRequest) {
       userPrompt =
         explicitTarget +
         `Simple Profile Fields Required:\n` +
-        `- Name\n- Title\n- Cultivation Realm (profile.realm; e.g. Demigod, God; match against the configured cultivation realms list when possible)\n- Cultivation Stage (profile.stage; e.g. Low, Medium, High, Peak; match against the configured stage labels when possible)\n- Rank (profile.rank; e.g. Tier 1, Rank 4)\n- Bloodline (profile.customFields.Bloodline)\n- Bloodline Rank (profile.customFields['Bloodline Rank']; examples: Supreme, Celestial)\n- Affinity Names (profile.customFields['Affinity Names']; comma-separated for multiple affinities)\n- Affinity Rank (profile.customFields['Affinity Rank']; preserve pairings like Fire (High), Void (Supreme))\n- Main Class (profile.className)\n- Secondary Class (profile.customFields['Secondary Class'])\n- Incarnation / Past Lives (profile.customFields['Incarnation / Past Lives']; detect wording like "incarnation", "past life", "past lives", "in her life as", "in his life as", "former life", "previous self")\n- Incarnation Identity/Name (profile.customFields['Incarnation / Past Lives Identity/Name'])\n- Incarnation Era (profile.customFields['Incarnation / Past Lives Era'])\n- Skills (profile.abilities)\n- Lore (profile.notes)\n\n` +
+        `- Name\n- Title\n- Cultivation Realm (profile.realm; e.g. Demigod, God; match against the configured cultivation realms list when possible)\n- Cultivation Stage (profile.stage; e.g. Low, Medium, High, Peak; match against the configured stage labels when possible)\n- Rank (profile.rank; e.g. Tier 1, Rank 4)\n- Bloodline (profile.customFields.Bloodline)\n- Bloodline Rank (profile.customFields['Bloodline Rank']; examples: Supreme, Celestial)\n- Affinity Names (profile.customFields['Affinity Names']; comma-separated for multiple affinities)\n- Affinity Rank (profile.customFields['Affinity Rank']; preserve pairings like Fire (High), Void (Supreme))\n- Main Class (profile.className)\n- Secondary Class (profile.customFields['Secondary Class'])\n- Skills (profile.abilities)\n- Lore (profile.notes)\n\n` +
         customJsonPrompt +
         `Extraction Checklist:\n` +
         `1. Identify only the target character.\n` +
         `2. Search target evidence and full chapter for explicit status-like details.\n` +
         `3. Fill exact fields: Bloodline != Affinity != Class != Skills.\n` +
-        `4. Search for reincarnation/past-life language and populate the Incarnation / Past Lives card when it appears.\n` +
-        `5. Keep existing values when no new evidence appears.\n` +
-        `6. Put supporting snippets in update.evidence.\n\n` +
+        `4. Keep existing values when no new evidence appears.\n` +
+        `5. Put supporting snippets in update.evidence.\n\n` +
         `Configured Cultivation Realms, weakest to strongest:\n${configuredRealms || "No realm ladder uploaded."}\nConfigured Stage Labels:\n${configuredStages || "Low / Medium / High / Peak"}\n\n` +
         `Uploaded Cultivation Guide:\n${cultivationGuide || "No uploaded cultivation guide saved."}\n\n` +
         `Uploaded Cultivation Source Text:\n${cultivationSourceText || "No cultivation source text saved."}\n\n` +
@@ -1264,6 +1262,37 @@ export async function POST(req: NextRequest) {
       }).join("\n")
 
       userPrompt = `Brain Map entries:\n${memory || "No entries yet."}\n\nQuestion: ${question}`
+    } else if (action === "brain_scan_updates") {
+      const { chapters, existingBrainEntries } = body
+      if (!Array.isArray(chapters) || !Array.isArray(existingBrainEntries)) {
+        return NextResponse.json({ error: "chapters array and existingBrainEntries array are required for brain_scan_updates" }, { status: 400 })
+      }
+
+      systemInstruction =
+        "You are a sharp creative writing memory assistant. The writer has a manuscript and wants to scan the provided recent chapters to detect new or relating details of already added entities in their Brain Map.\n" +
+        "Guidelines:\n" +
+        "1. Analyze the content of the provided chapters and compare it against the list of existing Brain Map entries.\n" +
+        "2. For each existing entry, check if the chapters contain new details, developments, character progression, or relating context about them.\n" +
+        "3. If updates are found, write a summary of the new developments in `updatedSummary` (keep it clean, concise, and clear) and extract supporting quote/text in `evidence`.\n" +
+        "4. Choose an updated importance value: minor, major, or critical.\n" +
+        "5. Output ONLY a JSON object with key:\n" +
+        "  - updates: an array of objects, each containing:\n" +
+        "    - entityName: the exact name of the matched existing entity (case-insensitive match)\n" +
+        "    - updatedSummary: a concise 1-2 sentence recap of the new details or developments discovered in these chapters\n" +
+        "    - evidence: a short paraphrased reason or detail from the text\n" +
+        "    - importance: one of 'minor', 'major', 'critical'\n" +
+        "Do not include markdown formatting or backticks around the JSON."
+
+      const chaptersContext = chapters.map((chapter: any) => {
+        const label = chapter.chapterNumber ? `Chapter ${chapter.chapterNumber}` : "Chapter"
+        return `### ${label}: ${chapter.title || "Untitled"}\n${chapter.content || ""}`
+      }).join("\n\n---\n\n")
+
+      const existingContext = existingBrainEntries.map((entry: any) => {
+        return `- ${entry.entityName || entry.highlightedText || "Unknown"} (${entry.entityType || "unknown"}, ${entry.importance || "minor"}) - ${String(entry.aiSummary || "").slice(0, 300)}`
+      }).join("\n")
+
+      userPrompt = `Existing Brain Map entries:\n${existingContext}\n\nChapters to Scan:\n${chaptersContext}`
     } else if (action === "progression_template_design") {
       const { prompt, currentSettings } = body
       if (!prompt || typeof prompt !== "string") {
@@ -1687,7 +1716,7 @@ export async function POST(req: NextRequest) {
         `Raw text:\n${rawText.slice(0, 12000)}` +
         (currentData.length > 0 ? `\n\nExisting categories for reference:\n${JSON.stringify(currentData).slice(0, 2000)}` : "")
     } else {
-      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, progression_template_design, timeline_consistency_check, or format_references." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid action. Must be continue, rewrite, outline, generate_lore, appearance_prompts, progression_update, cultivation_realm_import, brain_analyze, brain_ask, brain_consistency_check, brain_suggest_additions, brain_generate_dossier, bible_consistency_check, bible_extract_from_chapter, arc_seed_extract, name_generate, progression_template_design, timeline_consistency_check, format_references, or brain_scan_updates." }, { status: 400 })
     }
 
     const jsonActions = new Set([
@@ -1704,7 +1733,8 @@ export async function POST(req: NextRequest) {
       "arc_seed_extract",
       "name_generate",
       "timeline_consistency_check",
-      "format_references"
+      "format_references",
+      "brain_scan_updates"
     ])
     let text = ""
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
@@ -1787,6 +1817,21 @@ export async function POST(req: NextRequest) {
         connections,
         parentEntityName: analysis.parentEntityName || "",
         isSubEntity: analysis.isSubEntity || false
+      })
+    }
+
+    if (action === "brain_scan_updates") {
+      const result = parseJsonObject<any>(text)
+      const updates = Array.isArray(result?.updates)
+        ? result.updates.map((up: any) => ({
+            entityName: String(up?.entityName || "").trim(),
+            updatedSummary: String(up?.updatedSummary || "").trim(),
+            evidence: up?.evidence ? String(up.evidence).trim() : "",
+            importance: ["minor", "major", "critical"].includes(String(up?.importance)) ? up.importance : "minor"
+          })).filter((up: any) => up.entityName && up.updatedSummary)
+        : []
+      return NextResponse.json({
+        updates
       })
     }
 
