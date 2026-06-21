@@ -338,7 +338,15 @@ const SUBTYPE_OPTIONS: Record<string, string[]> = {
     "Divine Beast", "Void Beast", "Eldritch Beast", "Mutated Beast", "Insectoid",
     "Spirit", "Demon", "Undead", "Dragon", 
     "Divine Being", "Hybrid", "Celestial/Angelic", "Specter/Wraith", 
-    "Slime/Ooze", "Golem/Automaton", "Fey/Sprite"
+    "Slime/Ooze", "Golem/Automaton", "Fey/Sprite",
+    "Human Cultivator (Ren)", "Demon/Spirit (Yao)", "Fiend/Devil (Mo)", "Ghost/Specter (Gui)",
+    "War Demon (Asura)", "Ancient Shaman (Wu)", "Celestial God (Shen)", "Ascended Immortal (Xian)",
+    "Flora/Wood Spirit (Caomu Ling)", "Artifact Spirit (Qi Ling)", "Winged Race (Yuzu)",
+    "Barbarian (Manzu)", "Sea Race (Haizu)", "Star Beast (Xingchen Shou)",
+    "Yaksha (Yecha)", "Rakshasa (Luosha)", "Chaos Fiendgod (Chaos Moshen)", "Stone Spirit (Shiling)",
+    "Sword Cultivator (Jianxiu)", "Body Cultivator (Tixiu)", "Alchemist (Dan Master)", 
+    "Formation Master (Zhen Master)", "Talisman Master (Fu Master)", "Beast Tamer (Yushou Master)",
+    "Buddhist Cultivator (Chanxiu)", "Sound/Music Cultivator (Yinxiu)"
   ],
   bloodline: [],
   title: [],
@@ -456,7 +464,56 @@ const BEAST_FAMILY_OPTIONS = [
   { value: "bat", label: "Bat", hint: "Echolocation, blood-drinking shadow swarm" },
   { value: "shark", label: "Shark", hint: "Ocean apex predators, blood frenzy, razor teeth" },
   { value: "panther", label: "Panther / Leopard", hint: "Shadow stalkers, dark speed, stealth" },
-  { value: "scorpion", label: "Scorpion / Centipede", hint: "Chitin armor, stingers, poison pincers" }
+  { value: "scorpion", label: "Scorpion / Centipede", hint: "Chitin armor, stingers, poison pincers" },
+  { value: "jiaolong", label: "Jiaolong (Flood Dragon)", hint: "Water serpent, controls storm and river tribulation" },
+  { value: "fenghuang", label: "Fenghuang (Vermilion Phoenix)", hint: "Nirvana flame bird, high virtue, rebirth" },
+  { value: "chanyuan", label: "Chanyuan (Golden Toad)", hint: "Three-legged moon toad, sound waves, wealth" },
+  { value: "taotie", label: "Taotie (Gluttonous Fiend)", hint: "Boundless stomach, devours space and laws" },
+  { value: "baize", label: "Baize (Omniscient Beast)", hint: "Wise horned guardian, knows all spirits' weaknesses" },
+  { value: "kunpeng", label: "Kunpeng (Leviathan Roc)", hint: "North sea fish transforming into a giant sky bird" },
+  { value: "bifang", label: "Bifang (Fire Crane)", hint: "One-legged bird, herald of wildfire and drought" },
+  { value: "zhuyan", label: "Zhu Yan (Ape of War)", hint: "White-headed red-clawed simian, foretells war" },
+  { value: "dijiang", label: "Dijiang (Chaos Sack)", hint: "Faceless six-legged four-winged master of space" },
+  { value: "tengshe", label: "Tengshe (Soaring Serpent)", hint: "Wingless flying snake, mist rider, illusions" },
+  { value: "pixiu", label: "Pixiu (Fortune Lion)", hint: "Seals wealth, spatial storage and warding" },
+  { value: "suanni", label: "Suanni (Censer Lion)", hint: "Dragon son, loves smoke, flame mist domains" },
+  { value: "xiezhi", label: "Xiezhi (Justice Unicorn)", hint: "One-horned judge of lies, strikes down the wicked" },
+  { value: "zouyu", label: "Zouyu (Righteous Tiger)", hint: "Gentle five-colored tiger, travels 1000 li silently" },
+  { value: "hou", label: "Hou (Dragon Devourer)", hint: "Physically supreme, roars shake heaven and earth" },
+  { value: "feilian", label: "Feilian (Wind Stag)", hint: "Deer-headed bird-tailed god, wind blade storm" },
+  { value: "xianhe", label: "Xianhe (Immortal Crane)", hint: "Longevity bird, mounts of Taoist immortals" },
+  { value: "kuiniu", label: "Kui Niu (Thunder Ox)", hint: "One-legged blue ox, roars sound like thunder" },
+  { value: "jinu", label: "Jin U (Sun Crow)", hint: "Three-legged solar crow, supreme Yang fire source" },
+  { value: "bashe", label: "Ba Snake (Titan Serpent)", hint: "Titan green snake, swallows elephants whole" },
+  { value: "wuzhiqi", label: "Wuzhiqi (Water Simian)", hint: "Water monkey demon, controls tides and oceans" },
+  { value: "jiutouniao", label: "Jiutou Niao (Nine-Headed Omen)", hint: "Nine lives, death and corruption soul reaper" },
+  { value: "tiangou", label: "Tiangou (Heavenly Hound)", hint: "Eats sun/moon during eclipse, shadow element" },
+  { value: "qinglong", label: "Qinglong (Azure Dragon)", hint: "East guardian; Wood and Spring, storms and thunder" },
+  { value: "baihu", label: "Baihu (White Tiger)", hint: "West guardian; Metal and Autumn, war, slaughter and wind" },
+  { value: "zhuque", label: "Zhuque (Vermilion Bird)", hint: "South guardian; Fire and Summer, rebirth and ascension" },
+  { value: "huanglong", label: "Huanglong (Yellow Dragon)", hint: "Center leader; Earth, imperial power" },
+  { value: "qiuniu", label: "Qiuniu (Music Dragon)", hint: "Gentle yellow scale-dragon, lover of music" },
+  { value: "yazi", label: "Yazi (Bellicose Dragon)", hint: "Wolf head dragon body, extremely combative" },
+  { value: "chaofeng", label: "Chaofeng (Roof Dragon)", hint: "Bird-like dragon, guards high roofs and corners" },
+  { value: "pulao", label: "Pulao (Roaring Dragon)", hint: "Small dragon of the sea, roars when struck" },
+  { value: "bixi", label: "Bixi (Dragon Tortoise)", hint: "Dragon-headed tortoise, immense physical load bearer" },
+  { value: "bi_an", label: "Bi'an (Justice Tiger)", hint: "Tiger dragon hybrid, discerns right from wrong" },
+  { value: "fuxi", label: "Fuxi (Literature Dragon)", hint: "Dragon loving calligraphy and stone engraving" },
+  { value: "chiwen", label: "Chiwen (Water Dragon)", hint: "Fish-like dragon, spits rain and swallows fire" },
+  { value: "hundun", label: "Hundun (Chaos Beast)", hint: "Faceless six-legged four-winged primordial entity" },
+  { value: "qiongqi", label: "Qiongqi (Devious Tiger)", hint: "Winged human-eating tiger, helps the wicked" },
+  { value: "taowu", label: "Taowu (Stubborn Fiend)", hint: "Human-faced boar-tusked tiger-limbed wild beast" },
+  { value: "panlong", label: "Panlong (Coiling Dragon)", hint: "Wingless earth-bound dragon, guards underworld" },
+  { value: "zhulong", label: "Zhulong (Torch Dragon)", hint: "Giant red solar serpent, blinks to switch day/night" },
+  { value: "qingluan", label: "Qingluan (Azure Luan)", hint: "Cyan bird, messenger of the Queen Mother of the West" },
+  { value: "jingwei", label: "Jingwei (Resolute Bird)", hint: "Princess spirit reincarnated, fills seas with pebbles" },
+  { value: "chongming_bird", label: "Chongming (Double-Pupil)", hint: "Rooster-like bird, double pupils, immense strength" },
+  { value: "diting", label: "Diting (Truth Listener)", hint: "Underworld mount, understands all thoughts and truths" },
+  { value: "jiuwei_hu", label: "Jiuwei Hu (Nine-Tailed Fox)", hint: "Nine-tailed shapeshifting fox, charm and illusions" },
+  { value: "luwu", label: "Luwu (Mountain Guardian)", hint: "Tiger-bodied human-faced nine-tailed Kunlun guardian" },
+  { value: "kaiming", label: "Kaiming (Enlightened Beast)", hint: "Nine human-faced tiger-bodied Kunlun gatekeeper" },
+  { value: "hanba", label: "Hanba (Drought Goddess)", hint: "Zombie-like drought entity, dries up water veins" },
+  { value: "nian", label: "Nian (New Year Fiend)", hint: "Horned sea-monster, fears red color and loud noises" }
 ]
 
 const BEAST_TIER_OPTIONS = [
@@ -492,7 +549,18 @@ const BLOODLINE_CATEGORY_OPTIONS = [
   { value: "Void", label: "Cosmic: Void", hint: "Nullification, dark energy folds" },
   { value: "Star", label: "Cosmic: Star", hint: "Nebula shards, burning cores" },
   { value: "Galaxy", label: "Cosmic: Galaxy", hint: "Spinning star belts, massive scale" },
-  { value: "Chaos", label: "Cosmic: Chaos", hint: "Genesis soup, unformed creation" }
+  { value: "Chaos", label: "Cosmic: Chaos", hint: "Genesis soup, unformed creation" },
+  { value: "Kunpeng", label: "Beast: Kunpeng", hint: "Yin-yang transformation, void & ocean laws" },
+  { value: "Taotie", label: "Beast: Taotie", hint: "Devouring laws, endless gluttony" },
+  { value: "Asura", label: "Divine: Asura", hint: "Blood sea slaughter intent, combat obsession" },
+  { value: "Baize", label: "Divine: Baize", hint: "Divined secrets, monster warding, wisdom" },
+  { value: "Xuanwu", label: "Beast: Xuanwu", hint: "Black tortoise, absolute defense, water & earth" },
+  { value: "JinU", label: "Beast: Golden Crow", hint: "Three-legged sun crow, supreme Yang fire" },
+  { value: "JiuweiHu", label: "Beast: Nine-Tailed Fox", hint: "Illusory charm, soul manipulation, nine lives" },
+  { value: "WhiteTiger", label: "Beast: White Tiger", hint: "Metal element, supreme slaughter and combat sharpness" },
+  { value: "PrimordialShaman", label: "Divine: Primordial Shaman", hint: "Immense physical strength, immunity to elements" },
+  { value: "HeavenlyEmperor", label: "Imperial: Heavenly Emperor", hint: "Sovereign coercion, high comprehension, imperial Qi" },
+  { value: "ChaosFiendgod", label: "Cosmic: Chaos Fiendgod", hint: "Direct mastery over supreme primordial laws" }
 ]
 
 const BLOODLINE_RANK_OPTIONS = [
@@ -514,7 +582,19 @@ const TITLE_CATEGORY_OPTIONS = [
   { value: "mage", label: "Mage", hint: "Scholars of arcane circles" },
   { value: "warrior", label: "Warrior", hint: "Master fighters, generals" },
   { value: "assassin", label: "Assassin", hint: "Shadow death-dealers" },
-  { value: "god", label: "God", hint: "Divine rulers of domains" }
+  { value: "god", label: "God", hint: "Divine rulers of domains" },
+  { value: "immortal", label: "Immortal", hint: "Ascended longevity beings" },
+  { value: "dao_ancestor", label: "Dao Ancestor", hint: "Founder of sects and supreme laws" },
+  { value: "sword_cultivator", label: "Sword Cultivator", hint: "Dao of the sword seekers" },
+  { value: "demon_king", label: "Demon King (Yao/Mo)", hint: "Sovereign of monster beast spirits" },
+  { value: "sect_master", label: "Sect Master (Zongzhu)", hint: "Leader of a cultivation sect and administrative head" },
+  { value: "patriarch", label: "Patriarch (Laozu)", hint: "Oldest founding member of a clan/sect, lives in seclusion" },
+  { value: "peak_master", label: "Peak Master (Fengzhu)", hint: "Lord of a single mountain peak within a sect" },
+  { value: "elder", label: "Sect Elder (Zhanglao)", hint: "High-ranking director managing sect operations" },
+  { value: "venerable", label: "Venerable (Zunzhe)", hint: "Title of honor given to powerful senior cultivators" },
+  { value: "young_master", label: "Young Master (Shaozhu)", hint: "Heir of a major cultivation clan or sect" },
+  { value: "rogue_cultivator", label: "Rogue Cultivator (Shanxiu)", hint: "Independent wanderer without sect affiliation" },
+  { value: "guest_elder", label: "Guest Elder (Keqing)", hint: "Hired protector or expert with high status" }
 ]
 
 const TITLE_STYLE_OPTIONS = [
@@ -6172,7 +6252,7 @@ const fillEmptyCustomJsonData = (
     const cat = String(forgeCategory).toLowerCase()
     const sub = String(subtype || "").toLowerCase()
     if (cat === "character") {
-      if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") return "beast"
+      if (sub.includes("beast") || sub.includes("shou") || sub === "insectoid") return "beast"
       return "character"
     }
     if (cat === "bloodline" || cat === "title") return "world"
@@ -11993,7 +12073,7 @@ ${navPoints}  </navMap>
                           label: "Naming Style",
                           value: ALIEN_NAMING_STYLE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.alienNamingStyle)?.label || "Harsh"
                         })
-                      } else if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") {
+                      } else if (sub.includes("beast") || sub.includes("shou") || sub === "insectoid") {
                         items.push({
                           key: "beastFamily",
                           label: "Beast Family",
@@ -12667,7 +12747,7 @@ ${navPoints}  </navMap>
                                     } else if (sub === "alien") {
                                       newConfig.alienStyle = newConfig.alienStyle || "cosmic"
                                       newConfig.alienNamingStyle = newConfig.alienNamingStyle || "harsh"
-                                    } else if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") {
+                                    } else if (sub.includes("beast") || sub.includes("shou") || sub === "insectoid") {
                                       newConfig.beastFamily = newConfig.beastFamily || "dragon"
                                       newConfig.beastTier = newConfig.beastTier || "primordial"
                                     }

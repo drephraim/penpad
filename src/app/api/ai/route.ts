@@ -1517,7 +1517,7 @@ export async function POST(req: NextRequest) {
           const style = nameGeneratorConfig?.alienStyle || "cosmic"
           const naming = nameGeneratorConfig?.alienNamingStyle || "harsh"
           subtypeGuidance += `Generate Alien names of style "${style}" (e.g., Insectoid clicks, mechanical whirs, aquatic bubbles, or eldritch monstrosities) with a naming style of "${naming}" (e.g., Harsh/Zhythos, elegant, scientific, unpronounceable with apostrophes like Xal'Thor, Veyrakk). Examples: Xal'Thor, Veyrakk, Zhythos.\n`
-        } else if (sub === "beast" || sub.endsWith("beast") || sub === "insectoid") {
+        } else if (sub.includes("beast") || sub.includes("shou") || sub === "insectoid") {
           const family = nameGeneratorConfig?.beastFamily || "wolf"
           const tier = nameGeneratorConfig?.beastTier || "primordial"
           subtypeGuidance += `Generate Beast names of family "${family}" and tier "${tier}" (e.g., common, elite, emperor, divine, primordial) in formats like "Voidfang Wolf", "Celestial Frost Lion", "Primordial Chaos Dragon". Examples: Voidfang Wolf, Celestial Frost Lion, Primordial Chaos Dragon.\n`
