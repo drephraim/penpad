@@ -2033,17 +2033,23 @@ function EditorContent() {
   const [appearanceBatchProgress, setAppearanceBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const [appearanceAddFormKey, setAppearanceAddFormKey] = useState("")
 
+  // Dedicated user guidance for facial features (used even when chapter is silent)
+  const [appearanceFacialDescription, setAppearanceFacialDescription] = useState("")
+  const [appearanceFacialByEntry, setAppearanceFacialByEntry] = useState<Record<string, string>>({})
+
   // Per-entry persistence for last generated result + images (survives entry switches & refresh)
   const [appearanceResultsByEntry, setAppearanceResultsByEntry] = useState<Record<string, AppearancePromptResult>>({})
   const [appearanceImagesByEntry, setAppearanceImagesByEntry] = useState<Record<string, Record<string, string>>>({})
 
-  // Load per-entry appearance results & images (after all states are declared)
+  // Load per-entry appearance results & images + facial descriptions
   useEffect(() => {
     try {
       const storedResults = localStorage.getItem("penpad_appearance_results_by_entry")
       if (storedResults) setAppearanceResultsByEntry(JSON.parse(storedResults))
       const storedImages = localStorage.getItem("penpad_appearance_images_by_entry")
       if (storedImages) setAppearanceImagesByEntry(JSON.parse(storedImages))
+      const storedFacial = localStorage.getItem("penpad_appearance_facial_by_entry")
+      if (storedFacial) setAppearanceFacialByEntry(JSON.parse(storedFacial))
     } catch {}
   }, [])
 
@@ -2071,6 +2077,9 @@ function EditorContent() {
   useEffect(() => {
     try { localStorage.setItem("penpad_appearance_images_by_entry", JSON.stringify(appearanceImagesByEntry)) } catch {}
   }, [appearanceImagesByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_facial_by_entry", JSON.stringify(appearanceFacialByEntry)) } catch {}
+  }, [appearanceFacialByEntry])
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -2190,7 +2199,7 @@ function EditorContent() {
 
   const getFormLabel = (key: string) => appearanceFormLabels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
 
-  // Sync current appearance result/images into the per-entry maps (for persistence)
+  // Sync current appearance result/images + facial into the per-entry maps (for persistence)
   const syncCurrentAppearanceToEntry = (entryId: string | null) => {
     if (!entryId) return
     if (appearanceResult) {
@@ -2199,13 +2208,17 @@ function EditorContent() {
     if (Object.keys(appearanceGeneratedImages).length > 0) {
       setAppearanceImagesByEntry(prev => ({ ...prev, [entryId]: { ...(prev[entryId] || {}), ...appearanceGeneratedImages } }))
     }
+    if (appearanceFacialDescription.trim()) {
+      setAppearanceFacialByEntry(prev => ({ ...prev, [entryId]: appearanceFacialDescription.trim() }))
+    }
   }
 
-  // Load a previously stored result + images for an entry into the live UI state
+  // Load a previously stored result + images + facial for an entry into the live UI state
   const loadAppearanceForEntry = (entryId: string | null) => {
     if (!entryId) {
       setAppearanceResult(null)
       setAppearanceGeneratedImages({})
+      setAppearanceFacialDescription("")
       return
     }
     const savedResult = appearanceResultsByEntry[entryId]
@@ -2216,6 +2229,8 @@ function EditorContent() {
     }
     const savedImages = appearanceImagesByEntry[entryId] || {}
     setAppearanceGeneratedImages(savedImages)
+    const savedFacial = appearanceFacialByEntry[entryId] || ""
+    setAppearanceFacialDescription(savedFacial)
   }
 
   const buildAppearanceLoreContent = (result: AppearancePromptResult) => {
@@ -2241,6 +2256,7 @@ function EditorContent() {
       "## Appearance Prompt Sheet",
       `Source: ${chapterLine}`,
       `Style Direction: ${styleToUse}`,
+      appearanceFacialDescription ? `Facial Features Guidance: ${appearanceFacialDescription}` : "",
       "",
       result.overview ? `### Visual Core\r\n${result.overview}\r\n` : "",
       promptSections,
@@ -2312,6 +2328,7 @@ function EditorContent() {
           formLabels: formLabelsForRequest,
           formEnabled: formEnabledForRequest,
           perFormNegatives: appearancePerFormNegative,
+          facialFeatures: appearanceFacialDescription.trim() || undefined,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -2340,6 +2357,9 @@ function EditorContent() {
         // Persist immediately for this entry
         if (sourceEntry?.id) {
           setAppearanceResultsByEntry(prev => ({ ...prev, [sourceEntry.id]: newResult }))
+          if (appearanceFacialDescription.trim()) {
+            setAppearanceFacialByEntry(prev => ({ ...prev, [sourceEntry.id]: appearanceFacialDescription.trim() }))
+          }
         }
       }
     } catch (err) {
@@ -2382,6 +2402,7 @@ function EditorContent() {
           formEnabled: { [formKey]: true },
           regenerateForm: formKey,
           perFormNegatives: appearancePerFormNegative,
+          facialFeatures: appearanceFacialDescription.trim() || undefined,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -10906,6 +10927,24 @@ ${navPoints}  </navMap>
                     />
                   </div>
 
+                  {/* Dedicated Facial Features input - key for generating good faces even when chapter is silent */}
+                  <div className="ai-form-field">
+                    <label>
+                      Facial Features / Head
+                      <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "0.4rem", fontWeight: 400 }}>
+                        (highly recommended — use this when the chapter does not describe the face)
+                      </span>
+                    </label>
+                    <textarea
+                      className="ai-textarea appearance-textarea compact"
+                      value={appearanceFacialDescription}
+                      onChange={(e) => setAppearanceFacialDescription(e.target.value)}
+                      placeholder="e.g. sharp fox-like eyes, high cheekbones, thin arched brows, arrogant half-smile, pale flawless skin, long silver hair with bangs..."
+                      disabled={appearanceLoading}
+                      rows={2}
+                    />
+                  </div>
+
                   {/* #1: Customizable form labels + #5: Form toggles */}
                   <div className="ai-form-field">
                     <label>
@@ -11053,7 +11092,7 @@ ${navPoints}  </navMap>
                       <label>
                         Form Descriptions
                         <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "0.4rem", fontWeight: 400 }}>
-                          (optional — leave blank for AI to infer)
+                          (optional — facial details here also help a lot)
                         </span>
                       </label>
                       {appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false).map(formKey => (
@@ -11065,7 +11104,7 @@ ${navPoints}  </navMap>
                             className="ai-textarea appearance-textarea compact"
                             value={appearanceFormDescriptions[formKey] || ""}
                             onChange={(e) => setAppearanceFormDescriptions(prev => ({ ...prev, [formKey]: e.target.value }))}
-                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey} appearance, attire, and distinguishing traits...`}
+                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey} (face, hair, eyes, build, clothing...)...`}
                             disabled={appearanceLoading}
                             rows={2}
                           />

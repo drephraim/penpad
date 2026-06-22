@@ -739,11 +739,13 @@ function extractKnownAppearanceDetails(loreContent: string): string {
   const lines: string[] = []
   const hairMatch = loreContent.match(/\b(?:hair|fur)\b[^.\n]{0,120}/i)
   const eyeMatch = loreContent.match(/\beyes?\b[^.\n]{0,120}/i)
+  const faceMatch = loreContent.match(/\b(?:face|facial|jaw|cheek|brow|nose|lips|mouth|expression|smile|eyes? shape|handsome|beautiful|sharp features)\b[^.\n]{0,130}/i)
   const attireMatch = loreContent.match(/\b(?:wear(?:s|ing)?|cloth(?:es|ing)|robe|armor|attire|dress(?:es)?|outfit)\b[^.\n]{0,150}/i)
   const bodyMatch = loreContent.match(/\b(?:build|stature|height|tall|muscular|slender|lithe|stocky|frame|figure|physique)\b[^.\n]{0,120}/i)
   const skinMatch = loreContent.match(/\b(?:skin|complexion|scales?|hide|fur color)\b[^.\n]{0,120}/i)
   if (hairMatch) lines.push(`- Hair/Fur: ${hairMatch[0].trim()}`)
   if (eyeMatch) lines.push(`- Eyes: ${eyeMatch[0].trim()}`)
+  if (faceMatch) lines.push(`- Face/Expression: ${faceMatch[0].trim()}`)
   if (skinMatch) lines.push(`- Skin/Scales: ${skinMatch[0].trim()}`)
   if (bodyMatch) lines.push(`- Build: ${bodyMatch[0].trim()}`)
   if (attireMatch) lines.push(`- Attire: ${attireMatch[0].trim()}`)
@@ -946,7 +948,7 @@ export async function POST(req: NextRequest) {
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm, perFormNegatives } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm, perFormNegatives, facialFeatures } = body
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
       const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
@@ -1037,19 +1039,25 @@ export async function POST(req: NextRequest) {
         "   - Cultivation/Xianxia: flowing Daoist silk robes with gold/silver embroidery, elaborate hairpins/crowns, dynamic hand gestures (sword seals), swirling Qi energy, floating spiritual talismans, and backgrounds like mist-shrouded mountain peaks or ancient temples.\n" +
         "   - Dark Fantasy: weathered leather, heavy plate armor with battle damage, dark hooded cloaks, rugged or scarred features, dramatic chiaroscuro lighting, and gothic, ruined, or stormy environments.\n" +
         "   - LitRPG/Sci-Fi: sleek armor plates, glowing runes or neon accents, holographic displays, athletic build, and high-tech or cybernetic backgrounds.\n" +
-        "7. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, divine race, spirit race, bloodline, or demi-human lineage, the prompt must visibly reflect that. The concept should feel like the character being portrayed, not a generic attractive human in fantasy clothes.\n" +
-        "8. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
-        "9. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
-        "10. " + requiredFormRule +
+        "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. Base strong inferences on:\n" +
+        "   - The character's name, aliases, cultural background, groups, bloodline, or sect\n" +
+        "   - Any personality, status, age, power level, or role hints in the lore or chapter\n" +
+        "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit or young master)\n" +
+        "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
+        "   Always describe in the prompt: face shape, eye shape/size/color/expression, eyebrow shape, nose, mouth/lips, cheekbones, jawline, any scars/markings/tattoos, skin texture or tone. Make the face distinctive and paintable — never generic or omitted.\n" +
+        "8. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, divine race, spirit race, bloodline, or demi-human lineage, the prompt must visibly reflect that. The concept should feel like the character being portrayed, not a generic attractive human in fantasy clothes.\n" +
+        "9. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
+        "10. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
+        "11. " + requiredFormRule +
         (usePerFormNegatives
-          ? "11. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
+          ? "12. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
             formNegativeGuidance + "\n" +
             "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
-          : "11. Provide ONE strong shared negative prompt that covers general quality issues and form-specific problems. Keep negativePrompts minimal or empty unless a form has a truly unique blocker.\n" +
+          : "12. Provide ONE strong shared negative prompt that covers general quality issues and form-specific problems. Keep negativePrompts minimal or empty unless a form has a truly unique blocker.\n" +
             "   Always include in the shared negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
         ) +
         "OUTPUT RULES:\n" +
-        "12. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
+        "13. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
         "   - prompts: object with keys " + formLabelsStr + " — each value is the long descriptive image prompt string.\n" +
         (usePerFormNegatives
           ? "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n"
@@ -1059,7 +1067,7 @@ export async function POST(req: NextRequest) {
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
         "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — descriptive prose phrases extracted from the strongest/primary form.\n" +
-        "13. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
+        "14. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
 
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
@@ -1089,6 +1097,10 @@ export async function POST(req: NextRequest) {
         `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n` +
         `${knownDetailsBlock}` +
         `${chapterLine}${chapterContent}${selectedLine}${chapterEvidence}${loreLine}\n\n` +
+        (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
+          ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth — use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
+          : `FACIAL FEATURES INSTRUCTION: The chapter provided no explicit facial details. Use the character's name, lore, groups, personality hints, status, and genre to invent a distinctive, high-quality face (face shape, eye shape and expression, brows, nose, lips, jaw, cheekbones, skin details). Make it specific and memorable.\n\n`
+        ) +
         `Forms to generate prompts for:\n${formDescriptions}` +
         `${memoryContext}`
     } else if (action === "progression_update") {
