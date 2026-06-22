@@ -14799,21 +14799,20 @@ ${navPoints}  </navMap>
           const linkedBibleEntry = bibleEntries.find(e => e.name.toLowerCase() === selectedBrainEntity.name.toLowerCase());
           return (
             <div className="modal-overlay" onClick={() => { setSelectedBrainEntityName(null); setIsEditingDossier(false); }}>
-              <div className="modal brain-detail-modal brain-entity-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '860px', width: '90vw' }}>
-                <div className="modal-header brain-detail-header">
-                  <div>
-                    <h2 className="modal-title">{selectedBrainEntity.name}</h2>
-                    <p className="modal-description">
-                      {getBrainTypeLabel(selectedBrainEntity.type)} dossier - {selectedBrainEntity.entries.length} occurrence{selectedBrainEntity.entries.length === 1 ? '' : 's'}
-                    </p>
+              <div className="modal brain-detail-modal brain-entity-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '920px', width: '95vw' }}>
+                <div className="modal-header brain-detail-header" style={{ borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ background: 'rgba(168,85,247,0.15)', padding: '6px', borderRadius: '7px' }}>
+                      {renderBrainTypeIcon(selectedBrainEntity.type, 17)}
+                    </div>
+                    <div>
+                      <h2 className="modal-title" style={{ margin: 0 }}>{selectedBrainEntity.name}</h2>
+                      <p className="modal-description" style={{ margin: '1px 0 0' }}>
+                        {getBrainTypeLabel(selectedBrainEntity.type)} • {selectedBrainEntity.entries.length} mention{selectedBrainEntity.entries.length > 1 ? 's' : ''}
+                      </p>
+                    </div>
                   </div>
-                  <button
-                    className="btn-close-ai"
-                    onClick={() => { setSelectedBrainEntityName(null); setIsEditingDossier(false); }}
-                    title="Close"
-                  >
-                    <X size={16} />
-                  </button>
+                  <button className="btn-close-ai" onClick={() => { setSelectedBrainEntityName(null); setIsEditingDossier(false); }} title="Close"><X size={16} /></button>
                 </div>
 
                 <div className="brain-detail-meta" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -15047,86 +15046,85 @@ ${navPoints}  </navMap>
 
         {selectedBrainEntry && (
           <div className="modal-overlay" onClick={() => { setSelectedBrainEntryId(null); setMergeTargetId(""); }}>
-            <div className="modal brain-detail-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', width: '90vw' }}>
-              <div className="modal-header brain-detail-header">
-                <div>
-                  <h2 className="modal-title">Brain Entry Detail</h2>
-                  <p className="modal-description">
-                    {getBrainEntryChapterLabel(selectedBrainEntry)} — {getBrainEntryChapterTitle(selectedBrainEntry)}
-                  </p>
+            <div className="modal brain-detail-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '680px', width: '92vw' }}>
+              <div className="modal-header brain-detail-header" style={{ paddingBottom: '0.6rem', borderBottom: '1px solid var(--surface-border)', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ background: 'rgba(168,85,247,0.12)', padding: '5px', borderRadius: '6px' }}>
+                    {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 16)}
+                  </div>
+                  <div>
+                    <h2 className="modal-title" style={{ margin: 0, fontSize: '1.05rem' }}>Brain Entry Detail</h2>
+                    <p className="modal-description" style={{ margin: '1px 0 0', fontSize: '0.72rem' }}>
+                      {getBrainEntryChapterLabel(selectedBrainEntry)} — {getBrainEntryChapterTitle(selectedBrainEntry)}
+                    </p>
+                  </div>
                 </div>
-                <button
-                  className="btn-close-ai"
-                  onClick={() => { setSelectedBrainEntryId(null); setMergeTargetId(""); }}
-                  title="Close"
-                >
-                  <X size={16} />
-                </button>
+                <button className="btn-close-ai" onClick={() => { setSelectedBrainEntryId(null); setMergeTargetId(""); }} title="Close"><X size={16} /></button>
               </div>
 
-              <div className="modal-body scrollbar" style={{ maxHeight: '70vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '4px' }}>
-                <div className="brain-detail-meta" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.7rem', alignItems: 'center' }}>
+              <div style={{ maxHeight: '68vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '4px' }}>
+                {/* Meta row */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
                   <span className={`brain-type-badge type-${getBrainEntryType(selectedBrainEntry)}`}>
                     {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 11)}
                     {getBrainTypeLabel(getBrainEntryType(selectedBrainEntry))}
                   </span>
                   <span className={`brain-importance-badge importance-${getBrainEntryImportance(selectedBrainEntry)}`}>
-                    <Star size={10} />
-                    {getBrainEntryImportance(selectedBrainEntry)}
+                    <Star size={10} /> {getBrainEntryImportance(selectedBrainEntry)}
                   </span>
                   {formatBrainEntryDate(selectedBrainEntry) && (
-                    <span className="brain-detail-date" style={{ color: 'var(--text-dim)', marginLeft: 'auto' }}>{formatBrainEntryDate(selectedBrainEntry)}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginLeft: 'auto' }}>{formatBrainEntryDate(selectedBrainEntry)}</span>
                   )}
                 </div>
 
-                <div className="ai-form-field">
-                  <label>Entity Link</label>
+                {/* Entity Link */}
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.25rem', fontWeight: 600 }}>Entity</div>
                   <button
-                    className="brain-detail-entity-link"
                     onClick={() => {
-                      setSelectedBrainEntryId(null)
-                      setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry))
+                      setSelectedBrainEntryId(null);
+                      setSelectedBrainEntityName(getBrainEntryEntityName(selectedBrainEntry));
                     }}
                     style={{
                       width: '100%',
                       textAlign: 'left',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.4rem',
-                      padding: '0.5rem',
-                      background: 'rgba(255,255,255,0.03)',
+                      gap: '0.45rem',
+                      padding: '0.55rem 0.65rem',
+                      background: 'rgba(255,255,255,0.035)',
                       border: '1px solid var(--surface-border)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.78rem',
-                      color: 'var(--text-accent)'
+                      borderRadius: '8px',
+                      fontSize: '0.82rem',
+                      color: 'var(--text-accent)',
+                      cursor: 'pointer'
                     }}
                   >
-                    {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 13)}
-                    <span>{getBrainEntryEntityName(selectedBrainEntry)}</span>
+                    {renderBrainTypeIcon(getBrainEntryType(selectedBrainEntry), 14)}
+                    <span style={{ fontWeight: 600 }}>{getBrainEntryEntityName(selectedBrainEntry)}</span>
                   </button>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <div className="ai-form-field" style={{ marginBottom: 0 }}>
-                    <label>Type</label>
+                {/* Type + Importance grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.25rem', fontWeight: 600 }}>Type</div>
                     <select
                       value={getBrainEntryType(selectedBrainEntry)}
                       onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { entityType: e.target.value as BrainEntityType })}
                       className="ai-select"
-                      style={{ padding: '0.35rem' }}
                     >
                       {brainTypeOptions.filter(option => option.value !== 'all').map(option => (
                         <option key={option.value} value={option.value}>{option.label.replace(/s$/, '')}</option>
                       ))}
                     </select>
                   </div>
-                  <div className="ai-form-field" style={{ marginBottom: 0 }}>
-                    <label>Importance</label>
+                  <div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.25rem', fontWeight: 600 }}>Importance</div>
                     <select
                       value={getBrainEntryImportance(selectedBrainEntry)}
                       onChange={(e) => updateBrainEntry(selectedBrainEntry.id, { importance: e.target.value as BrainImportance })}
                       className="ai-select"
-                      style={{ padding: '0.35rem' }}
                     >
                       <option value="minor">Minor</option>
                       <option value="major">Major</option>
@@ -15135,63 +15133,50 @@ ${navPoints}  </navMap>
                   </div>
                 </div>
 
-                <div className="ai-form-field">
-                  <label>Keyword / Highlight</label>
+                {/* Highlighted Text */}
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.25rem', fontWeight: 600 }}>Highlighted Text</div>
                   <div style={{
-                    padding: '0.6rem',
-                    background: 'rgba(0,0,0,0.15)',
+                    padding: '0.65rem 0.75rem',
+                    background: 'rgba(0,0,0,0.2)',
                     border: '1px solid var(--surface-border)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '0.74rem',
+                    borderRadius: '8px',
+                    fontSize: '0.8rem',
                     color: 'var(--text-secondary)',
-                    fontStyle: 'italic',
-                    lineHeight: 1.4
+                    fontStyle: 'italic'
                   }}>
-                    &ldquo;{selectedBrainEntry.highlightedText}&rdquo;
+                    “{selectedBrainEntry.highlightedText}”
                   </div>
                 </div>
 
-                <div className="ai-form-field">
-                  <label>AI Analysis History</label>
+                {/* AI Analysis Segments */}
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.3rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    AI Analysis History
+                  </div>
                   {selectedBrainEntry.aiSummary === "Analyzing..." ? (
-                    <div className="brain-loading" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                      <Loader2 size={13} className="spin" />
-                      <span>Analyzing...</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-dim)', padding: '0.5rem' }}>
+                      <Loader2 size={14} className="spin" /> Analyzing...
                     </div>
                   ) : (
-                    <div className="brain-segments-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                       {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
                         <div 
                           key={seg.id} 
-                          className="brain-segment-card"
                           onClick={() => setSelectedSegment(seg)}
                           style={{
-                            padding: '0.6rem',
-                            borderRadius: 'var(--radius-md)',
+                            padding: '0.6rem 0.7rem',
+                            borderRadius: '8px',
                             border: '1px solid var(--surface-border)',
                             cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '0.25rem',
                             background: 'rgba(255,255,255,0.02)',
-                            transition: 'all 0.2s ease',
-                            textAlign: 'left'
+                            transition: 'background 0.1s'
                           }}
                         >
-                          <strong style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            {seg.title.includes('Update') || seg.title.includes('🔄') ? <RefreshCw size={10} /> : seg.title.includes('Sub-Entity') || seg.title.includes('📍') ? <MapPin size={10} /> : seg.title.includes('Merged') || seg.title.includes('🔗') ? <Link2 size={10} /> : <FileText size={10} />}
+                          <div style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
                             {seg.title}
-                          </strong>
-                          <p style={{ 
-                            fontSize: '0.68rem', 
-                            color: 'var(--text-secondary)', 
-                            margin: 0,
-                            overflow: 'hidden',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            lineHeight: '1.4'
-                          }}>
+                          </div>
+                          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {seg.content.replace(/[#*`\n]/g, ' ').trim()}
                           </p>
                         </div>
@@ -15200,62 +15185,56 @@ ${navPoints}  </navMap>
                   )}
                 </div>
 
+                {/* Connections */}
                 {(selectedBrainEntry.connections || []).length > 0 && (
-                  <div className="ai-form-field">
-                    <label>Connections</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.3rem', fontWeight: 600 }}>Connections</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                       {selectedBrainEntry.connections?.map(connection => (
                         <div 
                           key={connection} 
-                          className="brain-connection-item clickable"
+                          onClick={() => {
+                            const found = brainEntries.find(e => (e.entityName || '').toLowerCase().trim() === connection.toLowerCase().trim());
+                            if (found) setSelectedBrainEntryId(found.id);
+                          }}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.4rem',
-                            padding: '0.4rem 0.5rem',
+                            padding: '0.4rem 0.55rem',
                             background: 'rgba(255,255,255,0.03)',
                             border: '1px solid var(--surface-border)',
-                            borderRadius: 'var(--radius-md)',
-                            fontSize: '0.74rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                          onClick={() => {
-                            const found = brainEntries.find(e => e.entityName && e.entityName.trim().toLowerCase() === connection.trim().toLowerCase());
-                            if (found) {
-                              setSelectedBrainEntryId(found.id);
-                            } else {
-                              const foundAlt = brainEntries.find(e => e.highlightedText && e.highlightedText.trim().toLowerCase() === connection.trim().toLowerCase());
-                              if (foundAlt) {
-                                setSelectedBrainEntryId(foundAlt.id);
-                              }
-                            }
+                            borderRadius: '6px',
+                            fontSize: '0.78rem',
+                            cursor: 'pointer'
                           }}
                         >
-                          <Link2 size={11} style={{ color: 'var(--text-dim)' }} />
-                          <span style={{ textDecoration: 'underline', color: 'var(--text-accent)' }}>{connection}</span>
+                          <Link2 size={12} />
+                          <span style={{ textDecoration: 'underline' }}>{connection}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', marginTop: 'auto', flexShrink: 0 }}>
-                  <label style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Merge Into Another Entry</label>
-                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                {/* Actions */}
+                <div style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '0.85rem', marginTop: '0.3rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.35rem', fontWeight: 600 }}>Actions</div>
+                  
+                  <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
                     <select 
                       value={mergeTargetId}
                       onChange={(e) => setMergeTargetId(e.target.value)}
                       className="ai-select"
-                      style={{ flex: 1, padding: '0.35rem', fontSize: '0.74rem' }}
+                      style={{ flex: 1, fontSize: '0.76rem' }}
                     >
-                      <option value="">-- Merge Into --</option>
+                      <option value="">Merge into another entry...</option>
                       {brainEntries
                         .filter(e => e.id !== selectedBrainEntry.id)
                         .sort((a, b) => (a.entityName || a.highlightedText || '').localeCompare(b.entityName || b.highlightedText || ''))
                         .map(e => (
                           <option key={e.id} value={e.id}>
-                            {e.entityName || e.highlightedText} ({e.entityType || 'unknown'})
+                            {e.entityName || e.highlightedText} ({e.entityType})
                           </option>
                         ))
                       }
@@ -15264,20 +15243,19 @@ ${navPoints}  </navMap>
                       className="btn-ai-sub btn-ai-secondary"
                       disabled={!mergeTargetId}
                       onClick={() => handleManualMerge(selectedBrainEntry.id, mergeTargetId)}
-                      style={{ padding: '0.38rem 0.6rem', fontSize: '0.72rem' }}
                     >
                       Merge
                     </button>
                   </div>
+
                   <button
                     className="btn-ai-sub btn-ai-secondary danger-text"
                     onClick={() => {
-                      const confirmed = window.confirm("Delete this Brain Map entry? This cannot be undone.")
-                      if (confirmed) {
-                        deleteBrainEntry(selectedBrainEntry.id)
+                      if (window.confirm("Delete this Brain Map entry? This cannot be undone.")) {
+                        deleteBrainEntry(selectedBrainEntry.id);
                       }
                     }}
-                    style={{ marginTop: '0.5rem', width: '100%', justifyContent: 'center' }}
+                    style={{ width: '100%', justifyContent: 'center' }}
                   >
                     Delete Entry
                   </button>
@@ -15297,15 +15275,15 @@ ${navPoints}  </navMap>
 
         {selectedSegment && (
           <div className="modal-overlay" onClick={() => setSelectedSegment(null)} style={{ zIndex: 130 }}>
-            <div className="modal brain-detail-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90vw' }}>
-              <div className="modal-header">
+            <div className="modal brain-detail-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '90vw' }}>
+              <div className="modal-header" style={{ borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.5rem' }}>
                 <div>
                   <h2 className="modal-title">{selectedSegment.title}</h2>
-                  <p className="modal-description">AI analysis details for this entry event.</p>
+                  <p className="modal-description" style={{ fontSize: '0.72rem' }}>Detailed AI analysis for this Brain Map segment.</p>
                 </div>
                 <button className="btn-close-ai" onClick={() => setSelectedSegment(null)} title="Close"><X size={16}/></button>
               </div>
-              <div className="brain-markdown-view scrollbar" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '0.2rem' }}>
+              <div className="brain-markdown-view scrollbar" style={{ maxHeight: '65vh', overflowY: 'auto', padding: '0.6rem 0.1rem 0.1rem', lineHeight: 1.55 }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedSegment.content}</ReactMarkdown>
               </div>
             </div>
@@ -15315,44 +15293,108 @@ ${navPoints}  </navMap>
         {/* DEDICATED POPUP MODALS FOR BRAIN ACTIONS */}
         {activeBrainPopup === 'ask' && (
           <div className="modal-overlay" onClick={() => setActiveBrainPopup(null)} style={{ zIndex: 120 }}>
-            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90vw' }}>
-              <div className="modal-header">
-                <div>
-                  <h2 className="modal-title">Ask Brain Map</h2>
-                  <p className="modal-description">Query your manuscript&apos;s lore database.</p>
+            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '620px', width: '92vw' }}>
+              <div className="modal-header" style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--surface-border)', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ background: 'rgba(168, 85, 247, 0.15)', padding: '6px', borderRadius: '8px' }}>
+                    <MessageSquare size={18} style={{ color: '#c084fc' }} />
+                  </div>
+                  <div>
+                    <h2 className="modal-title" style={{ fontSize: '1rem', margin: 0 }}>Ask Brain Map</h2>
+                    <p className="modal-description" style={{ margin: '2px 0 0', fontSize: '0.72rem' }}>Query your manuscript&apos;s lore database for connections and details.</p>
+                  </div>
                 </div>
                 <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
               </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', margin: '0.85rem 0 0.25rem' }}>
-                <textarea
-                  value={brainAskQuestion}
-                  onChange={(e) => setBrainAskQuestion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                      e.preventDefault()
-                      askBrainMap()
-                    }
-                  }}
-                  placeholder="Where did I first mention the black door?"
-                  className="brain-ask-input"
-                  style={{ width: '100%', minHeight: '90px', padding: '0.65rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', outline: 'none' }}
-                />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginBottom: '0.25rem' }}>Your question</label>
+                  <textarea
+                    value={brainAskQuestion}
+                    onChange={(e) => setBrainAskQuestion(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault()
+                        askBrainMap()
+                      }
+                    }}
+                    placeholder="Where did I first mention the black door? Or what is the relationship between X and Y?"
+                    className="brain-ask-input"
+                    style={{ 
+                      width: '100%', 
+                      minHeight: '85px', 
+                      padding: '0.7rem', 
+                      background: 'rgba(0,0,0,0.25)', 
+                      border: '1px solid var(--surface-border)', 
+                      borderRadius: '10px', 
+                      color: 'var(--text-primary)', 
+                      outline: 'none',
+                      fontSize: '0.82rem',
+                      lineHeight: 1.4
+                    }}
+                  />
+                </div>
+
                 <button
                   className="brain-ask-button"
                   onClick={askBrainMap}
                   disabled={brainAskLoading || !brainAskQuestion.trim()}
-                  style={{ height: '34px', background: 'var(--primary)', border: 0, borderRadius: 'var(--radius-sm)', color: 'white', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                  style={{ 
+                    height: '38px', 
+                    background: 'linear-gradient(90deg, var(--primary), #a855f7)', 
+                    border: 0, 
+                    borderRadius: '10px', 
+                    color: 'white', 
+                    fontWeight: '700', 
+                    cursor: 'pointer', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: '0.45rem',
+                    fontSize: '0.82rem',
+                    boxShadow: '0 2px 8px rgba(168, 85, 247, 0.3)'
+                  }}
                 >
-                  {brainAskLoading ? <Loader2 size={13} className="spin" /> : <MessageSquare size={13} />}
-                  Ask Question
+                  {brainAskLoading ? <Loader2 size={15} className="spin" /> : <MessageSquare size={15} />}
+                  {brainAskLoading ? 'Thinking...' : 'Ask the Brain Map'}
                 </button>
                 
                 {(brainAskAnswer || brainAskError) && (
-                  <div className={`brain-ask-answer brain-markdown-view ${brainAskError ? 'error' : ''}`} style={{ marginTop: '0.5rem', background: 'rgba(0,0,0,0.16)', padding: '0.75rem', borderRadius: 'var(--radius-md)', maxHeight: '200px', overflowY: 'auto' }}>
-                    {brainAskError ? brainAskError : (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{brainAskAnswer}</ReactMarkdown>
-                    )}
+                  <div style={{ marginTop: '0.35rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {brainAskError ? 'Error' : 'Brain Map Response'}
+                      </span>
+                      {!brainAskError && brainAskAnswer && (
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(brainAskAnswer);
+                            setAppearanceCopiedKey('brain-ask');
+                            setTimeout(() => setAppearanceCopiedKey(null), 1500);
+                          }}
+                          style={{ fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--surface-border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                          title="Copy response"
+                        >
+                          <Copy size={11} style={{ marginRight: 3 }} /> {appearanceCopiedKey === 'brain-ask' ? 'Copied!' : 'Copy'}
+                        </button>
+                      )}
+                    </div>
+                    <div className={`brain-ask-answer brain-markdown-view ${brainAskError ? 'error' : ''}`} style={{ 
+                      background: 'rgba(0,0,0,0.22)', 
+                      padding: '0.85rem', 
+                      borderRadius: '10px', 
+                      maxHeight: '260px', 
+                      overflowY: 'auto',
+                      border: brainAskError ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--surface-border)',
+                      fontSize: '0.82rem'
+                    }}>
+                      {brainAskError ? (
+                        <span style={{ color: '#f87171' }}>{brainAskError}</span>
+                      ) : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{brainAskAnswer}</ReactMarkdown>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -15362,24 +15404,29 @@ ${navPoints}  </navMap>
 
         {activeBrainPopup === 'suggestions' && (
           <div className="modal-overlay" onClick={() => setActiveBrainPopup(null)} style={{ zIndex: 120 }}>
-            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90vw' }}>
-              <div className="modal-header">
-                <div>
-                  <h2 className="modal-title">Suggested Lore Additions</h2>
-                  <p className="modal-description">Scan earlier chapters before the active chapter for recurring or newly important details.</p>
+            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '620px', width: '92vw' }}>
+              <div className="modal-header" style={{ paddingBottom: '0.65rem', borderBottom: '1px solid var(--surface-border)', marginBottom: '0.65rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ background: 'rgba(192, 132, 252, 0.15)', padding: '6px', borderRadius: '8px' }}>
+                    <Sparkles size={18} style={{ color: '#c084fc' }} />
+                  </div>
+                  <div>
+                    <h2 className="modal-title" style={{ fontSize: '1rem', margin: 0 }}>Suggested Lore Additions</h2>
+                    <p className="modal-description" style={{ margin: '2px 0 0', fontSize: '0.72rem' }}>Discover recurring or important entities from previous chapters.</p>
+                  </div>
                 </div>
                 <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
               </div>
               
-              <div style={{ margin: '0.85rem 0 0.25rem' }}>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.65rem' }}>
                   <select
                     value={brainSuggestionScanDepth}
                     onChange={event => setBrainSuggestionScanDepth(Number(event.target.value) === 10 ? 10 : 5)}
                     disabled={suggestionLoading}
                     style={{
-                      flex: '0 0 150px',
-                      height: '34px',
+                      flex: '0 0 130px',
+                      height: '36px',
                       borderRadius: '8px',
                       border: '1px solid var(--surface-border)',
                       background: 'rgba(255,255,255,0.06)',
@@ -15388,73 +15435,67 @@ ${navPoints}  </navMap>
                       fontSize: '0.76rem'
                     }}
                   >
-                    <option value={5}>Previous 5</option>
-                    <option value={10}>Previous 10</option>
+                    <option value={5}>Previous 5 chapters</option>
+                    <option value={10}>Previous 10 chapters</option>
                   </select>
                   <button
                     className="btn-ai-sub btn-ai-secondary"
                     onClick={fetchEntitySuggestions}
                     disabled={suggestionLoading || !activeNote}
-                    style={{ flex: 1, height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', cursor: 'pointer' }}
+                    style={{ flex: 1, height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem' }}
                   >
-                    {suggestionLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-                    Scan Previous Chapters
+                    {suggestionLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                    {suggestionLoading ? 'Scanning...' : 'Scan Previous Chapters'}
                   </button>
                 </div>
 
                 {brainSuggestionMessage && (
-                  <p style={{ margin: '0 0 0.75rem', color: 'var(--text-dim)', fontSize: '0.74rem' }}>{brainSuggestionMessage}</p>
+                  <p style={{ margin: '0 0 0.65rem', color: 'var(--text-dim)', fontSize: '0.74rem' }}>{brainSuggestionMessage}</p>
                 )}
                 
                 {suggestedEntities.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.2rem' }}>
-                    <p className="suggested-subtitle" style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginBottom: '0.25rem' }}>Click a chip to import it into your Brain Map:</p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
-                      {suggestedEntities.map((sug, i) => (
-                        <button
-                          key={i}
-                          className="suggested-chip"
-                          onClick={() => quickAddSuggestedEntity(sug)}
-                          title={`Add "${sug.entityName}" - ${sug.aiSummary}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.35rem 0.65rem',
-                            borderRadius: '16px',
-                            border: '1px solid var(--surface-border)',
-                            background: 'rgba(255, 255, 255, 0.04)',
-                            color: 'var(--text-secondary)',
-                            fontSize: '0.74rem',
-                            cursor: 'pointer',
-                            transition: 'var(--transition)'
-                          }}
-                        >
-                          <span>+ {sug.entityName}</span>
-                          <small className={`type-${sug.entityType}`} style={{ textTransform: 'uppercase', fontSize: '0.6rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(0,0,0,0.2)' }}>{sug.entityType}</small>
-                          {(sug.chapterNumber || sug.chapterTitle) && (
-                            <small style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)' }}>
-                              {sug.chapterNumber ? `Ch ${sug.chapterNumber}` : sug.chapterTitle}
-                            </small>
-                          )}
-                          {typeof sug.mentionCount === "number" && sug.mentionCount > 1 && (
-                            <small style={{ fontSize: '0.6rem', color: 'var(--text-dim)' }}>{sug.mentionCount} refs</small>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                  <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.15rem', paddingLeft: '2px' }}>Tap an entry to add it to your Brain Map:</p>
+                    {suggestedEntities.map((sug, i) => (
+                      <button
+                        key={i}
+                        onClick={() => quickAddSuggestedEntity(sug)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '0.55rem 0.75rem',
+                          borderRadius: '10px',
+                          border: '1px solid var(--surface-border)',
+                          background: 'rgba(255,255,255,0.025)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.25rem',
+                          transition: 'all .1s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <strong style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>+ {sug.entityName}</strong>
+                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(168,85,247,0.15)', color: '#c084fc' }}>{sug.entityType}</span>
+                          {sug.chapterNumber && <span style={{ fontSize: '0.6rem', color: 'var(--text-dim)' }}>Ch. {sug.chapterNumber}</span>}
+                          {sug.mentionCount && sug.mentionCount > 1 && <span style={{ fontSize: '0.6rem', color: 'var(--text-dim)' }}>{sug.mentionCount}×</span>}
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.73rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                          {sug.aiSummary?.slice(0, 140)}{sug.aiSummary?.length > 140 ? '...' : ''}
+                        </p>
+                      </button>
+                    ))}
                   </div>
                 ) : (
                   !suggestionLoading && (
-                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                      Click &quot;Scan Previous Chapters&quot; to read the chapters before your active one.
+                    <div style={{ textAlign: 'center', padding: '2.2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem', background: 'rgba(0,0,0,0.15)', borderRadius: '10px' }}>
+                      No suggestions yet.<br />Click the scan button above to analyze prior chapters.
                     </div>
                   )
                 )}
                 {suggestionLoading && (
-                  <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                    <Loader2 size={16} className="spin" style={{ margin: '0 auto 0.5rem' }} />
-                    Reading earlier chapters and looking for recurring details...
+                  <div style={{ textAlign: 'center', padding: '1.8rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                    <Loader2 size={18} className="spin" style={{ margin: '0 auto 0.4rem', display: 'block' }} />
+                    Analyzing previous chapters for important recurring lore...
                   </div>
                 )}
               </div>
@@ -15464,71 +15505,83 @@ ${navPoints}  </navMap>
 
         {activeBrainPopup === 'continuity' && (
           <div className="modal-overlay" onClick={() => setActiveBrainPopup(null)} style={{ zIndex: 120 }}>
-            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px', width: '90vw' }}>
-              <div className="modal-header">
-                <div>
-                  <h2 className="modal-title">Continuity Tracker</h2>
-                  <p className="modal-description">Audit active draft against Brain Map entries to spot conflicts.</p>
+            <div className="modal brain-action-modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: '620px', width: '92vw' }}>
+              <div className="modal-header" style={{ paddingBottom: '0.65rem', borderBottom: '1px solid var(--surface-border)', marginBottom: '0.65rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ background: 'rgba(251, 191, 36, 0.15)', padding: '6px', borderRadius: '8px' }}>
+                    <ShieldAlert size={18} style={{ color: '#fbbf24' }} />
+                  </div>
+                  <div>
+                    <h2 className="modal-title" style={{ fontSize: '1rem', margin: 0 }}>Continuity Tracker</h2>
+                    <p className="modal-description" style={{ margin: '2px 0 0', fontSize: '0.72rem' }}>Check the current chapter against your Brain Map for contradictions or missed connections.</p>
+                  </div>
                 </div>
                 <button className="btn-close-ai" onClick={() => setActiveBrainPopup(null)} title="Close"><X size={16} /></button>
               </div>
               
-              <div style={{ margin: '0.85rem 0 0.25rem' }}>
+              <div>
                 <button
                   className="btn-ai-sub btn-ai-secondary"
                   onClick={checkBrainConsistency}
                   disabled={consistencyLoading || !activeNote}
-                  style={{ width: '100%', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.75rem', cursor: 'pointer' }}
+                  style={{ width: '100%', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '0.7rem', cursor: 'pointer', fontSize: '0.82rem', borderRadius: '9px' }}
                 >
-                  {consistencyLoading ? <Loader2 size={13} className="spin" /> : <ShieldAlert size={13} />}
-                  Audit Active Draft
+                  {consistencyLoading ? <Loader2 size={14} className="spin" /> : <ShieldAlert size={14} />}
+                  {consistencyLoading ? 'Auditing...' : 'Audit Current Chapter'}
                 </button>
                 
                 {consistencyCheckedNoteId === activeNote?.id ? (
-                  <div style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                  <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
                     {consistencyWarnings.length === 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', textAlign: 'center', color: '#10b981' }}>
-                        <CheckCircle2 size={32} style={{ marginBottom: '0.5rem' }} />
-                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold' }}>All Clean!</span>
-                        <span style={{ fontSize: '0.76rem', color: 'var(--text-dim)', marginTop: '0.25rem' }}>No continuity conflicts detected in this chapter.</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem', textAlign: 'center', background: 'rgba(16, 185, 129, 0.06)', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <CheckCircle2 size={28} style={{ color: '#10b981', marginBottom: '0.4rem' }} />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#10b981' }}>No Issues Found</span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Your draft maintains good continuity with the Brain Map.</span>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                        <p style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Consistency conflicts detected in this chapter draft:</p>
+                      <>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.4rem', paddingLeft: '4px' }}>
+                          {consistencyWarnings.length} potential issue{consistencyWarnings.length > 1 ? 's' : ''} found:
+                        </div>
                         {consistencyWarnings.map((warning, i) => (
-                          <div key={i} className={`consistency-warning-card severity-${warning.severity}`} style={{
+                          <div key={i} style={{
                             display: 'flex',
                             alignItems: 'flex-start',
-                            gap: '0.5rem',
+                            gap: '0.55rem',
                             padding: '0.65rem 0.75rem',
-                            borderRadius: 'var(--radius-md)',
-                            border: warning.severity === 'critical' ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)',
-                            background: warning.severity === 'critical' ? 'rgba(239, 68, 68, 0.05)' : 'rgba(245, 158, 11, 0.05)',
-                            color: warning.severity === 'critical' ? '#f87171' : '#fbbf24',
+                            borderRadius: '9px',
+                            border: warning.severity === 'critical' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(245,158,11,0.3)',
+                            background: warning.severity === 'critical' ? 'rgba(239, 68, 68, 0.06)' : 'rgba(245, 158, 11, 0.06)',
+                            marginBottom: '0.45rem',
                             fontSize: '0.78rem'
                           }}>
-                            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-                            <div className="warning-text">
-                              <strong style={{ fontWeight: '800', textTransform: 'uppercase', fontSize: '0.72rem', display: 'block', marginBottom: '0.15rem' }}>{warning.entityName} ({warning.severity})</strong>
-                              <span style={{ lineHeight: '1.45' }}>{warning.message}</span>
+                            <div style={{ marginTop: '1px' }}>
+                              {warning.severity === 'critical' ? <AlertTriangle size={15} color="#f87171" /> : <AlertTriangle size={15} color="#fbbf24" />}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '2px' }}>
+                                <strong style={{ fontSize: '0.78rem' }}>{warning.entityName}</strong>
+                                <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '3px', background: warning.severity === 'critical' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)', textTransform: 'uppercase' }}>{warning.severity}</span>
+                              </div>
+                              <span style={{ color: warning.severity === 'critical' ? '#fda4af' : '#fde047', lineHeight: 1.4 }}>{warning.message}</span>
                             </div>
                           </div>
                         ))}
-                      </div>
+                      </>
                     )}
                   </div>
                 ) : (
                   !consistencyLoading && (
-                    <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                      Click &quot;Audit Active Draft&quot; to analyze your draft for character/lore conflicts.
+                    <div style={{ textAlign: 'center', padding: '1.8rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
+                      Press the button above to run a continuity audit against all your recorded Brain Map entries.
                     </div>
                   )
                 )}
                 
                 {consistencyLoading && (
-                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                    <Loader2 size={16} className="spin" style={{ margin: '0 auto 0.5rem' }} />
-                    Auditing chapter continuity against Brain Map...
+                  <div style={{ textAlign: 'center', padding: '1.8rem 1rem', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                    <Loader2 size={18} className="spin" style={{ margin: '0 auto 0.4rem', display: 'block' }} />
+                    Cross-referencing chapter against your Brain Map...
                   </div>
                 )}
               </div>
@@ -23382,6 +23435,31 @@ ${navPoints}  </navMap>
 
         .brain-detail-entity-link {
           display: inline-flex;
+
+        /* Unified Brain Map Popup Polish */
+        .brain-detail-modal, .brain-entity-modal, .brain-action-modal, .brain-graph-modal {
+          border-radius: 14px !important;
+          box-shadow: 0 20px 55px rgba(0,0,0,0.65), 0 0 0 1px rgba(168,85,247,0.1) !important;
+        }
+        .brain-detail-modal .modal-header,
+        .brain-entity-modal .modal-header {
+          padding-bottom: 0.55rem;
+        }
+        .graph-node-preview-panel {
+          background: rgba(15,15,22,0.92) !important;
+          border: 1px solid rgba(168,85,247,0.2) !important;
+        }
+
+        /* Redesigned Brain Action Popups polish */
+        .brain-action-modal .modal-header {
+          border-bottom: 1px solid var(--surface-border);
+        }
+        .brain-action-modal button:hover {
+          filter: brightness(1.1);
+        }
+        .brain-action-modal button:active {
+          transform: translateY(1px);
+        }
           align-items: center;
           gap: 0.45rem;
           width: fit-content;
@@ -26209,17 +26287,17 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
 
   return (
     <div className="modal-overlay graph-modal-overlay" onClick={onClose} style={{ zIndex: 110 }}>
-      <div className="modal brain-graph-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header brain-graph-header">
+      <div className="modal brain-graph-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '98vw', width: '1100px' }}>
+        <div className="modal-header brain-graph-header" style={{ padding: '0.85rem 1rem' }}>
           <div>
-            <h2 className="modal-title">Interactive Brain Map Graph</h2>
-            <p className="modal-description">Drag nodes to explore connections. Scroll to zoom, drag background to pan.</p>
+            <h2 className="modal-title" style={{ fontSize: '1.05rem' }}>Interactive Brain Map Graph</h2>
+            <p className="modal-description" style={{ marginTop: '2px' }}>Drag nodes • Scroll to zoom • Drag background to pan • Double-click to open</p>
           </div>
-          <div className="graph-controls-panel" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <button onClick={() => setScale(s => Math.min(2.5, s + 0.1))} title="Zoom In" className="graph-btn" style={{ width: '32px', borderRadius: '50%' }}>+</button>
-            <button onClick={() => setScale(s => Math.max(0.4, s - 0.1))} title="Zoom Out" className="graph-btn" style={{ width: '32px', borderRadius: '50%' }}>-</button>
-            <button onClick={resetViewport} className="graph-btn" style={{ padding: '0 0.85rem', borderRadius: '16px', fontSize: '0.74rem' }}>Reset View</button>
-            <button onClick={onClose} title="Close" className="graph-btn graph-btn-close" style={{ width: '32px', borderRadius: '50%' }}><X size={15} /></button>
+          <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+            <button onClick={() => setScale(s => Math.min(2.8, s + 0.12))} className="graph-btn" title="Zoom In" style={{ width: '34px', borderRadius: '999px', fontSize: '1.1rem', lineHeight: '1' }}>+</button>
+            <button onClick={() => setScale(s => Math.max(0.35, s - 0.12))} className="graph-btn" title="Zoom Out" style={{ width: '34px', borderRadius: '999px', fontSize: '1.1rem', lineHeight: '1' }}>−</button>
+            <button onClick={resetViewport} className="graph-btn" style={{ padding: '0 0.9rem', borderRadius: '999px', fontSize: '0.74rem' }}>Reset</button>
+            <button onClick={onClose} className="graph-btn graph-btn-close" title="Close" style={{ width: '34px', borderRadius: '999px' }}><X size={16} /></button>
           </div>
         </div>
 
@@ -26339,12 +26417,15 @@ const BrainGraphModalComponent: React.FC<BrainGraphModalComponentProps> = ({
           </div>
 
           {selectedGraphNode && (
-            <div className="graph-node-preview-panel">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className={`brain-type-badge type-${selectedGraphNode.type}`} style={{ fontSize: '0.64rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  {renderIcon(selectedGraphNode.type, 11)}
-                  {getTypeLabel(selectedGraphNode.type)}
-                </span>
+            <div className="graph-node-preview-panel" style={{ padding: '0.75rem 0.9rem', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem' }}>
+                <div>
+                  <span className={`brain-type-badge type-${selectedGraphNode.type}`} style={{ fontSize: '0.64rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    {renderIcon(selectedGraphNode.type, 11)}
+                    {getTypeLabel(selectedGraphNode.type)}
+                  </span>
+                  <div style={{ fontWeight: 700, fontSize: '0.92rem', marginTop: '0.2rem' }}>{selectedGraphNode.name}</div>
+                </div>
                 <button 
                   onClick={() => setSelectedGraphNodeId(null)}
                   style={{ background: 'transparent', border: 0, color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
