@@ -11276,10 +11276,17 @@ ${navPoints}  </navMap>
                               </button>
                               <button
                                 className="btn-ai-sub btn-ai-secondary"
-                                onClick={() => copyAppearanceText(formKey, promptText)}
+                                onClick={() => {
+                                  const neg = formNegPrompt || (appearanceResult?.negativePrompt || "")
+                                  const combined = neg
+                                    ? `${promptText}\n\nNegative prompt: ${neg}`
+                                    : promptText
+                                  copyAppearanceText(formKey, combined)
+                                }}
+                                title={formNegPrompt || appearanceResult?.negativePrompt ? "Copy prompt + negative prompt" : "Copy prompt"}
                               >
                                 <Copy size={12} />
-                                {appearanceCopiedKey === formKey ? "Copied" : "Copy"}
+                                {appearanceCopiedKey === formKey ? "Copied" : (formNegPrompt || appearanceResult?.negativePrompt ? "Copy + Neg" : "Copy")}
                               </button>
                             </div>
                           </div>

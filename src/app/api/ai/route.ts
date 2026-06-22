@@ -1029,10 +1029,14 @@ export async function POST(req: NextRequest) {
         "- Be specific: prefer 'waist-length silver hair with black streaks' over 'long hair'. Prefer 'glowing amber slitted eyes' over 'interesting eyes'.\n" +
         "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
         "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
+        "ACCURATE CHAPTER CAPTURE (HIGHEST PRIORITY):\n" +
+        "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes exact descriptions of hair, eyes, face/expression, clothing, accessories, body, posture, aura, colors, materials, markings, actions that reveal appearance (e.g. 'he brushed his long white hair behind his ear', 'her golden eyes narrowed').\n" +
+        "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them ('long hair' instead of the specific description), or contradict them.\n" +
+        "3. Only AFTER faithfully incorporating all chapter-mentioned visual details, intelligently supplement with consistent, high-quality details for anything missing (face shape, exact eye shape, lighting, background, etc.) to create a complete, vivid, usable prompt for image generation.\n\n" +
         "CONTENT & MERGING RULES (critical):\n" +
         "1. PRIORITIZE AND MERGE USER INPUTS: Any details the user explicitly typed in the form description (e.g., hair, eyes, clothing, or style in the 'Forms to generate prompts for' section) must be treated as absolute truth and included. Integrate them perfectly.\n" +
         "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this character or beast: hair/fur, eyes, skin/scales/hide, attire, armor, ornaments, weapons, body shape, height, posture, expression, scent, aura, power effects, wounds, movement, species, transformation state, and surroundings. These chapter-written details outrank generic fantasy defaults.\n" +
-        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: Use the highlighted passage and Target-Focused Chapter Evidence as the strongest local evidence, but do not ignore the rest of the chapter. Combine those details with Story Bible facts and saved chapter appearance memory. If the chapter says hair color, eye color, attire, beast anatomy, aura, or any distinguishing feature, it MUST appear in the prompt.\n" +
+        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing appearance. Treat every specific detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. If the chapter mentions any visual detail at all, weave it directly and faithfully into the prompt. Do not replace author-written details with your inventions.\n" +
         "4. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
         "5. PRESERVE NON-HUMAN & FANTASTICAL TRAITS: Pay close attention to non-human elements, magical mutations, beast traits, or cultivation auras mentioned in the chapter or Story Bible (e.g., wings, horns, scales, claws, pointy ears, tails, glowing markings, fangs, animal ears, celestial auras, serpentine bodies, insectoid limbs, stone hide, shadow bodies, multiple eyes). A humanoid form/silhouette can and should preserve these traits if they are part of the character's design.\n" +
         "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background. Mark invented-but-plausible choices in consistencyNotes.\n" +
@@ -1088,7 +1092,7 @@ export async function POST(req: NextRequest) {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
         const userProvided = appForms[k]?.trim()
-        return `- ${label} (${k}): ${userProvided ? `User-specified traits: "${userProvided}"` : "No specific traits provided by user. Infer a complete visual design from all available context, preserving category and non-human clues."}`
+        return `- ${label} (${k}): ${userProvided ? `User-specified traits: "${userProvided}"` : "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance)."}`
       }).join("\n")
 
       userPrompt =
@@ -1096,7 +1100,9 @@ export async function POST(req: NextRequest) {
         `World Bible category: ${safeLoreEntry?.category || "unknown"}\n` +
         `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n` +
         `${knownDetailsBlock}` +
-        `${chapterLine}${chapterContent}${selectedLine}${chapterEvidence}${loreLine}\n\n` +
+        `${selectedLine}${chapterEvidence}\n` +
+        `${chapterLine}${chapterContent}${loreLine}\n\n` +
+        `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n\n` +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
           ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth — use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
           : `FACIAL FEATURES INSTRUCTION: The chapter provided no explicit facial details. Use the character's name, lore, groups, personality hints, status, and genre to invent a distinctive, high-quality face (face shape, eye shape and expression, brows, nose, lips, jaw, cheekbones, skin details). Make it specific and memorable.\n\n`
