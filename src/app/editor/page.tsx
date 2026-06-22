@@ -3967,13 +3967,18 @@ const fillEmptyCustomJsonData = (
       const ability = typeof abilityItem === "object" && abilityItem !== null
         ? abilityItem as unknown as Record<string, unknown>
         : { name: String(abilityItem) }
+      const nameKey = String(ability.name || `Ability ${index + 1}`).toLowerCase().trim()
+      const existingAbility = (existingProfile?.abilities || []).find(a => 
+        a.name.toLowerCase().trim() === nameKey || 
+        (ability.id && a.id === ability.id)
+      )
       return {
-        id: String(ability.id || `${ability.name || "ability"}-${index}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-        name: String(ability.name || `Ability ${index + 1}`),
-        level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
-        rank: String(ability.rank || ""),
-        description: String(ability.description || ""),
-        evidence: String(ability.evidence || "")
+        id: String(ability.id || existingAbility?.id || `${nameKey}-${index}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        name: String(ability.name || existingAbility?.name || `Ability ${index + 1}`),
+        level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : (existingAbility?.level || 1),
+        rank: String(ability.rank || existingAbility?.rank || ""),
+        description: String(ability.description || existingAbility?.description || ""),
+        evidence: String(ability.evidence || existingAbility?.evidence || "")
       }
     })
     const customFields = sanitizeSimpleProgressionCustomFields({
@@ -16006,7 +16011,7 @@ ${navPoints}  </navMap>
                         <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftAbility(ability.id)} title="Remove ability"><Trash2 size={12} /></button>
                         <input className="ai-input" value={ability.name} onChange={(e) => setProgressionDraftAbility(ability.id, { name: e.target.value })} placeholder="Ability name" />
                         <input className="ai-input" value={ability.rank || `Level ${ability.level}`} onChange={(e) => setProgressionDraftAbility(ability.id, { rank: e.target.value, level: Number(e.target.value.replace(/\D/g, "")) || ability.level || 1 })} placeholder="Rank or level" />
-                        <textarea className="ai-textarea compact" value={ability.description} onChange={(e) => setProgressionDraftAbility(ability.id, { description: e.target.value })} placeholder="Short description" />
+                        <textarea className="ai-textarea compact" value={ability.description} onChange={(e) => setProgressionDraftAbility(ability.id, { description: e.target.value })} placeholder="Description based on how it appears in chapters (effects, display text, etc.)" />
                       </div>
                     ))}
                   </div>
