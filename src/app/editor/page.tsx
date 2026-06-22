@@ -2030,7 +2030,47 @@ function EditorContent() {
   const [appearancePerFormNegative, setAppearancePerFormNegative] = useState(false)
   const [appearanceBatchEntryIds, setAppearanceBatchEntryIds] = useState<string[]>([])
   const [appearanceBatchLoading, setAppearanceBatchLoading] = useState(false)
+  const [appearanceBatchProgress, setAppearanceBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const [appearanceAddFormKey, setAppearanceAddFormKey] = useState("")
+
+  // Per-entry persistence for last generated result + images (survives entry switches & refresh)
+  const [appearanceResultsByEntry, setAppearanceResultsByEntry] = useState<Record<string, AppearancePromptResult>>({})
+  const [appearanceImagesByEntry, setAppearanceImagesByEntry] = useState<Record<string, Record<string, string>>>({})
+
+  // Load per-entry appearance results & images (after all states are declared)
+  useEffect(() => {
+    try {
+      const storedResults = localStorage.getItem("penpad_appearance_results_by_entry")
+      if (storedResults) setAppearanceResultsByEntry(JSON.parse(storedResults))
+      const storedImages = localStorage.getItem("penpad_appearance_images_by_entry")
+      if (storedImages) setAppearanceImagesByEntry(JSON.parse(storedImages))
+    } catch {}
+  }, [])
+
+  // When switching into the Appearance tab (or when selected entry changes while on it), hydrate the last saved result/images
+  useEffect(() => {
+    if (activeSidebarTab === 'appearance' && appearanceSelectedEntryId) {
+      // If we don't currently have a live result for this entry, try to load the persisted one
+      if (!appearanceResult && appearanceResultsByEntry[appearanceSelectedEntryId]) {
+        loadAppearanceForEntry(appearanceSelectedEntryId)
+      }
+    }
+  }, [activeSidebarTab, appearanceSelectedEntryId])
+
+  // Persist whatever is currently displayed when leaving the Appearance tab
+  useEffect(() => {
+    if (activeSidebarTab !== 'appearance' && appearanceSelectedEntryId) {
+      syncCurrentAppearanceToEntry(appearanceSelectedEntryId)
+    }
+  }, [activeSidebarTab])
+
+  // Persist per-entry appearance results & images
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_results_by_entry", JSON.stringify(appearanceResultsByEntry)) } catch {}
+  }, [appearanceResultsByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_images_by_entry", JSON.stringify(appearanceImagesByEntry)) } catch {}
+  }, [appearanceImagesByEntry])
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -2150,6 +2190,34 @@ function EditorContent() {
 
   const getFormLabel = (key: string) => appearanceFormLabels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
 
+  // Sync current appearance result/images into the per-entry maps (for persistence)
+  const syncCurrentAppearanceToEntry = (entryId: string | null) => {
+    if (!entryId) return
+    if (appearanceResult) {
+      setAppearanceResultsByEntry(prev => ({ ...prev, [entryId]: appearanceResult }))
+    }
+    if (Object.keys(appearanceGeneratedImages).length > 0) {
+      setAppearanceImagesByEntry(prev => ({ ...prev, [entryId]: { ...(prev[entryId] || {}), ...appearanceGeneratedImages } }))
+    }
+  }
+
+  // Load a previously stored result + images for an entry into the live UI state
+  const loadAppearanceForEntry = (entryId: string | null) => {
+    if (!entryId) {
+      setAppearanceResult(null)
+      setAppearanceGeneratedImages({})
+      return
+    }
+    const savedResult = appearanceResultsByEntry[entryId]
+    if (savedResult) {
+      setAppearanceResult(savedResult)
+    } else {
+      setAppearanceResult(null)
+    }
+    const savedImages = appearanceImagesByEntry[entryId] || {}
+    setAppearanceGeneratedImages(savedImages)
+  }
+
   const buildAppearanceLoreContent = (result: AppearancePromptResult) => {
     const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
     const chapterLine = activeNote
@@ -2205,6 +2273,7 @@ function EditorContent() {
     }
 
     setAppearanceSelectedEntryId(sourceEntry.id)
+    syncCurrentAppearanceToEntry(appearanceSelectedEntryId) // save whatever was showing for previous
     setAppearanceLoading(true)
     setAppearanceError("")
     setAppearanceResult(null)
@@ -2242,6 +2311,7 @@ function EditorContent() {
           forms: Object.keys(forms).length > 0 ? forms : undefined,
           formLabels: formLabelsForRequest,
           formEnabled: formEnabledForRequest,
+          perFormNegatives: appearancePerFormNegative,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -2265,7 +2335,12 @@ function EditorContent() {
       if (data.error) {
         setAppearanceError(data.error)
       } else {
-        setAppearanceResult(data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name })
+        const newResult = data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name }
+        setAppearanceResult(newResult)
+        // Persist immediately for this entry
+        if (sourceEntry?.id) {
+          setAppearanceResultsByEntry(prev => ({ ...prev, [sourceEntry.id]: newResult }))
+        }
       }
     } catch (err) {
       setAppearanceError(err instanceof Error ? err.message : "Failed to generate appearance prompts")
@@ -2306,6 +2381,7 @@ function EditorContent() {
           formLabels: { ...appearanceFormLabels, ...defaultFormConfig.labels },
           formEnabled: { [formKey]: true },
           regenerateForm: formKey,
+          perFormNegatives: appearancePerFormNegative,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -2336,11 +2412,16 @@ function EditorContent() {
           const negVal = data.appearancePrompts?.negativePrompts?.[formKey]
           if (typeof negVal === "string") mergedNegPrompts[formKey] = negVal
           const newVal = typeof newPrompts[formKey] === "string" ? newPrompts[formKey] : ""
-          return {
+          const updated = {
             ...prev,
             prompts: { ...(prev.prompts || {}), [formKey]: newVal || prev.prompts?.[formKey] || "" },
             negativePrompts: mergedNegPrompts
           }
+          // Persist regen result for current entry
+          if (sourceEntry?.id) {
+            setAppearanceResultsByEntry(rprev => ({ ...rprev, [sourceEntry.id]: updated }))
+          }
+          return updated
         })
       }
     } catch (err) {
@@ -2356,40 +2437,52 @@ function EditorContent() {
     setTimeout(() => setAppearanceCopiedKey(null), 1500)
   }
 
-  const saveAppearanceToLore = async () => {
+  const applyAppearanceDetailsToEntry = (targetEntry: BibleEntry, result: AppearancePromptResult, now: number) => {
+    const charDetails = result.characterDetails
+    if (!charDetails || (targetEntry.category !== "character" && targetEntry.category !== "beast")) {
+      return { ...targetEntry, updatedAt: now }
+    }
+    return {
+      ...targetEntry,
+      updatedAt: now,
+      characterDetails: {
+        ...(targetEntry.characterDetails || {}),
+        appearance: charDetails.appearance || targetEntry.characterDetails?.appearance || "",
+        hair: charDetails.hair || targetEntry.characterDetails?.hair || "",
+        eyes: charDetails.eyes || targetEntry.characterDetails?.eyes || "",
+        body: charDetails.body || targetEntry.characterDetails?.body || "",
+        attire: charDetails.attire || targetEntry.characterDetails?.attire || "",
+        distinguishingFeatures: charDetails.distinguishingFeatures || targetEntry.characterDetails?.distinguishingFeatures || "",
+        updatedAt: now
+      }
+    }
+  }
+
+  const saveAppearanceToLore = async (fullSheet = true) => {
     if (!appearanceResult || !user || !projectId) return
 
     const now = Date.now()
     const targetEntry = selectedAppearanceEntry
     if (!targetEntry) return
 
-    const promptSheet = buildAppearanceLoreContent(appearanceResult)
-    const sheetHeader = promptSheet.split("\r\n")[0] || ""
+    let updatedEntry: BibleEntry
 
-    if (targetEntry.content.includes(sheetHeader)) {
-      setAppearanceError("This prompt sheet already exists in the lore entry. Skipping duplicate.")
-      return
-    }
+    if (fullSheet) {
+      const promptSheet = buildAppearanceLoreContent(appearanceResult)
+      const sheetHeader = promptSheet.split("\r\n")[0] || ""
 
-    const charDetails = appearanceResult.characterDetails
-    const updatedEntry: BibleEntry = {
-      ...targetEntry,
-      content: `${targetEntry.content || ""}\r\n\r\n${promptSheet}`.trim(),
-      updatedAt: now,
-      ...(charDetails && (targetEntry.category === "character" || targetEntry.category === "beast")
-        ? {
-            characterDetails: {
-              ...(targetEntry.characterDetails || {}),
-              appearance: charDetails.appearance || targetEntry.characterDetails?.appearance || "",
-              hair: charDetails.hair || targetEntry.characterDetails?.hair || "",
-              eyes: charDetails.eyes || targetEntry.characterDetails?.eyes || "",
-              body: charDetails.body || targetEntry.characterDetails?.body || "",
-              attire: charDetails.attire || targetEntry.characterDetails?.attire || "",
-              distinguishingFeatures: charDetails.distinguishingFeatures || targetEntry.characterDetails?.distinguishingFeatures || "",
-              updatedAt: now
-            }
-          }
-        : {})
+      if (targetEntry.content.includes(sheetHeader)) {
+        setAppearanceError("This prompt sheet already exists in the lore entry. Skipping duplicate.")
+        return
+      }
+
+      updatedEntry = {
+        ...applyAppearanceDetailsToEntry(targetEntry, appearanceResult, now),
+        content: `${targetEntry.content || ""}\r\n\r\n${promptSheet}`.trim(),
+      } as BibleEntry
+    } else {
+      // Structured details only — keeps lore text clean
+      updatedEntry = applyAppearanceDetailsToEntry(targetEntry, appearanceResult, now) as BibleEntry
     }
 
     const updated = bibleEntries.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry)
@@ -2397,10 +2490,21 @@ function EditorContent() {
     await saveStoryBibleLocal(projectId, updated)
     await saveBibleEntryToCloud(user.uid, projectId, updatedEntry)
 
-    setActiveSidebarTab("bible")
-    setIsLeftSidebarOpen(true)
-    setActiveBibleEntryId(updatedEntry.id)
-    setIsBibleDrawerOpen(true)
+    // Only auto-open Bible drawer for full sheet appends
+    if (fullSheet) {
+      setActiveSidebarTab("bible")
+      setIsLeftSidebarOpen(true)
+      setActiveBibleEntryId(updatedEntry.id)
+      setIsBibleDrawerOpen(true)
+    } else {
+      // For details-only, just give a subtle confirmation
+      setAppearanceError("")
+    }
+  }
+
+  // Convenience for the "details only" path
+  const updateAppearanceDetailsOnly = async () => {
+    await saveAppearanceToLore(false)
   }
 
   const selectedProgressionProfile = progressionProfiles.find(profile => profile.id === selectedProgressionProfileId) || null
@@ -10754,10 +10858,11 @@ ${navPoints}  </navMap>
                       value={appearanceSelectedEntryId || ""}
                       onChange={(e) => {
                         saveCurrentEntryFormConfig(appearanceSelectedEntryId)
+                        syncCurrentAppearanceToEntry(appearanceSelectedEntryId)
                         const newId = e.target.value || null
                         setAppearanceSelectedEntryId(newId)
                         loadEntryFormConfig(newId)
-                        setAppearanceResult(null)
+                        loadAppearanceForEntry(newId)
                         setAppearanceError("")
                       }}
                       disabled={appearanceLoading}
@@ -10809,6 +10914,76 @@ ${navPoints}  </navMap>
                         (edit labels, toggle enabled)
                       </span>
                     </label>
+                    {/* Quick presets for common cases */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginBottom: "0.3rem" }}>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setAppearanceFormKeys(["humanForm"])
+                          setAppearanceFormEnabled({ humanForm: true })
+                          setAppearanceFormLabels({ humanForm: "Humanoid Form" })
+                          setAppearanceFormDescriptions({})
+                        }}
+                        title="Human / character only"
+                      >Human only</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          const cfg = getDefaultEntryForms("beast")
+                          setAppearanceFormKeys(cfg.keys)
+                          setAppearanceFormEnabled(cfg.enabled)
+                          setAppearanceFormLabels(cfg.labels)
+                          setAppearanceFormDescriptions({})
+                        }}
+                        title="Beast + demi + humanoid"
+                      >Beast (3 forms)</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setAppearanceFormKeys(["beastForm", "humanForm"])
+                          setAppearanceFormEnabled({ beastForm: true, humanForm: true })
+                          setAppearanceFormLabels({ beastForm: "Beast Form", humanForm: "Human Form" })
+                          setAppearanceFormDescriptions({})
+                        }}
+                        title="Beast and final humanoid"
+                      >Beast → Human</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          const cfg = getDefaultEntryForms(selectedAppearanceEntry?.category || "character")
+                          setAppearanceFormKeys(cfg.keys)
+                          setAppearanceFormEnabled(cfg.enabled)
+                          setAppearanceFormLabels(cfg.labels)
+                          setAppearanceFormDescriptions({})
+                        }}
+                        title="Recommended defaults for current entry type"
+                      >Recommended</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setAppearanceFormKeys(["humanForm"])
+                          setAppearanceFormEnabled({ humanForm: true })
+                          setAppearanceFormLabels({ humanForm: "Humanoid Form" })
+                          setAppearanceFormDescriptions({})
+                        }}
+                        title="Simple single humanoid form"
+                      >Minimal</button>
+                    </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                       {appearanceFormKeys.map((formKey, idx) => (
                         <div key={formKey} style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
@@ -10899,7 +11074,7 @@ ${navPoints}  </navMap>
                     </div>
                   )}
 
-                  {/* #10: Per-form negative prompts toggle */}
+                  {/* Per-form negative prompts toggle (now wired) */}
                   <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "var(--text-secondary)", cursor: "pointer" }}>
                     <input
                       type="checkbox"
@@ -10907,7 +11082,7 @@ ${navPoints}  </navMap>
                       onChange={() => setAppearancePerFormNegative(prev => !prev)}
                       disabled={appearanceLoading}
                     />
-                    Generate per-form negative prompts
+                    Generate detailed per-form negative prompts
                   </label>
 
                   {aiSelectionText.trim() && (
@@ -10993,18 +11168,33 @@ ${navPoints}  </navMap>
                             style={{ fontSize: "0.7rem", minHeight: "28px" }}
                             onClick={async () => {
                               if (appearanceBatchEntryIds.length === 0) return
+                              const ids = [...appearanceBatchEntryIds]
                               setAppearanceBatchLoading(true)
+                              setAppearanceBatchProgress({ current: 0, total: ids.length })
                               setAppearanceError("")
-                              for (const id of appearanceBatchEntryIds) {
-                                await handleGenerateAppearancePrompts(id)
-                                await new Promise(r => setTimeout(r, 500))
+                              for (let i = 0; i < ids.length; i++) {
+                                await handleGenerateAppearancePrompts(ids[i])
+                                setAppearanceBatchProgress({ current: i + 1, total: ids.length })
+                                if (i < ids.length - 1) {
+                                  await new Promise(r => setTimeout(r, 420))
+                                }
                               }
                               setAppearanceBatchLoading(false)
+                              setAppearanceBatchProgress(null)
                             }}
                             disabled={appearanceBatchLoading || appearanceBatchEntryIds.length === 0}
                           >
-                            {appearanceBatchLoading ? "Generating batch..." : `Generate for ${appearanceBatchEntryIds.length} entries`}
+                            {appearanceBatchLoading && appearanceBatchProgress
+                              ? `Batch ${appearanceBatchProgress.current}/${appearanceBatchProgress.total}...`
+                              : appearanceBatchLoading
+                                ? "Generating batch..."
+                                : `Generate for ${appearanceBatchEntryIds.length} entries`}
                           </button>
+                          {appearanceBatchProgress && (
+                            <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "2px" }}>
+                              Processing {appearanceBatchProgress.current} of {appearanceBatchProgress.total}
+                            </div>
+                          )}
                         </div>
                       </details>
                     )}
@@ -11030,6 +11220,9 @@ ${navPoints}  </navMap>
                         <div className="appearance-prompt-card" key={formKey}>
                           <div className="appearance-prompt-header">
                             <strong>{label}</strong>
+                            <span style={{ fontSize: "0.6rem", color: "var(--text-dim)", marginLeft: "auto", marginRight: "0.35rem" }}>
+                              {promptText.split(/\s+/).filter(Boolean).length}w
+                            </span>
                             <div style={{ display: "flex", gap: "0.3rem" }}>
                               {/* #3: Regenerate single form */}
                               <button
@@ -11076,7 +11269,15 @@ ${navPoints}  </navMap>
                                   })
                                   const data = await res.json()
                                   if (data.imageUrl) {
-                                    setAppearanceGeneratedImages(prev => ({ ...prev, [formKey]: data.imageUrl }))
+                                    const newImages = { ...appearanceGeneratedImages, [formKey]: data.imageUrl }
+                                    setAppearanceGeneratedImages(newImages)
+                                    // Persist images for current entry
+                                    if (appearanceSelectedEntryId) {
+                                      setAppearanceImagesByEntry(prev => ({
+                                        ...prev,
+                                        [appearanceSelectedEntryId]: { ...(prev[appearanceSelectedEntryId] || {}), [formKey]: data.imageUrl }
+                                      }))
+                                    }
                                   } else if (data.error) {
                                     setAppearanceError(data.error)
                                   }
@@ -11128,21 +11329,36 @@ ${navPoints}  </navMap>
                       </div>
                     )}
 
-                    <div className="appearance-actions">
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={saveAppearanceToLore}
-                        disabled={!selectedAppearanceEntry}
-                      >
-                        <Save size={12} />
-                        Append to Lore
-                      </button>
+                    <div className="appearance-actions" style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                      <div style={{ display: "flex", gap: "0.4rem" }}>
+                        <button
+                          className="btn-ai-sub btn-ai-primary"
+                          onClick={() => saveAppearanceToLore(true)}
+                          disabled={!selectedAppearanceEntry}
+                          style={{ flex: 1 }}
+                          title="Append the full Appearance Prompt Sheet (markdown) + update structured details"
+                        >
+                          <Save size={12} />
+                          Append full sheet
+                        </button>
+                        <button
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={updateAppearanceDetailsOnly}
+                          disabled={!selectedAppearanceEntry}
+                          style={{ flex: 1 }}
+                          title="Only update the structured fields (appearance, hair, eyes, etc.) in the Story Bible without adding prompt text to lore"
+                        >
+                          <Save size={12} />
+                          Update details only
+                        </button>
+                      </div>
                       <button
                         className="btn-ai-sub btn-ai-secondary"
+                        style={{ width: "100%" }}
                         onClick={() => copyAppearanceText("all", buildAppearanceLoreContent(appearanceResult))}
                       >
                         <Copy size={12} />
-                        {appearanceCopiedKey === "all" ? "Copied" : "Copy All"}
+                        {appearanceCopiedKey === "all" ? "Copied" : "Copy All as text"}
                       </button>
                     </div>
                   </div>

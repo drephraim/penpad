@@ -946,7 +946,7 @@ export async function POST(req: NextRequest) {
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm, perFormNegatives } = body
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
       const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
@@ -974,6 +974,8 @@ export async function POST(req: NextRequest) {
         ? [requestedFormKey]
         : baseFormKeys
       const chapterText = String(chapterContext?.content || "").trim()
+
+      const usePerFormNegatives = perFormNegatives !== false // default true for backward compat
 
       const hasDescription = Boolean(
         chapterText &&
@@ -1039,13 +1041,20 @@ export async function POST(req: NextRequest) {
         "8. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
         "9. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
         "10. " + requiredFormRule +
-        "11. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
-        formNegativeGuidance + "\n" +
-        "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n" +
+        (usePerFormNegatives
+          ? "11. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
+            formNegativeGuidance + "\n" +
+            "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
+          : "11. Provide ONE strong shared negative prompt that covers general quality issues and form-specific problems. Keep negativePrompts minimal or empty unless a form has a truly unique blocker.\n" +
+            "   Always include in the shared negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
+        ) +
         "OUTPUT RULES:\n" +
         "12. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
         "   - prompts: object with keys " + formLabelsStr + " — each value is the long descriptive image prompt string.\n" +
-        "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n" +
+        (usePerFormNegatives
+          ? "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n"
+          : "   - negativePrompts: object (can be empty or very brief when per-form negatives are disabled).\n"
+        ) +
         "   - overview: 3-5 sentence prose summary of the character's overall visual identity and why the inferred design fits the chapter/lore.\n" +
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
