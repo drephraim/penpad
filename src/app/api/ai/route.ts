@@ -816,10 +816,10 @@ function expandShortAppearancePrompt(prompt: string, formKey: string): string {
 
   const normalizedKey = formKey.toLowerCase()
   const formSpecific = normalizedKey.includes("beast")
-    ? "For this beast form, keep the anatomy unmistakably non-human: a readable full-body creature silhouette, visible head structure, limbs, spine or tail logic where appropriate, natural hide or scale texture, and a stance that communicates intelligence, danger, and story role."
+    ? "For this beast form: 100% beast. Full animal anatomy, natural beast stance (typically quadrupedal), complete beast head, body covered in fur/scales/hide, tail, no humanoid posture or features."
     : normalizedKey.includes("demi")
-      ? "For this demi-human form, show the bridge between creature and person: humanoid posture with preserved signature markings, eyes, aura, textures, and body traits that clearly connect it back to the original non-human design."
-      : "For this humanoid form, keep the design grounded in the character's story identity: face, expression, body language, clothing, accessories, aura, and any signature non-human lineage traits should remain visible without turning them into a generic human."
+      ? "For this demi-human form: 50-80% beast / 20-50% human. MUST have: upright posture, humanoid torso, human-like arms with hands, beast or partially beast head (animal ears/muzzle/snout or full beast head on human body), beast legs, retained tail, retained fur or scales on most of the body, significantly larger than humans."
+      : "For this humanoid form: more human silhouette but retain clear beast heritage — tail, patches of fur or scales, beast-like eyes/ears/horns, larger-than-human size, and other signature non-human traits from the original beast form. Never a generic human."
 
   return `${prompt} Full head-to-toe composition, complete visual design with face, silhouette, skin or surface texture, clothing or natural covering, accessories, posture, atmosphere, and surrounding environment all clearly readable. ${formSpecific} Preserve every explicit trait from the chapter, Story Bible, and user notes while adding coherent secondary details that fit the scene mood, power level, social status, materials, lighting, and background.`
 }
@@ -994,7 +994,20 @@ export async function POST(req: NextRequest) {
         return `"${k}": "${label}"`
       }).join(", ")
       const requiredFormRule = entryCategory === "beast"
-        ? "This Story Bible entry is a BEAST. You must create prompts for Beast Form, Demi-human Form, and Humanoid Form. The demi-human and humanoid versions are visual evolutions of the beast — they must preserve the beast's signature identifying traits (markings, colors, aura, eyes) while introducing an increasingly humanoid silhouette.\n"
+        ? "This Story Bible entry is a BEAST. You must create prompts for exactly three forms: Beast Form, Demi-human Form, and Humanoid Form. The forms represent evolutionary stages of the same creature.\n\n" +
+          "STRICT BEAST FORM PROGRESSION RULES (MANDATORY — follow even if the entry only has a name and no other description in chapter or lore):\n" +
+          "- Beast Form: 100% beast. Fully animal anatomy, appropriate stance (usually quadrupedal or natural beast locomotion), complete beast head, body, limbs, fur/scales/hide, tail, no humanoid traits.\n" +
+          "- Demi-Human Form: 50%-80% Beast, 20%-50% Human. MUST incorporate ALL of these characteristics:\n" +
+          "  • Upright posture (stands on two legs)\n" +
+          "  • Humanoid torso\n" +
+          "  • Human-like arms (with hands)\n" +
+          "  • Beast head OR partially beast head (e.g. full animal head, or human face with beast ears/muzzle/snout/scales/horns)\n" +
+          "  • Beast legs (digitigrade or clawed beast-style lower legs)\n" +
+          "  • Tail retained\n" +
+          "  • Fur or scales retained (covering most of the body)\n" +
+          "  • Significantly larger than average humans\n" +
+          "- Humanoid Form: More human silhouette but clearly still a beast descendant. Retain key traits such as tail, patches of fur/scales, beast-like eyes/ears/horns/muzzle elements, larger-than-human build, and any signature markings from the beast form. Do not make it look like a generic attractive human.\n" +
+          "Always preserve any signature identifying traits mentioned (markings, colors, aura, eyes, horns, etc.).\n"
         : entryCategory === "character"
           ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
           : "Use only the requested forms, and ground every form in the active chapter.\n"
@@ -1002,9 +1015,9 @@ export async function POST(req: NextRequest) {
       // Build per-form negative prompt guidance
       const formNegativeGuidance = formKeys.map(k => {
         const label = safeFormLabels[k] || k
-        if (k === "beastForm") return `  - ${label}: exclude human face, smooth skin, humanoid clothing, upright posture, anthropomorphic features`
-        if (k === "demiHumanForm") return `  - ${label}: exclude fully animal anatomy, four-legged stance, complete fur coverage obscuring humanoid shape`
-        if (k === "humanForm" || k === "humanoidForm") return `  - ${label}: exclude animal features, visible fur/scales/claws/fangs unless they are a signature trait explicitly mentioned in the chapter`
+        if (k === "beastForm") return `  - ${label}: exclude human face, smooth skin, humanoid clothing, upright posture, anthropomorphic features, human-like arms or torso`
+        if (k === "demiHumanForm") return `  - ${label}: exclude fully animal anatomy, four-legged stance, complete fur/scales/hide that completely hides humanoid torso, human legs, small human-sized build, no tail`
+        if (k === "humanForm" || k === "humanoidForm") return `  - ${label}: exclude animal features, visible fur/scales/claws/fangs unless they are a signature trait explicitly mentioned in the chapter. For beasts, still retain tail and some beast traits.`
         return `  - ${label}: exclude anything not grounded in the chapter description`
       }).join("\n")
 
@@ -1049,19 +1062,23 @@ export async function POST(req: NextRequest) {
         "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit or young master)\n" +
         "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
         "   Always describe in the prompt: face shape, eye shape/size/color/expression, eyebrow shape, nose, mouth/lips, cheekbones, jawline, any scars/markings/tattoos, skin texture or tone. Make the face distinctive and paintable — never generic or omitted.\n" +
-        "8. NO HUMAN-BY-DEFAULT ASSUMPTION: If the character belongs to a beast, demon, monster, divine race, spirit race, bloodline, or demi-human lineage, the prompt must visibly reflect that. The concept should feel like the character being portrayed, not a generic attractive human in fantasy clothes.\n" +
-        "9. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
-        "10. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
-        "11. " + requiredFormRule +
+        "8. BEAST FORM EVOLUTION (MANDATORY FOR BEAST CATEGORY ENTRIES): When the entry is a beast (even if only the name is known and there is zero visual description), strictly follow these anatomical rules for the three forms:\n" +
+        "   - Beast Form = 100% beast (full animal body plan, stance, head).\n" +
+        "   - Demi-Human Form = 50-80% beast / 20-50% human with these REQUIRED traits: upright two-legged posture, humanoid torso, human-like arms and hands, beast or partially beast head, beast-style legs, retained tail, retained fur or scales over most of the body, significantly larger than humans.\n" +
+        "   - Humanoid Form = predominantly human silhouette but unmistakably beast-derived (retained tail, fur/scales patches, animalistic eyes/ears/horns/muzzle features, larger build).\n" +
+        "   Never produce a four-legged demi-human, a tailless demi-human, a small human-sized beast hybrid, or a fully generic human for any form.\n" +
+        "10. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
+        "11. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
+        "12. " + requiredFormRule +
         (usePerFormNegatives
-          ? "12. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
+          ? "13. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that would break that form's visual logic:\n" +
             formNegativeGuidance + "\n" +
             "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
-          : "12. Provide ONE strong shared negative prompt that covers general quality issues and form-specific problems. Keep negativePrompts minimal or empty unless a form has a truly unique blocker.\n" +
+          : "13. Provide ONE strong shared negative prompt that covers general quality issues and form-specific problems. Keep negativePrompts minimal or empty unless a form has a truly unique blocker.\n" +
             "   Always include in the shared negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
         ) +
         "OUTPUT RULES:\n" +
-        "13. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
+        "14. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails.\n" +
         "   - prompts: object with keys " + formLabelsStr + " — each value is the long descriptive image prompt string.\n" +
         (usePerFormNegatives
           ? "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n"
@@ -1071,7 +1088,7 @@ export async function POST(req: NextRequest) {
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
         "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — descriptive prose phrases extracted from the strongest/primary form.\n" +
-        "14. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
+        "15. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
 
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
@@ -1092,7 +1109,9 @@ export async function POST(req: NextRequest) {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
         const userProvided = appForms[k]?.trim()
-        return `- ${label} (${k}): ${userProvided ? `User-specified traits: "${userProvided}"` : "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance)."}`
+        const baseInfer = userProvided ? `User-specified traits: "${userProvided}"` : "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance)."
+        const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information." : ""
+        return `- ${label} (${k}): ${baseInfer}${beastNote}`
       }).join("\n")
 
       userPrompt =
@@ -1103,6 +1122,7 @@ export async function POST(req: NextRequest) {
         `${selectedLine}${chapterEvidence}\n` +
         `${chapterLine}${chapterContent}${loreLine}\n\n` +
         `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n\n` +
+        (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form retains tail/fur/scales/build traits.\n\n` : "") +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
           ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth — use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
           : `FACIAL FEATURES INSTRUCTION: The chapter provided no explicit facial details. Use the character's name, lore, groups, personality hints, status, and genre to invent a distinctive, high-quality face (face shape, eye shape and expression, brows, nose, lips, jaw, cheekbones, skin details). Make it specific and memorable.\n\n`

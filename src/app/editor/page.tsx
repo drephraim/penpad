@@ -10999,7 +10999,11 @@ ${navPoints}  </navMap>
                           setAppearanceFormKeys(cfg.keys)
                           setAppearanceFormEnabled(cfg.enabled)
                           setAppearanceFormLabels(cfg.labels)
-                          setAppearanceFormDescriptions({})
+                          setAppearanceFormDescriptions({
+                            beastForm: "100% beast: full animal body, quadrupedal or natural stance, complete beast head, fur or scales, tail.",
+                            demiHumanForm: "50-80% beast 20-50% human: upright posture, humanoid torso, human-like arms, beast or partial beast head, beast legs, retained tail and fur/scales, larger than human.",
+                            humanForm: "Mostly humanoid but retain beast traits: tail, fur/scales patches, beast eyes/ears, larger build."
+                          })
                         }}
                         title="Beast + demi + humanoid"
                       >Beast (3 forms)</button>
@@ -11125,7 +11129,7 @@ ${navPoints}  </navMap>
                             className="ai-textarea appearance-textarea compact"
                             value={appearanceFormDescriptions[formKey] || ""}
                             onChange={(e) => setAppearanceFormDescriptions(prev => ({ ...prev, [formKey]: e.target.value }))}
-                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey} (face, hair, eyes, build, clothing...)...`}
+                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey} (for beasts: follow 100% beast / 50-80% beast upright demi-human / humanoid-with-traits structure)...`}
                             disabled={appearanceLoading}
                             rows={2}
                           />
