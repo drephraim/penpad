@@ -1642,6 +1642,7 @@ function EditorContent() {
   const [isEditingDossier, setIsEditingDossier] = useState(false)
   const [dossierEditText, setDossierEditText] = useState('')
   const [brainScanUpdatesLoading, setBrainScanUpdatesLoading] = useState(false)
+  const [brainScanUpdateResults, setBrainScanUpdateResults] = useState<{entityName: string; updatedSummary: string}[]>([])
   const [activeBrainPopup, setActiveBrainPopup] = useState<'ask' | 'suggestions' | 'continuity' | null>(null)
   const [arcSeeds, setArcSeeds] = useState<ArcSeed[]>([])
   const [arcSeedLoading, setArcSeedLoading] = useState(false)
@@ -7812,6 +7813,7 @@ const fillEmptyCustomJsonData = (
 
       const updatedList = [...brainEntries]
       const updatedEntriesToSave: BrainEntry[] = []
+      const appliedResults: {entityName: string; updatedSummary: string}[] = []
 
       for (const update of updates) {
         const normalizedName = update.entityName.trim().toLowerCase()
@@ -7831,16 +7833,22 @@ const fillEmptyCustomJsonData = (
             ? `${update.updatedSummary}\n\nEvidence: ${evidenceText}`
             : update.updatedSummary
 
+          const scanLabel = "Recent chapters scan"
+          const appendedSummary = `${existingEntry.aiSummary || ""}\n\n---\n\n### 🔄 Update: ${scanLabel}\n${summaryWithEvidence}`.trim()
+
           const updatedEntry: BrainEntry = {
             ...existingEntry,
             importance: strongerImportance,
-            aiSummary: summaryWithEvidence,
+            aiSummary: appendedSummary,
             updatedAt: now
           }
 
           updatedList[existingIdx] = updatedEntry
           updatedEntriesToSave.push(updatedEntry)
           updatedCount++
+
+          // track for display
+          appliedResults.push({ entityName: update.entityName, updatedSummary: update.updatedSummary })
         }
       }
 
@@ -7852,12 +7860,17 @@ const fillEmptyCustomJsonData = (
         for (const entry of updatedEntriesToSave) {
           await saveBrainEntryToCloud(user.uid, projectId, entry)
         }
-        alert(`Successfully updated ${updatedCount} Brain Map entries!`)
+
+        setBrainScanUpdateResults(appliedResults)
+
+        // No more plain alert - results will be shown in UI
       } else {
+        setBrainScanUpdateResults([])
         alert("Scanned the last 2 chapters but couldn't match any suggested updates to existing Brain Map entries.")
       }
     } catch (err) {
       console.error(err)
+      setBrainScanUpdateResults([])
       alert(err instanceof Error ? err.message : "Failed to scan for updates.")
     } finally {
       setBrainScanUpdatesLoading(false)
@@ -9538,8 +9551,8 @@ ${navPoints}  </navMap>
 
   const parseAiSummarySegments = (summaryText: string) => {
     if (!summaryText) return [];
-    // Split by horizontal rule markdown separator (handles both CRLF and LF)
-    const rawSegments = summaryText.split(/\r?\n*\*+\r?\n*/);
+    // Support both *** and --- separators used in history appends
+    const rawSegments = summaryText.split(/\r?\n*(?:\*{3,}|-{3,})\r?\n*/);
     
     return rawSegments.map((segment, index) => {
       const trimmed = segment.trim();
@@ -9555,6 +9568,9 @@ ${navPoints}  </navMap>
       } else {
         title = index === 0 ? "Initial Entry" : `Section ${index + 1}`;
       }
+      
+      // Clean common prefixes for display
+      content = content.replace(/^Evidence:\s*/i, '').trim();
       
       return {
         id: `${index}`,
@@ -13444,6 +13460,53 @@ ${navPoints}  </navMap>
                   </button>
                 </div>
 
+                {/* Show which entries were updated after a scan */}
+                {brainScanUpdateResults.length > 0 && (
+                  <div style={{
+                    marginBottom: '0.65rem',
+                    padding: '0.5rem 0.6rem',
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: '#10b981' }}>✅ Scan updated {brainScanUpdateResults.length} entries (sorted to top)</span>
+                      <button
+                        onClick={() => setBrainScanUpdateResults([])}
+                        style={{ fontSize: '0.6rem', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
+                        title="Dismiss"
+                      >✕</button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                      {brainScanUpdateResults.map((r, idx) => (
+                        <div 
+                          key={idx} 
+                          onClick={() => {
+                            const found = brainEntries.find(e => 
+                              (e.entityName || e.highlightedText || "").trim().toLowerCase() === r.entityName.trim().toLowerCase()
+                            );
+                            if (found) setSelectedBrainEntryId(found.id);
+                          }}
+                          style={{ 
+                            cursor: 'pointer', 
+                            display: 'flex', 
+                            gap: '0.35rem',
+                            fontSize: '0.68rem'
+                          }}
+                        >
+                          <span style={{ color: '#10b981', fontWeight: 600 }}>•</span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{r.entityName}</span>
+                          <span style={{ color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.updatedSummary}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Click any to view its updated analysis history.</div>
+                  </div>
+                )}
+
                 {brainEntityGroups.length > 0 && (
                   <div className="brain-entity-strip">
                     {brainEntityGroups.slice(0, 6).map(group => (
@@ -15152,35 +15215,47 @@ ${navPoints}  </navMap>
                 {/* AI Analysis Segments */}
                 <div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginBottom: '0.3rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    AI Analysis History
+                    <FileText size={12} /> AI Analysis History
                   </div>
                   {selectedBrainEntry.aiSummary === "Analyzing..." ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-dim)', padding: '0.5rem' }}>
                       <Loader2 size={14} className="spin" /> Analyzing...
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => (
-                        <div 
-                          key={seg.id} 
-                          onClick={() => setSelectedSegment(seg)}
-                          style={{
-                            padding: '0.6rem 0.7rem',
-                            borderRadius: '8px',
-                            border: '1px solid var(--surface-border)',
-                            cursor: 'pointer',
-                            background: 'rgba(255,255,255,0.02)',
-                            transition: 'background 0.1s'
-                          }}
-                        >
-                          <div style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-                            {seg.title}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {parseAiSummarySegments(selectedBrainEntry.aiSummary).map((seg) => {
+                        const isUpdate = /update/i.test(seg.title);
+                        const isSub = /sub-entity|sub entity/i.test(seg.title);
+                        const isMerge = /merge|merged/i.test(seg.title);
+                        const icon = isUpdate ? <RefreshCw size={10} /> : isSub ? <MapPin size={10} /> : isMerge ? <Link2 size={10} /> : <FileText size={10} />;
+                        return (
+                          <div 
+                            key={seg.id} 
+                            onClick={() => setSelectedSegment(seg)}
+                            style={{
+                              padding: '0.55rem 0.65rem',
+                              borderRadius: '8px',
+                              border: '1px solid var(--surface-border)',
+                              cursor: 'pointer',
+                              background: 'rgba(255,255,255,0.02)',
+                              transition: 'all 0.1s',
+                              display: 'flex',
+                              gap: '0.4rem'
+                            }}
+                          >
+                            <div style={{ color: '#c084fc', marginTop: '1px' }}>{icon}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.72rem', color: '#c084fc', fontWeight: 600, lineHeight: 1.2 }}>
+                                {seg.title}
+                              </div>
+                              <p style={{ fontSize: '0.71rem', color: 'var(--text-secondary)', margin: '0.1rem 0 0', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                {seg.content}
+                              </p>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--text-dim)', marginTop: '0.15rem' }}>Click to read full</div>
+                            </div>
                           </div>
-                          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            {seg.content.replace(/[#*`\n]/g, ' ').trim()}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
