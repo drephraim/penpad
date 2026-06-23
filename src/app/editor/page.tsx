@@ -1594,6 +1594,7 @@ function EditorContent() {
   const [showNamePrompt, setShowNamePrompt] = useState(false)
   const [showNameSyllables, setShowNameSyllables] = useState(false)
   const [nameGenCount, setNameGenCount] = useState(5)
+  const [nameDiversity, setNameDiversity] = useState<"normal" | "high" | "extreme">("high")
   const [nameSearchQuery, setNameSearchQuery] = useState("")
   const [nameCategoryFilter, setNameCategoryFilter] = useState<string | null>(null)
   const [namePresets, setNamePresets] = useState<NameForgePreset[]>([])
@@ -6308,7 +6309,7 @@ const fillEmptyCustomJsonData = (
           nameTone,
           nameGender,
           nameSyllableBank: nameSyllableBank || undefined,
-          customPrompt: nameCustomPrompt,
+          customPrompt: `${nameCustomPrompt || ""} ${nameDiversity === "extreme" ? "EXTREME DIVERSITY MODE: Make every name sound like it comes from a completely different world or language family." : nameDiversity === "high" ? "High variety requested." : ""}`.trim(),
           bibleEntries,
           count: nameGenCount,
           chapterTitle: activeNote?.title || "",
@@ -6557,6 +6558,7 @@ const fillEmptyCustomJsonData = (
     setNameGeneratorConfig(newConfig)
     setNameCustomPrompt("")
     setNameSyllableBank("")
+    setNameDiversity("extreme")
     setTimeout(() => generateNameOptions(false), 50)
   }
 
@@ -12503,6 +12505,7 @@ ${navPoints}  </navMap>
                     }
 
                     items.push({ key: "count", label: "Count", value: `${nameGenCount}` })
+                    items.push({ key: "diversity", label: "Diversity", value: nameDiversity.charAt(0).toUpperCase() + nameDiversity.slice(1) })
                     items.push({ key: "presets", label: "Presets", value: namePresets.length > 0 ? `${namePresets.length} saved` : "Save / Load" })
 
                     return items.map(item => (
@@ -12513,6 +12516,7 @@ ${navPoints}  </navMap>
                         onClick={() => {
                           if (item.key === "presets") setShowPresetsPanel(!showPresetsPanel)
                           else if (item.key === "count") setActiveNamePicker("count")
+                          else if (item.key === "diversity") setActiveNamePicker("diversity")
                           else setActiveNamePicker(item.key)
                         }}
                       >
@@ -12988,6 +12992,35 @@ ${navPoints}  </navMap>
                             <span>{option.label}</span>
                             <small>{option.hint}</small>
                             {nameGenCount === option.value && <Check size={14} />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeNamePicker === "diversity" && (
+                  <div className="name-picker-popover-overlay" onClick={() => setActiveNamePicker(null)}>
+                    <div className="name-picker-popover glass" onClick={(e) => e.stopPropagation()}>
+                      <div className="name-picker-popover-header">
+                        <strong>Diversity / Versatility</strong>
+                        <button type="button" onClick={() => setActiveNamePicker(null)}><X size={16} /></button>
+                      </div>
+                      <div className="name-picker-options">
+                        {[
+                          { value: "normal", label: "Normal", hint: "Good variety" },
+                          { value: "high", label: "High", hint: "Strongly varied" },
+                          { value: "extreme", label: "Extreme", hint: "Radically different names" }
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            className={`name-picker-option ${nameDiversity === opt.value ? "active" : ""}`}
+                            onClick={() => { setNameDiversity(opt.value as any); setActiveNamePicker(null) }}
+                          >
+                            <span>{opt.label}</span>
+                            <small>{opt.hint}</small>
+                            {nameDiversity === opt.value && <Check size={14} />}
                           </button>
                         ))}
                       </div>

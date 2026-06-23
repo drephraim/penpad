@@ -1659,10 +1659,16 @@ export async function POST(req: NextRequest) {
       ]
 
       systemInstruction =
-        "You are a fantasy novel naming specialist. Generate fresh, memorable names that fit the user's requested culture, race, creature type, tone, and name length.\n" +
+        "You are an expert fantasy novel naming specialist specializing in highly original, versatile names.\n" +
         `Available styles: ${allStyles.join(", ")}.\n` +
+        "EXTREME DIVERSITY MANDATE:\n" +
+        "- In this single batch of exactly ${requestedCount} names, make every name feel like it belongs to a completely different naming tradition, culture, or invented language. They must sound stylistically incompatible with each other.\n" +
+        "- Dramatically vary: syllable count (short vs long), consonant density, vowel openness, rhythm, starting/ending sounds, use of compounds vs single words, harshness vs softness.\n" +
+        "- Do NOT reuse any phonetic motif, prefix family, or structural pattern within the batch. Force yourself to use very different sound palettes for each name.\n" +
+        "- Strongly resist defaulting to common fantasy phonemes. Only use them if the requested style specifically demands it.\n" +
+        "- Goal: the ${requestedCount} names should feel like they could come from  ${requestedCount} entirely separate fictional worlds or real-world linguistic families.\n\n" +
         "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
-        `Generate exactly ${requestedCount} distinct, varied options per request.\n` +
+        `Generate exactly ${requestedCount} highly distinct, versatile options.\n` +
         "Respect the requested name structure: single, double, triple, title-style, clan-style, or any.\n" +
         `${subtypeGuidance ? subtypeGuidance + "\n" : ""}` +
         `${mashupLine ? mashupLine + "\n" : ""}` +
@@ -1687,7 +1693,8 @@ export async function POST(req: NextRequest) {
         `Number of names to generate: ${requestedCount}\n` +
         `Extra Direction: ${customPrompt || "Surprise me with useful fantasy novel names."}\n\n` +
         `Existing Story Bible Names To Avoid:\n${existingNames || "No Story Bible names yet."}\n\n` +
-        `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}`
+        `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}\n\n` +
+        `DIVERSITY REQUIREMENT: The ${requestedCount} names MUST be radically different from each other in sound, length, and style. Force extreme variety.`
     } else if (action === "timeline_consistency_check") {
       const { chapters, profiles, bibleEntries } = body as {
         chapters: { id: string; title: string; chapterNumber: number; charactersAppearing: string[] }[]
@@ -1799,9 +1806,11 @@ export async function POST(req: NextRequest) {
     if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
       text = JSON.stringify({ settings: parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings })
     } else {
-      // appearance_prompts needs creative temperature — higher than standard JSON extraction
+      // appearance_prompts and name_generate need creative temperature — higher than standard JSON extraction
       const appearanceTemp = action === "appearance_prompts" ? 0.60 : undefined
-      text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), appearanceTemp)
+      const nameTemp = action === "name_generate" ? 0.92 : undefined
+      const creativeTemp = appearanceTemp ?? nameTemp
+      text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
     }
 
     if (action === "brain_consistency_check") {
