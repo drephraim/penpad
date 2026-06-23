@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server"
+import { GoogleGenerativeAI } from "@google/generative-ai"
 
 type BrainAnalysis = {
   summary?: string
@@ -710,6 +711,34 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
   return text
 }
 
+async function generateWithGemini(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number) {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error("Gemini API key is not configured on the server. Please add GEMINI_API_KEY to your environment.")
+  }
+
+  const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
+  const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash"
+
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({ 
+    model: modelName,
+    systemInstruction: systemInstruction,
+    generationConfig: {
+      temperature,
+      maxOutputTokens: jsonMode ? 8192 : 4096,
+    }
+  })
+
+  const result = await model.generateContent(userPrompt)
+  const text = result.response.text()
+
+  if (!text || typeof text !== "string") {
+    throw new Error("Gemini returned an empty response.")
+  }
+  return text
+}
+
 // Maps user-facing style labels to image-generator quality modifier tokens
 const APPEARANCE_STYLE_MODIFIERS: Record<string, string> = {
   "cinematic fantasy character concept art": "cinematic fantasy concept art, highly detailed, dramatic lighting, volumetric fog, artstation trending, sharp focus, 8k resolution, professional illustration",
@@ -743,12 +772,14 @@ function extractKnownAppearanceDetails(loreContent: string): string {
   const attireMatch = loreContent.match(/\b(?:wear(?:s|ing)?|cloth(?:es|ing)|robe|armor|attire|dress(?:es)?|outfit)\b[^.\n]{0,150}/i)
   const bodyMatch = loreContent.match(/\b(?:build|stature|height|tall|muscular|slender|lithe|stocky|frame|figure|physique)\b[^.\n]{0,120}/i)
   const skinMatch = loreContent.match(/\b(?:skin|complexion|scales?|hide|fur color)\b[^.\n]{0,120}/i)
+  const weaponMatch = loreContent.match(/\b(?:weapon|sword|blade|axe|bow|staff|dagger|spear|hammer|gun|rifle|wand|orb|shield|clutched|wielded|holding|gripped|drew|drawing|nocked)\b[^.\n]{0,150}/i)
   if (hairMatch) lines.push(`- Hair/Fur: ${hairMatch[0].trim()}`)
   if (eyeMatch) lines.push(`- Eyes: ${eyeMatch[0].trim()}`)
   if (faceMatch) lines.push(`- Face/Expression: ${faceMatch[0].trim()}`)
   if (skinMatch) lines.push(`- Skin/Scales: ${skinMatch[0].trim()}`)
   if (bodyMatch) lines.push(`- Build: ${bodyMatch[0].trim()}`)
   if (attireMatch) lines.push(`- Attire: ${attireMatch[0].trim()}`)
+  if (weaponMatch) lines.push(`- Weapon/Held Item: ${weaponMatch[0].trim()}`)
   return lines.length > 0 ? lines.join("\n") : ""
 }
 
@@ -1038,18 +1069,18 @@ export async function POST(req: NextRequest) {
         "Your output prompts are fed directly into Stable Diffusion / SDXL or similar image generators, so they must be vivid, concrete, and visually complete enough for an image model to understand the character without extra explanation.\n\n" +
         "PROMPT FORMAT RULES (critical):\n" +
         "- Write each prompt as ONE long descriptive image-generation prompt with 3-5 dense sentences. It must read like a complete visual art direction paragraph, not a checklist and not a short tag dump.\n" +
-        "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) subject type + species/race + gender/age only when supported or safely inferable, (3) face + expression, (4) hair/fur/skin/scales color and texture, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n" +
+        "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) subject type + species/race + gender/age only when supported or safely inferable, (3) face + expression, (4) hair/fur/skin/scales color and texture, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories **and any weapons or items being held** with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n" +
         "- Be specific: prefer 'waist-length silver hair with black streaks' over 'long hair'. Prefer 'glowing amber slitted eyes' over 'interesting eyes'.\n" +
         "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
         "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
         "ACCURATE CHAPTER CAPTURE (HIGHEST PRIORITY):\n" +
         "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes exact descriptions of hair, eyes, face/expression, clothing, accessories, body, posture, aura, colors, materials, markings, actions that reveal appearance (e.g. 'he brushed his long white hair behind his ear', 'her golden eyes narrowed').\n" +
-        "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them ('long hair' instead of the specific description), or contradict them.\n" +
+        "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them ('long hair' instead of the specific description), or contradict them. This includes any weapons, swords, bows, staves, or items the character is holding, wielding, or carrying — describe them specifically (e.g. 'gripping a curved scimitar with a ruby pommel in his right hand').\n" +
         "3. Only AFTER faithfully incorporating all chapter-mentioned visual details, intelligently supplement with consistent, high-quality details for anything missing (face shape, exact eye shape, lighting, background, etc.) to create a complete, vivid, usable prompt for image generation.\n\n" +
         "CONTENT & MERGING RULES (critical):\n" +
         "1. PRIORITIZE AND MERGE USER INPUTS: Any details the user explicitly typed in the form description (e.g., hair, eyes, clothing, or style in the 'Forms to generate prompts for' section) must be treated as absolute truth and included. Integrate them perfectly.\n" +
-        "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this character or beast: hair/fur, eyes, skin/scales/hide, attire, armor, ornaments, weapons, body shape, height, posture, expression, scent, aura, power effects, wounds, movement, species, transformation state, and surroundings. These chapter-written details outrank generic fantasy defaults.\n" +
-        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing appearance. Treat every specific detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. If the chapter mentions any visual detail at all, weave it directly and faithfully into the prompt. Do not replace author-written details with your inventions.\n" +
+        "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this character or beast: hair/fur, eyes, skin/scales/hide, attire, armor, ornaments, **weapons or held items** (e.g. 'drew his longsword', 'nocked an arrow', 'clutched a staff'), body shape, height, posture, expression, scent, aura, power effects, wounds, movement, species, transformation state, and surroundings. These chapter-written details outrank generic fantasy defaults.\n" +
+        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing appearance. Treat every specific detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. If the chapter mentions any visual detail at all — especially weapons being held or used — weave it directly and faithfully into the prompt (e.g. include 'wielding a jagged obsidian blade' exactly as described). Do not replace author-written details with your inventions.\n" +
         "4. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
         "5. PRESERVE NON-HUMAN & FANTASTICAL TRAITS: Pay close attention to non-human elements, magical mutations, beast traits, or cultivation auras mentioned in the chapter or Story Bible (e.g., wings, horns, scales, claws, pointy ears, tails, glowing markings, fangs, animal ears, celestial auras, serpentine bodies, insectoid limbs, stone hide, shadow bodies, multiple eyes). A humanoid form/silhouette can and should preserve these traits if they are part of the character's design.\n" +
         "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background. Mark invented-but-plausible choices in consistencyNotes.\n" +
@@ -1087,7 +1118,7 @@ export async function POST(req: NextRequest) {
         "   - overview: 3-5 sentence prose summary of the character's overall visual identity and why the inferred design fits the chapter/lore.\n" +
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
-        "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures — descriptive prose phrases extracted from the strongest/primary form.\n" +
+        "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures, weapon (or held item) — descriptive prose phrases extracted from the strongest/primary form. If a weapon is mentioned, include specific details here and in the main prompt.\n" +
         "15. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
 
       const chapterLine = chapterContext
@@ -1109,7 +1140,7 @@ export async function POST(req: NextRequest) {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
         const userProvided = appForms[k]?.trim()
-        const baseInfer = userProvided ? `User-specified traits: "${userProvided}"` : "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance)."
+        const baseInfer = userProvided ? `User-specified traits: "${userProvided}"` : "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information." : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}`
       }).join("\n")
@@ -1121,7 +1152,7 @@ export async function POST(req: NextRequest) {
         `${knownDetailsBlock}` +
         `${selectedLine}${chapterEvidence}\n` +
         `${chapterLine}${chapterContent}${loreLine}\n\n` +
-        `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n\n` +
+        `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details. If a weapon or held item is described (e.g. 'he swung his battleaxe' or 'clutching a glowing orb'), include it accurately in the pose and accessories.\n\n` +
         (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form retains tail/fur/scales/build traits.\n\n` : "") +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
           ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth — use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
@@ -1165,7 +1196,12 @@ export async function POST(req: NextRequest) {
         "Guidelines:\n" +
         "1. Use the Story Bible entry, current chapter, target-specific chapter evidence, existing profile, and candidate profiles to create or update exactly one character profile.\n" +
         "2. If an explicit Story Bible entry is provided, that entry is the only target. Do not copy cultivation, powers, titles, bloodlines, skills, or lore from nearby characters. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter.\n" +
-        "3. Read in this order: target-specific evidence first, Story Bible notes second, full chapter third, existing profile last for preservation. Do not stop after the first mention; scan the full chapter for later corrections, reveals, awakenings, status screens, dialogue labels, and narration.\n" +
+        "3. MULTI-CHARACTER DIFFERENTIATION (CRITICAL): When multiple characters appear in the chapter:\n" +
+        "   - Attribute EVERY detail (class, skills, realm, stage, relationships, appearance, actions, dialogue) ONLY to the character it belongs to.\n" +
+        "   - Use: exact name/alias matches, speaker tags, pronouns in context, unique descriptors, who is acting/speaking.\n" +
+        "   - Explicitly ignore or skip details for non-target characters.\n" +
+        "   - If a detail cannot be confidently attributed to the target, do not include it in the profile update.\n" +
+        "4. Read in this order: target-specific evidence first, Story Bible notes second, full chapter third, existing profile last for preservation. Do not stop after the first mention; scan the full chapter for later corrections, reveals, awakenings, status screens, dialogue labels, and narration.\n" +
         "4. The profile schema includes: name, title, additional titles, cultivation realm (profile.realm), cultivation stage/sub-rank (profile.stage), rank (profile.rank), bloodline name, bloodline rank, affinity names/ranks, main class, secondary class or extra classes, weapons, skills, and lore.\n" +
         "5. Put the character's main class/job/role in profile.className only when the text explicitly presents it as a class, job, occupation, system class, or combat role. If the chapter gives a second class, subclass, job, or secondary role, put it in profile.customFields['Secondary Class']; if there are more classes, use distinct custom fields such as profile.customFields['Class 2'], profile.customFields['Class 3'], and matching rank fields when known. Put extra titles beyond profile.title in custom fields such as profile.customFields['Title 2']. Put weapons or equipment in custom fields such as profile.customFields['Weapon'] or profile.customFields['Weapon 2']. Do not put classes, titles, or weapons in abilities or lore unless the chapter explicitly says they are skills/techniques.\n" +
         "6. Put the bloodline name in profile.customFields['Bloodline'] and its rank/grade/tier/quality such as Supreme or Celestial in profile.customFields['Bloodline Rank']. Do not put bloodlines in affinities or skills.\n" +
@@ -1219,7 +1255,7 @@ export async function POST(req: NextRequest) {
         `- Name\n- Title\n- Cultivation Realm (profile.realm; e.g. Demigod, God; match against the configured cultivation realms list when possible)\n- Cultivation Stage (profile.stage; e.g. Low, Medium, High, Peak; match against the configured stage labels when possible)\n- Rank (profile.rank; e.g. Tier 1, Rank 4)\n- Bloodline (profile.customFields.Bloodline)\n- Bloodline Rank (profile.customFields['Bloodline Rank']; examples: Supreme, Celestial)\n- Affinity Names (profile.customFields['Affinity Names']; comma-separated for multiple affinities)\n- Affinity Rank (profile.customFields['Affinity Rank']; preserve pairings like Fire (High), Void (Supreme))\n- Main Class (profile.className)\n- Secondary Class (profile.customFields['Secondary Class'])\n- Skills/Techniques/Abilities (profile.abilities) — each entry MUST include: name, rank (if shown), level, description (write a fitting description by closely reading how the skill/technique/ability was DISPLAYED in the chapter — system text, activation, effects, etc.), evidence\n- Lore (profile.notes)\n\n` +
         customJsonPrompt +
         `Extraction Checklist:\n` +
-        `1. Identify only the target character.\n` +
+        `1. Identify ONLY the target character. When multiple characters appear in the chapter, use names, aliases, speaker attribution, pronouns, context, and actions to attribute details correctly — NEVER mix details from other characters into the target's profile.\n` +
         `2. Search target evidence and full chapter for explicit status-like details, especially any displayed skills, techniques, or abilities (system messages, use descriptions, learning notifications).\n` +
         `3. Fill exact fields: Bloodline != Affinity != Class != Skills/Abilities.\n` +
         `4. For abilities: base the 'description' directly on the chapter's display text of that skill/technique.\n` +
@@ -1810,7 +1846,21 @@ export async function POST(req: NextRequest) {
       const appearanceTemp = action === "appearance_prompts" ? 0.60 : undefined
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
-      text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+
+      // Use Gemini hand-in-hand with Groq:
+      // - Prefer Gemini for progression_update (superior long-context reasoning and multi-character disambiguation)
+      // - Groq for speed on other creative/structured tasks
+      const useGemini = (action === "progression_update" || action === "brain_analyze") && !!process.env.GEMINI_API_KEY
+      if (useGemini) {
+        try {
+          text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+        } catch (geminiErr) {
+          console.warn("[Gemini] Failed, falling back to Groq for progression_update:", geminiErr)
+          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+        }
+      } else {
+        text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+      }
     }
 
     if (action === "brain_consistency_check") {
@@ -1953,7 +2003,8 @@ export async function POST(req: NextRequest) {
             eyes: extractCharDetail((rawDetails as Record<string, unknown>).eyes),
             body: extractCharDetail((rawDetails as Record<string, unknown>).body),
             attire: extractCharDetail((rawDetails as Record<string, unknown>).attire),
-            distinguishingFeatures: extractCharDetail((rawDetails as Record<string, unknown>).distinguishingFeatures)
+            distinguishingFeatures: extractCharDetail((rawDetails as Record<string, unknown>).distinguishingFeatures),
+            weapon: extractCharDetail((rawDetails as Record<string, unknown>).weapon || (rawDetails as Record<string, unknown>).heldItem)
           }
         : undefined
 

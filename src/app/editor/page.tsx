@@ -245,6 +245,7 @@ interface BibleExtractionSuggestion {
     eyes?: string
     body?: string
     distinguishingFeatures?: string
+    weapon?: string
     chapterAppearance?: {
       summary?: string
       evidence?: string
@@ -254,6 +255,7 @@ interface BibleExtractionSuggestion {
       eyes?: string
       body?: string
       distinguishingFeatures?: string
+      weapon?: string
     }
   }
   timelineFact?: {
@@ -283,6 +285,7 @@ interface AppearancePromptResult {
     body?: string
     attire?: string
     distinguishingFeatures?: string
+    weapon?: string
   }
 }
 
@@ -2476,6 +2479,7 @@ function EditorContent() {
         body: charDetails.body || targetEntry.characterDetails?.body || "",
         attire: charDetails.attire || targetEntry.characterDetails?.attire || "",
         distinguishingFeatures: charDetails.distinguishingFeatures || targetEntry.characterDetails?.distinguishingFeatures || "",
+        weapon: charDetails.weapon || (targetEntry.characterDetails as any)?.weapon || "",
         updatedAt: now
       }
     }
@@ -6853,6 +6857,7 @@ const fillEmptyCustomJsonData = (
       eyes: String(details.eyes || "").trim(),
       body: String(details.body || "").trim(),
       distinguishingFeatures: String(details.distinguishingFeatures || "").trim(),
+      weapon: String(details.weapon || "").trim(),
       chapterAppearances,
       updatedAt: Number.isFinite(Number(details.updatedAt)) ? Number(details.updatedAt) : undefined
     }
@@ -6877,6 +6882,7 @@ const fillEmptyCustomJsonData = (
       eyes: incoming.eyes || existing.eyes,
       body: incoming.body || existing.body,
       distinguishingFeatures: incoming.distinguishingFeatures || existing.distinguishingFeatures,
+      weapon: incoming.weapon || existing.weapon,
       updatedAt: now
     }
 
@@ -6896,15 +6902,16 @@ const fillEmptyCustomJsonData = (
         eyes: String(chapterAppearance?.eyes || incoming.eyes || "").trim(),
         body: String(chapterAppearance?.body || incoming.body || "").trim(),
         distinguishingFeatures: String(chapterAppearance?.distinguishingFeatures || incoming.distinguishingFeatures || "").trim(),
+        weapon: String(chapterAppearance?.weapon || incoming.weapon || "").trim(),
         createdAt: now
       }
-      const isDuplicate = existing.chapterAppearances.some(fact =>
+      const isDuplicate = existing.chapterAppearances.some((fact: any) =>
         fact.chapterId === nextAppearanceFact.chapterId &&
         fact.summary.toLowerCase() === nextAppearanceFact.summary.toLowerCase()
       )
       nextDetails.chapterAppearances = isDuplicate
         ? existing.chapterAppearances
-        : [...existing.chapterAppearances, nextAppearanceFact]
+        : [...existing.chapterAppearances, nextAppearanceFact as any]
     }
 
     return {
@@ -14804,6 +14811,10 @@ ${navPoints}  </navMap>
                           <small>Attire</small>
                           <input className="ai-input" value={details.attire} onChange={(e) => updateActiveBibleCharacterDetails({ attire: e.target.value })} placeholder="Robes, armor, uniform..." />
                         </label>
+                        <label>
+                          <small>Weapon / Held Item</small>
+                          <input className="ai-input" value={details.weapon || ""} onChange={(e) => updateActiveBibleCharacterDetails({ weapon: e.target.value })} placeholder="Glowing longsword, enchanted staff..." />
+                        </label>
                       </div>
                       <label>
                         <small>Distinguishing Features</small>
@@ -14827,11 +14838,14 @@ ${navPoints}  </navMap>
                         const prevFact = factIdx > 0 ? details.chapterAppearances[factIdx - 1] : null
                         const diffs: string[] = []
                         if (prevFact) {
-                          if (fact.hair && fact.hair !== prevFact.hair) diffs.push(`hair: ${prevFact.hair || "?"} → ${fact.hair}`)
-                          if (fact.eyes && fact.eyes !== prevFact.eyes) diffs.push(`eyes: ${prevFact.eyes || "?"} → ${fact.eyes}`)
-                          if (fact.attire && fact.attire !== prevFact.attire) diffs.push(`attire: ${prevFact.attire || "?"} → ${fact.attire}`)
-                          if (fact.body && fact.body !== prevFact.body) diffs.push(`body: ${prevFact.body || "?"} → ${fact.body}`)
-                          if (fact.distinguishingFeatures && fact.distinguishingFeatures !== prevFact.distinguishingFeatures) diffs.push(`features: changed`)
+                          const f = fact as any
+                          const p = prevFact as any
+                          if (f.hair && f.hair !== p.hair) diffs.push(`hair: ${p.hair || "?"} → ${f.hair}`)
+                          if (f.eyes && f.eyes !== p.eyes) diffs.push(`eyes: ${p.eyes || "?"} → ${f.eyes}`)
+                          if (f.attire && f.attire !== p.attire) diffs.push(`attire: ${p.attire || "?"} → ${f.attire}`)
+                          if (f.body && f.body !== p.body) diffs.push(`body: ${p.body || "?"} → ${f.body}`)
+                          if (f.distinguishingFeatures && f.distinguishingFeatures !== p.distinguishingFeatures) diffs.push(`features: changed`)
+                          if (f.weapon && f.weapon !== p.weapon) diffs.push(`weapon: ${p.weapon || "?"} → ${f.weapon}`)
                         }
                         return (
                           <div className="bible-timeline-fact" key={fact.id}>
