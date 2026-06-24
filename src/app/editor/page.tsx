@@ -11011,7 +11011,7 @@ ${navPoints}  </navMap>
                           setAppearanceFormDescriptions({
                             beastForm: "100% beast: full animal body, quadrupedal or natural stance, complete beast head, fur or scales, tail.",
                             demiHumanForm: "50-80% beast 20-50% human: upright posture, humanoid torso, human-like arms, beast or partial beast head, beast legs, retained tail and fur/scales, larger than human.",
-                            humanForm: "Mostly humanoid but retain beast traits: tail, fur/scales patches, beast eyes/ears, larger build."
+                            humanForm: "Clean humanoid form. Only include tail, fur, scales, or other non-human traits if explicitly stated in the chapter for the humanoid state. Do not add them by default."
                           })
                         }}
                         title="Beast + demi + humanoid"
@@ -11025,7 +11025,10 @@ ${navPoints}  </navMap>
                           setAppearanceFormKeys(["beastForm", "humanForm"])
                           setAppearanceFormEnabled({ beastForm: true, humanForm: true })
                           setAppearanceFormLabels({ beastForm: "Beast Form", humanForm: "Human Form" })
-                          setAppearanceFormDescriptions({})
+                          setAppearanceFormDescriptions({
+                            beastForm: "100% beast: full animal anatomy, natural stance, complete beast head, fur or scales, tail.",
+                            humanForm: "Clean humanoid form. Only include tail, fur, scales, or other non-human traits if explicitly stated in the chapter for the humanoid state. Do not add them by default."
+                          })
                         }}
                         title="Beast and final humanoid"
                       >Beast → Human</button>
@@ -11138,7 +11141,7 @@ ${navPoints}  </navMap>
                             className="ai-textarea appearance-textarea compact"
                             value={appearanceFormDescriptions[formKey] || ""}
                             onChange={(e) => setAppearanceFormDescriptions(prev => ({ ...prev, [formKey]: e.target.value }))}
-                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey} (for beasts: follow 100% beast / 50-80% beast upright demi-human / humanoid-with-traits structure)...`}
+                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey}. For humanoid: only add tails/wings/horns/fur if explicitly in the chapter. Do not invent non-human traits.`}
                             disabled={appearanceLoading}
                             rows={2}
                           />
