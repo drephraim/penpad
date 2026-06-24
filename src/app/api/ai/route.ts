@@ -990,11 +990,11 @@ export async function POST(req: NextRequest) {
       const chapterContext = chapter && typeof chapter === "object"
         ? chapter as { title?: string; chapterNumber?: number; content?: string; targetEvidence?: string }
         : null
-      const entryCategory = safeLoreEntry?.category === "beast"
-        ? "beast"
-        : safeLoreEntry?.category === "character"
-          ? "character"
-          : "other"
+      const rawEntryCategory = typeof safeLoreEntry?.category === "string" ? safeLoreEntry.category : ""
+      const entryCategory = rawEntryCategory === "beast" || rawEntryCategory === "character" || rawEntryCategory === "place" || rawEntryCategory === "world" || rawEntryCategory === "item"
+        ? rawEntryCategory
+        : "other"
+      const isCharacterLike = entryCategory === "beast" || entryCategory === "character"
       const categoryFormKeys = entryCategory === "beast"
         ? ["beastForm", "demiHumanForm", "humanForm"]
         : entryCategory === "character"
@@ -1002,7 +1002,14 @@ export async function POST(req: NextRequest) {
           : null
       const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] !== false)
       const requestedFormKey = typeof regenerateForm === "string" && regenerateForm.trim() ? regenerateForm.trim() : ""
-      const baseFormKeys = categoryFormKeys || (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : ["beastForm", "demiHumanForm", "humanForm"]))
+      const defaultVisualFormKeys = entryCategory === "place"
+        ? ["environmentScene", "mapView", "interiorDetail"]
+        : entryCategory === "world"
+          ? ["planetView", "regionalMap", "environmentScene"]
+          : entryCategory === "item"
+            ? ["artifactCloseup", "inUseScene"]
+            : ["environmentScene", "mapView"]
+      const baseFormKeys = categoryFormKeys || (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : defaultVisualFormKeys))
       const formKeys = requestedFormKey && baseFormKeys.includes(requestedFormKey)
         ? [requestedFormKey]
         : baseFormKeys
@@ -1016,7 +1023,7 @@ export async function POST(req: NextRequest) {
       )
 
       if (!hasDescription) {
-        return NextResponse.json({ error: "Choose an active chapter with content and a World Bible person or beast before generating appearance prompts." }, { status: 400 })
+        return NextResponse.json({ error: "Choose an active chapter with content and a World Bible person, beast, place, world, or item before generating visual prompts." }, { status: 400 })
       }
 
       const formLabelsStr = formKeys.map(k => {
@@ -1041,7 +1048,13 @@ export async function POST(req: NextRequest) {
           "Always preserve any signature identifying traits **only if they are explicitly mentioned** (markings, colors, aura, eyes, horns, etc.). Do not invent non-human features.\n"
         : entryCategory === "character"
           ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
-          : "Use only the requested forms, and ground every form in the active chapter.\n"
+          : entryCategory === "place"
+            ? "This Story Bible entry is a PLACE. Generate environment, landmark, interior, route, or map prompts as requested. Do not turn the place into a human character. Ground scale, geography, architecture, climate, landmarks, hazards, and mood in the chapter and lore.\n"
+            : entryCategory === "world"
+              ? "This Story Bible entry is WORLD LORE. Generate planet, realm, region, map, or ground-level environment prompts as requested. Preserve cosmology, geography, biomes, moons, rings, continents, magic systems, factions, and travel context from the chapter and lore.\n"
+              : entryCategory === "item"
+                ? "This Story Bible entry is an ITEM or artifact. Generate object close-up and in-context scene prompts as requested. Preserve materials, scale, markings, damage, powers, ownership, how it is used, and the environment where it appears.\n"
+                : "Use only the requested visual prompt types, and ground every prompt in the active chapter.\n"
 
       // Build per-form negative prompt guidance
       const formNegativeGuidance = formKeys.map(k => {
@@ -1049,6 +1062,10 @@ export async function POST(req: NextRequest) {
         if (k === "beastForm") return `  - ${label}: exclude human face, smooth skin, humanoid clothing, upright posture, anthropomorphic features, human-like arms or torso`
         if (k === "demiHumanForm") return `  - ${label}: exclude fully animal anatomy, four-legged stance, complete fur/scales/hide that completely hides humanoid torso, human legs, small human-sized build, no tail`
         if (k === "humanForm" || k === "humanoidForm") return `  - ${label}: exclude tails, wings, horns, fur, scales, animal ears, claws, fangs, or any non-human physical traits unless they are explicitly mentioned in the chapter or lore for the humanoid form. The humanoid form must look human by default.`
+        if (k.toLowerCase().includes("map")) return `  - ${label}: exclude photorealistic portrait framing, character close-up, unreadable fake text, random labels, modern UI overlays, satellite-photo realism unless requested`
+        if (k.toLowerCase().includes("planet") || k.toLowerCase().includes("continent") || k.toLowerCase().includes("regional")) return `  - ${label}: exclude character portrait framing, crowded foreground figures, unreadable fake text, modern UI overlays, generic Earth copy`
+        if (k.toLowerCase().includes("environment") || k.toLowerCase().includes("scene") || k.toLowerCase().includes("landmark") || k.toLowerCase().includes("interior")) return `  - ${label}: exclude isolated character portrait, blank generic background, modern objects unless present in lore, unreadable signage`
+        if (k.toLowerCase().includes("artifact") || k.toLowerCase().includes("item") || k.toLowerCase().includes("object")) return `  - ${label}: exclude random extra objects, unreadable fake text, cropped object, modern product-photo styling unless requested`
         return `  - ${label}: exclude anything not grounded in the chapter description`
       }).join("\n")
 
@@ -1063,40 +1080,65 @@ export async function POST(req: NextRequest) {
 
       // Expand the style into image-gen quality tokens
       const expandedStyle = expandAppearanceStyle(style || "cinematic fantasy character concept art")
+      const visualSubjectLabel = entryCategory === "place"
+        ? "place, environment, or location"
+        : entryCategory === "world"
+          ? "world, realm, planet, region, or setting"
+          : entryCategory === "item"
+            ? "item, artifact, weapon, relic, or object"
+            : "character, creature, or visual subject"
+      const subjectOrderRule = isCharacterLike
+        ? "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) subject type + species/race + gender/age only when supported or safely inferable, (3) face + expression, (4) hair/fur/skin/scales color and texture, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories **and any weapons or items being held** with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n"
+        : "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) visual subject type, (3) scale and camera angle, (4) geography/layout/silhouette, (5) architecture, terrain, materials, or object construction, (6) landmarks, routes, borders, powers, hazards, or usage context, (7) atmosphere, lighting, weather, color palette, and mood. For maps, specify top-down/atlas/cartography composition and avoid fake unreadable text unless exact names are supplied.\n"
+      const chapterScanRule = isCharacterLike
+        ? "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes exact descriptions of hair, eyes, face/expression, clothing, accessories, body, posture, aura, colors, materials, markings, **weapons or held items**, and especially any non-human traits (tails, wings, horns, fur, scales, etc.). If no non-human trait is mentioned for the humanoid form, do not include it.\n" +
+          "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them ('long hair' instead of the specific description), or contradict them. This includes any weapons, swords, bows, staves, or items the character is holding, wielding, or carrying — describe them specifically (e.g. 'gripping a curved scimitar with a ruby pommel in his right hand').\n" +
+          "3. Only AFTER faithfully incorporating all chapter-mentioned visual details, intelligently supplement with consistent, high-quality details for anything missing (face shape, exact eye shape, lighting, background, etc.) to create a complete, vivid, usable prompt for image generation.\n\n"
+        : "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes geography, architecture, terrain, rooms, streets, weather, lighting, biomes, celestial features, travel routes, borders, landmarks, materials, scale, object markings, powers, damage, ownership, and where the subject appears in the scene.\n" +
+          "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them, or contradict them. If generating a map, use the chapter/lore to infer relative geography and travel routes, and keep labels minimal unless exact names are supplied.\n" +
+          "3. Only AFTER faithfully incorporating all chapter-mentioned visual details, intelligently supplement with consistent, high-quality details for anything missing (camera angle, materials, lighting, scale cues, atmospheric effects, map border style, or environmental storytelling) to create a complete, vivid, usable prompt for image generation.\n\n"
+      const subjectDesignRules = isCharacterLike
+        ? "4. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
+          "5. PRESERVE NON-HUMAN & FANTASTICAL TRAITS — STRICT RULE: Only include non-human or fantastical physical traits (wings, horns, scales, claws, tails, pointy ears, fur, animal features, etc.) in **any** form — especially humanoid forms — if they are **explicitly described or observed in the chapter text or Story Bible for that character in that form**. Do not invent, default to, or assume these traits from the character's category, name, or species alone. If nothing is mentioned about tails, wings, horns, fur, scales or similar, the humanoid form MUST appear fully human with no such features.\n" +
+          "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background — but **never add unmentioned non-human traits** (tails, wings, horns, fur, scales, animal ears, claws etc.) to humanoid forms. Only include such traits if they are explicitly mentioned in the chapter or lore for the humanoid form. Mark invented-but-plausible choices in consistencyNotes.\n"
+        : "4. INFER THE VISUAL SUBJECT BEFORE DESIGNING: Decide whether the target should be treated as a location, planet, region, route, map, artifact, weapon, relic, interior, settlement, dungeon, battlefield, or other story-specific visual subject by reading category, name, aliases, groups, chapter behavior, and lore.\n" +
+          "5. PRESERVE SETTING & OBJECT TRUTH — STRICT RULE: Only include landmarks, borders, routes, celestial bodies, architecture, materials, magical effects, damage, inscriptions, ownership marks, and technology that are supported by the chapter, Story Bible, or user-provided form notes. Do not copy generic fantasy map symbols or Earth-like geography unless the lore supports it.\n" +
+          "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details are sparse, create a coherent visual design that suits the world's genre, culture, power system, climate, danger level, and story mood. Fill in layout, scale, materials, lighting, atmosphere, and environmental storytelling, but mark invented-but-plausible choices in consistencyNotes.\n"
+      const facialRules = isCharacterLike
+        ? "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. Base strong inferences on:\n" +
+          "   - The character's name, aliases, cultural background, groups, bloodline, or sect\n" +
+          "   - Any personality, status, age, power level, or role hints in the lore or chapter\n" +
+          "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit or young master)\n" +
+          "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
+          "   Always describe in the prompt: face shape, eye shape/size/color/expression, eyebrow shape, nose, mouth/lips, cheekbones, jawline, any scars/markings/tattoos, skin texture or tone. Make the face distinctive and paintable — never generic or omitted.\n"
+        : "7. ENVIRONMENT, MAP & OBJECT CLARITY MANDATE (CRITICAL - always apply): The visual subject must be immediately recognizable. For environments, describe a clear foreground/midground/background, scale cues, landmarks, weather, and lighting. For maps, describe top-down or atlas composition, coastlines, terrain symbols, routes, borders, compass/legend style, and avoid fake unreadable labels unless exact names are supplied. For planets, describe continents, atmosphere, moons/rings, cloud systems, lights, or magical phenomena. For items, describe silhouette, materials, markings, damage, scale, effects, and how it sits in the story environment.\n"
 
       systemInstruction =
-        "You are an expert image-generation prompt engineer specializing in character concept art for novelists.\n" +
-        "Your output prompts are fed directly into Stable Diffusion / SDXL or similar image generators, so they must be vivid, concrete, and visually complete enough for an image model to understand the character without extra explanation.\n\n" +
+        "You are an expert image-generation prompt engineer specializing in visual concept art for novelists.\n" +
+        "Your output prompts are fed directly into Stable Diffusion / SDXL or similar image generators, so they must be vivid, concrete, and visually complete enough for an image model to understand the " + visualSubjectLabel + " without extra explanation.\n\n" +
         "PROMPT FORMAT RULES (critical):\n" +
         "- Write each prompt as ONE long descriptive image-generation prompt with 3-5 dense sentences. It must read like a complete visual art direction paragraph, not a checklist and not a short tag dump.\n" +
-        "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) subject type + species/race + gender/age only when supported or safely inferable, (3) face + expression, (4) hair/fur/skin/scales color and texture, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories **and any weapons or items being held** with material and color details, (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood.\n" +
+        subjectOrderRule +
         "- Be specific: prefer 'waist-length silver hair with black streaks' over 'long hair'. Prefer 'glowing amber slitted eyes' over 'interesting eyes'.\n" +
         "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
         "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
         "ACCURATE CHAPTER CAPTURE (HIGHEST PRIORITY):\n" +
-        "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes exact descriptions of hair, eyes, face/expression, clothing, accessories, body, posture, aura, colors, materials, markings, **weapons or held items**, and especially any non-human traits (tails, wings, horns, fur, scales, etc.). If no non-human trait is mentioned for the humanoid form, do not include it.\n" +
-        "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them ('long hair' instead of the specific description), or contradict them. This includes any weapons, swords, bows, staves, or items the character is holding, wielding, or carrying — describe them specifically (e.g. 'gripping a curved scimitar with a ruby pommel in his right hand').\n" +
-        "3. Only AFTER faithfully incorporating all chapter-mentioned visual details, intelligently supplement with consistent, high-quality details for anything missing (face shape, exact eye shape, lighting, background, etc.) to create a complete, vivid, usable prompt for image generation.\n\n" +
+        chapterScanRule +
         "CONTENT & MERGING RULES (critical):\n" +
         "1. PRIORITIZE AND MERGE USER INPUTS: Any details the user explicitly typed in the form description (e.g., hair, eyes, clothing, or style in the 'Forms to generate prompts for' section) must be treated as absolute truth and included. Integrate them perfectly.\n" +
-        "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this character or beast: hair/fur, eyes, skin/scales/hide, attire, armor, ornaments, **weapons or held items** (e.g. 'drew his longsword', 'nocked an arrow', 'clutched a staff'), body shape, height, posture, expression, scent, aura, power effects, wounds, movement, species, transformation state, and surroundings. These chapter-written details outrank generic fantasy defaults.\n" +
-        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing appearance. Treat every specific detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. If the chapter mentions any visual detail at all — especially weapons being held or used — weave it directly and faithfully into the prompt (e.g. include 'wielding a jagged obsidian blade' exactly as described). For non-human traits in humanoid forms, only include if explicitly described. Do not replace author-written details with your inventions or defaults.\n" +
-        "4. INFER THE SUBJECT TYPE BEFORE DESIGNING: Decide whether the entry is human, beast, monster, demi-human, divine entity, spirit, demon, artifact-bodied being, or another story-specific type by reading category, name, aliases, groups, chapter behavior, and lore. Do not assume human unless the context supports it.\n" +
-        "5. PRESERVE NON-HUMAN & FANTASTICAL TRAITS — STRICT RULE: Only include non-human or fantastical physical traits (wings, horns, scales, claws, tails, pointy ears, fur, animal features, etc.) in **any** form — especially humanoid forms — if they are **explicitly described or observed in the chapter text or Story Bible for that character in that form**. Do not invent, default to, or assume these traits from the character's category, name, or species alone. If nothing is mentioned about tails, wings, horns, fur, scales or similar, the humanoid form MUST appear fully human with no such features.\n" +
-        "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details from the user, chapter, and Story Bible are sparse (e.g., only hair and eye color are known), you MUST create a coherent head-to-toe visual concept that suits the character's role, species, power, social status, emotional tone, and scene context. Fill in face, body, skin/fur/scales, clothing or natural covering, accessories, posture, aura, lighting, and background — but **never add unmentioned non-human traits** (tails, wings, horns, fur, scales, animal ears, claws etc.) to humanoid forms. Only include such traits if they are explicitly mentioned in the chapter or lore for the humanoid form. Mark invented-but-plausible choices in consistencyNotes.\n" +
+        "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this " + visualSubjectLabel + ". These chapter-written details outrank generic fantasy defaults.\n" +
+        "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing the target. Treat every specific visual detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. Do not replace author-written details with your inventions or defaults.\n" +
+        subjectDesignRules +
         "   - Cultivation/Xianxia: flowing Daoist silk robes with gold/silver embroidery, elaborate hairpins/crowns, dynamic hand gestures (sword seals), swirling Qi energy, floating spiritual talismans, and backgrounds like mist-shrouded mountain peaks or ancient temples.\n" +
         "   - Dark Fantasy: weathered leather, heavy plate armor with battle damage, dark hooded cloaks, rugged or scarred features, dramatic chiaroscuro lighting, and gothic, ruined, or stormy environments.\n" +
         "   - LitRPG/Sci-Fi: sleek armor plates, glowing runes or neon accents, holographic displays, athletic build, and high-tech or cybernetic backgrounds.\n" +
-        "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. Base strong inferences on:\n" +
-        "   - The character's name, aliases, cultural background, groups, bloodline, or sect\n" +
-        "   - Any personality, status, age, power level, or role hints in the lore or chapter\n" +
-        "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit or young master)\n" +
-        "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
-        "   Always describe in the prompt: face shape, eye shape/size/color/expression, eyebrow shape, nose, mouth/lips, cheekbones, jawline, any scars/markings/tattoos, skin texture or tone. Make the face distinctive and paintable — never generic or omitted.\n" +
-        "8. BEAST FORM EVOLUTION (MANDATORY FOR BEAST CATEGORY ENTRIES): When the entry is a beast (even if only the name is known and there is zero visual description), strictly follow these anatomical rules for the three forms. **CRITICAL: Do NOT add tails, wings, horns, fur, scales, claws or any non-human body features to the humanoid form unless the chapter or Story Bible explicitly describes the character as having them in humanoid form.** Only retain such traits in demi-human if they match the required structure and are signature or mentioned.\n" +
-        "   - Beast Form = 100% beast (full animal body plan, stance, head).\n" +
-        "   - Demi-Human Form = 50-80% beast / 20-50% human with these REQUIRED traits: upright two-legged posture, humanoid torso, human-like arms and hands, beast or partially beast head, beast-style legs, retained tail, retained fur or scales over most of the body, significantly larger than humans. (Only include tail/fur/scales if they are signature traits mentioned in the input.)\n" +
-        "   - Humanoid Form = clean humanoid silhouette. The result must look like a human (or near-human) unless the chapter explicitly states the character has tails/wings/etc. in humanoid form. Do not default to adding any non-human traits.\n" +
+        facialRules +
+        (entryCategory === "beast"
+          ? "8. BEAST FORM EVOLUTION (MANDATORY FOR BEAST CATEGORY ENTRIES): When the entry is a beast (even if only the name is known and there is zero visual description), strictly follow these anatomical rules for the three forms. **CRITICAL: Do NOT add tails, wings, horns, fur, scales, claws or any non-human body features to the humanoid form unless the chapter or Story Bible explicitly describes the character as having them in humanoid form.** Only retain such traits in demi-human if they match the required structure and are signature or mentioned.\n" +
+            "   - Beast Form = 100% beast (full animal body plan, stance, head).\n" +
+            "   - Demi-Human Form = 50-80% beast / 20-50% human with these REQUIRED traits: upright two-legged posture, humanoid torso, human-like arms and hands, beast or partially beast head, beast-style legs, retained tail, retained fur or scales over most of the body, significantly larger than humans. (Only include tail/fur/scales if they are signature traits mentioned in the input.)\n" +
+            "   - Humanoid Form = clean humanoid silhouette. The result must look like a human (or near-human) unless the chapter explicitly states the character has tails/wings/etc. in humanoid form. Do not default to adding any non-human traits.\n"
+          : "") +
         "10. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
         "11. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
         "12. " + requiredFormRule +
@@ -1114,7 +1156,7 @@ export async function POST(req: NextRequest) {
           ? "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n"
           : "   - negativePrompts: object (can be empty or very brief when per-form negatives are disabled).\n"
         ) +
-        "   - overview: 3-5 sentence prose summary of the character's overall visual identity and why the inferred design fits the chapter/lore.\n" +
+        "   - overview: 3-5 sentence prose summary of the target's overall visual identity and why the inferred design fits the chapter/lore.\n" +
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
         "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures, weapon (or held item) — descriptive prose phrases extracted from the strongest/primary form. If a weapon is mentioned, include specific details here and in the main prompt.\n" +
@@ -1125,7 +1167,7 @@ export async function POST(req: NextRequest) {
         : ""
       // Always include chapter context so appearance generation can pick up visual clues beyond the selected mention.
       const chapterContent = chapterText
-        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this character/beast before inventing anything):\n${chapterText.slice(0, 14000)}`
+        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 14000)}`
         : ""
       const chapterEvidence = chapterContext?.targetEvidence
         ? `\nTarget-Focused Chapter Evidence (highest priority — use this first):\n${chapterContext.targetEvidence}`
@@ -1139,24 +1181,32 @@ export async function POST(req: NextRequest) {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
         const userProvided = appForms[k]?.trim()
-        const baseInfer = userProvided ? `User-specified traits: "${userProvided}"` : "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
+        const baseInfer = userProvided
+          ? `User-specified traits: "${userProvided}"`
+          : isCharacterLike
+            ? "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
+            : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}`
       }).join("\n")
 
       userPrompt =
-        `Character or creature name: ${safeLoreEntry?.name || name || "Unknown / infer from context"}\n` +
+        `Visual target name: ${safeLoreEntry?.name || name || "Unknown / infer from context"}\n` +
         `World Bible category: ${safeLoreEntry?.category || "unknown"}\n` +
         `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n` +
         `${knownDetailsBlock}` +
         `${selectedLine}${chapterEvidence}\n` +
         `${chapterLine}${chapterContent}${loreLine}\n\n` +
         `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n` +
-        `STRICT RULE FOR NON-HUMAN TRAITS: In humanoid or human forms, ONLY include tails, wings, horns, fur, scales, animal ears, claws or other non-human body features if they are explicitly described in the chapter or lore for that form. If nothing is stated, the humanoid form must be fully human with no such additions. Do not infer or default to them from the character's category or name.\n\n` +
-        (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form retains tail/fur/scales/build traits.\n\n` : "") +
+        (isCharacterLike ? `STRICT RULE FOR NON-HUMAN TRAITS: In humanoid or human forms, ONLY include tails, wings, horns, fur, scales, animal ears, claws or other non-human body features if they are explicitly described in the chapter or lore for that form. If nothing is stated, the humanoid form must be fully human with no such additions. Do not infer or default to them from the character's category or name.\n\n` : "") +
+        (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form only retains tail/fur/scales/build traits if the chapter or Story Bible explicitly says so.\n\n` : "") +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
-          ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth — use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
-          : `FACIAL FEATURES INSTRUCTION: The chapter provided no explicit facial details. Use the character's name, lore, groups, personality hints, status, and genre to invent a distinctive, high-quality face (face shape, eye shape and expression, brows, nose, lips, jaw, cheekbones, skin details). Make it specific and memorable.\n\n`
+          ? (isCharacterLike
+            ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth - use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
+            : `VISUAL ANCHOR GUIDANCE (treat as high-priority truth for geography, environment, object design, map style, materials, scale, and mood):\n"${facialFeatures.trim()}"\n\n`)
+          : (isCharacterLike
+            ? `FACIAL FEATURES INSTRUCTION: The chapter provided no explicit facial details. Use the character's name, lore, groups, personality hints, status, and genre to invent a distinctive, high-quality face (face shape, eye shape and expression, brows, nose, lips, jaw, cheekbones, skin details). Make it specific and memorable.\n\n`
+            : `VISUAL ANCHOR INSTRUCTION: If the chapter gives sparse setting or object detail, infer a coherent environment, map, planet, or artifact design from the name, category, lore, groups, genre, and current chapter mood. Make the subject visually specific and immediately usable.\n\n`)
         ) +
         `Forms to generate prompts for:\n${formDescriptions}` +
         `${memoryContext}`

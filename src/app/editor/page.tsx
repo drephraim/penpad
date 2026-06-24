@@ -289,6 +289,13 @@ interface AppearancePromptResult {
   }
 }
 
+type AppearanceFormConfig = {
+  keys: string[]
+  enabled: Record<string, boolean>
+  labels: Record<string, string>
+  descriptions: Record<string, string>
+}
+
 interface ProgressionAbility {
   id: string
   name: string
@@ -1956,17 +1963,52 @@ function EditorContent() {
   })
   const [appearanceFormKeys, setAppearanceFormKeys] = useState<string[]>(["beastForm", "demiHumanForm", "humanForm"])
 
-  const getDefaultEntryForms = useCallback((category: string): { keys: string[]; enabled: Record<string, boolean>; labels: Record<string, string>; descriptions: Record<string, string> } => {
+  const getDefaultEntryForms = useCallback((category: string): AppearanceFormConfig => {
     if (category === "beast") {
       return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
     }
     if (category === "character") {
       return { keys: ["humanForm"], enabled: { beastForm: false, humanForm: true, demiHumanForm: false }, labels: { beastForm: "Beast Form", humanForm: "Humanoid Form", demiHumanForm: "Demi-human Form" }, descriptions: {} }
     }
+    if (category === "place") {
+      return {
+        keys: ["environmentScene", "mapView", "interiorDetail"],
+        enabled: { environmentScene: true, mapView: true, interiorDetail: true },
+        labels: { environmentScene: "Environment Scene", mapView: "Map View", interiorDetail: "Interior Detail" },
+        descriptions: {
+          environmentScene: "A cinematic view of the location as it appears around the characters, with terrain, weather, scale, landmarks, and mood.",
+          mapView: "A readable fantasy map composition of the place and surrounding routes. Avoid decorative fake labels unless names are supplied in the lore.",
+          interiorDetail: "A closer environmental detail, chamber, street, gate, shrine, room, or landmark that helps the place feel usable in the story."
+        }
+      }
+    }
+    if (category === "world") {
+      return {
+        keys: ["planetView", "regionalMap", "environmentScene"],
+        enabled: { planetView: true, regionalMap: true, environmentScene: true },
+        labels: { planetView: "Planet View", regionalMap: "Regional Map", environmentScene: "Environment Scene" },
+        descriptions: {
+          planetView: "A wide planetary or cosmic view that shows continents, moons, rings, atmosphere, magical phenomena, or world-scale identity.",
+          regionalMap: "A top-down regional map or atlas view showing geography, travel routes, borders, biomes, seas, mountains, and major places.",
+          environmentScene: "A ground-level scene that captures what it feels like to stand in this world."
+        }
+      }
+    }
+    if (category === "item") {
+      return {
+        keys: ["artifactCloseup", "inUseScene"],
+        enabled: { artifactCloseup: true, inUseScene: true },
+        labels: { artifactCloseup: "Artifact Close-up", inUseScene: "In-use Scene" },
+        descriptions: {
+          artifactCloseup: "A detailed object render with materials, markings, scale, condition, magical effects, and silhouette.",
+          inUseScene: "The item in context, held, placed, activated, or discovered in the chapter environment."
+        }
+      }
+    }
     return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
   }, [])
 
-  const [appearanceEntryForms, setAppearanceEntryForms] = useState<Record<string, { keys: string[]; enabled: Record<string, boolean>; labels: Record<string, string>; descriptions: Record<string, string> }>>({})
+  const [appearanceEntryForms, setAppearanceEntryForms] = useState<Record<string, AppearanceFormConfig>>({})
 
   const saveCurrentEntryFormConfig = useCallback((entryId: string | null) => {
     if (!entryId) return
@@ -2003,6 +2045,19 @@ function EditorContent() {
       setAppearanceFormEnabled(defaults.enabled)
       setAppearanceFormLabels(defaults.labels)
       setAppearanceFormDescriptions(saved?.descriptions || {})
+    }
+  }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
+
+  const getResolvedEntryFormConfig = useCallback((entryId: string | null, category?: string): AppearanceFormConfig => {
+    const entry = entryId ? bibleEntries.find(e => e.id === entryId) : null
+    const entryCategory = category || entry?.category || "character"
+    const saved = entryId ? appearanceEntryForms[entryId] : null
+    const enforceCategoryForms = entryCategory === "beast" || entryCategory === "character"
+    if (saved && !enforceCategoryForms) return saved
+    const defaults = getDefaultEntryForms(entryCategory)
+    return {
+      ...defaults,
+      descriptions: saved?.descriptions || defaults.descriptions || {}
     }
   }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
 
@@ -2238,6 +2293,15 @@ function EditorContent() {
     setAppearanceFacialDescription(savedFacial)
   }
 
+  const switchAppearanceEntry = (entryId: string | null) => {
+    saveCurrentEntryFormConfig(appearanceSelectedEntryId)
+    syncCurrentAppearanceToEntry(appearanceSelectedEntryId)
+    setAppearanceSelectedEntryId(entryId)
+    loadEntryFormConfig(entryId)
+    loadAppearanceForEntry(entryId)
+    setAppearanceError("")
+  }
+
   const buildAppearanceLoreContent = (result: AppearancePromptResult) => {
     const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
     const chapterLine = activeNote
@@ -2283,18 +2347,25 @@ function EditorContent() {
   }
 
   const handleGenerateAppearancePrompts = async (entryId?: string | null, selectedTextOverride?: string) => {
-    const selectedText = selectedTextOverride ?? aiSelectionText
-    const sourceEntry = entryId
-      ? bibleEntries.find(entry => entry.id === entryId)
-      : selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
+    const selectedText = (selectedTextOverride ?? aiSelectionText).trim()
+    const highlightedEntry = selectedText ? findLoreEntryFromSelection(selectedText) : null
+    const explicitEntry = entryId ? bibleEntries.find(entry => entry.id === entryId) : null
+    const sourceEntry = highlightedEntry || explicitEntry || selectedAppearanceEntry
 
     if (!sourceEntry) {
-      setAppearanceError("Highlight a Story Bible name in the chapter or choose a lore entry first.")
+      setAppearanceError("Highlight a Story Bible name, place, world, or item in the chapter, or choose a lore entry first.")
       return
     }
 
+    const isSwitchingEntry = sourceEntry.id !== appearanceSelectedEntryId
+    if (isSwitchingEntry) {
+      syncCurrentAppearanceToEntry(appearanceSelectedEntryId)
+    }
     setAppearanceSelectedEntryId(sourceEntry.id)
-    syncCurrentAppearanceToEntry(appearanceSelectedEntryId) // save whatever was showing for previous
+    if (isSwitchingEntry) {
+      loadEntryFormConfig(sourceEntry.id)
+      setAppearanceGeneratedImages({})
+    }
     setAppearanceLoading(true)
     setAppearanceError("")
     setAppearanceResult(null)
@@ -2307,18 +2378,29 @@ function EditorContent() {
       const appearanceTargetEvidence = buildProgressionTargetEvidence(sourceEntry, chapterContext, selectedText)
       const defaultFormConfig = getDefaultEntryForms(sourceEntry.category)
       const enforceCategoryForms = sourceEntry.category === "beast" || sourceEntry.category === "character"
+      const savedFormConfig = getResolvedEntryFormConfig(sourceEntry.id, sourceEntry.category)
+      const requestFormKeys = isSwitchingEntry ? savedFormConfig.keys : appearanceFormKeys
+      const requestFormEnabled = isSwitchingEntry ? savedFormConfig.enabled : appearanceFormEnabled
+      const requestFormLabels = isSwitchingEntry ? savedFormConfig.labels : appearanceFormLabels
+      const requestFormDescriptions = isSwitchingEntry ? savedFormConfig.descriptions : appearanceFormDescriptions
+      const facialForRequest = isSwitchingEntry
+        ? (appearanceFacialByEntry[sourceEntry.id] || "")
+        : appearanceFacialDescription
+      if (isSwitchingEntry) {
+        setAppearanceFacialDescription(facialForRequest)
+      }
       const activeFormKeys = enforceCategoryForms
         ? defaultFormConfig.keys
-        : appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)
+        : requestFormKeys.filter(k => requestFormEnabled[k] !== false)
       const formLabelsForRequest = enforceCategoryForms
         ? defaultFormConfig.labels
-        : appearanceFormLabels
+        : requestFormLabels
       const formEnabledForRequest = enforceCategoryForms
         ? defaultFormConfig.enabled
-        : appearanceFormEnabled
+        : requestFormEnabled
       const forms: Record<string, string> = {}
       for (const key of activeFormKeys) {
-        if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
+        if (requestFormDescriptions[key]?.trim()) forms[key] = requestFormDescriptions[key].trim()
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
       const res = await fetch("/api/ai", {
@@ -2333,7 +2415,7 @@ function EditorContent() {
           formLabels: formLabelsForRequest,
           formEnabled: formEnabledForRequest,
           perFormNegatives: appearancePerFormNegative,
-          facialFeatures: appearanceFacialDescription.trim() || undefined,
+          facialFeatures: facialForRequest.trim() || undefined,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -2362,8 +2444,8 @@ function EditorContent() {
         // Persist immediately for this entry
         if (sourceEntry?.id) {
           setAppearanceResultsByEntry(prev => ({ ...prev, [sourceEntry.id]: newResult }))
-          if (appearanceFacialDescription.trim()) {
-            setAppearanceFacialByEntry(prev => ({ ...prev, [sourceEntry.id]: appearanceFacialDescription.trim() }))
+          if (facialForRequest.trim()) {
+            setAppearanceFacialByEntry(prev => ({ ...prev, [sourceEntry.id]: facialForRequest.trim() }))
           }
         }
       }
@@ -10908,13 +10990,7 @@ ${navPoints}  </navMap>
                       className="ai-select"
                       value={appearanceSelectedEntryId || ""}
                       onChange={(e) => {
-                        saveCurrentEntryFormConfig(appearanceSelectedEntryId)
-                        syncCurrentAppearanceToEntry(appearanceSelectedEntryId)
-                        const newId = e.target.value || null
-                        setAppearanceSelectedEntryId(newId)
-                        loadEntryFormConfig(newId)
-                        loadAppearanceForEntry(newId)
-                        setAppearanceError("")
+                        switchAppearanceEntry(e.target.value || null)
                       }}
                       disabled={appearanceLoading}
                     >
@@ -10941,6 +11017,9 @@ ${navPoints}  </navMap>
                       disabled={appearanceLoading}
                     >
                       <option value="cinematic fantasy character concept art">Cinematic fantasy concept art</option>
+                      <option value="epic fantasy environment concept art, cinematic matte painting">Epic environment concept art</option>
+                      <option value="fantasy cartography map, illustrated atlas, parchment texture">Fantasy map / atlas</option>
+                      <option value="planetary matte painting, orbital world concept art">Planet concept art</option>
                       <option value="anime key visual, high detail">Anime key visual</option>
                       <option value="dark xianxia character design sheet">Dark xianxia design sheet</option>
                       <option value="realistic film character design">Realistic film character design</option>
@@ -10960,16 +11039,28 @@ ${navPoints}  </navMap>
                   {/* Dedicated Facial Features input - key for generating good faces even when chapter is silent */}
                   <div className="ai-form-field">
                     <label>
-                      Facial Features / Head
+                      {selectedAppearanceEntry?.category === "place" || selectedAppearanceEntry?.category === "world"
+                        ? "Environment / Geography Notes"
+                        : selectedAppearanceEntry?.category === "item"
+                          ? "Object Details / Materials"
+                          : "Facial Features / Head"}
                       <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "0.4rem", fontWeight: 400 }}>
-                        (highly recommended — use this when the chapter does not describe the face)
+                        {selectedAppearanceEntry?.category === "place" || selectedAppearanceEntry?.category === "world"
+                          ? "(optional - terrain, landmarks, mood, scale, routes)"
+                          : selectedAppearanceEntry?.category === "item"
+                            ? "(optional - silhouette, materials, markings, damage, aura)"
+                            : "(highly recommended - use this when the chapter does not describe the face)"}
                       </span>
                     </label>
                     <textarea
                       className="ai-textarea appearance-textarea compact"
                       value={appearanceFacialDescription}
                       onChange={(e) => setAppearanceFacialDescription(e.target.value)}
-                      placeholder="e.g. sharp fox-like eyes, high cheekbones, thin arched brows, arrogant half-smile, pale flawless skin, long silver hair with bangs..."
+                      placeholder={selectedAppearanceEntry?.category === "place" || selectedAppearanceEntry?.category === "world"
+                        ? "e.g. frozen black mountains, jade-lit rivers, floating sect islands, ancient roads, storm ring on the horizon..."
+                        : selectedAppearanceEntry?.category === "item"
+                          ? "e.g. palm-sized obsidian compass, cracked gold rim, blue runes, old blood stains, faint gravity distortion..."
+                          : "e.g. sharp fox-like eyes, high cheekbones, thin arched brows, arrogant half-smile, pale flawless skin, long silver hair with bangs..."}
                       disabled={appearanceLoading}
                       rows={2}
                     />
@@ -11032,6 +11123,56 @@ ${navPoints}  </navMap>
                         }}
                         title="Beast and final humanoid"
                       >Beast → Human</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setAppearanceFormKeys(["environmentScene", "characterInEnvironment", "landmarkDetail"])
+                          setAppearanceFormEnabled({ environmentScene: true, characterInEnvironment: true, landmarkDetail: true })
+                          setAppearanceFormLabels({ environmentScene: "Environment Scene", characterInEnvironment: "Character in Environment", landmarkDetail: "Landmark Detail" })
+                          setAppearanceFormDescriptions({
+                            environmentScene: "The environment around the selected character or place, grounded in the current chapter.",
+                            characterInEnvironment: "Show the character inside the location, with scale, weather, lighting, terrain, architecture, and story mood.",
+                            landmarkDetail: "A closer shot of a memorable object, gate, shrine, street, natural feature, or structure in the scene."
+                          })
+                        }}
+                        title="Generate scenery around the selected target"
+                      >Scene</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setAppearanceFormKeys(["mapView", "routeMap"])
+                          setAppearanceFormEnabled({ mapView: true, routeMap: true })
+                          setAppearanceFormLabels({ mapView: "Map View", routeMap: "Route Map" })
+                          setAppearanceFormDescriptions({
+                            mapView: "An illustrated fantasy map of the place, region, or known surroundings. Avoid fake text unless the lore provides exact names.",
+                            routeMap: "A travel-route map showing where the characters have been, major terrain, dangers, borders, and destination markers."
+                          })
+                        }}
+                        title="Generate a map or route view"
+                      >Map</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setAppearanceFormKeys(["planetView", "continentMap", "surfaceScene"])
+                          setAppearanceFormEnabled({ planetView: true, continentMap: true, surfaceScene: true })
+                          setAppearanceFormLabels({ planetView: "Planet View", continentMap: "Continent Map", surfaceScene: "Surface Scene" })
+                          setAppearanceFormDescriptions({
+                            planetView: "A wide orbital concept image of the planet or realm, including continents, atmosphere, moons, rings, magic, or cosmic features.",
+                            continentMap: "A broad atlas-style view of the world's major regions, biomes, seas, mountain ranges, routes, and power centers.",
+                            surfaceScene: "A ground-level scene that shows what the planet feels like to inhabit."
+                          })
+                        }}
+                        title="Generate planet and world-scale visuals"
+                      >Planet</button>
                       <button
                         type="button"
                         className="btn-ai-sub btn-ai-secondary"
@@ -11141,7 +11282,11 @@ ${navPoints}  </navMap>
                             className="ai-textarea appearance-textarea compact"
                             value={appearanceFormDescriptions[formKey] || ""}
                             onChange={(e) => setAppearanceFormDescriptions(prev => ({ ...prev, [formKey]: e.target.value }))}
-                            placeholder={`Describe ${appearanceFormLabels[formKey] || formKey}. For humanoid: only add tails/wings/horns/fur if explicitly in the chapter. Do not invent non-human traits.`}
+                            placeholder={selectedAppearanceEntry?.category === "place" || selectedAppearanceEntry?.category === "world"
+                              ? `Describe ${appearanceFormLabels[formKey] || formKey}: terrain, architecture, scale, landmarks, mood, map angle, routes, weather, or cosmic features.`
+                              : selectedAppearanceEntry?.category === "item"
+                                ? `Describe ${appearanceFormLabels[formKey] || formKey}: material, size, markings, glow, condition, use, and surrounding scene.`
+                                : `Describe ${appearanceFormLabels[formKey] || formKey}. For humanoid: only add tails/wings/horns/fur if explicitly in the chapter. Do not invent non-human traits.`}
                             disabled={appearanceLoading}
                             rows={2}
                           />
@@ -11167,8 +11312,7 @@ ${navPoints}  </navMap>
                       onClick={() => {
                         const entry = findLoreEntryFromSelection(aiSelectionText)
                         if (entry) {
-                          setAppearanceSelectedEntryId(entry.id)
-                          setAppearanceError("")
+                          switchAppearanceEntry(entry.id)
                         } else {
                           setAppearanceError("The highlighted text does not match a Story Bible entry yet.")
                         }
