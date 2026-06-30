@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Outfit } from 'next/font/google'
 import './globals.css'
 
@@ -8,13 +8,10 @@ const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' })
 export const metadata: Metadata = {
   title: 'PenPad | AI-Powered Writing',
   description: 'Write, auto-save, and perfect your grammar with AI-powered suggestions. A minimal, premium notepad.',
-  manifest: '/manifest.json',
+}
+
+export const viewport: Viewport = {
   themeColor: '#6366f1',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'PenPad',
-  },
 }
 
 import Providers from '@/components/Providers'
@@ -26,12 +23,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#6366f1" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-      </head>
       <body className={`${inter.variable} ${outfit.variable}`}>
         <Providers>
           {children}
@@ -41,18 +32,24 @@ export default function RootLayout({
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
-                    reg.addEventListener('updatefound', function() {
-                      var newSW = reg.installing;
-                      newSW.addEventListener('statechange', function() {
-                        if (newSW.state === 'activated') {
-                          window.location.reload();
-                        }
-                      });
+                  navigator.serviceWorker.getRegistrations()
+                    .then(function(registrations) {
+                      return Promise.all(registrations.map(function(registration) {
+                        return registration.unregister();
+                      }));
+                    })
+                    .then(function() {
+                      if ('caches' in window) {
+                        return caches.keys().then(function(keys) {
+                          return Promise.all(keys.map(function(key) {
+                            return key.indexOf('penpad-') === 0 ? caches.delete(key) : Promise.resolve(false);
+                          }));
+                        });
+                      }
+                    })
+                    .catch(function(err) {
+                      console.warn('Service worker cleanup failed:', err);
                     });
-                  }).catch(function(err) {
-                    console.warn('SW registration failed:', err);
-                  });
                 });
               }
             `,
