@@ -17,7 +17,7 @@ import {
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
-  Upload, HardDrive, BarChart3
+  Upload, HardDrive, BarChart3, Gem
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -339,7 +339,8 @@ const NAME_CATEGORY_OPTIONS: Array<{ value: string; label: string; hint: string 
   { value: "planet", label: "Planet", hint: "Ice, Jungle, Futuristic, Dragon planets" },
   { value: "realm", label: "Realm", hint: "Mortal, Immortal, Void, Chaos realms" },
   { value: "galaxy", label: "Galaxy", hint: "Light, Order, Elemental galaxies" },
-  { value: "universe", label: "Universe", hint: "Cultivation, Scientific, Infinite universes" }
+  { value: "universe", label: "Universe", hint: "Cultivation, Scientific, Infinite universes" },
+  { value: "treasure", label: "Treasure", hint: "Fictional fruits, space rings, herbs, relics..." }
 ]
 
 const SUBTYPE_OPTIONS: Record<string, string[]> = {
@@ -735,7 +736,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   world: "#34d399",
   item: "#a78bfa",
   place: "#fbbf24",
-  cosmic: "#a78bfa"
+  cosmic: "#a78bfa",
+  treasure: "#eab308"
 }
 
 const NAME_GEN_COUNT_OPTIONS = [
@@ -6543,7 +6545,7 @@ const fillEmptyCustomJsonData = (
         if (append && generatedNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
         uniqueNames.push({
           name,
-          category: ["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact"].includes(String(option.category)) ? option.category : nameCategory,
+          category: ["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact", "treasure"].includes(String(option.category)) ? option.category : nameCategory,
           style: String(option.style || nameStyle).trim(),
           raceOrOrigin: String(option.raceOrOrigin || "").trim(),
           structure: String(option.structure || nameStructure).trim(),
@@ -8990,6 +8992,21 @@ ${navPoints}  </navMap>
     } catch (e) {
       console.error("Failed to add highlighted text to Story Bible:", e)
     }
+  }
+
+  const handleForgeTreasureFromSelection = async (text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    setIsLeftSidebarOpen(true)
+    setActiveSidebarTab('names')
+    setNameCategory('treasure')
+    setNameCustomPrompt(trimmed)
+    setAiSelectionText("")
+    setAiSelectionStart(0)
+    setAiSelectionEnd(0)
+    setTimeout(() => {
+      generateNameOptions(false)
+    }, 100)
   }
 
   // Handle textarea keyboard listener
@@ -12949,7 +12966,9 @@ ${navPoints}  </navMap>
                       <textarea
                         value={nameCustomPrompt}
                         onChange={(e) => setNameCustomPrompt(e.target.value)}
-                        placeholder="Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."
+                        placeholder={nameCategory === "treasure" 
+                          ? "Description of the treasure: e.g. blue and red striped fruit, gold spatial ring, dark jade elixir..." 
+                          : "Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."}
                         rows={2}
                         onClick={(e) => e.stopPropagation()}
                         autoFocus
@@ -13104,7 +13123,8 @@ ${navPoints}  </navMap>
                                option.category === "beast" ? <PawPrint size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
                                option.category === "world" ? <Globe size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
                                option.category === "place" ? <MapPin size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
-                               option.category === "item" ? <Package size={11} style={{ display: "inline", verticalAlign: "middle" }} /> : null}
+                               option.category === "item" ? <Package size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "treasure" ? <Gem size={11} style={{ display: "inline", verticalAlign: "middle" }} /> : null}
                             </span>
                             {option.category} - {option.structure || nameStructure}
                           </small>
@@ -14639,6 +14659,16 @@ ${navPoints}  </navMap>
                     >
                       <Package size={13} style={{ marginRight: '4px' }} />
                       <span style={{ fontSize: '11px', fontWeight: 600 }}>Item</span>
+                    </button>
+                    <button 
+                      className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
+                      onClick={() => handleForgeTreasureFromSelection(aiSelectionText)} 
+                      title="Select text describing a treasure, then click to forge names"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim()}
+                    >
+                      <Gem size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Forge Treasure</span>
                     </button>
                     <div className="fmt-divider"></div>
                     <button 

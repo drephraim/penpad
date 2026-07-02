@@ -1863,6 +1863,14 @@ export async function POST(req: NextRequest) {
           const universeScale = nameGeneratorConfig?.universeScale || "Infinite"
           subtypeGuidance += `Category is UNIVERSE. Generate universe names of type "${universeType}" and scale "${universeScale}" (e.g., magical, cultivation, apocalypse, primordial). Examples: Universe of Endless Chaos, Eternal Astral Universe, Primordial Genesis Universe.\n`
         }
+      } else if (cat === "treasure") {
+        subtypeGuidance += 
+          "Category is TREASURE. Generate highly creative, fictional, and mythical names for treasures, rare items, mystical flora/fruits, celestial materials, legendary herbs, magical elixirs, or ancient relics based on the provided description/context.\n" +
+          "Guidelines for Treasures:\n" +
+          "1. For fruits, flora, or spiritual herbs, create evocative botanical and mystical names (e.g., 'Dual-Polarity Spirit Peach', 'Yin-Yang Starfruit', 'Nine-Leaf Sanguine Lotus').\n" +
+          "2. For space rings, storage bags, or spatial tools, create grand, textured names (e.g., 'Empyrean Spatial Ring', 'Void-Folding Cache', 'Nebula Storage Sack').\n" +
+          "3. For minerals, metals, or physical items, create cosmic-sounding names (e.g., 'Star-Core Obsidian', 'Ethereal Cobalt', 'Chaos-Tempered Iron').\n" +
+          "4. Match the naming conventions of high-quality fantasy, xianxia, wuxia, and sci-fi fiction. Create beautiful, evocative, and textured names that suggest ancient power, rarity, or magical properties.\n"
       }
 
       const allStyles = [
@@ -2442,7 +2450,7 @@ export async function POST(req: NextRequest) {
 
     if (action === "name_generate") {
       const result = parseJsonValue<NameGenerateResponse | unknown[]>(text)
-      const allowedCategories = new Set(["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact"])
+      const allowedCategories = new Set(["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact", "treasure"])
       const rawNames: unknown[] = Array.isArray(result)
         ? result
         : Array.isArray((result as any)?.names)
