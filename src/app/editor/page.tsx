@@ -11628,6 +11628,14 @@ ${navPoints}  </navMap>
                                   <option value="airborne">Airborne / Hovering mid-air</option>
                                   <option value="elegant">Elegant Standing Portrait</option>
                                   <option value="combat">Combat-Ready / Weapon Drawn</option>
+                                  <option value="stealth">Stealthy / Shadow-stalking posture</option>
+                                  <option value="spellcasting">Active Spellcasting / Summoning posture</option>
+                                  <option value="wounded">Wounded / Battling through pain stance</option>
+                                  <option value="flying">Dynamic Flight / Diving through clouds stance</option>
+                                  <option value="sitting">Resting / Seated on a throne/rock pose</option>
+                                  <option value="taunting">Defiant Taunt / Open arms gesture</option>
+                                  <option value="sleeping">Dormant / Slumbering pose</option>
+                                  <option value="archery">Aiming Bow / Drawing String stance</option>
                                 </select>
                                 <button
                                   type="button"
@@ -11682,6 +11690,14 @@ ${navPoints}  </navMap>
                                   <option value="royal_gown">Royal / Ceremonial Silk Gown</option>
                                   <option value="mystic_robe">Mystic Mage / Scholar Robes</option>
                                   <option value="beast_hide">Natural Beast Hide / Scales / Armor Plates</option>
+                                  <option value="stealth_gear">Stealth/Assassin Hooded Bodysuit</option>
+                                  <option value="cyberpunk_streetwear">Cyberpunk Neon Streetwear / Techwear</option>
+                                  <option value="post_apocalyptic">Post-Apocalyptic Scavenger rags & armor</option>
+                                  <option value="greek_chiton">Ancient Greek Chiton & Golden Ornaments</option>
+                                  <option value="victorian_gothic">Victorian Gothic Tailcoat / Corset Dress</option>
+                                  <option value="nomad_traveler">Desert Nomad / Traveler Cloak & Wraps</option>
+                                  <option value="tribal_ceremonial">Tribal Ceremonial Feathers & Warpaint</option>
+                                  <option value="samurai_armor">Traditional Japanese Samurai Shogun Armor</option>
                                 </select>
                                 <button
                                   type="button"
