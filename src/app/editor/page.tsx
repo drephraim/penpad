@@ -1963,6 +1963,14 @@ function EditorContent() {
   })
   const [appearanceFormKeys, setAppearanceFormKeys] = useState<string[]>(["beastForm", "demiHumanForm", "humanForm"])
 
+  const [selectedPoseStyle, setSelectedPoseStyle] = useState<Record<string, string>>({})
+  const [generatingPoseKey, setGeneratingPoseKey] = useState<string | null>(null)
+  const [generatedPosePrompt, setGeneratedPosePrompt] = useState<Record<string, string>>({})
+
+  const [selectedAttireNature, setSelectedAttireNature] = useState<Record<string, string>>({})
+  const [generatingAttireKey, setGeneratingAttireKey] = useState<string | null>(null)
+  const [generatedAttirePrompt, setGeneratedAttirePrompt] = useState<Record<string, string>>({})
+
   const getDefaultEntryForms = useCallback((category: string): AppearanceFormConfig => {
     if (category === "beast") {
       return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
@@ -2023,6 +2031,33 @@ function EditorContent() {
     }))
   }, [appearanceFormKeys, appearanceFormEnabled, appearanceFormLabels, appearanceFormDescriptions])
 
+  const getResolvedEntryFormConfig = useCallback((entryId: string | null, category?: string): AppearanceFormConfig => {
+    const entry = entryId ? bibleEntries.find(e => e.id === entryId) : null
+    const entryCategory = category || entry?.category || "character"
+    const saved = entryId ? appearanceEntryForms[entryId] : null
+    const enforceCategoryForms = entryCategory === "beast" || entryCategory === "character"
+    if (saved) {
+      if (enforceCategoryForms) {
+        const defaults = getDefaultEntryForms(entryCategory)
+        return {
+          keys: defaults.keys,
+          labels: defaults.labels,
+          enabled: {
+            ...defaults.enabled,
+            ...saved.enabled
+          },
+          descriptions: saved.descriptions || defaults.descriptions || {}
+        }
+      }
+      return saved
+    }
+    const defaults = getDefaultEntryForms(entryCategory)
+    return {
+      ...defaults,
+      descriptions: defaults.descriptions || {}
+    }
+  }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
+
   const loadEntryFormConfig = useCallback((entryId: string | null) => {
     if (!entryId) {
       setAppearanceFormKeys(["beastForm", "demiHumanForm", "humanForm"])
@@ -2031,35 +2066,13 @@ function EditorContent() {
       setAppearanceFormDescriptions({})
       return
     }
-    const saved = appearanceEntryForms[entryId]
     const entry = bibleEntries.find(e => e.id === entryId)
-    const enforceCategoryForms = entry?.category === "beast" || entry?.category === "character"
-    if (saved && !enforceCategoryForms) {
-      setAppearanceFormKeys(saved.keys)
-      setAppearanceFormEnabled(saved.enabled)
-      setAppearanceFormLabels(saved.labels)
-      setAppearanceFormDescriptions(saved.descriptions || {})
-    } else {
-      const defaults = getDefaultEntryForms(entry?.category || "character")
-      setAppearanceFormKeys(defaults.keys)
-      setAppearanceFormEnabled(defaults.enabled)
-      setAppearanceFormLabels(defaults.labels)
-      setAppearanceFormDescriptions(saved?.descriptions || {})
-    }
-  }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
-
-  const getResolvedEntryFormConfig = useCallback((entryId: string | null, category?: string): AppearanceFormConfig => {
-    const entry = entryId ? bibleEntries.find(e => e.id === entryId) : null
-    const entryCategory = category || entry?.category || "character"
-    const saved = entryId ? appearanceEntryForms[entryId] : null
-    const enforceCategoryForms = entryCategory === "beast" || entryCategory === "character"
-    if (saved && !enforceCategoryForms) return saved
-    const defaults = getDefaultEntryForms(entryCategory)
-    return {
-      ...defaults,
-      descriptions: saved?.descriptions || defaults.descriptions || {}
-    }
-  }, [appearanceEntryForms, bibleEntries, getDefaultEntryForms])
+    const resolved = getResolvedEntryFormConfig(entryId, entry?.category)
+    setAppearanceFormKeys(resolved.keys)
+    setAppearanceFormEnabled(resolved.enabled)
+    setAppearanceFormLabels(resolved.labels)
+    setAppearanceFormDescriptions(resolved.descriptions || {})
+  }, [bibleEntries, getResolvedEntryFormConfig])
 
   const formConfigSnapshotRef = useRef<string>("")
   useEffect(() => {
@@ -2390,14 +2403,17 @@ function EditorContent() {
         setAppearanceFacialDescription(facialForRequest)
       }
       const activeFormKeys = enforceCategoryForms
-        ? defaultFormConfig.keys
+        ? defaultFormConfig.keys.filter(k => requestFormEnabled[k] !== false)
         : requestFormKeys.filter(k => requestFormEnabled[k] !== false)
+      if (activeFormKeys.length === 0) {
+        setAppearanceError("Select at least one form to generate prompts for.")
+        setAppearanceLoading(false)
+        return
+      }
       const formLabelsForRequest = enforceCategoryForms
         ? defaultFormConfig.labels
         : requestFormLabels
-      const formEnabledForRequest = enforceCategoryForms
-        ? defaultFormConfig.enabled
-        : requestFormEnabled
+      const formEnabledForRequest = requestFormEnabled
       const forms: Record<string, string> = {}
       for (const key of activeFormKeys) {
         if (requestFormDescriptions[key]?.trim()) forms[key] = requestFormDescriptions[key].trim()
@@ -2536,6 +2552,117 @@ function EditorContent() {
       setAppearanceError(err instanceof Error ? err.message : "Failed to regenerate form")
     } finally {
       setAppearanceGeneratingForm(null)
+    }
+  }
+
+  const handleGeneratePosePrompt = async (formKey: string) => {
+    const selectedText = aiSelectionText
+    const sourceEntry = selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
+    if (!sourceEntry) {
+      setAppearanceError("No entry selected.")
+      return
+    }
+    setGeneratingPoseKey(formKey)
+    setAppearanceError("")
+    try {
+      const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+      const styleToUse = selectedPoseStyle[formKey] || "dynamic"
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_pose",
+          name: sourceEntry.name,
+          category: sourceEntry.category,
+          formLabel: appearanceFormLabels[formKey] || formKey,
+          poseStyle: styleToUse,
+          loreEntry: {
+            name: sourceEntry.name,
+            category: sourceEntry.category,
+            content: sourceEntry.content
+          },
+          chapter: activeNote ? {
+            title: activeNote.title,
+            chapterNumber: activeChapterNumber,
+            content: activeNote.content
+          } : null
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAppearanceError(data.error)
+      } else if (data.text) {
+        setGeneratedPosePrompt(prev => ({ ...prev, [formKey]: String(data.text).trim() }))
+      }
+    } catch (err) {
+      setAppearanceError(err instanceof Error ? err.message : "Failed to generate pose prompt")
+    } finally {
+      setGeneratingPoseKey(null)
+    }
+  }
+
+  const handleGenerateAttirePrompt = async (formKey: string) => {
+    const selectedText = aiSelectionText
+    const sourceEntry = selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
+    if (!sourceEntry) {
+      setAppearanceError("No entry selected.")
+      return
+    }
+    setGeneratingAttireKey(formKey)
+    setAppearanceError("")
+    try {
+      const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+      const natureToUse = selectedAttireNature[formKey] || "eastern_fantasy"
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_attire",
+          name: sourceEntry.name,
+          category: sourceEntry.category,
+          formLabel: appearanceFormLabels[formKey] || formKey,
+          attireNature: natureToUse,
+          loreEntry: {
+            name: sourceEntry.name,
+            category: sourceEntry.category,
+            content: sourceEntry.content
+          },
+          chapter: activeNote ? {
+            title: activeNote.title,
+            chapterNumber: activeChapterNumber,
+            content: activeNote.content
+          } : null
+        })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAppearanceError(data.error)
+      } else if (data.text) {
+        setGeneratedAttirePrompt(prev => ({ ...prev, [formKey]: String(data.text).trim() }))
+      }
+    } catch (err) {
+      setAppearanceError(err instanceof Error ? err.message : "Failed to generate attire prompt")
+    } finally {
+      setGeneratingAttireKey(null)
+    }
+  }
+
+  const handleAppendToPrompt = (formKey: string, textToAppend: string) => {
+    if (!appearanceResult) return
+    const currentPrompt = appearanceResult.prompts?.[formKey] || ""
+    if (currentPrompt.includes(textToAppend)) return
+    const separator = currentPrompt.trim().endsWith(".") ? " " : ". "
+    const newPrompt = `${currentPrompt.trim()}${separator}${textToAppend.trim()}`
+    const updatedResult = {
+      ...appearanceResult,
+      prompts: {
+        ...appearanceResult.prompts,
+        [formKey]: newPrompt
+      }
+    }
+    setAppearanceResult(updatedResult)
+    if (appearanceSelectedEntryId) {
+      setAppearanceResultsByEntry(prev => ({ ...prev, [appearanceSelectedEntryId]: updatedResult }))
     }
   }
 
@@ -11480,6 +11607,120 @@ ${navPoints}  </navMap>
                               <p style={{ margin: "0.2rem 0 0", color: "var(--text-secondary)" }}>{formNegPrompt}</p>
                             </div>
                           )}
+                          {/* Pose & Attire Enhancer */}
+                          <div className="pose-attire-customizer" style={{ marginTop: "0.6rem", padding: "0.5rem", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                            <small style={{ fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.1rem" }}>
+                              Pose & Attire Enhancer
+                            </small>
+                            
+                            {/* Pose Section */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                              <div style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
+                                <select 
+                                  className="ai-input" 
+                                  style={{ flex: 1, fontSize: "0.7rem", minHeight: "26px", padding: "0px 6px" }}
+                                  value={selectedPoseStyle[formKey] || "dynamic"}
+                                  onChange={(e) => setSelectedPoseStyle(prev => ({ ...prev, [formKey]: e.target.value }))}
+                                >
+                                  <option value="dynamic">Dynamic Action Stance</option>
+                                  <option value="crouching">Low Crouching / Beast Prowl</option>
+                                  <option value="meditating">Qi Gathering / Meditation Stance</option>
+                                  <option value="airborne">Airborne / Hovering mid-air</option>
+                                  <option value="elegant">Elegant Standing Portrait</option>
+                                  <option value="combat">Combat-Ready / Weapon Drawn</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  className="btn-ai-sub btn-ai-primary"
+                                  style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem", minHeight: "26px", flexShrink: 0 }}
+                                  onClick={() => handleGeneratePosePrompt(formKey)}
+                                  disabled={generatingPoseKey === formKey}
+                                >
+                                  {generatingPoseKey === formKey ? <Loader2 size={10} className="spin" /> : "Gen Pose"}
+                                </button>
+                              </div>
+                              {generatedPosePrompt[formKey] && (
+                                <div style={{ background: "rgba(0,0,0,0.15)", padding: "0.35rem", borderRadius: "var(--radius-sm)", fontSize: "0.7rem" }}>
+                                  <p style={{ margin: 0, color: "var(--text-secondary)" }}>{generatedPosePrompt[formKey]}</p>
+                                  <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
+                                    <button 
+                                      type="button"
+                                      className="btn-ai-sub btn-ai-secondary" 
+                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
+                                      onClick={() => handleAppendToPrompt(formKey, generatedPosePrompt[formKey])}
+                                    >
+                                      Append to Prompt
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      className="btn-ai-sub btn-ai-secondary" 
+                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(generatedPosePrompt[formKey]);
+                                        alert("Pose prompt copied to clipboard!");
+                                      }}
+                                    >
+                                      Copy Pose
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Attire Section */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                              <div style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
+                                <select 
+                                  className="ai-input" 
+                                  style={{ flex: 1, fontSize: "0.7rem", minHeight: "26px", padding: "0px 6px" }}
+                                  value={selectedAttireNature[formKey] || "eastern_fantasy"}
+                                  onChange={(e) => setSelectedAttireNature(prev => ({ ...prev, [formKey]: e.target.value }))}
+                                >
+                                  <option value="eastern_fantasy">Eastern Fantasy Robes (Hanfu/Daoist)</option>
+                                  <option value="futuristic_armor">Futuristic Nanotech Armor / Cloak</option>
+                                  <option value="dark_fantasy">Dark Fantasy Plate & Leather Cloak</option>
+                                  <option value="royal_gown">Royal / Ceremonial Silk Gown</option>
+                                  <option value="mystic_robe">Mystic Mage / Scholar Robes</option>
+                                  <option value="beast_hide">Natural Beast Hide / Scales / Armor Plates</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  className="btn-ai-sub btn-ai-primary"
+                                  style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem", minHeight: "26px", flexShrink: 0 }}
+                                  onClick={() => handleGenerateAttirePrompt(formKey)}
+                                  disabled={generatingAttireKey === formKey}
+                                >
+                                  {generatingAttireKey === formKey ? <Loader2 size={10} className="spin" /> : "Gen Attire"}
+                                </button>
+                              </div>
+                              {generatedAttirePrompt[formKey] && (
+                                <div style={{ background: "rgba(0,0,0,0.15)", padding: "0.35rem", borderRadius: "var(--radius-sm)", fontSize: "0.7rem" }}>
+                                  <p style={{ margin: 0, color: "var(--text-secondary)" }}>{generatedAttirePrompt[formKey]}</p>
+                                  <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
+                                    <button 
+                                      type="button"
+                                      className="btn-ai-sub btn-ai-secondary" 
+                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
+                                      onClick={() => handleAppendToPrompt(formKey, generatedAttirePrompt[formKey])}
+                                    >
+                                      Append to Prompt
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      className="btn-ai-sub btn-ai-secondary" 
+                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(generatedAttirePrompt[formKey]);
+                                        alert("Attire prompt copied to clipboard!");
+                                      }}
+                                    >
+                                      Copy Attire
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                           {/* #6: Image preview button (requires IMAGE_GEN_API_KEY env var to work) */}
                           <div style={{ marginTop: "0.4rem" }}>
                             <button

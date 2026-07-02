@@ -858,20 +858,69 @@ function expandShortAppearancePrompt(prompt: string, formKey: string): string {
 const APPEARANCE_FACE_TERMS = /\b(face|facial|jaw|cheekbones?|cheeks?|brows?|eyebrows?|eyes?|nose|mouth|lips?|expression|scar|markings?|tattoos?|skin|complexion|muzzle|snout|beak|fangs?)\b/i
 const APPEARANCE_POSE_TERMS = /\b(pose|posture|stance|standing|crouch(?:ed|ing)?|prowling|kneeling|leaning|walking|running|leaping|gripping|holding|wielding|gesture|three-quarter|profile|turned|shoulders?|limbs?|claws?|paws?)\b/i
 
-function getDistinctAppearanceDirective(formKey: string, label: string, index: number, totalForms: number, entryCategory: string): string {
+function getStringHash(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return Math.abs(hash)
+}
+
+function getDistinctAppearanceDirective(formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = ""): string {
   const normalizedKey = formKey.toLowerCase()
   const safeLabel = label || formKey
+  const nameHash = getStringHash(characterName || safeLabel)
 
   if (entryCategory === "beast" && normalizedKey.includes("beast") && !normalizedKey.includes("demi")) {
-    return `Distinct face and pose for ${safeLabel}: make the face fully bestial with an animal skull structure, muzzle or snout, predatory eyes, and creature-specific teeth or markings; pose it in a low natural beast stance such as prowling, crouching, coiling, or bracing on claws/paws/hooves so it cannot read like the demi-human or humanoid form.`
+    const beastPoses = [
+      "low natural beast stance such as prowling, crouching, coiling, or bracing on claws/paws/hooves",
+      "dynamic mid-motion pose such as leaping, striking, charging forward, or lunging with claws extended",
+      "regal, alert resting posture such as sitting upright, coiled majestically, tail curled, head raised high",
+      "defensive, coiled stance with back arched, tail raised, claws dug deep into the ground, ready to spring"
+    ]
+    const beastFaces = [
+      "fully bestial with an animal skull structure, muzzle or snout, predatory eyes, and creature-specific teeth or markings",
+      "fearsome and feral creature face with glowing eyes, razor-sharp fangs, textured scales or fur, and a low growling mouth",
+      "ancient and noble beast face with wise eyes, long whiskers or antennae, armored plates, and a calm, majestic expression"
+    ]
+    const pose = beastPoses[nameHash % beastPoses.length]
+    const face = beastFaces[(nameHash + 1) % beastFaces.length]
+    return `Distinct face and pose for ${safeLabel}: make the face ${face}; pose it in a ${pose} so it cannot read like the demi-human or humanoid form.`
   }
 
   if (normalizedKey.includes("demi")) {
-    return `Distinct face and pose for ${safeLabel}: make the face visibly hybrid, with human-readable eyes and brow fused with beast anatomy such as a muzzle, snout, fangs, fur, scales, or animal ears where the form supports them; pose it upright in a powerful two-legged stance with clear hands, shoulders, beast legs, and a combat-ready gesture so it differs from both the full beast and the human form.`
+    const demiPoses = [
+      "upright in a powerful two-legged stance with clear hands, shoulders, beast legs, and a combat-ready gesture",
+      "dynamic, mid-stride combat pose, crouched low on one knee, one hand bracing on the ground, claws unsheathed",
+      "commanding standing pose with arms crossed, chin tilted slightly down, broad chest, tail swaying slowly behind",
+      "agile, airborne or leaping pose, body twisted mid-air, tail providing balance, claws ready to slash"
+    ]
+    const demiFaces = [
+      "visibly hybrid, with human-readable eyes and brow fused with beast anatomy such as a muzzle, snout, fangs, fur, scales, or animal ears",
+      "strikingly chiseled hybrid face with predator eyes, animalistic facial markings, fangs peeking out, and a crown of horns or feathers",
+      "predominantly human face but with beast-like attributes such as vertical slit pupils, patches of fine scales on the cheeks, and pointed animal ears"
+    ]
+    const pose = demiPoses[nameHash % demiPoses.length]
+    const face = demiFaces[(nameHash + 2) % demiFaces.length]
+    return `Distinct face and pose for ${safeLabel}: make the face ${face} where the form supports them; pose it ${pose} so it differs from both the full beast and the human form.`
   }
 
   if (normalizedKey.includes("human") || normalizedKey.includes("humanoid")) {
-    return `Distinct face and pose for ${safeLabel}: make the face fully human by default, with a memorable face shape, eye shape and expression, brows, nose, lips, cheekbones, jawline, and skin details; pose the figure in an upright three-quarter character stance with a deliberate hand gesture, weapon/item handling, or aura interaction, and do not reuse the crouch, beast profile, or hybrid stance from the other forms.`
+    const humanPoses = [
+      "upright three-quarter character stance with a deliberate hand gesture, weapon/item handling, or aura interaction",
+      "relaxed, side-profile pose with one hand resting on their belt, head turned towards the viewer with an enigmatic expression",
+      "dynamic spellcasting stance with arms outstretched, hands glowing with magical energy, robes billowing, weight shifted back",
+      "grounded, centered stance with feet shoulder-width apart, arms raised to hold a weapon at the ready, focused gaze"
+    ]
+    const humanFaces = [
+      "fully human by default, with a memorable face shape, eye shape and expression, brows, nose, lips, cheekbones, jawline, and skin details",
+      "striking and handsome/beautiful face, with intense eyes, arched eyebrows, high cheekbones, thin lips, and an air of calm confidence",
+      "weathered and rugged face, with a strong jawline, intense focused eyes, a small scar on the cheek, and a grim or determined expression",
+      "composed and ethereal face, with soft glowing eyes, a serene smile, perfect symmetry, and a delicate nose and chin"
+    ]
+    const pose = humanPoses[nameHash % humanPoses.length]
+    const face = humanFaces[(nameHash + 3) % humanFaces.length]
+    return `Distinct face and pose for ${safeLabel}: make the face ${face}; pose the figure in a ${pose}, and do not reuse the crouch, beast profile, or hybrid stance from the other forms.`
   }
 
   const faceProfiles = [
@@ -886,13 +935,13 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
     "a side-on guarded stance with the head turned and the silhouette clearly readable",
     "an upright commanding pose with squared shoulders and energy or environment arranged behind the figure"
   ]
-  const faceProfile = faceProfiles[index % faceProfiles.length]
-  const poseProfile = poseProfiles[index % poseProfiles.length]
+  const faceProfile = faceProfiles[nameHash % faceProfiles.length]
+  const poseProfile = poseProfiles[(nameHash + index) % poseProfiles.length]
 
   return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfile}, plus ${poseProfile}.`
 }
 
-function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string): string {
+function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = ""): string {
   const trimmedPrompt = prompt.trim()
   if (!trimmedPrompt) return trimmedPrompt
 
@@ -904,7 +953,7 @@ function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string
     return trimmedPrompt
   }
 
-  return `${trimmedPrompt} ${getDistinctAppearanceDirective(formKey, label, index, totalForms, entryCategory)}`
+  return `${trimmedPrompt} ${getDistinctAppearanceDirective(formKey, label, index, totalForms, entryCategory, characterName)}`
 }
 
 function formatMemoryContext(memory: unknown) {
@@ -1030,6 +1079,33 @@ export async function POST(req: NextRequest) {
 
       const contextPrompt = context ? `\nAdditional Context/Description: ${context}` : ""
       userPrompt = `Generate a detailed World Bible profile for a ${category.toUpperCase()} named "${name}".${contextPrompt}`
+    } else if (action === "generate_pose") {
+      const { name, category, formLabel, poseStyle, loreEntry } = body
+      systemInstruction =
+        "You are an expert character designer and art director. " +
+        "Your task is to generate a highly detailed, dynamic description of a character's physical pose, stance, and body language.\n" +
+        "Guidelines:\n" +
+        "1. Write a vivid, focused description of approximately 50-80 words.\n" +
+        "2. Do NOT mention the character's name, general appearance, or background. Only describe the physical pose, posture, limb positions, weight distribution, hand gestures, and any immediate visual aura/energy matching the pose.\n" +
+        "3. Match the selected style: " + String(poseStyle || "dynamic") + ".\n" +
+        "4. Output ONLY the raw descriptive phrase. No intro, no quotes, no markdown headers, and no outro comments."
+      
+      const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
+      userPrompt = `Generate a pose description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the style "${poseStyle || "dynamic"}".${charDetails}`
+    } else if (action === "generate_attire") {
+      const { name, category, formLabel, attireNature, loreEntry } = body
+      systemInstruction =
+        "You are an expert fantasy/sci-fi clothing and armor designer. " +
+        "Your task is to generate a highly detailed, textured description of a character's clothing, armor, or attire.\n" +
+        "Guidelines:\n" +
+        "1. Write a vivid, focused description of approximately 50-80 words.\n" +
+        "2. Focus entirely on fabrics, materials, colors, armor plates, trim, accessories, fit, drape, and how the clothing/armor flows or sits on the body.\n" +
+        "3. Do NOT mention the character's name, face, or general pose. Only describe the attire itself.\n" +
+        "4. Match the selected attire nature: " + String(attireNature || "fantasy robes") + ".\n" +
+        "5. Output ONLY the raw descriptive phrase. No intro, no quotes, no markdown headers, and no outro comments."
+      
+      const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
+      userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
     } else if (action === "appearance_prompts") {
       const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm, perFormNegatives, facialFeatures } = body
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
@@ -1061,8 +1137,10 @@ export async function POST(req: NextRequest) {
           : entryCategory === "item"
             ? ["artifactCloseup", "inUseScene"]
             : ["environmentScene", "mapView"]
-      const baseFormKeys = categoryFormKeys || (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : defaultVisualFormKeys))
-      const formKeys = requestedFormKey && baseFormKeys.includes(requestedFormKey)
+      const baseFormKeys = categoryFormKeys
+        ? categoryFormKeys.filter(k => safeFormEnabled[k] !== false)
+        : (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : defaultVisualFormKeys))
+      const formKeys = requestedFormKey && (baseFormKeys.includes(requestedFormKey) || (categoryFormKeys && categoryFormKeys.includes(requestedFormKey)))
         ? [requestedFormKey]
         : baseFormKeys
       const chapterText = String(chapterContext?.content || "").trim()
@@ -1084,20 +1162,20 @@ export async function POST(req: NextRequest) {
         return `"${k}": "${label}"`
       }).join(", ")
       const requiredFormRule = entryCategory === "beast"
-        ? "This Story Bible entry is a BEAST. You must create prompts for exactly three forms: Beast Form, Demi-human Form, and Humanoid Form. The forms represent evolutionary stages of the same creature.\n\n" +
+        ? "This Story Bible entry is a BEAST. You must create prompts for the requested form(s) (which may include Beast Form, Demi-human Form, or Humanoid Form). These forms represent evolutionary stages of the same creature.\n\n" +
           "STRICT BEAST FORM PROGRESSION RULES (MANDATORY — follow even if the entry only has a name and no other description in chapter or lore):\n" +
-          "- Beast Form: 100% beast. Fully animal anatomy, appropriate stance (usually quadrupedal or natural beast locomotion), complete beast head, body, limbs, fur/scales/hide, tail, no humanoid traits.\n" +
-          "- Demi-Human Form: 50%-80% Beast, 20%-50% Human. MUST incorporate ALL of these characteristics:\n" +
-          "  • Upright posture (stands on two legs)\n" +
-          "  • Humanoid torso\n" +
-          "  • Human-like arms (with hands)\n" +
-          "  • Beast head OR partially beast head (e.g. full animal head, or human face with beast ears/muzzle/snout/scales/horns)\n" +
-          "  • Beast legs (digitigrade or clawed beast-style lower legs)\n" +
-          "  • Tail retained\n" +
-          "  • Fur or scales retained (covering most of the body)\n" +
-          "  • Significantly larger than average humans\n" +
-          "- Humanoid Form: Clean humanoid / human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise.\n" +
-          "Always preserve any signature identifying traits **only if they are explicitly mentioned** (markings, colors, aura, eyes, horns, etc.). Do not invent non-human features.\n"
+          (formKeys.includes("beastForm") ? "- Beast Form: 100% beast. Fully animal anatomy, appropriate stance (usually quadrupedal or natural beast locomotion), complete beast head, body, limbs, fur/scales/hide, tail, no humanoid traits.\n" : "") +
+          (formKeys.includes("demiHumanForm") ? "- Demi-Human Form: 50%-80% Beast, 20%-50% Human. MUST incorporate ALL of these characteristics:\n" +
+            "  • Upright posture (stands on two legs)\n" +
+            "  • Humanoid torso\n" +
+            "  • Human-like arms (with hands)\n" +
+            "  • Beast head OR partially beast head (e.g. full animal head, or human face with beast ears/muzzle/snout/scales/horns)\n" +
+            "  • Beast legs (digitigrade or clawed beast-style lower legs)\n" +
+            "  • Tail retained\n" +
+            "  • Fur or scales retained (covering most of the body)\n" +
+            "  • Significantly larger than average humans\n" : "") +
+          (formKeys.includes("humanForm") ? "- Humanoid Form: Clean humanoid / human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise.\n" +
+            "Always preserve any signature identifying traits **only if they are explicitly mentioned** (markings, colors, aura, eyes, horns, etc.). Do not invent non-human features.\n" : "")
         : entryCategory === "character"
           ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
           : entryCategory === "place"
@@ -1191,10 +1269,10 @@ export async function POST(req: NextRequest) {
         facialRules +
         distinctFormRules +
         (entryCategory === "beast"
-          ? "9. BEAST FORM EVOLUTION (MANDATORY FOR BEAST CATEGORY ENTRIES): When the entry is a beast (even if only the name is known and there is zero visual description), strictly follow these anatomical rules for the three forms. **CRITICAL: Do NOT add tails, wings, horns, fur, scales, claws or any non-human body features to the humanoid form unless the chapter or Story Bible explicitly describes the character as having them in humanoid form.** Only retain such traits in demi-human if they match the required structure and are signature or mentioned.\n" +
-            "   - Beast Form = 100% beast (full animal body plan, stance, head).\n" +
-            "   - Demi-Human Form = 50-80% beast / 20-50% human with these REQUIRED traits: upright two-legged posture, humanoid torso, human-like arms and hands, beast or partially beast head, beast-style legs, retained tail, retained fur or scales over most of the body, significantly larger than humans. (Only include tail/fur/scales if they are signature traits mentioned in the input.)\n" +
-            "   - Humanoid Form = clean humanoid silhouette. The result must look like a human (or near-human) unless the chapter explicitly states the character has tails/wings/etc. in humanoid form. Do not default to adding any non-human traits.\n"
+          ? "9. BEAST FORM EVOLUTION (MANDATORY FOR BEAST CATEGORY ENTRIES): When the entry is a beast (even if only the name is known and there is zero visual description), strictly follow these anatomical rules for the requested forms:\n" +
+            (formKeys.includes("beastForm") ? "   - Beast Form = 100% beast (full animal body plan, stance, head).\n" : "") +
+            (formKeys.includes("demiHumanForm") ? "   - Demi-Human Form = 50-80% beast / 20-50% human with these REQUIRED traits: upright two-legged posture, humanoid torso, human-like arms and hands, beast or partially beast head, beast-style legs, retained tail, retained fur or scales over most of the body, significantly larger than humans. (Only include tail/fur/scales if they are signature traits mentioned in the input.)\n" : "") +
+            (formKeys.includes("humanForm") ? "   - Humanoid Form = clean humanoid silhouette. The result must look like a human (or near-human) unless the chapter explicitly states the character has tails/wings/etc. in humanoid form. Do not default to adding any non-human traits. **CRITICAL: Do NOT add tails, wings, horns, fur, scales, claws or any non-human body features to the humanoid form unless the chapter or Story Bible explicitly describes the character as having them in humanoid form.**\n" : "")
           : "") +
         "10. SPECIFY PREMIUM MATERIALS & DYNAMIC LIGHTING: Avoid generic terms. Specify materials (e.g., polished obsidian, white silk brocade, burnished silver), lighting (e.g., ethereal moonlight, dramatic rim lighting, firelight casting long shadows), and active visual effects (e.g., crackling blue lightning, swirling frost particles).\n" +
         "11. If the Known Appearance Facts block is present, treat those as absolute visual constraints — do not invent contradicting details.\n" +
@@ -1244,7 +1322,7 @@ export async function POST(req: NextRequest) {
             ? "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
             : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
-        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(k, label, index, formKeys.length, entryCategory)}` : ""
+        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(k, label, index, formKeys.length, entryCategory, name)}` : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}${distinctNote}`
       }).join("\n")
 
@@ -2086,9 +2164,10 @@ export async function POST(req: NextRequest) {
         return ""
       }
       const responseLoreEntry = body?.loreEntry && typeof body.loreEntry === "object"
-        ? body.loreEntry as { category?: string }
+        ? body.loreEntry as { category?: string; name?: string }
         : null
       const responseEntryCategory = typeof responseLoreEntry?.category === "string" ? responseLoreEntry.category : ""
+      const characterName = String(body?.name || responseLoreEntry?.name || "").trim()
       const responseFormLabels = body?.formLabels && typeof body.formLabels === "object"
         ? body.formLabels as Record<string, string>
         : {}
@@ -2107,7 +2186,7 @@ export async function POST(req: NextRequest) {
             const label = responseFormLabels[key] || fallbackLabel
             const expandedPrompt = expandShortAppearancePrompt(text, key)
             prompts[key] = responseIsCharacterLike
-              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory)
+              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName)
               : expandedPrompt
           }
         }
