@@ -1825,11 +1825,75 @@ export async function POST(req: NextRequest) {
           const gender = nameGeneratorConfig?.gender || "male"
           const struct = nameGeneratorConfig?.structure || "single"
           const opt = nameGeneratorConfig?.additionalOption || "warrior"
-          subtypeGuidance += `Generate Humanoid names matching culture/origin "${culture}", gender "${gender}", name structure "${struct}", and sound style "${opt}".\n`
-          if (culture.toLowerCase().includes("african")) {
-            subtypeGuidance += `African cultural naming roots apply (e.g. Swahili, Yoruba, Zulu, or ancient Egyptian naming sounds depending on sub-culture).\n`
-          } else if (culture.toLowerCase().includes("asian")) {
-            subtypeGuidance += `Asian naming roots apply (Chinese cultivation pinyin, Japanese kanji sound mappings, Korean Joseon sounds, Thai, Indian/Hindu Sanskrit roots, or Mongolian steppe feel).\n`
+          subtypeGuidance += `Generate Humanoid names matching culture/origin/race "${culture}", gender "${gender}", name structure "${struct}", and sound style "${opt}".\n`
+          
+          const cultLower = culture.toLowerCase()
+          if (cultLower.includes("swahili")) {
+            subtypeGuidance += "Use Swahili/East African naming patterns: melodic, rhythmic syllables ending in vowels (a, e, i, o, u), with prefix markers. Examples: Jengo, Kamaria, Zuberi, Zola.\n"
+          } else if (cultLower.includes("yoruba")) {
+            subtypeGuidance += "Use Yoruba/West African naming patterns: meaning-rich compound structures with tone play (e.g. Babajide, Olufemi, Adebayo, Temilade).\n"
+          } else if (cultLower.includes("zulu")) {
+            subtypeGuidance += "Use Zulu/Xhosa naming patterns: strong consonants, verb-derived meanings, and clicks/aspirations (c, q, x). Examples: Sipho, Thandi, Lindiwe, Bandile.\n"
+          } else if (cultLower.includes("egyptian")) {
+            subtypeGuidance += "Use Ancient Egyptian pharaonic naming patterns: suffixes and prefixes honoring gods (e.g. -amun, -hotep, -neb, -ra). Examples: Ramses, Nefertari, Imhotep, Amenhotep.\n"
+          } else if (cultLower.includes("chinese")) {
+            subtypeGuidance += "Use Chinese (Wuxia/Xianxia) naming patterns: Pinyin structure, standard family surname (Li, Zhang, Wang, Xiao) + one- or two-character given names (e.g. Feng, Wuchen, Qingxuan, Ruoxian). Examples: Xiao Feng, Li Wuchen, Zhang Qingxuan.\n"
+          } else if (cultLower.includes("japanese")) {
+            subtypeGuidance += "Use Japanese naming patterns: traditional syllables (ka, ki, ku, ke, ko, sa, shi, etc.) with classic endings (e.g. -ro, -ta, -suke, -ko, -mi, -ka). Examples: Kenji, Kazuma, Hiroto, Sakura, Miyuki.\n"
+          } else if (cultLower.includes("korean")) {
+            subtypeGuidance += "Use Korean naming patterns: Hanja structure, typically one-syllable surname (Kim, Lee, Park, Kang) + two-syllable given name (e.g. Min-jun, Eun-ji, Ji-woo). Examples: Kim Min-jun, Kang Eun-ji.\n"
+          } else if (cultLower.includes("hindu") || cultLower.includes("indian")) {
+            subtypeGuidance += "Use Sanskrit/Hindu naming patterns: divine prefixes, resonant phonetics, meaning-rich roots (e.g. -endra, -aditya, -esh, -ika). Examples: Arjun, Devendra, Priyadarshini, Aarav.\n"
+          } else if (cultLower.includes("mongolian")) {
+            subtypeGuidance += "Use Mongolian naming patterns: strong steppe warrior roots, compound names referencing skies, metal, or animals (e.g. Temür, Baatar, Genghis, Khulan). Examples: Yesütei, Borte, Temüjin.\n"
+          } else if (cultLower.includes("nordic") || cultLower.includes("norse")) {
+            subtypeGuidance += "Use Norse/Scandinavian naming patterns: strong runes, sagas, and patronymics/matronymics (-sen, -son, -dóttir). Examples: Ragnar, Freydis, Bjorn, Sigrid, Thorstein.\n"
+          } else if (cultLower.includes("celtic")) {
+            subtypeGuidance += "Use Celtic/Gaelic naming patterns: soft, flowing, mystical sounds with unique consonant clusters (bh, dh, th, sh, mh). Examples: Rowan, Maeve, Connor, Fiona, Alistair.\n"
+          } else if (cultLower.includes("slavic")) {
+            subtypeGuidance += "Use Slavic naming patterns: roots meaning peace, glory, or strength (-mir, -slav, -bor). Examples: Miroslav, Kazimierz, Vladislav, Milena, Danica.\n"
+          } else if (cultLower.includes("greco-roman") || cultLower.includes("greek") || cultLower.includes("roman")) {
+            subtypeGuidance += "Use Hellenic/Latin grand naming patterns: epic suffixes (-eus, -icles, -us, -ius, -ia). Examples: Achilles, Themistocles, Aurelius, Valerius, Livia, Octavia.\n"
+          } else if (cultLower.includes("arabic")) {
+            subtypeGuidance += "Use Arabic Semitic naming patterns: tri-consonantal roots, lineage markers (ibn, bin, bint, abu). Examples: Tariq, Layla, Yusuf, Fatima, Ibn Sina.\n"
+          } else if (cultLower.includes("persian")) {
+            subtypeGuidance += "Use Persian grand naming patterns: royal suffixes, melodious Persian roots (e.g. Cyrus, Darius, Rostam, Shireen, Roxana).\n"
+          } else if (cultLower.includes("mesopotamian")) {
+            subtypeGuidance += "Use Sumerian/Babylonian cuneiform naming patterns: grand antiquity feel (e.g. Gilgamesh, Enkidu, Ishtar, Enlil, Sargon).\n"
+          } else if (cultLower.includes("aztec")) {
+            subtypeGuidance += "Use Nahuatl/Aztec naming patterns: unique consonant clusters (tl, tz, x, z) referencing nature, sun, or jade. Examples: Tenoch, Xochitl, Cuauhtemoc, Metzli.\n"
+          } else if (cultLower.includes("mayan")) {
+            subtypeGuidance += "Use Mayan naming patterns: short, sharp glyph-based sounds referencing jaguars, skies, or jade (e.g. Balam, K'inich, Yaxun, Ixchel).\n"
+          } else if (cultLower.includes("maori") || cultLower.includes("polynesian")) {
+            subtypeGuidance += "Use Polynesian/Maori patterns: melodious open vowels, soft consonants, references to ocean, wind, or volcanic mana (e.g. Keanu, Moana, Tane, Aroha).\n"
+          } else if (cultLower.includes("high elf")) {
+            subtypeGuidance += "Use High Elf naming patterns: lyrical, flowing vowels, soft sibilants, melodic tone (l, s, m, r, th, f). Avoid harsh gutturals. Examples: Legolas, Galadriel, Celeborn, Elrond, Aerith.\n"
+          } else if (cultLower.includes("wood elf")) {
+            subtypeGuidance += "Use Wood Elf naming patterns: sylvan, nature-connected sounds, forest syllables, earthy tones (e.g. Oak, Thorn, Leaf, Willow roots integrated). Examples: Tauriel, Thranduil, Sylas, Lyra.\n"
+          } else if (cultLower.includes("dark elf") || cultLower.includes("drow")) {
+            subtypeGuidance += "Use Dark Elf (Drow) naming patterns: sharp, sibilant, dangerous sounds (z, sh, v, x, th, ', ss). Examples: Drizzt, Jarlaxle, Lolth, Viconia, Zaknafein.\n"
+          } else if (cultLower.includes("mountain dwarf") || cultLower.includes("dwarven")) {
+            subtypeGuidance += "Use Dwarven naming patterns: grounded, rugged, harsh consonants (g, k, th, r, d, b, z). Avoid soft vowels. Examples: Gimli, Thorin, Balin, Dwalin, Gloin.\n"
+          } else if (cultLower.includes("dark dwarf") || cultLower.includes("duergar")) {
+            subtypeGuidance += "Use Dark Dwarf/Duergar naming patterns: heavy, dark, obsidian-feeling, underground syllables with guttural undertones. Examples: Horgar, Murgrim, Thulgrun.\n"
+          } else if (cultLower.includes("feral orc")) {
+            subtypeGuidance += "Use Feral Orc naming patterns: guttural, harsh, monosyllabic warrior names, hard explosive consonants (g, z, k, r, kh). Examples: Grommash, Garrosh, Gul'dan, Thrall.\n"
+          } else if (cultLower.includes("noble orc")) {
+            subtypeGuidance += "Use Noble Orc naming patterns: grand, honor-bound, slightly longer clan warrior names. Examples: Durotan, Orgrim, Saurfang.\n"
+          } else if (cultLower.includes("goblin")) {
+            subtypeGuidance += "Use Goblin/Kobold naming patterns: short, sharp, clicky, trickster syllables with hard endings. Examples: Gax, Squeek, Krenko, Tink.\n"
+          } else if (cultLower.includes("halfling")) {
+            subtypeGuidance += "Use Halfling/Hobbit naming patterns: cozy, warm, rustic English countryside names. Examples: Bilbo, Frodo, Samwise, Pippin, Merry.\n"
+          } else if (cultLower.includes("dragonborn") || cultLower.includes("draconic")) {
+            subtypeGuidance += "Use Dragonborn/Draconic naming patterns: hissing, sibilant, powerful draconic sounds (j, sh, k, ss, r, v, z). Examples: Torinn, Balasar, Daardendrian.\n"
+          } else if (cultLower.includes("tiefling")) {
+            subtypeGuidance += "Use Tiefling/Fiendish naming patterns: chthonic, exotic, sharp consonants, or abstract virtue names (e.g. Hope, Glory, Sorrow). Examples: Mephistopheles, Lilith, Zariel.\n"
+          } else if (cultLower.includes("aasimar")) {
+            subtypeGuidance += "Use Aasimar/Celestial naming patterns: resonant, grand, angelic, vowel-rich divine names. Examples: Gabriel, Seraphina, Uriel, Aurelia.\n"
+          } else if (cultLower.includes("giant")) {
+            subtypeGuidance += "Use Giant/Jotunn naming patterns: grave, thunderous, massive monosyllabic or simple naming style. Examples: Ymir, Thrym, Skadi, Surtur.\n"
+          } else if (cultLower.includes("beastkin")) {
+            subtypeGuidance += "Use Beast-kin naming patterns: animistic, soft Japanese-like or animalistic syllables (e.g. kitsune, neko, inuka). Examples: Ran, Koko, Ren, Haru.\n"
           }
         } else if (sub === "alien") {
           const style = nameGeneratorConfig?.alienStyle || "cosmic"
