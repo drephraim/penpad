@@ -872,37 +872,11 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
   const nameHash = getStringHash(characterName || safeLabel)
 
   if (entryCategory === "beast" && normalizedKey.includes("beast") && !normalizedKey.includes("demi")) {
-    const beastPoses = [
-      "low natural beast stance such as prowling, crouching, coiling, or bracing on claws/paws/hooves",
-      "dynamic mid-motion pose such as leaping, striking, charging forward, or lunging with claws extended",
-      "regal, alert resting posture such as sitting upright, coiled majestically, tail curled, head raised high",
-      "defensive, coiled stance with back arched, tail raised, claws dug deep into the ground, ready to spring"
-    ]
-    const beastFaces = [
-      "fully bestial with an animal skull structure, muzzle or snout, predatory eyes, and creature-specific teeth or markings",
-      "fearsome and feral creature face with glowing eyes, razor-sharp fangs, textured scales or fur, and a low growling mouth",
-      "ancient and noble beast face with wise eyes, long whiskers or antennae, armored plates, and a calm, majestic expression"
-    ]
-    const pose = beastPoses[nameHash % beastPoses.length]
-    const face = beastFaces[(nameHash + 1) % beastFaces.length]
-    return `Distinct face and pose for ${safeLabel}: make the face ${face}; pose it in a ${pose} so it cannot read like the demi-human or humanoid form.`
+    return `Distinct face and pose for ${safeLabel}: Ensure the pose is a dynamic or majestic beast stance (such as coiling, lunging, soaring, swimming, or crouching) that directly captures the creature's class (e.g., serpentine coiling for a Leviathan, wing-spreading for a Phoenix) and matches the action and environmental intensity of the active chapter. The face must be 100% bestial and non-human (e.g. razor-fanged jaws, scales, horns, or a draconic snout), reflecting the scene's danger level (feral and aggressive if in battle, majestic and wise if calm).`
   }
 
   if (normalizedKey.includes("demi")) {
-    const demiPoses = [
-      "upright in a powerful two-legged stance with clear hands, shoulders, beast legs, and a combat-ready gesture",
-      "dynamic, mid-stride combat pose, crouched low on one knee, one hand bracing on the ground, claws unsheathed",
-      "commanding standing pose with arms crossed, chin tilted slightly down, broad chest, tail swaying slowly behind",
-      "agile, airborne or leaping pose, body twisted mid-air, tail providing balance, claws ready to slash"
-    ]
-    const demiFaces = [
-      "visibly hybrid, with human-readable eyes and brow fused with beast anatomy such as a muzzle, snout, fangs, fur, scales, or animal ears",
-      "strikingly chiseled hybrid face with predator eyes, animalistic facial markings, fangs peeking out, and a crown of horns or feathers",
-      "predominantly human face but with beast-like attributes such as vertical slit pupils, patches of fine scales on the cheeks, and pointed animal ears"
-    ]
-    const pose = demiPoses[nameHash % demiPoses.length]
-    const face = demiFaces[(nameHash + 2) % demiFaces.length]
-    return `Distinct face and pose for ${safeLabel}: make the face ${face} where the form supports them; pose it ${pose} so it differs from both the full beast and the human form.`
+    return `Distinct face and pose for ${safeLabel}: Pose the demi-human in an upright, two-legged stance with human-like arms and chest, but with beastly lower legs, claws, tail, and body coverage (fur, scales, or feathers). The face must be a highly stylized, high-quality hybrid blending recognizable humanoid features (eyes, expression) with beastly details (horns, ears, facial markings, fangs, or fine scales). Ensure the pose, elemental aura, and expression perfectly capture the energy, speed, combat readiness, or spellcasting intensity of the active chapter.`
   }
 
   if (normalizedKey.includes("human") || normalizedKey.includes("humanoid")) {
@@ -1191,20 +1165,21 @@ export async function POST(req: NextRequest) {
         return `"${k}": "${label}"`
       }).join(", ")
       const requiredFormRule = entryCategory === "beast"
-        ? "This Story Bible entry is a BEAST. You must create prompts for the requested form(s) (which may include Beast Form, Demi-human Form, or Humanoid Form). These forms represent evolutionary stages of the same creature.\n\n" +
-          "STRICT BEAST FORM PROGRESSION RULES (MANDATORY — follow even if the entry only has a name and no other description in chapter or lore):\n" +
-          (formKeys.includes("beastForm") ? "- Beast Form: 100% beast. Fully animal anatomy, appropriate stance (usually quadrupedal or natural beast locomotion), complete beast head, body, limbs, fur/scales/hide, tail, no humanoid traits.\n" : "") +
-          (formKeys.includes("demiHumanForm") ? "- Demi-Human Form: 50%-80% Beast, 20%-50% Human. MUST incorporate ALL of these characteristics:\n" +
-            "  • Upright posture (stands on two legs)\n" +
-            "  • Humanoid torso\n" +
-            "  • Human-like arms (with hands)\n" +
-            "  • Beast head OR partially beast head (e.g. full animal head, or human face with beast ears/muzzle/snout/scales/horns)\n" +
-            "  • Beast legs (digitigrade or clawed beast-style lower legs)\n" +
-            "  • Tail retained\n" +
-            "  • Fur or scales retained (covering most of the body)\n" +
-            "  • Significantly larger than average humans\n" : "") +
-          (formKeys.includes("humanForm") ? "- Humanoid Form: Clean humanoid / human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise.\n" +
-            "Always preserve any signature identifying traits **only if they are explicitly mentioned** (markings, colors, aura, eyes, horns, etc.). Do not invent non-human features.\n" : "")
+        ? "This Story Bible entry is a BEAST. You must create prompts for the requested form(s) (Beast Form, Demi-human Form, or Humanoid Form). These forms represent evolutionary stages of the same creature.\n\n" +
+          "CRITICAL BEAST ARCHETYPE & CHAPTER INTENSITY INSTRUCTIONS:\n" +
+          "1. IDENTIFY THE BEAST SPECIES/CLASS: Read the name and lore (e.g., 'Leviathan', 'Titan-Ape', 'Qilin'). If the creature is a known mythical type (like a Leviathan), generate an awe-inspiring, massive, and powerful representation of that class (e.g., colossal armor-plated marine serpent, leviathan-scale sea titan, fiery celestial avian, storm-clad dragon) even if the description in the Bible is sparse.\n" +
+          "2. ADAPT TO CHAPTER ACTION & INTENSITY (READ CHAPTER WELL): You MUST read and analyze the active chapter context. If the scene is intense, chaotic, or combat-focused, the beast's pose, expression, and surrounding elements must reflect this intensity. For example, a fighting Leviathan should be coiling, lunging, roaring, churning titanic waves, with eyes glowing like molten gold, jaws wide, surrounded by crackling lightning or stormy seas. If the scene is calm or mysterious, the beast should look majestic, ancient, and dormant, blending with the environment.\n" +
+          "3. STRICT BEAST FORM PROGRESSION RULES:\n" +
+          (formKeys.includes("beastForm") ? "   - Beast Form: 100% beast. Fully animal/creature anatomy. No human stance, no humanoid hands, no human clothing. Use colossal, gargantuan scale keywords. Focus on powerful claws, tails, fangs, scales, wings, or horns. The pose must match the chapter action (e.g., coiling, lunging, breathing energy, soaring through clouds).\n" : "") +
+          (formKeys.includes("demiHumanForm") ? "   - Demi-Human Form: 50%-80% Beast, 20%-50% Human. A stylized, high-quality hybrid. Must combine:\n" +
+            "     • Upright, powerful humanoid stance (two legs)\n" +
+            "     • Human-like arms and hands, but with beastly claws or scales\n" +
+            "     • Hybrid face (e.g., human features combined with glowing beast eyes, animal ears, horns, or cheek scales)\n" +
+            "     • Beast legs (digitigrade, clawed paws, or hooves)\n" +
+            "     • A long beast tail and body coverage of fine fur, feathers, or shimmering scales\n" +
+            "     • Heightened scale: significantly larger and broader than average humans\n" +
+            "     • Dress and gear: tribal wraps, leather armor plates, or robes that fit a warrior or shaman, with elemental aura matching the chapter's tone.\n" : "") +
+          (formKeys.includes("humanForm") ? "   - Humanoid Form: Fully human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise.\n" : "")
         : entryCategory === "character"
           ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
           : entryCategory === "place"
