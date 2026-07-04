@@ -910,17 +910,46 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
       "upright three-quarter character stance with a deliberate hand gesture, dynamic hand sign, or aura interaction",
       "relaxed, side-profile pose with one hand resting on their belt, head turned towards the viewer with an enigmatic expression",
       "dynamic spellcasting stance with arms outstretched, hands glowing with magical energy, robes billowing, weight shifted back",
-      "grounded, centered stance with feet shoulder-width apart, arms raised in a ready posture or defensive guard, focused gaze"
+      "grounded, centered stance with feet shoulder-width apart, arms raised in a ready posture or defensive guard, focused gaze",
+      "introspective seated pose, elbows resting on knees, eyes cast downward, aura softly radiating outward",
+      "wide-legged power stance, arms loosely crossed, chin raised, exuding dominance and presence"
     ]
-    const humanFaces = [
-      "fully human by default, with a memorable face shape, eye shape and expression, brows, nose, lips, cheekbones, jawline, and skin details",
-      "striking and handsome/beautiful face, with intense eyes, arched eyebrows, high cheekbones, thin lips, and an air of calm confidence",
-      "weathered and rugged face, with a strong jawline, intense focused eyes, a small scar on the cheek, and a grim or determined expression",
-      "composed and ethereal face, with soft glowing eyes, a serene smile, perfect symmetry, and a delicate nose and chin"
+    // Large pool of distinct face structures — anchored by character name hash to avoid reuse across characters
+    const faceShapes = [
+      "a long, angular face with a sharp, defined jaw and prominent cheekbones",
+      "a broad, square-jawed face with a wide brow and heavy set features",
+      "a slim oval face with a rounded chin, high forehead, and softly curved cheeks",
+      "a heart-shaped face with a wide forehead, wide-set eyes, and a delicately pointed chin",
+      "a diamond-shaped face with a narrow forehead, dramatic cheekbones, and a tapered jaw",
+      "a round, full-cheeked face with a soft jawline and wide, expressive eyes",
+      "a gaunt, hollow-cheeked face with a pronounced brow ridge and sharp nose bridge",
+      "a classically chiseled face with a straight nose, balanced proportions, and timeless symmetry"
     ]
-    const pose = humanPoses[nameHash % humanPoses.length]
-    const face = humanFaces[(nameHash + 3) % humanFaces.length]
-    return `Distinct face and pose for ${safeLabel}: make the face ${face}; pose the figure in a ${pose}, and do not reuse the crouch, beast profile, or hybrid stance from the other forms.`
+    const eyeTypes = [
+      "narrow, hooded eyes with a calculating, watchful intensity and dark heavy lashes",
+      "wide, luminous eyes with a slightly upward tilt and an air of open curiosity or wonder",
+      "deep-set, brooding eyes under a heavy brow, framed by faint shadows that suggest past hardship",
+      "almond-shaped, fox-like eyes with an upward slant, sharp at the corners, and a cunning glint",
+      "large, round eyes that shift quickly and betray both intelligence and vulnerability",
+      "half-lidded, languid eyes with a graceful tilt suggesting effortless superiority or deep calm",
+      "piercing, close-set eyes that lock onto their target with fierce, unblinking focus",
+      "warm, downward-angled eyes that convey gentleness and hidden sorrow at the same time"
+    ]
+    const skinAndHair = [
+      "pale, almost translucent skin with visible faint veins at the temples, hair ink-black and straight",
+      "deep warm brown skin with an inner luminosity, hair thick and tightly coiled or braided",
+      "sun-bronzed olive skin with faint freckles across the nose bridge, hair a dark auburn",
+      "ashen grey skin with a cool undertone, hair silver-white and fine, worn loose to the shoulders",
+      "rich dark mahogany skin, flawlessly smooth, hair a deep jet black with a natural sheen",
+      "golden-tan skin with fine golden undertones, hair honey-blonde or light brown with windswept texture",
+      "porcelain-pale skin with a rosy flush on the cheeks, hair a vivid copper-red",
+      "cool blue-grey tinted skin suggesting an otherworldly heritage, hair dark with silver streaks"
+    ]
+    const faceShape = faceShapes[nameHash % faceShapes.length]
+    const eyeType = eyeTypes[(nameHash + 3) % eyeTypes.length]
+    const skinHair = skinAndHair[(nameHash + 7) % skinAndHair.length]
+    const pose = humanPoses[(nameHash + 1) % humanPoses.length]
+    return `Distinct face and pose for ${safeLabel}: design a humanoid face with ${faceShape}, ${eyeType}, and ${skinHair}. Pose the figure in a ${pose}. This face must feel entirely unique to this character — do NOT reuse generic "striking face" or "ethereal face" templates; derive the face from the character's name, cultural cues, role, and lore instead.`
   }
 
   const faceProfiles = [
@@ -1237,12 +1266,13 @@ export async function POST(req: NextRequest) {
           "5. PRESERVE SETTING & OBJECT TRUTH — STRICT RULE: Only include landmarks, borders, routes, celestial bodies, architecture, materials, magical effects, damage, inscriptions, ownership marks, and technology that are supported by the chapter, Story Bible, or user-provided form notes. Do not copy generic fantasy map symbols or Earth-like geography unless the lore supports it.\n" +
           "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details are sparse, create a coherent visual design that suits the world's genre, culture, power system, climate, danger level, and story mood. Fill in layout, scale, materials, lighting, atmosphere, and environmental storytelling, but mark invented-but-plausible choices in consistencyNotes.\n"
       const facialRules = isCharacterLike
-        ? "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. Base strong inferences on:\n" +
-          "   - The character's name, aliases, cultural background, groups, bloodline, or sect\n" +
-          "   - Any personality, status, age, power level, or role hints in the lore or chapter\n" +
-          "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit or young master)\n" +
+        ? "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. EVERY character must have a COMPLETELY UNIQUE face — do NOT recycle the same \"striking face\", \"ethereal face\", \"handsome warrior face\" or any other generic archetype across different characters. Base the face SPECIFICALLY on:\n" +
+          "   - The character's exact name: derive syllabic rhythm, cultural origin, and phonetic feel from the name itself to anchor a distinctive face\n" +
+          "   - Aliases, cultural background, ethnic or clan origin, groups, bloodline, or sect — use these to infer bone structure, skin tone, hair texture, and eye shape specific to this character's heritage\n" +
+          "   - Personality, age, status, power level, or role hints in the lore or chapter — a scheming advisor has a different face than a wild beast-tamer or a noble young master\n" +
+          "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit; deep-set tired eyes for a seasoned veteran)\n" +
           "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
-          "   Always describe in the prompt: face shape, eye shape/size/color/expression, eyebrow shape, nose, mouth/lips, cheekbones, jawline, any scars/markings/tattoos, skin texture or tone. Make the face distinctive and paintable — never generic or omitted.\n"
+          "   Always explicitly describe in the prompt: face shape (oval, angular, round, diamond, heart-shaped, square, gaunt, etc.), unique eye shape/size/tilt/color/expression, eyebrow arch, nose bridge and tip shape, mouth/lips, cheekbone height and prominence, jawline, chin shape, any scars/markings/birthmarks/tattoos, skin tone and texture. Make the face unmistakably distinctive and never interchangeable with any other character.\n"
         : "7. ENVIRONMENT, MAP & OBJECT CLARITY MANDATE (CRITICAL - always apply): The visual subject must be immediately recognizable. For environments, describe a clear foreground/midground/background, scale cues, landmarks, weather, and lighting. For maps, describe top-down or atlas composition, coastlines, terrain symbols, routes, borders, compass/legend style, and avoid fake unreadable labels unless exact names are supplied. For planets, describe continents, atmosphere, moons/rings, cloud systems, lights, or magical phenomena. For items, describe silhouette, materials, markings, damage, scale, effects, and how it sits in the story environment.\n"
 
       const distinctFormRules = isCharacterLike
@@ -1344,7 +1374,7 @@ export async function POST(req: NextRequest) {
             ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth - use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
             : `VISUAL ANCHOR GUIDANCE (treat as high-priority truth for geography, environment, object design, map style, materials, scale, and mood):\n"${facialFeatures.trim()}"\n\n`)
           : (isCharacterLike
-            ? `FACIAL FEATURES INSTRUCTION: The chapter provided no explicit facial details. Use the character's name, lore, groups, personality hints, status, and genre to invent a distinctive, high-quality face (face shape, eye shape and expression, brows, nose, lips, jaw, cheekbones, skin details). Make it specific and memorable.\n\n`
+            ? `FACIAL UNIQUENESS INSTRUCTION: No explicit facial features were provided. You MUST invent a face that is EXCLUSIVELY derived from this specific character's identity \u2014 their name (use its phonetic/cultural origin), clan/sect/bloodline, social status, age, personality, and the emotional tone of the current chapter. NEVER fall back on the same generic archetypes ("striking cultivator face", "ethereal beauty", "rugged warrior") across different characters. Each character must be visually irreplaceable. Define: exact face shape, unique eye shape and color and expression, brow style, nose profile, lip shape, jawline, chin, skin tone, hair style and color, and any defining marks or textures.\n\n`
             : `VISUAL ANCHOR INSTRUCTION: If the chapter gives sparse setting or object detail, infer a coherent environment, map, planet, or artifact design from the name, category, lore, groups, genre, and current chapter mood. Make the subject visually specific and immediately usable.\n\n`)
         ) +
         `Forms to generate prompts for:\n${formDescriptions}` +
