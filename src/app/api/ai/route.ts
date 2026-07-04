@@ -1110,7 +1110,7 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, regenerateForm, perFormNegatives, facialFeatures } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures } = body
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
       const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
@@ -1213,7 +1213,16 @@ export async function POST(req: NextRequest) {
         : ""
 
       // Expand the style into image-gen quality tokens
-      const expandedStyle = expandAppearanceStyle(style || "cinematic fantasy character concept art")
+      let expandedStyle = expandAppearanceStyle(style || "cinematic fantasy character concept art")
+      if (typeof lighting === "string" && lighting.trim()) {
+        expandedStyle += `, ${lighting.trim()} lighting`
+      }
+      if (typeof atmosphere === "string" && atmosphere.trim()) {
+        expandedStyle += `, ${atmosphere.trim()} atmosphere`
+      }
+      if (typeof camera === "string" && camera.trim()) {
+        expandedStyle += `, ${camera.trim()}`
+      }
       const visualSubjectLabel = entryCategory === "place"
         ? "place, environment, or location"
         : entryCategory === "world"

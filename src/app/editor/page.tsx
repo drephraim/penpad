@@ -1951,6 +1951,9 @@ function EditorContent() {
   // Appearance Prompt Lab States
   const [appearanceStyle, setAppearanceStyle] = useState("cinematic fantasy character concept art")
   const [appearanceCustomStyle, setAppearanceCustomStyle] = useState("")
+  const [appearanceLighting, setAppearanceLighting] = useState("any")
+  const [appearanceAtmosphere, setAppearanceAtmosphere] = useState("any")
+  const [appearanceCamera, setAppearanceCamera] = useState("any")
   const [appearanceSelectedEntryId, setAppearanceSelectedEntryId] = useState<string | null>(null)
   const [appearanceResult, setAppearanceResult] = useState<AppearancePromptResult | null>(null)
   const [appearanceLoading, setAppearanceLoading] = useState(false)
@@ -1968,6 +1971,9 @@ function EditorContent() {
     humanForm: true
   })
   const [appearanceFormKeys, setAppearanceFormKeys] = useState<string[]>(["beastForm", "demiHumanForm", "humanForm"])
+  const [showCustomFormAdder, setShowCustomFormAdder] = useState(false)
+  const [customFormLabel, setCustomFormLabel] = useState("")
+  const [customFormDesc, setCustomFormDesc] = useState("")
 
   const [selectedPoseStyle, setSelectedPoseStyle] = useState<Record<string, string>>({})
   const [generatingPoseKey, setGeneratingPoseKey] = useState<string | null>(null)
@@ -2432,6 +2438,9 @@ function EditorContent() {
           action: "appearance_prompts",
           name: sourceEntry.name,
           style: styleToUse,
+          lighting: appearanceLighting !== "any" ? appearanceLighting : undefined,
+          atmosphere: appearanceAtmosphere !== "any" ? appearanceAtmosphere : undefined,
+          camera: appearanceCamera !== "any" ? appearanceCamera : undefined,
           selectedText,
           forms: Object.keys(forms).length > 0 ? forms : undefined,
           formLabels: formLabelsForRequest,
@@ -11151,37 +11160,118 @@ ${navPoints}  </navMap>
                     </select>
                   </div>
 
-                  {/* #4: Custom style + dropdown */}
+                  {/* Visual Style Preset Grid */}
                   <div className="ai-form-field">
-                    <label>Visual Style</label>
-                    <select
-                      className="ai-select"
-                      value={appearanceCustomStyle ? "__custom__" : appearanceStyle}
-                      onChange={(e) => {
-                        if (e.target.value === "__custom__") return
-                        setAppearanceCustomStyle("")
-                        setAppearanceStyle(e.target.value)
-                      }}
-                      disabled={appearanceLoading}
-                    >
-                      <option value="cinematic fantasy character concept art">Cinematic fantasy concept art</option>
-                      <option value="epic fantasy environment concept art, cinematic matte painting">Epic environment concept art</option>
-                      <option value="fantasy cartography map, illustrated atlas, parchment texture">Fantasy map / atlas</option>
-                      <option value="planetary matte painting, orbital world concept art">Planet concept art</option>
-                      <option value="anime key visual, high detail">Anime key visual</option>
-                      <option value="dark xianxia character design sheet">Dark xianxia design sheet</option>
-                      <option value="realistic film character design">Realistic film character design</option>
-                      <option value="game-ready creature concept art">Game-ready creature concept art</option>
-                      <option value="__custom__">Custom style (type below)...</option>
-                    </select>
-                    <input
-                      className="ai-input"
-                      style={{ marginTop: "0.4rem" }}
-                      value={appearanceCustomStyle}
-                      onChange={(e) => setAppearanceCustomStyle(e.target.value)}
-                      placeholder="e.g. watercolor portrait, cyberpunk noir illustration..."
-                      disabled={appearanceLoading}
-                    />
+                    <label>Visual Style Presets</label>
+                    <div className="style-presets-grid">
+                      {[
+                        { value: "cinematic fantasy character concept art", label: "Cinematic Fantasy", desc: "For character designs" },
+                        { value: "epic fantasy environment concept art, cinematic matte painting", label: "Epic Scenery", desc: "For locations & settings" },
+                        { value: "fantasy cartography map, illustrated atlas, parchment texture", label: "Parchment Map", desc: "For detailed fantasy maps" },
+                        { value: "planetary matte painting, orbital world concept art", label: "Planet View", desc: "For planets & realms" },
+                        { value: "anime key visual, high detail", label: "Anime Style", desc: "Vibrant high-detail illustrations" },
+                        { value: "dark xianxia character design sheet", label: "Xianxia Sheet", desc: "Daoist robes & spiritual auras" },
+                        { value: "realistic film character design", label: "Realistic Film", desc: "High-fidelity film character design" },
+                        { value: "game-ready creature concept art", label: "Creature Art", desc: "For beasts & monsters" }
+                      ].map(style => (
+                        <button
+                          key={style.value}
+                          type="button"
+                          className={`style-preset-card ${appearanceStyle === style.value && !appearanceCustomStyle ? 'active' : ''}`}
+                          onClick={() => {
+                            setAppearanceCustomStyle("")
+                            setAppearanceStyle(style.value)
+                          }}
+                          disabled={appearanceLoading}
+                        >
+                          <span className="preset-name">{style.label}</span>
+                          <span className="preset-desc">{style.desc}</span>
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className={`style-preset-card ${appearanceCustomStyle ? 'active' : ''}`}
+                        onClick={() => {
+                          if (!appearanceCustomStyle) {
+                            setAppearanceCustomStyle("watercolor portrait")
+                          }
+                        }}
+                        disabled={appearanceLoading}
+                      >
+                        <span className="preset-name">Custom Style...</span>
+                        <span className="preset-desc">Type your own custom prompt style</span>
+                      </button>
+                    </div>
+
+                    {appearanceCustomStyle !== "" && (
+                      <input
+                        className="ai-input"
+                        style={{ marginTop: "0.2rem" }}
+                        value={appearanceCustomStyle}
+                        onChange={(e) => setAppearanceCustomStyle(e.target.value)}
+                        placeholder="e.g. watercolor portrait, cyberpunk noir illustration..."
+                        disabled={appearanceLoading}
+                      />
+                    )}
+                  </div>
+
+                  {/* Art Style Customizers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.4rem", marginBottom: "0.6rem" }}>
+                    <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: "0.65rem" }}>Lighting</label>
+                      <select
+                        className="ai-select"
+                        style={{ fontSize: "0.7rem", minHeight: "28px", padding: "0.2rem" }}
+                        value={appearanceLighting}
+                        onChange={(e) => setAppearanceLighting(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default</option>
+                        <option value="chiaroscuro dramatic">Chiaroscuro (High Contrast)</option>
+                        <option value="volumetric cinematic rays">Volumetric Rays</option>
+                        <option value="golden hour sunset">Golden Hour Sunset</option>
+                        <option value="bioluminescent neon glow">Bioluminescent Neon</option>
+                        <option value="soft celestial radiance">Celestial Radiance</option>
+                        <option value="dark mystical shadows">Mystical Shadows</option>
+                      </select>
+                    </div>
+
+                    <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: "0.65rem" }}>Atmosphere</label>
+                      <select
+                        className="ai-select"
+                        style={{ fontSize: "0.7rem", minHeight: "28px", padding: "0.2rem" }}
+                        value={appearanceAtmosphere}
+                        onChange={(e) => setAppearanceAtmosphere(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default</option>
+                        <option value="ethereal dreamlike misty">Ethereal & Dreamlike</option>
+                        <option value="menacing dark high-tension">Menacing & Tense</option>
+                        <option value="epic legendary grand scale">Epic & Grand</option>
+                        <option value="serene peaceful zen">Serene & Peaceful</option>
+                        <option value="cosmic interstellar void">Cosmic Void</option>
+                        <option value="gritty battle-worn smoke">Gritty & Battle-worn</option>
+                      </select>
+                    </div>
+
+                    <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: "0.65rem" }}>Camera View</label>
+                      <select
+                        className="ai-select"
+                        style={{ fontSize: "0.7rem", minHeight: "28px", padding: "0.2rem" }}
+                        value={appearanceCamera}
+                        onChange={(e) => setAppearanceCamera(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default</option>
+                        <option value="close-up detailed portrait">Close-up Portrait</option>
+                        <option value="wide-angle action shot">Wide Action Shot</option>
+                        <option value="three-quarter character concept art view">Three-Quarter View</option>
+                        <option value="top-down orthographic cartography view">Top-Down Map</option>
+                        <option value="cinematic medium shot">Medium Shot</option>
+                      </select>
+                    </div>
                   </div>
 
                   {/* Dedicated Facial Features input - key for generating good faces even when chapter is silent */}
@@ -11348,7 +11438,70 @@ ${navPoints}  </navMap>
                         }}
                         title="Simple single humanoid form"
                       >Minimal</button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px", background: "rgba(99, 102, 241, 0.15)", borderColor: "var(--primary)" }}
+                        disabled={appearanceLoading}
+                        onClick={() => {
+                          setShowCustomFormAdder(!showCustomFormAdder)
+                        }}
+                        title="Add a custom form configuration"
+                      >+ Custom Form</button>
                     </div>
+
+                    {showCustomFormAdder && (
+                      <div className="custom-form-adder">
+                        <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-primary)" }}>Add Custom Form</span>
+                        <input
+                          type="text"
+                          className="ai-input"
+                          style={{ fontSize: "0.7rem", minHeight: "26px" }}
+                          value={customFormLabel}
+                          onChange={(e) => setCustomFormLabel(e.target.value)}
+                          placeholder="e.g. Combat Stance, Awakened Aura..."
+                        />
+                        <textarea
+                          className="ai-textarea"
+                          style={{ fontSize: "0.65rem", minHeight: "40px", padding: "0.25rem 0.4rem" }}
+                          value={customFormDesc}
+                          onChange={(e) => setCustomFormDesc(e.target.value)}
+                          placeholder="Describe instructions for this form (e.g. standing in battle with double daggers, hair glowing red)..."
+                          rows={2}
+                        />
+                        <div style={{ display: "flex", gap: "0.3rem", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className="btn-ai-sub btn-ai-secondary"
+                            style={{ fontSize: "0.65rem", padding: "1px 8px", minHeight: "24px" }}
+                            onClick={() => {
+                              setShowCustomFormAdder(false)
+                              setCustomFormLabel("")
+                              setCustomFormDesc("")
+                            }}
+                          >Cancel</button>
+                          <button
+                            type="button"
+                            className="btn-ai-sub btn-ai-primary"
+                            style={{ fontSize: "0.65rem", padding: "1px 8px", minHeight: "24px" }}
+                            onClick={() => {
+                              const label = customFormLabel.trim()
+                              if (!label) return
+                              const cleanKey = `custom_${label.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${Date.now()}`
+                              setAppearanceFormKeys(prev => [...prev, cleanKey])
+                              setAppearanceFormLabels(prev => ({ ...prev, [cleanKey]: label }))
+                              setAppearanceFormEnabled(prev => ({ ...prev, [cleanKey]: true }))
+                              if (customFormDesc.trim()) {
+                                setAppearanceFormDescriptions(prev => ({ ...prev, [cleanKey]: customFormDesc.trim() }))
+                              }
+                              setCustomFormLabel("")
+                              setCustomFormDesc("")
+                              setShowCustomFormAdder(false)
+                            }}
+                          >Add</button>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                       {appearanceFormKeys.map((formKey, idx) => (
                         <div key={formKey} style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
