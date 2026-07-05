@@ -1339,11 +1339,9 @@ export async function POST(req: NextRequest) {
         ? rawEntryCategory
         : "other"
       const isCharacterLike = entryCategory === "beast" || entryCategory === "character"
-      const categoryFormKeys = entryCategory === "beast"
+      const categoryFormKeys = isCharacterLike
         ? ["beastForm", "demiHumanForm", "humanForm"]
-        : entryCategory === "character"
-          ? ["humanForm"]
-          : null
+        : null
       const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] !== false)
       const requestedFormKey = typeof regenerateForm === "string" && regenerateForm.trim() ? regenerateForm.trim() : ""
       const defaultVisualFormKeys = entryCategory === "place"
@@ -1504,9 +1502,9 @@ export async function POST(req: NextRequest) {
         "   - LitRPG/Sci-Fi: sleek armor plates, glowing runes or neon accents, holographic displays, athletic build, and high-tech or cybernetic backgrounds.\n" +
         facialRules +
         distinctFormRules +
-        (entryCategory === "beast"
-          ? "9. BEAST FORM EVOLUTION (MANDATORY FOR BEAST CATEGORY ENTRIES): When the entry is a beast (even if only the name is known and there is zero visual description), strictly follow these anatomical rules for the requested forms:\n" +
-            (formKeys.includes("beastForm") ? "   - Beast Form = 100% beast (full animal body plan, stance, head).\n" : "") +
+        (isCharacterLike
+          ? "9. FORM EVOLUTION (CRITICAL FOR MULTI-FORM ENTRIES): Strictly follow these anatomical rules for the requested forms:\n" +
+            (formKeys.includes("beastForm") ? "   - Beast Form = 100% beast (full animal/creature body plan, stance, head, zero humanoid traits).\n" : "") +
             (formKeys.includes("demiHumanForm") ? "   - Demi-Human Form = 50-80% beast / 20-50% human with these REQUIRED traits: upright two-legged posture, humanoid torso, human-like arms and hands, beast or partially beast head, beast-style legs, retained tail, retained fur or scales over most of the body, significantly larger than humans. (Only include tail/fur/scales if they are signature traits mentioned in the input.)\n" : "") +
             (formKeys.includes("humanForm") ? "   - Humanoid Form = clean humanoid silhouette. The result must look like a human (or near-human) unless the chapter explicitly states the character has tails/wings/etc. in humanoid form. Do not default to adding any non-human traits. **CRITICAL: Do NOT add tails, wings, horns, fur, scales, claws or any non-human body features to the humanoid form unless the chapter or Story Bible explicitly describes the character as having them in humanoid form.**\n" : "")
           : "") +

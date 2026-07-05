@@ -2383,7 +2383,7 @@ function EditorContent() {
       return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: true, demiHumanForm: true, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
     }
     if (category === "character") {
-      return { keys: ["humanForm"], enabled: { beastForm: false, humanForm: true, demiHumanForm: false }, labels: { beastForm: "Beast Form", humanForm: "Humanoid Form", demiHumanForm: "Demi-human Form" }, descriptions: {} }
+      return { keys: ["beastForm", "demiHumanForm", "humanForm"], enabled: { beastForm: false, demiHumanForm: false, humanForm: true }, labels: { beastForm: "Beast Form", demiHumanForm: "Demi-human Form", humanForm: "Humanoid Form" }, descriptions: {} }
     }
     if (category === "place") {
       return {
