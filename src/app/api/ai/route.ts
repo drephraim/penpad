@@ -866,7 +866,7 @@ function getStringHash(str: string): number {
   return Math.abs(hash)
 }
 
-function getDistinctAppearanceDirective(formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = ""): string {
+function getDistinctAppearanceDirective(formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
   const normalizedKey = formKey.toLowerCase()
   const safeLabel = label || formKey
   const nameHash = getStringHash(characterName || safeLabel)
@@ -889,7 +889,7 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
       "wide-legged power stance, arms loosely crossed, chin raised, exuding dominance and presence"
     ]
     // Large pool of distinct face structures — anchored by character name hash to avoid reuse across characters
-    const faceShapes = [
+    let faceShapes = [
       "a long, angular face with a sharp, defined jaw and prominent cheekbones",
       "a broad, square-jawed face with a wide brow and heavy set features",
       "a slim oval face with a rounded chin, high forehead, and softly curved cheeks",
@@ -899,7 +899,7 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
       "a gaunt, hollow-cheeked face with a pronounced brow ridge and sharp nose bridge",
       "a classically chiseled face with a straight nose, balanced proportions, and timeless symmetry"
     ]
-    const eyeTypes = [
+    let eyeTypes = [
       "narrow, hooded eyes with a calculating, watchful intensity and dark heavy lashes",
       "wide, luminous eyes with a slightly upward tilt and an air of open curiosity or wonder",
       "deep-set, brooding eyes under a heavy brow, framed by faint shadows that suggest past hardship",
@@ -909,7 +909,7 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
       "piercing, close-set eyes that lock onto their target with fierce, unblinking focus",
       "warm, downward-angled eyes that convey gentleness and hidden sorrow at the same time"
     ]
-    const skinAndHair = [
+    let skinAndHair = [
       "pale, almost translucent skin with visible faint veins at the temples, hair ink-black and straight",
       "deep warm brown skin with an inner luminosity, hair thick and tightly coiled or braided",
       "sun-bronzed olive skin with faint freckles across the nose bridge, hair a dark auburn",
@@ -919,11 +919,208 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
       "porcelain-pale skin with a rosy flush on the cheeks, hair a vivid copper-red",
       "cool blue-grey tinted skin suggesting an otherworldly heritage, hair dark with silver streaks"
     ]
+
+    if (race && race !== "any") {
+      const normalizedRace = race.toLowerCase()
+      if (normalizedRace === "japanese" || normalizedRace === "east asian") {
+        faceShapes = [
+          "a slim oval face with a soft jawline, delicate chin, and high cheekbones",
+          "a heart-shaped face with a tapered chin and soft forehead",
+          "a refined angular face with a defined but elegant jaw and subtle cheekbones",
+          "a round face with soft contours, smooth temples, and a youthful chin"
+        ]
+        eyeTypes = [
+          "dark brown almond-shaped eyes with distinct epicanthic folds and an enigmatic, quiet gaze",
+          "large, expressive dark brown eyes with soft eyelids and a gentle, observant look",
+          "narrow, sharp eyes with an upward tilt and a calculating, focused intensity",
+          "slanted, fox-like dark eyes that are quick-moving and convey sharp intelligence"
+        ]
+        skinAndHair = [
+          "smooth, pale porcelain skin, with straight, glossy jet-black hair tied up in a neat topknot",
+          "warm ivory skin with a healthy glow, with thick straight dark brown hair falling in natural bangs",
+          "sun-bronzed golden skin from outdoor training, with windswept black hair worn loose",
+          "pale ivory skin with cool undertones, with straight raven-black hair cascading down the shoulders"
+        ]
+      } else if (normalizedRace === "chinese" || normalizedRace === "xianxia") {
+        faceShapes = [
+          "a slender oval face with soft, symmetrical proportions and a delicate jaw",
+          "a heart-shaped face with high, elegant cheekbones and a gently pointed chin",
+          "a smooth, rounded face with gentle contours and a classic look",
+          "a sharp, angular face with a high brow ridge and refined, clean jawline"
+        ]
+        eyeTypes = [
+          "almond-shaped dark eyes with a slight upward tilt, exuding a serene and deep spiritual calm",
+          "narrow, calculating dark phoenix-eyes with double eyelids and a piercing, sharp gaze",
+          "large, bright obsidian-colored eyes with long dark lashes and an air of pure vitality",
+          "half-lidded, tranquil dark eyes that seem to hold ancient wisdom and quiet focus"
+        ]
+        skinAndHair = [
+          "flawless pale jade-like skin, with waist-length straight jet-black hair held by an ornate silver hairpin",
+          "fair porcelain skin with a subtle pink warmth, with long straight dark hair flowing freely in the wind",
+          "warm ivory skin with an ethereal clarity, with glossy black hair styled in intricate traditional buns",
+          "cool pale skin with a smooth texture, with silver-streaked dark hair tied back with a silk ribbon"
+        ]
+      } else if (normalizedRace === "korean") {
+        faceShapes = [
+          "a slim oval face with a smooth, soft chin and high cheekbones",
+          "a heart-shaped face with a narrow jaw and soft temples",
+          "a balanced face with clean contours and refined proportions",
+          "a long face with a slender nose bridge and elegant jawline"
+        ]
+        eyeTypes = [
+          "dark brown almond-shaped eyes with clean, single-folded eyelids and an intense, focused gaze",
+          "wide, bright dark eyes with soft contours and an expressive, warm look",
+          "narrow, sharp dark brown eyes with long lashes and a calculating expression",
+          "slightly upward-tilted almond eyes with a cool, poised look"
+        ]
+        skinAndHair = [
+          "extremely clear, glowing pale skin, with straight jet-black hair styled neatly",
+          "flawless ivory skin with a soft finish, with thick dark brown hair falling naturally",
+          "cool pale skin with a rosy undertone, with glossy dark hair worn long and sleek",
+          "fair skin with a dewy texture, with straight black hair tied back"
+        ]
+      } else if (normalizedRace === "middle eastern" || normalizedRace === "persian" || normalizedRace === "arabic") {
+        faceShapes = [
+          "a strong, angular face with a chiseled jaw, high cheekbones, and a prominent brow",
+          "a striking oval face with balanced, noble features and a strong chin",
+          "a diamond-shaped face with dramatic cheekbones and a tapered jawline",
+          "a long, regal face with a straight nose bridge and defined, sharp contours"
+        ]
+        eyeTypes = [
+          "large, deep-set dark brown eyes framed by thick, dark eyelashes and an intense, passionate gaze",
+          "amber-colored almond eyes with a slight upward slant and a calculating, sharp look",
+          "piercing dark brown eyes under thick, arched brows that convey absolute authority",
+          "warm hazel eyes with a soft tilt and an air of quiet determination"
+        ]
+        skinAndHair = [
+          "rich warm olive skin, with thick, wavy jet-black hair styled with natural volume",
+          "golden-bronzed skin with a warm radiance, with thick curly dark brown hair worn short",
+          "sun-kissed tan skin with a smooth texture, with long, cascading wavy black hair",
+          "deep olive complexion with clean undertones, with a neatly trimmed thick black beard and wavy hair"
+        ]
+      } else if (normalizedRace === "norwegian" || normalizedRace === "nordic" || normalizedRace === "viking") {
+        faceShapes = [
+          "a broad, square-jawed face with a strong chin and heavy brow ridge",
+          "a long, angular face with a high forehead and defined, prominent cheekbones",
+          "a robust, chiseled face with weathered features and a straight nose bridge",
+          "a wide heart-shaped face with high cheekbones and a solid jaw"
+        ]
+        eyeTypes = [
+          "piercing ice-blue eyes with a cold, focused intensity under low-set light eyebrows",
+          "clear grey eyes that shift like stormy seas, expressing a quiet and stubborn resolve",
+          "luminous pale green eyes with a calculating tilt and a sharp, watchful gaze",
+          "deep-set blue-grey eyes with faint shadows, showing a battle-hardened wisdom"
+        ]
+        skinAndHair = [
+          "pale, fair skin with a slight ruddy flush, with thick braided golden-blonde hair",
+          "weathered fair skin with light freckles, with ash-blonde or light brown windswept hair",
+          "cool, pale skin with visible veins, with long, straight strawberry-blonde hair",
+          "fair skin with a rugged texture, with thick, wild platinum-blonde hair worn loose"
+        ]
+      } else if (normalizedRace === "scottish" || normalizedRace === "celtic" || normalizedRace === "gaelic") {
+        faceShapes = [
+          "a heart-shaped face with a delicately pointed chin and high, defined cheekbones",
+          "a long oval face with soft contours, a straight nose, and a high forehead",
+          "a sharp, angular face with a narrow jaw and high cheekbones",
+          "a square-jawed, rugged face with a freckled forehead and strong brow"
+        ]
+        eyeTypes = [
+          "clear green eyes with an upward tilt, conveying a lively curiosity and fierce spirit",
+          "bright grey-blue eyes with faint laughter lines, showing a warm and quick-witted nature",
+          "deep-set forest-green eyes under thick reddish brows, locking onto targets with focus",
+          "large, soft blue eyes that look calm and thoughtful"
+        ]
+        skinAndHair = [
+          "porcelain-fair skin covered in light freckles, with vibrant copper-red hair worn in wild waves",
+          "pale skin with a rosy flush on the cheeks, with thick auburn hair falling in soft curls",
+          "fair skin with a smooth texture, with sandy-brown or ginger-blonde hair styled in loose braids",
+          "sun-freckled light skin, with deep chestnut hair worn long and windswept"
+        ]
+      } else if (normalizedRace === "african") {
+        faceShapes = [
+          "a strong face with broad, high cheekbones, a rounded chin, and a defined jaw",
+          "a wide, expressive oval face with balanced proportions and full, striking features",
+          "a heart-shaped face with high, prominent cheekbones and a tapered chin",
+          "a square face with a strong, solid jawline and a wide forehead"
+        ]
+        eyeTypes = [
+          "large, deep dark brown eyes with a warm, luminous quality and thick dark lashes",
+          "expressive obsidian-colored eyes under thick, naturally arched brows with a sharp focus",
+          "warm amber-brown eyes with a gentle downward tilt, conveying quiet strength",
+          "piercing dark brown eyes that are wide-set and show deep wisdom"
+        ]
+        skinAndHair = [
+          "rich dark mahogany skin with a flawless sheen, with short tightly-coiled jet-black hair",
+          "warm golden-brown skin with an inner glow, with thick black hair styled in intricate cornrows",
+          "deep warm espresso skin, with long micro-braids cascading down the shoulders",
+          "smooth copper-brown skin with rich undertones, with a textured black afro"
+        ]
+      } else if (normalizedRace === "indian" || normalizedRace === "south asian") {
+        faceShapes = [
+          "a soft oval face with balanced proportions, a straight nose bridge, and a gentle jawline",
+          "a heart-shaped face with high cheekbones and a delicately curved chin",
+          "a refined angular face with a clear jawline and a high forehead",
+          "a round face with soft contours and expressive, balanced features"
+        ]
+        eyeTypes = [
+          "large, expressive dark brown almond eyes with a warm, deep, and liquid quality",
+          "deep hazel-brown eyes with a slight upward tilt, showing a calculating and sharp intellect",
+          "piercing dark eyes framed by long, thick black eyelashes and thick, dark arched brows",
+          "warm golden-brown eyes with a calm, serene expression"
+        ]
+        skinAndHair = [
+          "rich warm bronze skin with a smooth texture, with thick, glossy wavy jet-black hair",
+          "golden-tan skin with warm undertones, with long cascading dark brown wavy hair",
+          "deep warm brown skin with a golden radiance, with thick black hair worn in a long braid",
+          "olive-tan skin with a healthy glow, with thick black hair styled back"
+        ]
+      } else if (normalizedRace === "american" || normalizedRace === "native american") {
+        faceShapes = [
+          "a strong oval face with high, broad cheekbones and a solid jawline",
+          "a balanced oval face with a straight nose bridge and a rounded chin",
+          "an angular face with defined, sharp cheekbones and a narrow chin",
+          "a broad face with a strong brow and defined, rugged contours"
+        ]
+        eyeTypes = [
+          "deep dark brown eyes with a sharp, calculating focus under straight eyebrows",
+          "warm hazel eyes with light flecks, conveying a calm and observant nature",
+          "expressive dark brown eyes under arched brows, showing quick-witted intelligence",
+          "clear brown eyes with a steady, unblinking gaze"
+        ]
+        skinAndHair = [
+          "sun-bronzed copper-tan skin, with long, straight jet-black hair worn loose",
+          "warm golden-tan skin with a smooth texture, with thick wavy dark brown hair",
+          "light golden-brown skin, with long straight black hair styled in braids",
+          "tan skin with faint sun freckles, with windswept dark hair"
+        ]
+      } else if (normalizedRace === "mediterranean") {
+        faceShapes = [
+          "a classic oval face with balanced, symmetric features and a straight nose",
+          "a strong-jawed face with a defined chin and prominent cheekbones",
+          "a diamond-shaped face with high cheekbones and a clear jawline",
+          "a soft oval face with gentle contours and a warm expression"
+        ]
+        eyeTypes = [
+          "piercing dark brown eyes with a calculating slant and thick dark eyelashes",
+          "warm amber-colored eyes under defined brows, conveying intelligence and passion",
+          "deep hazel eyes with a soft tilt, showing a quiet and persistent focus",
+          "dark almond-shaped eyes with a watchful, alert gaze"
+        ]
+        skinAndHair = [
+          "warm olive skin with a golden undertone, with thick, wavy dark brown hair styled back",
+          "sun-kissed light tan skin with a smooth finish, with thick curly black hair",
+          "rich olive complexion, with long cascading dark chestnut wavy hair",
+          "smooth golden skin, with wavy jet-black hair falling naturally"
+        ]
+      }
+    }
+
     const faceShape = faceShapes[nameHash % faceShapes.length]
     const eyeType = eyeTypes[(nameHash + 3) % eyeTypes.length]
     const skinHair = skinAndHair[(nameHash + 7) % skinAndHair.length]
     const pose = humanPoses[(nameHash + 1) % humanPoses.length]
-    return `Distinct face and pose for ${safeLabel}: design a humanoid face with ${faceShape}, ${eyeType}, and ${skinHair}. Pose the figure in a ${pose}. This face must feel entirely unique to this character — do NOT reuse generic "striking face" or "ethereal face" templates; derive the face from the character's name, cultural cues, role, and lore instead.`
+    const raceClause = race && race !== "any" ? `reflecting a clear ${race} heritage and facial structure` : "reflecting their name and cultural heritage"
+    return `Distinct face and pose for ${safeLabel}: design a humanoid face with ${faceShape}, ${eyeType}, and ${skinHair}, ${raceClause}. Pose the figure in a ${pose}. This face must feel entirely unique to this character — do NOT reuse generic "striking face" or "ethereal face" templates; derive the face from the character's name, role, and lore instead.`
   }
 
   const faceProfiles = [
@@ -941,10 +1138,11 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
   const faceProfile = faceProfiles[nameHash % faceProfiles.length]
   const poseProfile = poseProfiles[(nameHash + index) % poseProfiles.length]
 
-  return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfile}, plus ${poseProfile}.`
+  const raceString = race && race !== "any" ? `, exhibiting characteristic ${race} features,` : ""
+  return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfile}${raceString} plus ${poseProfile}.`
 }
 
-function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = ""): string {
+function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
   const trimmedPrompt = prompt.trim()
   if (!trimmedPrompt) return trimmedPrompt
 
@@ -956,7 +1154,7 @@ function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string
     return trimmedPrompt
   }
 
-  return `${trimmedPrompt} ${getDistinctAppearanceDirective(formKey, label, index, totalForms, entryCategory, characterName)}`
+  return `${trimmedPrompt} ${getDistinctAppearanceDirective(formKey, label, index, totalForms, entryCategory, characterName, race)}`
 }
 
 function formatMemoryContext(memory: unknown) {
@@ -1110,7 +1308,7 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race } = body
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
       const appForms = forms && typeof forms === "object" ? forms as Record<string, string> : {}
@@ -1251,12 +1449,14 @@ export async function POST(req: NextRequest) {
           "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details are sparse, create a coherent visual design that suits the world's genre, culture, power system, climate, danger level, and story mood. Fill in layout, scale, materials, lighting, atmosphere, and environmental storytelling, but mark invented-but-plausible choices in consistencyNotes.\n"
       const facialRules = isCharacterLike
         ? "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. EVERY character must have a COMPLETELY UNIQUE face — do NOT recycle the same \"striking face\", \"ethereal face\", \"handsome warrior face\" or any other generic archetype across different characters. Base the face SPECIFICALLY on:\n" +
+          "   - Specified Race/Culture (if any): you MUST align the character's facial structure, bone structure, eye shape, and skin tone with the selected race or culture. Do NOT use generic templates; describe authentic structural characteristics of that heritage.\n" +
           "   - The character's exact name: derive syllabic rhythm, cultural origin, and phonetic feel from the name itself to anchor a distinctive face\n" +
           "   - Aliases, cultural background, ethnic or clan origin, groups, bloodline, or sect — use these to infer bone structure, skin tone, hair texture, and eye shape specific to this character's heritage\n" +
           "   - Personality, age, status, power level, or role hints in the lore or chapter — a scheming advisor has a different face than a wild beast-tamer or a noble young master\n" +
           "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit; deep-set tired eyes for a seasoned veteran)\n" +
           "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
-          "   Always explicitly describe in the prompt: face shape (oval, angular, round, diamond, heart-shaped, square, gaunt, etc.), unique eye shape/size/tilt/color/expression, eyebrow arch, nose bridge and tip shape, mouth/lips, cheekbone height and prominence, jawline, chin shape, any scars/markings/birthmarks/tattoos, skin tone and texture. Make the face unmistakably distinctive and never interchangeable with any other character.\n"
+          "   - AVOID GENERIC ADJECTIVES: Do NOT use buzzwords like 'striking', 'beautiful', 'handsome', 'gorgeous', 'pretty', 'perfect face', 'handsome young man'. Stable Diffusion/SDXL defaults to the same look-alike faces when encountering these generic words. Instead, describe real structural features: specify the exact face shape (e.g., strong square jaw with a prominent chin cleft, soft oval face with gentle curves, gaunt diamond face with high cheekbones), nose shape (e.g., straight slender nose bridge, slightly upturned tip, aquiline nose), lip shape (e.g., thin upper lip, full lower lip, downturned mouth corners), eyebrows (e.g., thick straight dark brows, thin arched brows), and unique eye characteristics (e.g., hooded dark brown eyes with heavy epicanthic folds, deep-set pale blue eyes under a heavy brow ridge). Make the face structure completely unique and detailed.\n" +
+          "   Always explicitly describe in the prompt: face shape, unique eye shape/size/tilt/color/expression, eyebrow arch, nose bridge and tip shape, mouth/lips, cheekbone height and prominence, jawline, chin shape, any scars/markings/birthmarks/tattoos, skin tone and texture. Make the face unmistakably distinctive and never interchangeable with any other character.\n"
         : "7. ENVIRONMENT, MAP & OBJECT CLARITY MANDATE (CRITICAL - always apply): The visual subject must be immediately recognizable. For environments, describe a clear foreground/midground/background, scale cues, landmarks, weather, and lighting. For maps, describe top-down or atlas composition, coastlines, terrain symbols, routes, borders, compass/legend style, and avoid fake unreadable labels unless exact names are supplied. For planets, describe continents, atmosphere, moons/rings, cloud systems, lights, or magical phenomena. For items, describe silhouette, materials, markings, damage, scale, effects, and how it sits in the story environment.\n"
 
       const distinctFormRules = isCharacterLike
@@ -1338,7 +1538,7 @@ export async function POST(req: NextRequest) {
             ? "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
             : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
-        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(k, label, index, formKeys.length, entryCategory, name)}` : ""
+        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(k, label, index, formKeys.length, entryCategory, name, race)}` : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}${distinctNote}`
       }).join("\n")
 
@@ -1352,6 +1552,7 @@ export async function POST(req: NextRequest) {
         (selectedText ? `CRITICAL SPECIFIC FOCUS CHECK: The user highlighted "${selectedText}". If this describes a specific body part, organ, accessory, or sub-part (e.g. an eye, a claw, a sword) rather than the whole body of the creature/character, you MUST construct the prompts as detailed close-ups/focused descriptions of that specific part (styled and context-matched per requested form) rather than full-body portraits.\n` : "") +
         `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n` +
         (isCharacterLike ? `STRICT RULE FOR NON-HUMAN TRAITS: In humanoid or human forms, ONLY include tails, wings, horns, fur, scales, animal ears, claws or other non-human body features if they are explicitly described in the chapter or lore for that form. If nothing is stated, the humanoid form must be fully human with no such additions. Do not infer or default to them from the character's category or name.\n\n` : "") +
+        (isCharacterLike && race && race !== "any" ? `RACE/CULTURAL APPEARANCE MANDATE: The character has the physical features and appearance of a ${race} person. You MUST explicitly describe their facial features, bone structure, skin tone, eye shape, and hair characteristics to reflect this specific heritage. Do NOT use generic or vague descriptors; ensure their facial structure is clearly, distinctly, and authentically ${race}.\n\n` : "") +
         (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form only retains tail/fur/scales/build traits if the chapter or Story Bible explicitly says so.\n\n` : "") +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
           ? (isCharacterLike
@@ -2287,6 +2488,7 @@ export async function POST(req: NextRequest) {
         : null
       const responseEntryCategory = typeof responseLoreEntry?.category === "string" ? responseLoreEntry.category : ""
       const characterName = String(body?.name || responseLoreEntry?.name || "").trim()
+      const race = typeof body?.race === "string" ? body.race.trim() : ""
       const responseFormLabels = body?.formLabels && typeof body.formLabels === "object"
         ? body.formLabels as Record<string, string>
         : {}
@@ -2305,7 +2507,7 @@ export async function POST(req: NextRequest) {
             const label = responseFormLabels[key] || fallbackLabel
             const expandedPrompt = expandShortAppearancePrompt(text, key)
             prompts[key] = responseIsCharacterLike
-              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName)
+              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName, race)
               : expandedPrompt
           }
         }

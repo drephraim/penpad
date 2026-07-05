@@ -2511,11 +2511,17 @@ function EditorContent() {
   const [appearanceFacialDescription, setAppearanceFacialDescription] = useState("")
   const [appearanceFacialByEntry, setAppearanceFacialByEntry] = useState<Record<string, string>>({})
 
+  // New Race / Culture states
+  const [appearanceRace, setAppearanceRace] = useState("any")
+  const [appearanceCustomRace, setAppearanceCustomRace] = useState("")
+  const [appearanceRaceByEntry, setAppearanceRaceByEntry] = useState<Record<string, string>>({})
+  const [appearanceCustomRaceByEntry, setAppearanceCustomRaceByEntry] = useState<Record<string, string>>({})
+
   // Per-entry persistence for last generated result + images (survives entry switches & refresh)
   const [appearanceResultsByEntry, setAppearanceResultsByEntry] = useState<Record<string, AppearancePromptResult>>({})
   const [appearanceImagesByEntry, setAppearanceImagesByEntry] = useState<Record<string, Record<string, string>>>({})
 
-  // Load per-entry appearance results & images + facial descriptions
+  // Load per-entry appearance results & images + facial descriptions + race
   useEffect(() => {
     try {
       const storedResults = localStorage.getItem("penpad_appearance_results_by_entry")
@@ -2524,6 +2530,11 @@ function EditorContent() {
       if (storedImages) setAppearanceImagesByEntry(JSON.parse(storedImages))
       const storedFacial = localStorage.getItem("penpad_appearance_facial_by_entry")
       if (storedFacial) setAppearanceFacialByEntry(JSON.parse(storedFacial))
+
+      const storedRace = localStorage.getItem("penpad_appearance_race_by_entry")
+      if (storedRace) setAppearanceRaceByEntry(JSON.parse(storedRace))
+      const storedCustomRace = localStorage.getItem("penpad_appearance_custom_race_by_entry")
+      if (storedCustomRace) setAppearanceCustomRaceByEntry(JSON.parse(storedCustomRace))
     } catch {}
   }, [])
 
@@ -2544,7 +2555,7 @@ function EditorContent() {
     }
   }, [activeSidebarTab])
 
-  // Persist per-entry appearance results & images
+  // Persist per-entry appearance results & images + facial + race
   useEffect(() => {
     try { localStorage.setItem("penpad_appearance_results_by_entry", JSON.stringify(appearanceResultsByEntry)) } catch {}
   }, [appearanceResultsByEntry])
@@ -2554,6 +2565,12 @@ function EditorContent() {
   useEffect(() => {
     try { localStorage.setItem("penpad_appearance_facial_by_entry", JSON.stringify(appearanceFacialByEntry)) } catch {}
   }, [appearanceFacialByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_race_by_entry", JSON.stringify(appearanceRaceByEntry)) } catch {}
+  }, [appearanceRaceByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_custom_race_by_entry", JSON.stringify(appearanceCustomRaceByEntry)) } catch {}
+  }, [appearanceCustomRaceByEntry])
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -2685,6 +2702,16 @@ function EditorContent() {
     if (appearanceFacialDescription.trim()) {
       setAppearanceFacialByEntry(prev => ({ ...prev, [entryId]: appearanceFacialDescription.trim() }))
     }
+    setAppearanceRaceByEntry(prev => ({ ...prev, [entryId]: appearanceRace }))
+    if (appearanceCustomRace.trim()) {
+      setAppearanceCustomRaceByEntry(prev => ({ ...prev, [entryId]: appearanceCustomRace.trim() }))
+    } else {
+      setAppearanceCustomRaceByEntry(prev => {
+        const next = { ...prev }
+        delete next[entryId]
+        return next
+      })
+    }
   }
 
   // Load a previously stored result + images + facial for an entry into the live UI state
@@ -2693,6 +2720,8 @@ function EditorContent() {
       setAppearanceResult(null)
       setAppearanceGeneratedImages({})
       setAppearanceFacialDescription("")
+      setAppearanceRace("any")
+      setAppearanceCustomRace("")
       return
     }
     const savedResult = appearanceResultsByEntry[entryId]
@@ -2705,6 +2734,11 @@ function EditorContent() {
     setAppearanceGeneratedImages(savedImages)
     const savedFacial = appearanceFacialByEntry[entryId] || ""
     setAppearanceFacialDescription(savedFacial)
+
+    const savedRace = appearanceRaceByEntry[entryId] || "any"
+    setAppearanceRace(savedRace)
+    const savedCustomRace = appearanceCustomRaceByEntry[entryId] || ""
+    setAppearanceCustomRace(savedCustomRace)
   }
 
   const switchAppearanceEntry = (entryId: string | null) => {
@@ -2800,9 +2834,18 @@ function EditorContent() {
       const facialForRequest = isSwitchingEntry
         ? (appearanceFacialByEntry[sourceEntry.id] || "")
         : appearanceFacialDescription
+      const raceForRequest = isSwitchingEntry
+        ? (appearanceRaceByEntry[sourceEntry.id] || "any")
+        : appearanceRace
+      const customRaceForRequest = isSwitchingEntry
+        ? (appearanceCustomRaceByEntry[sourceEntry.id] || "")
+        : appearanceCustomRace
       if (isSwitchingEntry) {
         setAppearanceFacialDescription(facialForRequest)
+        setAppearanceRace(raceForRequest)
+        setAppearanceCustomRace(customRaceForRequest)
       }
+      const raceValue = raceForRequest === "custom" ? customRaceForRequest.trim() : raceForRequest
       const activeFormKeys = enforceCategoryForms
         ? defaultFormConfig.keys.filter(k => requestFormEnabled[k] !== false)
         : requestFormKeys.filter(k => requestFormEnabled[k] !== false)
@@ -2836,6 +2879,7 @@ function EditorContent() {
           formEnabled: formEnabledForRequest,
           perFormNegatives: appearancePerFormNegative,
           facialFeatures: facialForRequest.trim() || undefined,
+          race: raceValue !== "any" ? raceValue : undefined,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -2896,6 +2940,7 @@ function EditorContent() {
         if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
+      const raceValue = appearanceRace === "custom" ? appearanceCustomRace.trim() : appearanceRace
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2910,6 +2955,7 @@ function EditorContent() {
           regenerateForm: formKey,
           perFormNegatives: appearancePerFormNegative,
           facialFeatures: appearanceFacialDescription.trim() || undefined,
+          race: raceValue !== "any" ? raceValue : undefined,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -11661,6 +11707,45 @@ ${navPoints}  </navMap>
                         <option value="cinematic medium shot">Medium Shot</option>
                       </select>
                     </div>
+                  </div>
+
+                  {/* Race / Culture Selector */}
+                  <div className="ai-form-field">
+                    <label>Race / Cultural Heritage</label>
+                    <select
+                      className="ai-select"
+                      value={appearanceRace}
+                      onChange={(e) => {
+                        setAppearanceRace(e.target.value)
+                        if (e.target.value !== "custom") {
+                          setAppearanceCustomRace("")
+                        }
+                      }}
+                      disabled={appearanceLoading}
+                    >
+                      <option value="any">Default / Inferred from name & lore</option>
+                      <option value="Japanese">Japanese / East Asian</option>
+                      <option value="Chinese">Chinese / Xianxia</option>
+                      <option value="Korean">Korean / East Asian</option>
+                      <option value="Middle Eastern">Middle Eastern / Persian / Arabic</option>
+                      <option value="Norwegian">Norwegian / Nordic / Viking</option>
+                      <option value="Scottish">Scottish / Celtic / Gaelic</option>
+                      <option value="African">African (Swahili/Yoruba/Zulu)</option>
+                      <option value="Indian">South Asian / Indian</option>
+                      <option value="American">North American / Native American</option>
+                      <option value="Mediterranean">Mediterranean / Greek / Roman</option>
+                      <option value="custom">Custom...</option>
+                    </select>
+                    {appearanceRace === "custom" && (
+                      <input
+                        className="ai-input"
+                        style={{ marginTop: "0.2rem" }}
+                        value={appearanceCustomRace}
+                        onChange={(e) => setAppearanceCustomRace(e.target.value)}
+                        placeholder="e.g. Nordic elf, Mayan warrior, Polynesian voyager..."
+                        disabled={appearanceLoading}
+                      />
+                    )}
                   </div>
 
                   {/* Dedicated Facial Features input - key for generating good faces even when chapter is silent */}
