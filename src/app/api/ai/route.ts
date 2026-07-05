@@ -712,9 +712,9 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
 }
 
 async function generateWithGemini(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number) {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
   if (!apiKey) {
-    throw new Error("Gemini API key is not configured on the server. Please add GEMINI_API_KEY to your environment.")
+    throw new Error("Gemini API key is not configured on the server. Please add GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY to your environment.")
   }
 
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
@@ -1826,11 +1826,11 @@ export async function POST(req: NextRequest) {
       let subtypeGuidance = ""
       const sub = String(nameSubType).toLowerCase()
       const cat = String(nameCategory).toLowerCase()
+      const culture = nameGeneratorConfig?.culture || "Fantasy Mixed"
 
       if (cat === "character") {
         subtypeGuidance += `Category is CHARACTER (Type: ${nameSubType || "General"}).\n`
         if (sub === "humanoid") {
-          const culture = nameGeneratorConfig?.culture || "Fantasy Mixed"
           const gender = nameGeneratorConfig?.gender || "male"
           const struct = nameGeneratorConfig?.structure || "single"
           const opt = nameGeneratorConfig?.additionalOption || "warrior"
@@ -1969,15 +1969,21 @@ export async function POST(req: NextRequest) {
         "Swamp / Bog", "Angelic / Seraphic"
       ]
 
+      const isSpecificCulture = cat === "character" && sub === "humanoid" && culture && culture !== "Fantasy Mixed" && culture !== "any"
+      const diversityMandate = isSpecificCulture
+        ? "- Within the requested culture/origin/race, ensure the names are varied in their starting letters, syllable counts, vowel placement, and meaning so they do not sound too similar, but they MUST all sound authentic and compatible with the selected culture/origin/race.\n" +
+          "- Do NOT mix in other unrelated cultures, styles, or languages. All names must fit the selected tradition.\n"
+        : "- In this single batch of exactly ${requestedCount} names, make every name feel like it belongs to a completely different naming tradition, culture, or invented language. They must sound stylistically incompatible with each other.\n" +
+          "- Dramatically vary: syllable count (short vs long), consonant density, vowel openness, rhythm, starting/ending sounds, use of compounds vs single words, harshness vs softness.\n" +
+          "- Do NOT reuse any phonetic motif, prefix family, or structural pattern within the batch. Force yourself to use very different sound palettes for each name.\n" +
+          "- Strongly resist defaulting to common fantasy phonemes. Only use them if the requested style specifically demands it.\n" +
+          "- Goal: the ${requestedCount} names should feel like they could come from  ${requestedCount} entirely separate fictional worlds or real-world linguistic families.\n"
+
       systemInstruction =
         "You are an expert fantasy novel naming specialist specializing in highly original, versatile names.\n" +
         `Available styles: ${allStyles.join(", ")}.\n` +
-        "EXTREME DIVERSITY MANDATE:\n" +
-        "- In this single batch of exactly ${requestedCount} names, make every name feel like it belongs to a completely different naming tradition, culture, or invented language. They must sound stylistically incompatible with each other.\n" +
-        "- Dramatically vary: syllable count (short vs long), consonant density, vowel openness, rhythm, starting/ending sounds, use of compounds vs single words, harshness vs softness.\n" +
-        "- Do NOT reuse any phonetic motif, prefix family, or structural pattern within the batch. Force yourself to use very different sound palettes for each name.\n" +
-        "- Strongly resist defaulting to common fantasy phonemes. Only use them if the requested style specifically demands it.\n" +
-        "- Goal: the ${requestedCount} names should feel like they could come from  ${requestedCount} entirely separate fictional worlds or real-world linguistic families.\n\n" +
+        "DIVERSITY MANDATE:\n" +
+        `${diversityMandate}\n` +
         "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
         `Generate exactly ${requestedCount} highly distinct, versatile options.\n` +
         "Respect the requested name structure: single, double, triple, title-style, clan-style, or any.\n" +
@@ -1992,6 +1998,10 @@ export async function POST(req: NextRequest) {
         .map((entry: any) => `- ${entry.name || "Unknown"} (${entry.category || "character"}): ${String(entry.content || "").slice(0, 180)}`)
         .join("\n")
 
+      const userPromptDiversity = isSpecificCulture
+        ? `DIVERSITY REQUIREMENT: The ${requestedCount} names MUST all belong to the selected culture/origin/race, but be distinct in sound and structure from each other within that naming style.`
+        : `DIVERSITY REQUIREMENT: The ${requestedCount} names MUST be radically different from each other in sound, length, and style. Force extreme variety.`
+
       userPrompt =
         `Requested Style: ${nameStyle || "wild fantasy mix"}\n` +
         `${mashupLine ? `Secondary Style Mashup: ${nameStyle2}\n` : ""}` +
@@ -2005,7 +2015,7 @@ export async function POST(req: NextRequest) {
         `Extra Direction: ${customPrompt || "Surprise me with useful fantasy novel names."}\n\n` +
         `Existing Story Bible Names To Avoid:\n${existingNames || "No Story Bible names yet."}\n\n` +
         `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}\n\n` +
-        `DIVERSITY REQUIREMENT: The ${requestedCount} names MUST be radically different from each other in sound, length, and style. Force extreme variety.`
+        `${userPromptDiversity}`
     } else if (action === "timeline_consistency_check") {
       const { chapters, profiles, bibleEntries } = body as {
         chapters: { id: string; title: string; chapterNumber: number; charactersAppearing: string[] }[]
@@ -2125,16 +2135,36 @@ export async function POST(req: NextRequest) {
       // Use Gemini hand-in-hand with Groq:
       // - Prefer Gemini for progression_update (superior long-context reasoning and multi-character disambiguation)
       // - Groq for speed on other creative/structured tasks
-      const useGemini = (action === "progression_update" || action === "brain_analyze") && !!process.env.GEMINI_API_KEY
+      const useGemini = (action === "progression_update" || action === "brain_analyze") && !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY)
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
       if (useGemini) {
         try {
           text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
         } catch (geminiErr) {
-          console.warn("[Gemini] Failed, falling back to Groq for progression_update:", geminiErr)
-          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+          console.warn("[Gemini] Failed, falling back to Groq:", geminiErr)
+          try {
+            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+          } catch (groqErr) {
+            console.error("Both Gemini and Groq failed:", groqErr)
+            throw groqErr;
+          }
         }
       } else {
-        text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+        try {
+          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+        } catch (groqErr) {
+          console.warn("[Groq] Failed, trying fallback to Gemini:", groqErr)
+          if (geminiApiKey) {
+            try {
+              text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+            } catch (geminiErr) {
+              console.error("Both Groq and Gemini failed:", geminiErr)
+              throw geminiErr
+            }
+          } else {
+            throw groqErr
+          }
+        }
       }
     }
 
