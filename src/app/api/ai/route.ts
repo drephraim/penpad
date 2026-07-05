@@ -24,8 +24,11 @@ type AppearancePromptResult = {
     hair?: string
     eyes?: string
     body?: string
+    height?: string
+    age?: string
     attire?: string
     distinguishingFeatures?: string
+    weapon?: string
   }
 }
 
@@ -136,7 +139,10 @@ type BibleExtractResponse = {
       hair?: string
       eyes?: string
       body?: string
+      height?: string
+      age?: string
       distinguishingFeatures?: string
+      weapon?: string
       chapterAppearance?: {
         summary?: string
         evidence?: string
@@ -145,7 +151,10 @@ type BibleExtractResponse = {
         hair?: string
         eyes?: string
         body?: string
+        height?: string
+        age?: string
         distinguishingFeatures?: string
+        weapon?: string
       }
     }
     timelineFact?: {
@@ -799,7 +808,10 @@ function formatKnownCharacterDetails(details: unknown, activeChapterNumber?: num
   addField("Hair/Fur", "hair")
   addField("Eyes", "eyes")
   addField("Body/Silhouette", "body")
+  addField("Height", "height")
+  addField("Age", "age")
   addField("Attire", "attire")
+  addField("Weapon/Held Item", "weapon")
   addField("Distinguishing features", "distinguishingFeatures")
 
   const chapterAppearances = Array.isArray(record.chapterAppearances)
@@ -824,7 +836,10 @@ function formatKnownCharacterDetails(details: unknown, activeChapterNumber?: num
         item.hair,
         item.eyes,
         item.body,
+        item.height,
+        item.age,
         item.attire,
+        item.weapon,
         item.distinguishingFeatures,
         item.evidence ? `evidence: ${item.evidence}` : ""
       ].filter(value => typeof value === "string" && value.trim()).join("; ")
@@ -1432,9 +1447,14 @@ export async function POST(req: NextRequest) {
         ? "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) subject type + species/race + gender/age only when supported or safely inferable, (3) face + expression, (4) hair/fur/skin/scales color and texture, (5) eyes color and quality, (6) body build + silhouette, (7) clothing/armor/accessories (and any weapons/held items **only if explicitly mentioned**), (8) aura/power effects + pose, (9) background + setting, (10) lighting + mood. If generating a close-up of a specific body part or organ (such as an eye, wing, claw, horn), prioritize that part and its details immediately after the art style.\n"
         : "- Order the prompt by visual priority: (1) art style + quality modifiers, (2) visual subject type, (3) scale and camera angle, (4) geography/layout/silhouette, (5) architecture, terrain, materials, or object construction, (6) landmarks, routes, borders, powers, hazards, or usage context, (7) atmosphere, lighting, weather, color palette, and mood. For maps, specify top-down/atlas/cartography composition and avoid fake unreadable text unless exact names are supplied.\n"
       const chapterScanRule = isCharacterLike
-        ? "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes exact descriptions of hair, eyes, face/expression, clothing, accessories, body, posture, aura, colors, materials, markings, **weapons or held items**, and especially any non-human traits (tails, wings, horns, fur, scales, etc.). If no non-human trait is mentioned for the humanoid form, do not include it.\n" +
-          "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them ('long hair' instead of the specific description), or contradict them. If and only if the character is explicitly described holding, wielding, or carrying a weapon (sword, bow, staff, etc.) or item in the chapter/lore, include it in the prompt and describe it specifically (e.g. 'gripping a curved scimitar with a ruby pommel in his right hand'). If no weapon or held item is mentioned in the active chapter or Story Bible context, do NOT add any weapon or held item to the prompt; generate only the character's appearance, attire, and pose without weapons.\n" +
-          "3. Only AFTER faithfully incorporating all chapter-mentioned visual details, intelligently supplement with consistent, high-quality details for anything missing (face shape, exact eye shape, lighting, background, etc.) to create a complete, vivid, usable prompt for image generation.\n" +
+        ? "1. PRIORITIZE THE WRITER'S SPECIFIC DETAILS (CRITICAL): The author's story text is the ultimate source of truth. You MUST carefully scan the Full Active Chapter Context, Highlighted Passage, and Story Bible to extract five core visual pillars: HAIR, HEIGHT, AGE, ATTIRE, and WEAPONS/HELD ITEMS. Do NOT omit, modify, or contradict any of these. If the chapter describes them, they MUST be the foundation of the generated prompts:\n" +
+          "   - HAIR: Use the exact color, length, cut, style, and texture described (e.g. 'thinning silver hair parted to the left', 'disheveled braid of charcoal curls'). Avoid generic hair terms.\n" +
+          "   - HEIGHT: Incorporate the character's relative height (e.g., 'towering', 'tall', 'lanky', 'diminutive', 'petite') into their posture and the camera composition (e.g., use 'low-angle shot looking up' for towering height to emphasize their scale, or 'standing tall with broad shoulders' for a tall build).\n" +
+          "   - AGE: Refine the visual age based on the writing (e.g., 'elderly monk with wrinkled brow and age spots', 'young youth', 'middle-aged merchant'). Translate this age into face textures, posture, and gaze.\n" +
+          "   - ATTIRE: Use the exact clothes, armor, fabrics, colors, cloaks, or uniforms mentioned in the writing. Build the outfit prompt directly around these written garments first, and only supplement with matching materials if details are missing.\n" +
+          "   - WEAPONS/HELD ITEMS: Scan the text to see if they hold, wield, carry, or use any weapon or item (e.g. a specific sword, staff, bow, dagger, book). If a weapon/item is mentioned, describe it in detail and portray the character holding/using it (e.g., 'firmly gripping a heavy iron claymore with both hands'). If NO weapon or held item is mentioned in the active chapter or Story Bible context, do NOT include any weapons; generate only their appearance, clothing, and pose without weapons.\n" +
+          "2. BUILD PROMPT AROUND WRITTEN DETAILS: Always write the prompt such that the written details are the primary focus of the character's description. The prompt must be built around their hair, height, age, attire, and weapon. Avoid letting generic templates or your own assumptions overwrite the author's words.\n" +
+          "3. Only AFTER faithfully incorporating all written details, intelligently supplement with consistent, high-quality details for anything missing (face shape, lighting, background, etc.) to create a complete, vivid, usable prompt.\n" +
           "4. SPECIFIC BODY PART OR CLOSE-UP FOCUS (CRITICAL): If the Highlighted Passage or target chapter text focuses on a specific body part (such as a single eye, claw, wing, horn, wound, tail) or specific sub-part rather than the entire body of the character/beast, your generated prompt for each requested form MUST be a macro close-up or highly focused description of that specific part/feature in the style and context of that form, rather than a full-body character portrait. For example, if generating a Beast Form and the focus is an eye, generate a close-up of the beast's wild reptilian or beastly eye. If Humanoid Form is requested, generate a close-up of the eye in its humanized form (retaining any special color/glow but in a humanoid orbit). Only generate full-body descriptions if the inputs describe the character/beast as a whole.\n\n"
         : "1. BEFORE writing any prompt, you MUST first silently extract and remember EVERY specific visual detail mentioned in the Full Active Chapter Context and especially the Target-Focused Chapter Evidence. This includes geography, architecture, terrain, rooms, streets, weather, lighting, biomes, celestial features, travel routes, borders, landmarks, materials, scale, object markings, powers, damage, ownership, and where the subject appears in the scene.\n" +
           "2. In the final image prompt, these chapter-provided details MUST appear accurately and naturally as the foundation of the description. Do NOT omit them, generalize them, or contradict them. If generating a map, use the chapter/lore to infer relative geography and travel routes, and keep labels minimal unless exact names are supplied.\n" +
@@ -1510,7 +1530,7 @@ export async function POST(req: NextRequest) {
         "   - overview: 3-5 sentence prose summary of the target's overall visual identity and why the inferred design fits the chapter/lore.\n" +
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred because the source was sparse.\n" +
         "   - negativePrompt: a single shared negative prompt string as a fallback.\n" +
-        "   - characterDetails: object with fields appearance, hair, eyes, body, attire, distinguishingFeatures, weapon (or held item) — descriptive prose phrases extracted from the strongest/primary form. If a weapon is mentioned, include specific details here and in the main prompt.\n" +
+        "   - characterDetails: object with fields appearance, hair, eyes, body, height, age, attire, distinguishingFeatures, weapon (or held item) — descriptive prose phrases extracted from the active chapter and Story Bible. You MUST explicitly scan the chapter to find and extract these core details (especially hair, height, age, attire, weapon) and build the final prompts around them.\n" +
         "15. No markdown fences. No bullets inside prompt values. Do not use newline-separated tag lists inside prompt values."
 
       const chapterLine = chapterContext
@@ -2529,6 +2549,8 @@ export async function POST(req: NextRequest) {
             hair: extractCharDetail((rawDetails as Record<string, unknown>).hair),
             eyes: extractCharDetail((rawDetails as Record<string, unknown>).eyes),
             body: extractCharDetail((rawDetails as Record<string, unknown>).body),
+            height: extractCharDetail((rawDetails as Record<string, unknown>).height),
+            age: extractCharDetail((rawDetails as Record<string, unknown>).age),
             attire: extractCharDetail((rawDetails as Record<string, unknown>).attire),
             distinguishingFeatures: extractCharDetail((rawDetails as Record<string, unknown>).distinguishingFeatures),
             weapon: extractCharDetail((rawDetails as Record<string, unknown>).weapon || (rawDetails as Record<string, unknown>).heldItem)
@@ -2684,7 +2706,10 @@ export async function POST(req: NextRequest) {
             hair: String(details.chapterAppearance.hair || "").trim(),
             eyes: String(details.chapterAppearance.eyes || "").trim(),
             body: String(details.chapterAppearance.body || "").trim(),
-            distinguishingFeatures: String(details.chapterAppearance.distinguishingFeatures || "").trim()
+            height: String(details.chapterAppearance.height || "").trim(),
+            age: String(details.chapterAppearance.age || "").trim(),
+            distinguishingFeatures: String(details.chapterAppearance.distinguishingFeatures || "").trim(),
+            weapon: String(details.chapterAppearance.weapon || "").trim()
           }
           : undefined
         const sanitized = {
@@ -2693,10 +2718,23 @@ export async function POST(req: NextRequest) {
           hair: String(details.hair || "").trim(),
           eyes: String(details.eyes || "").trim(),
           body: String(details.body || "").trim(),
+          height: String(details.height || "").trim(),
+          age: String(details.age || "").trim(),
           distinguishingFeatures: String(details.distinguishingFeatures || "").trim(),
+          weapon: String(details.weapon || "").trim(),
           chapterAppearance
         }
-        const hasTopLevel = [sanitized.appearance, sanitized.attire, sanitized.hair, sanitized.eyes, sanitized.body, sanitized.distinguishingFeatures].some(Boolean)
+        const hasTopLevel = [
+          sanitized.appearance,
+          sanitized.attire,
+          sanitized.hair,
+          sanitized.eyes,
+          sanitized.body,
+          sanitized.height,
+          sanitized.age,
+          sanitized.distinguishingFeatures,
+          sanitized.weapon
+        ].some(Boolean)
         const hasChapter = chapterAppearance ? Object.values(chapterAppearance).some(Boolean) : false
         return hasTopLevel || hasChapter ? sanitized : undefined
       }

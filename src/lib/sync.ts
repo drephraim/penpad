@@ -55,6 +55,8 @@ export interface BibleCharacterDetails {
   body?: string
   distinguishingFeatures?: string
   weapon?: string
+  height?: string
+  age?: string
   chapterAppearances?: BibleCharacterAppearanceFact[]
   updatedAt?: number
 }
@@ -71,6 +73,8 @@ export interface BibleCharacterAppearanceFact {
   hair?: string
   eyes?: string
   body?: string
+  height?: string
+  age?: string
   distinguishingFeatures?: string
   weapon?: string
   createdAt: number

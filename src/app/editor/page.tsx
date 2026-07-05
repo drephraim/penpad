@@ -244,6 +244,8 @@ interface BibleExtractionSuggestion {
     hair?: string
     eyes?: string
     body?: string
+    height?: string
+    age?: string
     distinguishingFeatures?: string
     weapon?: string
     chapterAppearance?: {
@@ -254,6 +256,8 @@ interface BibleExtractionSuggestion {
       hair?: string
       eyes?: string
       body?: string
+      height?: string
+      age?: string
       distinguishingFeatures?: string
       weapon?: string
     }
@@ -283,6 +287,8 @@ interface AppearancePromptResult {
     hair?: string
     eyes?: string
     body?: string
+    height?: string
+    age?: string
     attire?: string
     distinguishingFeatures?: string
     weapon?: string
@@ -3136,6 +3142,8 @@ function EditorContent() {
         hair: charDetails.hair || targetEntry.characterDetails?.hair || "",
         eyes: charDetails.eyes || targetEntry.characterDetails?.eyes || "",
         body: charDetails.body || targetEntry.characterDetails?.body || "",
+        height: charDetails.height || targetEntry.characterDetails?.height || "",
+        age: charDetails.age || targetEntry.characterDetails?.age || "",
         attire: charDetails.attire || targetEntry.characterDetails?.attire || "",
         distinguishingFeatures: charDetails.distinguishingFeatures || targetEntry.characterDetails?.distinguishingFeatures || "",
         weapon: charDetails.weapon || (targetEntry.characterDetails as any)?.weapon || "",
@@ -7498,7 +7506,10 @@ const fillEmptyCustomJsonData = (
             hair: String(fact.hair || "").trim(),
             eyes: String(fact.eyes || "").trim(),
             body: String(fact.body || "").trim(),
+            height: String(fact.height || "").trim(),
+            age: String(fact.age || "").trim(),
             distinguishingFeatures: String(fact.distinguishingFeatures || "").trim(),
+            weapon: String(fact.weapon || "").trim(),
             createdAt: Number.isFinite(Number(fact.createdAt)) ? Number(fact.createdAt) : entry.updatedAt || Date.now()
           }))
           .sort((a, b) => {
@@ -7515,6 +7526,8 @@ const fillEmptyCustomJsonData = (
       hair: String(details.hair || "").trim(),
       eyes: String(details.eyes || "").trim(),
       body: String(details.body || "").trim(),
+      height: String(details.height || "").trim(),
+      age: String(details.age || "").trim(),
       distinguishingFeatures: String(details.distinguishingFeatures || "").trim(),
       weapon: String(details.weapon || "").trim(),
       chapterAppearances,
@@ -7540,6 +7553,8 @@ const fillEmptyCustomJsonData = (
       hair: incoming.hair || existing.hair,
       eyes: incoming.eyes || existing.eyes,
       body: incoming.body || existing.body,
+      height: incoming.height || existing.height,
+      age: incoming.age || existing.age,
       distinguishingFeatures: incoming.distinguishingFeatures || existing.distinguishingFeatures,
       weapon: incoming.weapon || existing.weapon,
       updatedAt: now
@@ -7560,6 +7575,8 @@ const fillEmptyCustomJsonData = (
         hair: String(chapterAppearance?.hair || incoming.hair || "").trim(),
         eyes: String(chapterAppearance?.eyes || incoming.eyes || "").trim(),
         body: String(chapterAppearance?.body || incoming.body || "").trim(),
+        height: String(chapterAppearance?.height || incoming.height || "").trim(),
+        age: String(chapterAppearance?.age || incoming.age || "").trim(),
         distinguishingFeatures: String(chapterAppearance?.distinguishingFeatures || incoming.distinguishingFeatures || "").trim(),
         weapon: String(chapterAppearance?.weapon || incoming.weapon || "").trim(),
         createdAt: now
@@ -15854,6 +15871,18 @@ ${navPoints}  </navMap>
                               <p>{details.body}</p>
                             </div>
                           )}
+                          {details.height && (
+                            <div className="character-detail-summary-item">
+                              <small>Height</small>
+                              <p>{details.height}</p>
+                            </div>
+                          )}
+                          {details.age && (
+                            <div className="character-detail-summary-item">
+                              <small>Age</small>
+                              <p>{details.age}</p>
+                            </div>
+                          )}
                           {details.attire && (
                             <div className="character-detail-summary-item">
                               <small>Attire</small>
@@ -15900,6 +15929,14 @@ ${navPoints}  </navMap>
                         <label>
                           <small>Build / Body</small>
                           <input className="ai-input" value={details.body} onChange={(e) => updateActiveBibleCharacterDetails({ body: e.target.value })} placeholder="Tall, wiry, scarred..." />
+                        </label>
+                        <label>
+                          <small>Height</small>
+                          <input className="ai-input" value={details.height || ""} onChange={(e) => updateActiveBibleCharacterDetails({ height: e.target.value })} placeholder="Towering, petite, 6'2..." />
+                        </label>
+                        <label>
+                          <small>Age</small>
+                          <input className="ai-input" value={details.age || ""} onChange={(e) => updateActiveBibleCharacterDetails({ age: e.target.value })} placeholder="Elderly, young adult, 30s..." />
                         </label>
                         <label>
                           <small>Attire</small>
@@ -16882,12 +16919,20 @@ ${navPoints}  </navMap>
                           suggestion.characterDetails.hair,
                           suggestion.characterDetails.eyes,
                           suggestion.characterDetails.body,
+                          suggestion.characterDetails.height,
+                          suggestion.characterDetails.age,
                           suggestion.characterDetails.attire,
+                          suggestion.characterDetails.weapon,
                           suggestion.characterDetails.distinguishingFeatures,
                           suggestion.characterDetails.chapterAppearance?.appearance,
                           suggestion.characterDetails.chapterAppearance?.hair,
                           suggestion.characterDetails.chapterAppearance?.eyes,
-                          suggestion.characterDetails.chapterAppearance?.attire
+                          suggestion.characterDetails.chapterAppearance?.body,
+                          suggestion.characterDetails.chapterAppearance?.height,
+                          suggestion.characterDetails.chapterAppearance?.age,
+                          suggestion.characterDetails.chapterAppearance?.attire,
+                          suggestion.characterDetails.chapterAppearance?.weapon,
+                          suggestion.characterDetails.chapterAppearance?.distinguishingFeatures
                         ]
                           .filter(Boolean)
                           .slice(0, 4)
