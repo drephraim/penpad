@@ -1849,6 +1849,17 @@ function EditorContent() {
 
   const [projectName, setProjectName] = useState("Loading...")
   const [notes, setNotes] = useState<Note[]>([])
+  const noteWordCountCacheRef = useRef<Record<string, { content: string; count: number }>>({})
+  const getNoteWordCount = useCallback((note: Note) => {
+    if (!note) return 0
+    const cache = noteWordCountCacheRef.current[note.id]
+    if (cache && cache.content === note.content) {
+      return cache.count
+    }
+    const count = countWords(note.content || "")
+    noteWordCountCacheRef.current[note.id] = { content: note.content || "", count }
+    return count
+  }, [])
   const [volumes, setVolumes] = useState<ManuscriptVolume[]>([])
   const [collapsedVolumeIds, setCollapsedVolumeIds] = useState<Set<string>>(new Set())
   const [draggedChapterId, setDraggedChapterId] = useState<string | null>(null)
@@ -1859,11 +1870,113 @@ function EditorContent() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const activeNoteIdRef = useRef<string | null>(null)
   activeNoteIdRef.current = activeNoteId
+
+  const activeNote = notes.find(n => n && n.id === activeNoteId)
+
+  const [editorContent, setEditorContent] = useState("")
+  const lastEditorContentRef = useRef("")
+  const debounceSyncRef = useRef<NodeJS.Timeout | null>(null)
+
+  const flushEditorContentSync = useCallback(() => {
+    if (debounceSyncRef.current) {
+      clearTimeout(debounceSyncRef.current)
+      debounceSyncRef.current = null
+      
+      const contentToSync = lastEditorContentRef.current
+      const noteIdToSync = activeNoteIdRef.current
+      if (noteIdToSync) {
+        setNotes(prevNotes => 
+          prevNotes.map(n => 
+            n && n.id === noteIdToSync 
+              ? { ...n, content: contentToSync, updatedAt: Date.now() } 
+              : n
+          )
+        )
+      }
+    }
+  }, [])
+
+  const handleEditorContentChange = useCallback((newContent: string, immediate: boolean = false) => {
+    setEditorContent(newContent)
+    lastEditorContentRef.current = newContent
+
+    if (debounceSyncRef.current) {
+      clearTimeout(debounceSyncRef.current)
+      debounceSyncRef.current = null
+    }
+
+    if (immediate) {
+      const noteIdToSync = activeNoteIdRef.current
+      if (noteIdToSync) {
+        setNotes(prevNotes => 
+          prevNotes.map(n => 
+            n && n.id === noteIdToSync 
+              ? { ...n, content: newContent, updatedAt: Date.now() } 
+              : n
+          )
+        )
+      }
+    } else {
+      debounceSyncRef.current = setTimeout(() => {
+        const noteIdToSync = activeNoteIdRef.current
+        if (noteIdToSync) {
+          setNotes(prevNotes => 
+            prevNotes.map(n => 
+              n && n.id === noteIdToSync 
+                ? { ...n, content: newContent, updatedAt: Date.now() } 
+                : n
+            )
+          )
+        }
+      }, 250)
+    }
+  }, [])
+
+  // Sync editorContent when activeNoteId changes (switching chapters)
+  useEffect(() => {
+    if (activeNoteId) {
+      const currentNote = notes.find(n => n && n.id === activeNoteId)
+      const content = currentNote?.content || ""
+      setEditorContent(content)
+      lastEditorContentRef.current = content
+    } else {
+      setEditorContent("")
+      lastEditorContentRef.current = ""
+    }
+
+    return () => {
+      // Flush changes of the note that we are leaving
+      if (debounceSyncRef.current && activeNoteId) {
+        clearTimeout(debounceSyncRef.current)
+        debounceSyncRef.current = null
+        
+        const contentToSync = lastEditorContentRef.current
+        setNotes(prevNotes => 
+          prevNotes.map(n => 
+            n && n.id === activeNoteId 
+              ? { ...n, content: contentToSync, updatedAt: Date.now() } 
+              : n
+          )
+        )
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNoteId])
+
+  // Sync editorContent when activeNote.content changes from OUTSIDE (e.g. AI, restore version)
+  useEffect(() => {
+    if (activeNote && activeNote.id === activeNoteId) {
+      if (activeNote.content !== lastEditorContentRef.current) {
+        setEditorContent(activeNote.content || "")
+        lastEditorContentRef.current = activeNote.content || ""
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNote?.content, activeNoteId])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [sessionTime, setSessionTime] = useState(0)
   const [isTimerRunning, setIsTimerRunning] = useState(true)
-
-  const activeNote = notes.find(n => n && n.id === activeNoteId)
 
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set())
@@ -2085,8 +2198,8 @@ function EditorContent() {
   const [showMilestoneAlert, setShowMilestoneAlert] = useState<Milestone | null>(null)
 
   const currentTotalWords = useMemo(() => {
-    return notes.reduce((total, note) => total + countWords(note?.content || ""), 0)
-  }, [notes])
+    return notes.reduce((total, note) => total + getNoteWordCount(note), 0)
+  }, [notes, getNoteWordCount])
 
   const last28Days = useMemo(() => {
     const days: { date: Date; dateStr: string; count: number }[] = []
@@ -7976,36 +8089,42 @@ const fillEmptyCustomJsonData = (
     await deleteArcSeedFromCloud(user.uid, projectId, seedId)
   }
 
-  const getChapterNumberFromTitle = (title?: string) => {
+  const getChapterNumberFromTitle = useCallback((title?: string) => {
     const match = title?.match(/\bchapter\s*0*(\d+)\b/i)
     return match ? Number.parseInt(match[1], 10) : null
-  }
+  }, [])
 
-  const getNoteSortValue = (note: Note) => {
+  const getNoteSortValue = useCallback((note: Note) => {
     if (Number.isFinite(note.sortOrder)) return note.sortOrder as number
     return getChapterNumberFromTitle(note.title) ?? note.createdAt
-  }
+  }, [getChapterNumberFromTitle])
 
-  const getOrderedNotesList = (noteList: Note[]) => {
+  const getOrderedNotesList = useCallback((noteList: Note[]) => {
     return [...noteList].sort((a, b) => b.createdAt - a.createdAt)
-  }
+  }, [])
 
-  const getManuscriptNotesList = (noteList: Note[]) => {
+  const getManuscriptNotesList = useCallback((noteList: Note[]) => {
     return [...noteList].sort((a, b) => {
       const aSort = getNoteSortValue(a)
       const bSort = getNoteSortValue(b)
       if (aSort !== bSort) return aSort - bSort
       return a.title.localeCompare(b.title, undefined, { numeric: true })
     })
-  }
+  }, [getNoteSortValue])
 
-  const getNoteChapterNumber = (note: Note) => {
-    const titleNumber = getChapterNumberFromTitle(note.title)
-    if (titleNumber) return titleNumber
+  const chapterNumbersMap = useMemo(() => {
+    const sorted = getManuscriptNotesList(notes)
+    const map = new Map<string, number>()
+    sorted.forEach((note, index) => {
+      const titleNumber = getChapterNumberFromTitle(note.title)
+      map.set(note.id, titleNumber || (index + 1))
+    })
+    return map
+  }, [notes, getManuscriptNotesList, getChapterNumberFromTitle])
 
-    const chapterIndex = getManuscriptNotesList(notes).findIndex(n => n.id === note.id)
-    return chapterIndex >= 0 ? chapterIndex + 1 : null
-  }
+  const getNoteChapterNumber = useCallback((note: Note) => {
+    return chapterNumbersMap.get(note.id) ?? null
+  }, [chapterNumbersMap])
 
   const getChapterListDisplay = (note: Note) => {
     const chapterNumber = getNoteChapterNumber(note)
@@ -8752,13 +8871,16 @@ const fillEmptyCustomJsonData = (
     if (!user || !projectId) return
     setSyncStatus('saving')
     try {
+      flushEditorContentSync()
+      
       let noteList = await getManuscriptLocal(projectId)
       if (!noteList) noteList = []
       
-      const existingIdx = noteList.findIndex(n => n.id === note.id)
+      const latestContent = lastEditorContentRef.current
       const now = Date.now()
-      const updatedNote = { ...note, updatedAt: now }
+      const updatedNote = { ...note, content: latestContent, updatedAt: now }
       
+      const existingIdx = noteList.findIndex(n => n.id === note.id)
       if (existingIdx >= 0) {
         noteList[existingIdx] = updatedNote
       } else {
@@ -8785,7 +8907,7 @@ const fillEmptyCustomJsonData = (
       console.error("Save note failed:", e)
       setSyncStatus('error')
     }
-  }, [user, projectId, saveChapterVersion])
+  }, [user, projectId, saveChapterVersion, flushEditorContentSync])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -9394,7 +9516,7 @@ ${navPoints}  </navMap>
     const formatted = prefix + selection + suffix
 
     const newContent = text.substring(0, start) + formatted + text.substring(end)
-    updateActiveNote({ content: newContent })
+    handleEditorContentChange(newContent, true)
 
     setTimeout(() => {
       textarea.focus()
@@ -9441,7 +9563,7 @@ ${navPoints}  </navMap>
     const slashIndex = beforeSlash.lastIndexOf("/")
     if (slashIndex >= 0) {
       const cleanContent = text.substring(0, slashIndex) + text.substring(cursor)
-      updateActiveNote({ content: cleanContent })
+      handleEditorContentChange(cleanContent, true)
       setTimeout(() => {
         textarea.focus()
         textarea.setSelectionRange(slashIndex, slashIndex)
@@ -9467,7 +9589,7 @@ ${navPoints}  </navMap>
     const after = text.substring(cursor)
     
     const newContent = before + suggestion + after
-    updateActiveNote({ content: newContent })
+    handleEditorContentChange(newContent, true)
     
     // Position cursor at the end of the completed name
     const newCursorPos = autocompleteTriggerPos + suggestion.length
@@ -9764,7 +9886,7 @@ ${navPoints}  </navMap>
     const content = textarea.value
     
     const newContent = content.substring(0, start) + textToInsert + content.substring(end)
-    updateActiveNote({ content: newContent })
+    handleEditorContentChange(newContent, true)
     
     setTimeout(() => {
       textarea.focus({ preventScroll: true })
@@ -9782,7 +9904,7 @@ ${navPoints}  </navMap>
     const content = textarea.value
 
     const newContent = content.substring(0, start) + newText + content.substring(end)
-    updateActiveNote({ content: newContent })
+    handleEditorContentChange(newContent, true)
 
     setTimeout(() => {
       textarea.focus()
@@ -10136,62 +10258,89 @@ ${navPoints}  </navMap>
     setNotes(updatedNotes)
   }
 
-  const filteredNotes = notes.filter((n: Note) => n &&
-    n.title.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredNotes = useMemo(() => {
+    return notes.filter((n: Note) => n &&
+      n.title.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  }, [notes, searchQuery])
 
-  const orderedNotes = getOrderedNotesList(notes)
-  const orderedFilteredNotes = getOrderedNotesList(filteredNotes)
-  const sortedVolumes = [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
-  const knownVolumeIds = new Set(sortedVolumes.map(volume => volume.id))
-  const orphanVolumeIds = Array.from(new Set(orderedFilteredNotes
-    .map(note => note.volumeId)
-    .filter((volumeId): volumeId is string => typeof volumeId === "string" && volumeId.length > 0 && !knownVolumeIds.has(volumeId))))
-  const unassignedFilteredNotes = orderedFilteredNotes.filter(note => !note.volumeId)
-  const manuscriptVolumeGroups = [
-    ...sortedVolumes.map(volume => ({
-      id: volume.id,
-      title: volume.title,
-      isSystem: false,
-      isOpen: volume.isOpen !== false,
-      chapters: orderedFilteredNotes.filter(note => note.volumeId === volume.id)
-    })),
-    ...orphanVolumeIds.map((volumeId, index) => ({
-      id: volumeId,
-      title: `Recovered Volume ${index + 1}`,
-      isSystem: true,
-      isOpen: false,
-      chapters: orderedFilteredNotes.filter(note => note.volumeId === volumeId)
-    })),
-    ...(unassignedFilteredNotes.length > 0 || sortedVolumes.length === 0
-      ? [{
-          id: UNASSIGNED_VOLUME_ID,
-          title: sortedVolumes.length === 0 ? "Chapters" : "Unassigned Chapters",
-          isSystem: true,
-          isOpen: false,
-          chapters: unassignedFilteredNotes
-        }]
-      : [])
-  ]
+  const orderedNotes = useMemo(() => {
+    return getOrderedNotesList(notes)
+  }, [notes, getOrderedNotesList])
 
-  const sortedTimelineNotes = [...orderedNotes].sort((a, b) => {
-    const aNumber = getNoteChapterNumber(a)
-    const bNumber = getNoteChapterNumber(b)
-    if (aNumber && bNumber) return aNumber - bNumber
-    return a.title.localeCompare(b.title, undefined, { numeric: true })
-  })
+  const orderedFilteredNotes = useMemo(() => {
+    return getOrderedNotesList(filteredNotes)
+  }, [filteredNotes, getOrderedNotesList])
 
-  const manuscriptStats = {
-    chapters: notes.length,
-    words: notes.reduce((total, note) => total + countWords(note.content || ""), 0),
-    brainEntries: brainEntries.length,
-    arcSeeds: arcSeeds.length,
-    loreEntries: bibleEntries.length,
-    criticalBrainEntries: brainEntries.filter(entry => entry.importance === 'critical').length,
-    averageChapterWords: notes.length > 0
-      ? Math.round(notes.reduce((total, note) => total + countWords(note.content || ""), 0) / notes.length)
-      : 0
-  }
+  const sortedVolumes = useMemo(() => {
+    return [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
+  }, [volumes])
+
+  const knownVolumeIds = useMemo(() => {
+    return new Set(sortedVolumes.map(volume => volume.id))
+  }, [sortedVolumes])
+
+  const orphanVolumeIds = useMemo(() => {
+    return Array.from(new Set(orderedFilteredNotes
+      .map(note => note.volumeId)
+      .filter((volumeId): volumeId is string => typeof volumeId === "string" && volumeId.length > 0 && !knownVolumeIds.has(volumeId))))
+  }, [orderedFilteredNotes, knownVolumeIds])
+
+  const unassignedFilteredNotes = useMemo(() => {
+    return orderedFilteredNotes.filter(note => !note.volumeId)
+  }, [orderedFilteredNotes])
+
+  const manuscriptVolumeGroups = useMemo(() => {
+    return [
+      ...sortedVolumes.map(volume => ({
+        id: volume.id,
+        title: volume.title,
+        isSystem: false,
+        isOpen: volume.isOpen !== false,
+        chapters: orderedFilteredNotes.filter(note => note.volumeId === volume.id)
+      })),
+      ...orphanVolumeIds.map((volumeId, index) => ({
+        id: volumeId,
+        title: `Recovered Volume ${index + 1}`,
+        isSystem: true,
+        isOpen: false,
+        chapters: orderedFilteredNotes.filter(note => note.volumeId === volumeId)
+      })),
+      ...(unassignedFilteredNotes.length > 0 || sortedVolumes.length === 0
+        ? [{
+            id: UNASSIGNED_VOLUME_ID,
+            title: sortedVolumes.length === 0 ? "Chapters" : "Unassigned Chapters",
+            isSystem: true,
+            isOpen: false,
+            chapters: unassignedFilteredNotes
+          }]
+        : [])
+    ]
+  }, [sortedVolumes, orphanVolumeIds, orderedFilteredNotes, unassignedFilteredNotes])
+
+  const sortedTimelineNotes = useMemo(() => {
+    return [...orderedNotes].sort((a, b) => {
+      const aNumber = getNoteChapterNumber(a)
+      const bNumber = getNoteChapterNumber(b)
+      if (aNumber && bNumber) return aNumber - bNumber
+      return a.title.localeCompare(b.title, undefined, { numeric: true })
+    })
+  }, [orderedNotes, getNoteChapterNumber])
+
+  const manuscriptStats = useMemo(() => {
+    const totalWords = currentTotalWords
+    return {
+      chapters: notes.length,
+      words: totalWords,
+      brainEntries: brainEntries.length,
+      arcSeeds: arcSeeds.length,
+      loreEntries: bibleEntries.length,
+      criticalBrainEntries: brainEntries.filter(entry => entry.importance === 'critical').length,
+      averageChapterWords: notes.length > 0
+        ? Math.round(totalWords / notes.length)
+        : 0
+    }
+  }, [notes, currentTotalWords, brainEntries, arcSeeds, bibleEntries])
 
   const globalSearchResults: GlobalSearchResult[] = (() => {
     const query = globalSearchQuery.trim().toLowerCase()
@@ -11511,7 +11660,7 @@ ${navPoints}  </navMap>
                   <div className="chapter-timeline insights-timeline">
                     {sortedTimelineNotes.map(note => {
                       const chapterBrainEntries = brainEntries.filter(entry => entry.chapterId === note.id)
-                      const chapterWords = countWords(note.content || "")
+                      const chapterWords = getNoteWordCount(note)
                       return (
                         <button
                           key={note.id}
@@ -15490,9 +15639,9 @@ ${navPoints}  </navMap>
                     <textarea 
                       ref={textareaRef}
                       className="editor-textarea"
-                      value={activeNote.content}
+                      value={editorContent}
                       onChange={(e) => {
-                        updateActiveNote({ content: e.target.value })
+                        handleEditorContentChange(e.target.value)
                         if (isTypewriterMode) centerActiveLine()
                       }}
                       onKeyUp={() => isTypewriterMode && centerActiveLine()}
@@ -18632,7 +18781,7 @@ ${navPoints}  </navMap>
                       </div>
                     </div>
                     <div className="diff-pane-column">
-                      <h4>Live Draft ({countWords(activeNote.content).toLocaleString()} words)</h4>
+                      <h4>Live Draft ({getNoteWordCount(activeNote).toLocaleString()} words)</h4>
                       <div className="diff-pane-scroll scrollbar">
                         {diffLines.newLines.map((line, idx) => (
                           <div key={idx} className={`diff-line-row line-${line.type}`}>
