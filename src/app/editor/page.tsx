@@ -293,6 +293,9 @@ interface AppearancePromptResult {
     distinguishingFeatures?: string
     weapon?: string
   }
+  inferredCategory?: string
+  inferredName?: string
+  formLabels?: Record<string, string>
 }
 
 type AppearanceFormConfig = {
@@ -2692,7 +2695,24 @@ function EditorContent() {
     }
   }
 
-  const selectedAppearanceEntry = bibleEntries.find(entry => entry.id === appearanceSelectedEntryId)
+  const selectedAppearanceEntry = useMemo(() => {
+    if (appearanceSelectedEntryId === "adhoc-selection") {
+      const result = appearanceResultsByEntry["adhoc-selection"]
+      const inferredCat = result?.inferredCategory || "other"
+      const inferredNm = result?.inferredName || "Highlighted Passage"
+      return {
+        id: "adhoc-selection",
+        name: inferredNm,
+        category: inferredCat,
+        content: "Generating appearance from Highlighted Passage.",
+        groupIds: [],
+        characterDetails: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      } as unknown as BibleEntry
+    }
+    return bibleEntries.find(entry => entry.id === appearanceSelectedEntryId) || null
+  }, [appearanceSelectedEntryId, bibleEntries, appearanceResultsByEntry])
 
   const getFormLabel = (key: string) => appearanceFormLabels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
 
@@ -2803,8 +2823,21 @@ function EditorContent() {
   const handleGenerateAppearancePrompts = async (entryId?: string | null, selectedTextOverride?: string) => {
     const selectedText = (selectedTextOverride ?? aiSelectionText).trim()
     const highlightedEntry = selectedText ? findLoreEntryFromSelection(selectedText) : null
-    const explicitEntry = entryId ? bibleEntries.find(entry => entry.id === entryId) : null
-    const sourceEntry = highlightedEntry || explicitEntry || selectedAppearanceEntry
+    const explicitEntry = (entryId && entryId !== "adhoc-selection") ? bibleEntries.find(entry => entry.id === entryId) : null
+    let sourceEntry = highlightedEntry || explicitEntry || selectedAppearanceEntry
+
+    if (!sourceEntry && selectedText) {
+      sourceEntry = {
+        id: "adhoc-selection",
+        name: "Highlighted Passage",
+        category: "other",
+        content: "Generating appearance from Highlighted Passage.",
+        groupIds: [],
+        characterDetails: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      } as unknown as BibleEntry
+    }
 
     if (!sourceEntry) {
       setAppearanceError("Highlight a Story Bible name, place, world, or item in the chapter, or choose a lore entry first.")
@@ -2869,6 +2902,7 @@ function EditorContent() {
         if (requestFormDescriptions[key]?.trim()) forms[key] = requestFormDescriptions[key].trim()
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
+      const isAdHocRequest = sourceEntry.id === "adhoc-selection"
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2886,6 +2920,7 @@ function EditorContent() {
           perFormNegatives: appearancePerFormNegative,
           facialFeatures: facialForRequest.trim() || undefined,
           race: raceValue !== "any" ? raceValue : undefined,
+          isAdHoc: isAdHocRequest,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -2911,6 +2946,29 @@ function EditorContent() {
       } else {
         const newResult = data.appearancePrompts || { overview: "", prompts: {}, negativePrompt: "", consistencyNotes: [], negativePrompts: {}, characterName: sourceEntry.name }
         setAppearanceResult(newResult)
+
+        if (isAdHocRequest && newResult.inferredCategory) {
+          const newKeys = Object.keys(newResult.prompts)
+          const newLabels = newResult.formLabels || {}
+          const newEnabled: Record<string, boolean> = {}
+          newKeys.forEach(k => {
+            newEnabled[k] = true
+          })
+          setAppearanceFormKeys(newKeys)
+          setAppearanceFormEnabled(newEnabled)
+          setAppearanceFormLabels(newLabels)
+          setAppearanceFormDescriptions({})
+          setAppearanceEntryForms(prev => ({
+            ...prev,
+            "adhoc-selection": {
+              keys: newKeys,
+              enabled: newEnabled,
+              labels: newLabels,
+              descriptions: {}
+            }
+          }))
+        }
+
         // Persist immediately for this entry
         if (sourceEntry?.id) {
           setAppearanceResultsByEntry(prev => ({ ...prev, [sourceEntry.id]: newResult }))
@@ -11604,6 +11662,11 @@ ${navPoints}  </navMap>
                       disabled={appearanceLoading}
                     >
                       <option value="">Choose a person, beast, item, or lore entry...</option>
+                      {appearanceSelectedEntryId === "adhoc-selection" && (
+                        <option value="adhoc-selection">
+                          Highlighted Passage (Ad-hoc)
+                        </option>
+                      )}
                       {bibleEntries.map(entry => (
                         <option key={entry.id} value={entry.id}>
                           {entry.name} - {entry.category}
@@ -11942,8 +12005,29 @@ ${navPoints}  </navMap>
                     </div>
 
                     {showCustomFormAdder && (
-                      <div className="custom-form-adder">
+                      <div className="custom-form-adder" style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "0.5rem" }}>
                         <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-primary)" }}>Add Custom Form</span>
+                        <div className="custom-form-presets" style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginBottom: "0.2rem" }}>
+                          {[
+                            { label: "Undead Form", desc: "A decaying or skeletal state. Pale skin, hollow glowing eyes, tattered dark garments, and a chilling spectral aura." },
+                            { label: "Spirit Form", desc: "A translucent, glowing spectral manifestation. Ethereal light, floating elements, soft glowing details, and aura." },
+                            { label: "Combat Stance", desc: "A dynamic battle-ready posture. Firm footing, alert expression, weapons drawn (if described), aura of active energy." },
+                            { label: "Awakened Aura", desc: "A high-power state. Surrounding energy flames, crackling power arcs, glowing eyes, floating hair, and intense expression." }
+                          ].map(preset => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              className="btn-ai-sub btn-ai-secondary"
+                              style={{ fontSize: "0.58rem", padding: "1px 5px", minHeight: "18px" }}
+                              onClick={() => {
+                                setCustomFormLabel(preset.label)
+                                setCustomFormDesc(preset.desc)
+                              }}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
                         <input
                           type="text"
                           className="ai-input"
@@ -12034,18 +12118,21 @@ ${navPoints}  </navMap>
                           className="ai-input"
                           style={{ flex: 1, fontSize: "0.72rem", minHeight: "28px" }}
                           value={appearanceAddFormKey}
-                          onChange={(e) => setAppearanceAddFormKey(e.target.value.replace(/\s+/g, "_"))}
-                          placeholder="New form key (e.g. shadowForm)"
+                          onChange={(e) => setAppearanceAddFormKey(e.target.value)}
+                          placeholder="New form name (e.g. Undead Form)"
                         />
                         <button
                           className="btn-ai-sub btn-ai-primary"
                           style={{ flexShrink: 0, minHeight: "26px", fontSize: "0.65rem", padding: "0.2rem 0.5rem" }}
                           onClick={() => {
-                            const key = appearanceAddFormKey.trim()
-                            if (!key || appearanceFormKeys.includes(key)) return
-                            setAppearanceFormKeys(prev => [...prev, key])
-                            setAppearanceFormLabels(prev => ({ ...prev, [key]: key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim() }))
-                            setAppearanceFormEnabled(prev => ({ ...prev, [key]: true }))
+                            const raw = appearanceAddFormKey.trim()
+                            if (!raw) return
+                            const snake = raw.toLowerCase().replace(/[\s\-_]+/g, "_").replace(/[^a-z0-9_]/g, "")
+                            const finalKey = snake.startsWith("form_") ? snake : `form_${snake}`
+                            if (appearanceFormKeys.includes(finalKey)) return
+                            setAppearanceFormKeys(prev => [...prev, finalKey])
+                            setAppearanceFormLabels(prev => ({ ...prev, [finalKey]: raw }))
+                            setAppearanceFormEnabled(prev => ({ ...prev, [finalKey]: true }))
                             setAppearanceAddFormKey("")
                           }}
                           disabled={appearanceLoading || !appearanceAddFormKey.trim()}
