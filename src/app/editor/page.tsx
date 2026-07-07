@@ -1875,6 +1875,7 @@ function EditorContent() {
 
   const [editorContent, setEditorContent] = useState("")
   const lastEditorContentRef = useRef("")
+  const lastPushedContentRef = useRef("")
   const debounceSyncRef = useRef<NodeJS.Timeout | null>(null)
 
   const flushEditorContentSync = useCallback(() => {
@@ -1885,6 +1886,7 @@ function EditorContent() {
       const contentToSync = lastEditorContentRef.current
       const noteIdToSync = activeNoteIdRef.current
       if (noteIdToSync) {
+        lastPushedContentRef.current = contentToSync
         setNotes(prevNotes => 
           prevNotes.map(n => 
             n && n.id === noteIdToSync 
@@ -1908,6 +1910,7 @@ function EditorContent() {
     if (immediate) {
       const noteIdToSync = activeNoteIdRef.current
       if (noteIdToSync) {
+        lastPushedContentRef.current = newContent
         setNotes(prevNotes => 
           prevNotes.map(n => 
             n && n.id === noteIdToSync 
@@ -1920,6 +1923,7 @@ function EditorContent() {
       debounceSyncRef.current = setTimeout(() => {
         const noteIdToSync = activeNoteIdRef.current
         if (noteIdToSync) {
+          lastPushedContentRef.current = newContent
           setNotes(prevNotes => 
             prevNotes.map(n => 
               n && n.id === noteIdToSync 
@@ -1939,9 +1943,11 @@ function EditorContent() {
       const content = currentNote?.content || ""
       setEditorContent(content)
       lastEditorContentRef.current = content
+      lastPushedContentRef.current = content
     } else {
       setEditorContent("")
       lastEditorContentRef.current = ""
+      lastPushedContentRef.current = ""
     }
 
     return () => {
@@ -1951,6 +1957,7 @@ function EditorContent() {
         debounceSyncRef.current = null
         
         const contentToSync = lastEditorContentRef.current
+        lastPushedContentRef.current = contentToSync
         setNotes(prevNotes => 
           prevNotes.map(n => 
             n && n.id === activeNoteId 
@@ -1966,9 +1973,10 @@ function EditorContent() {
   // Sync editorContent when activeNote.content changes from OUTSIDE (e.g. AI, restore version)
   useEffect(() => {
     if (activeNote && activeNote.id === activeNoteId) {
-      if (activeNote.content !== lastEditorContentRef.current) {
+      if (activeNote.content !== lastPushedContentRef.current) {
         setEditorContent(activeNote.content || "")
         lastEditorContentRef.current = activeNote.content || ""
+        lastPushedContentRef.current = activeNote.content || ""
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
