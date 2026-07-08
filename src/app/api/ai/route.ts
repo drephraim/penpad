@@ -884,7 +884,18 @@ function getStringHash(str: string): number {
   return Math.abs(hash)
 }
 
-function getDistinctAppearanceDirective(formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
+function cleanFaceShape(faceShape: string, hasEyes: boolean): string {
+  if (!hasEyes) return faceShape
+  return faceShape
+    .replace(/,\s*wide-set eyes\b/i, "")
+    .replace(/\bwide-set eyes,\s*/i, "")
+    .replace(/\band\s+wide,\s+expressive\s+eyes\b/i, "")
+    .replace(/,\s*and\s+wide,\s+expressive\s+eyes\b/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
   const normalizedKey = formKey.toLowerCase()
   const safeLabel = label || formKey
   const nameHash = getStringHash(characterName || safeLabel)
@@ -1049,7 +1060,7 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
           "large, soft blue eyes that look calm and thoughtful"
         ]
         skinAndHair = [
-          "porcelain-fair skin covered in light freckles, with vibrant copper-red hair worn in wild waves",
+          "porcelain-freckled skin with a rosy flush, with vibrant copper-red hair worn in wild waves",
           "pale skin with a rosy flush on the cheeks, with thick auburn hair falling in soft curls",
           "fair skin with a smooth texture, with sandy-brown or ginger-blonde hair styled in loose braids",
           "sun-freckled light skin, with deep chestnut hair worn long and windswept"
@@ -1137,8 +1148,59 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
     const eyeType = eyeTypes[(nameHash + 3) % eyeTypes.length]
     const skinHair = skinAndHair[(nameHash + 7) % skinAndHair.length]
     const pose = humanPoses[(nameHash + 1) % humanPoses.length]
-    const raceClause = race && race !== "any" ? `reflecting a clear ${race} heritage and facial structure` : "reflecting their name and cultural heritage"
-    return `Distinct face and pose for ${safeLabel}: design a humanoid face with ${faceShape}, ${eyeType}, and ${skinHair}, ${raceClause}. Pose the figure in a ${pose}. This face must feel entirely unique to this character — do NOT reuse generic "striking face" or "ethereal face" templates; derive the face from the character's name, role, and lore instead.`
+
+    // Detect if details are already present in the prompt to prevent contradictions
+    const hasHair = /\b(hair|locks|braid(?:s|ed)?|bald|coiffure|tresses|ponytail|curls|waves|shaven)\b/i.test(trimmedPrompt)
+    const hasEyes = /\b(eyes|gaze|look|iris|pupils|lashes)\b/i.test(trimmedPrompt)
+    const hasSkin = /\b(skin|complexion|flesh|hide)\b/i.test(trimmedPrompt)
+    const hasPose = /\b(pose|posing|posed|posture|stance|standing|stands|crouch(?:ed|ing)?|kneel(?:ed|ing)?|seated|sit(?:s|ting)?|lean(?:ed|ing)?|running|walking|ready posture)\b/i.test(trimmedPrompt)
+    const hasFace = /\b(face|facial|jaw|jawline|cheekbones|cheeks|chin)\b/i.test(trimmedPrompt)
+
+    // Split skinAndHair into skin and hair parts to selectively append them
+    const skinHairParts = skinHair.split(/(?:,\s+with\s+|,?\s+hair\s+)/i)
+    const skinPart = skinHairParts[0] ? skinHairParts[0].trim() : ""
+    let hairPart = skinHairParts[1] ? skinHairParts[1].trim() : ""
+    if (hairPart && !hairPart.toLowerCase().startsWith("hair")) {
+      hairPart = "hair " + hairPart
+    }
+
+    const faceShapeCleaned = cleanFaceShape(faceShape, hasEyes || hasFace)
+
+    const faceParts: string[] = []
+    if (!hasFace && faceShapeCleaned) faceParts.push(faceShapeCleaned)
+    if (!hasEyes && eyeType) faceParts.push(eyeType)
+
+    const skinHairPartsList: string[] = []
+    if (!hasSkin && skinPart) skinHairPartsList.push(skinPart)
+    if (!hasHair && hairPart) skinHairPartsList.push(hairPart)
+
+    if (skinHairPartsList.length > 0) {
+      faceParts.push(skinHairPartsList.join(", and "))
+    }
+
+    const raceClause = race && race !== "any" ? `reflecting a clear ${race} heritage and facial structure` : ""
+
+    let faceDirective = ""
+    if (faceParts.length > 0) {
+      faceDirective = `design a humanoid face with ${faceParts.join(", ")}`
+      if (raceClause) {
+        faceDirective += `, ${raceClause}`
+      }
+    }
+
+    let poseDirective = ""
+    if (!hasPose && pose) {
+      poseDirective = `Pose the figure in a ${pose}.`
+    }
+
+    if (!faceDirective && !poseDirective) {
+      return ""
+    }
+
+    const faceSection = faceDirective ? `${faceDirective}. ` : ""
+    const poseSection = poseDirective ? `${poseDirective} ` : ""
+
+    return `Distinct face and pose for ${safeLabel}: ${faceSection}${poseSection}This face must feel entirely unique to this character — do NOT reuse generic "striking face" or "ethereal face" templates; derive the face from the character's role and lore instead.`
   }
 
   const faceProfiles = [
@@ -1156,8 +1218,26 @@ function getDistinctAppearanceDirective(formKey: string, label: string, index: n
   const faceProfile = faceProfiles[nameHash % faceProfiles.length]
   const poseProfile = poseProfiles[(nameHash + index) % poseProfiles.length]
 
+  const hasEyes = /\b(eyes|gaze|look|iris|pupils|lashes)\b/i.test(trimmedPrompt)
+  const hasPose = /\b(pose|posing|posed|posture|stance|standing|stands|crouch(?:ed|ing)?|kneel(?:ed|ing)?|seated|sit(?:s|ting)?|lean(?:ed|ing)?|running|walking|ready posture)\b/i.test(trimmedPrompt)
+
+  let faceProfileCleaned = faceProfile
+  if (hasEyes) {
+    faceProfileCleaned = faceProfileCleaned
+      .replace(/with narrowed alert eyes,\s*/i, "")
+      .replace(/with wide searching eyes,\s*/i, "")
+      .replace(/with calm eyes,\s*/i, "with a ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
   const raceString = race && race !== "any" ? `, exhibiting characteristic ${race} features,` : ""
-  return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfile}${raceString} plus ${poseProfile}.`
+
+  if (hasPose) {
+    return `Distinct face for ${safeLabel}: do not reuse the same facial design as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfileCleaned}${raceString}.`
+  }
+
+  return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfileCleaned}${raceString} plus ${poseProfile}.`
 }
 
 function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
@@ -1178,7 +1258,7 @@ function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string
     return trimmedPrompt
   }
 
-  return `${trimmedPrompt} ${getDistinctAppearanceDirective(formKey, label, index, totalForms, entryCategory, characterName, race)}`
+  return `${trimmedPrompt} ${getDistinctAppearanceDirective(trimmedPrompt, formKey, label, index, totalForms, entryCategory, characterName, race)}`
 }
 
 function formatMemoryContext(memory: unknown) {
@@ -1467,7 +1547,7 @@ export async function POST(req: NextRequest) {
             "   - BODY BUILD & PHYSICAL SCALE: Incorporate the character's exact physical build (e.g. morbidly obese, extremely fat, muscular, skeletal, athletic, frail) and scale (e.g., 'about the size of a mansion', 'colossal', 'gargantuan'). If the character is described with extreme proportions, the prompt must explicitly reflect this build and scale (e.g., using keywords like 'colossal scale', 'towering above the surroundings', 'morbidly obese silhouette', 'massive double chins'). Never default to average/normal proportions when extreme proportions are described.\n" +
             "   - SKIN STATE & TEXTURE: Use the exact skin descriptions (e.g., 'skin about to peel off', 'rough weathered leather-like skin', 'smooth pale skin'). If a distressed or unusual skin state is described, include detailed descriptors matching that texture.\n" +
             "   - POSE & EXPRESSION: Reflect the character's emotional expression and action described in the text (e.g., 'screaming in anger', 'face contorted in pain', 'letting out a thunderous shout', 'sitting in calm meditation'). Never default to a generic passive or introspective pose if the chapter scene is highly active, chaotic, or intense.\n" +
-            "   - ETHNIC/CULTURAL DESCENT: Identify any explicit or strongly implied ethnic descent, cultural heritage, or regional appearance (e.g. Indian descent, East Asian heritage, Mesoamerican look, Nordic features). For characters like Shiva who have Indian descent, describe specific features in the prompt like warm golden-brown or olive skin tone, deep-set dark almond-shaped eyes, strong dark eyebrows, and a straight, well-defined nose bridge. Respect and project this heritage accurately in the prompt instead of using generic western templates.\n" +
+            "   - ETHNIC/CULTURAL DESCENT: Identify any explicit ethnic descent, cultural heritage, or regional appearance (e.g. Indian descent, East Asian heritage, Mesoamerican look, Nordic features) from the text. Do NOT infer or assume heritage or ethnicity based solely on the character's name; only incorporate heritage details that are explicitly stated in the chapter text, Story Bible, or user notes. For characters like Shiva who have Indian descent, describe specific features in the prompt like warm golden-brown or olive skin tone, deep-set dark almond-shaped eyes, strong dark eyebrows, and a straight, well-defined nose bridge. Respect and project this heritage accurately in the prompt instead of using generic western templates.\n" +
             "   - HEIGHT: Incorporate the character's relative height (e.g., 'towering', 'tall', 'lanky', 'diminutive', 'petite') into their posture and the camera composition (e.g., use 'low-angle shot looking up' for towering height to emphasize their scale, or 'standing tall with broad shoulders' for a tall build).\n" +
             "   - AGE: Refine the visual age based on the writing (e.g., 'elderly monk with wrinkled brow and age spots', 'young youth', 'middle-aged merchant'). Translate this age into face textures, posture, and gaze.\n" +
             "   - ATTIRE: Use the exact clothes, armor, fabrics, colors, cloaks, or uniforms mentioned in the writing. Build the outfit prompt directly around these written garments first, and only supplement with matching materials if details are missing.\n" +
@@ -1496,8 +1576,8 @@ export async function POST(req: NextRequest) {
           ? "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. EVERY character must have a COMPLETELY UNIQUE face — do NOT recycle the same \"striking face\", \"ethereal face\", \"handsome warrior face\" or any other generic archetype across different characters. Base the face SPECIFICALLY on:\n" +
             "   - Specified Race/Culture/Ethnic descent (if any): you MUST align the character's facial structure, bone structure, eye shape, and skin tone with the selected race, culture, or descent (e.g. Indian descent, East Asian features, Mesoamerican features, Nordic features). For characters of Indian descent (like Shiva), specify features like warm golden-brown or olive skin tone, deep-set dark brown or black almond-shaped eyes, strong dark eyebrows, and a straight well-defined nose bridge, and thick dark hair. Do NOT use generic templates; describe authentic structural characteristics of that heritage.\n" +
             "   - Facial Hair: Always explicitly include any described beards, mustaches, whiskers, stubble, or lack thereof. Be specific about style, color, length, and texture (e.g., 'a neatly trimmed salt-and-pepper short beard and mustache', 'thick, wild black beard flowing to his chest', 'smooth clean-shaven jaw'). If a character has a beard (like Shiva), it MUST be explicitly described.\n" +
-            "   - The character's exact name: derive syllabic rhythm, cultural origin, and phonetic feel from the name itself to anchor a distinctive face\n" +
-            "   - Aliases, cultural background, ethnic or clan origin, groups, bloodline, or sect — use these to infer bone structure, skin tone, hair texture, and eye shape specific to this character's heritage\n" +
+            "   - The character's exact name: use the name to reference the character, but do NOT assume or infer any real-world cultural, ethnic, or racial heritage from the name itself (e.g., a Japanese name does not mean the character has East Asian features). Real-world heritage, ethnicity, or fantasy race details must only be incorporated if they are explicitly stated in the chapter text, Story Bible, or user notes.\n" +
+            "   - Aliases, cultural background, ethnic or clan origin, groups, bloodline, or sect — use these to infer bone structure, skin tone, hair texture, and eye shape specific to this character's heritage (but only when explicitly detailed in the lore, not inferred from names alone)\n" +
             "   - Personality, age, status, power level, or role hints in the lore or chapter — a scheming advisor has a different face than a wild beast-tamer or a noble young master\n" +
             "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit; deep-set tired eyes for a seasoned veteran)\n" +
             "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
@@ -1606,7 +1686,8 @@ export async function POST(req: NextRequest) {
             ? "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
             : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
-        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(k, label, index, formKeys.length, entryCategory, name, race)}` : ""
+        const contextTextForFiltering = `${userProvided || ""} ${selectedText || ""} ${chapterText || ""} ${safeLoreEntry?.content || ""}`
+        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(contextTextForFiltering, k, label, index, formKeys.length, entryCategory, name, race)}` : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}${distinctNote}`
       }).join("\n")
 
