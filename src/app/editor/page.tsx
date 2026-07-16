@@ -2651,6 +2651,10 @@ function EditorContent() {
   const [appearanceAesthetic, setAppearanceAesthetic] = useState("any")
   const [appearanceAestheticByEntry, setAppearanceAestheticByEntry] = useState<Record<string, string>>({})
 
+  // Age Group states
+  const [appearanceAgeGroup, setAppearanceAgeGroup] = useState("any")
+  const [appearanceAgeGroupByEntry, setAppearanceAgeGroupByEntry] = useState<Record<string, string>>({})
+
   // Per-entry persistence for last generated result + images (survives entry switches & refresh)
   const [appearanceResultsByEntry, setAppearanceResultsByEntry] = useState<Record<string, AppearancePromptResult>>({})
   const [appearanceImagesByEntry, setAppearanceImagesByEntry] = useState<Record<string, Record<string, string>>>({})
@@ -2672,6 +2676,8 @@ function EditorContent() {
 
       const storedAesthetic = localStorage.getItem("penpad_appearance_aesthetic_by_entry")
       if (storedAesthetic) setAppearanceAestheticByEntry(JSON.parse(storedAesthetic))
+      const storedAgeGroup = localStorage.getItem("penpad_appearance_age_group_by_entry")
+      if (storedAgeGroup) setAppearanceAgeGroupByEntry(JSON.parse(storedAgeGroup))
     } catch {}
   }, [])
 
@@ -2711,6 +2717,9 @@ function EditorContent() {
   useEffect(() => {
     try { localStorage.setItem("penpad_appearance_aesthetic_by_entry", JSON.stringify(appearanceAestheticByEntry)) } catch {}
   }, [appearanceAestheticByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_age_group_by_entry", JSON.stringify(appearanceAgeGroupByEntry)) } catch {}
+  }, [appearanceAgeGroupByEntry])
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -2870,6 +2879,7 @@ function EditorContent() {
       })
     }
     setAppearanceAestheticByEntry(prev => ({ ...prev, [entryId]: appearanceAesthetic }))
+    setAppearanceAgeGroupByEntry(prev => ({ ...prev, [entryId]: appearanceAgeGroup }))
   }
 
   // Load a previously stored result + images + facial for an entry into the live UI state
@@ -2900,6 +2910,8 @@ function EditorContent() {
 
     const savedAesthetic = appearanceAestheticByEntry[entryId] || "any"
     setAppearanceAesthetic(savedAesthetic)
+    const savedAgeGroup = appearanceAgeGroupByEntry[entryId] || "any"
+    setAppearanceAgeGroup(savedAgeGroup)
   }
 
   const switchAppearanceEntry = (entryId: string | null) => {
@@ -3017,11 +3029,15 @@ function EditorContent() {
       const aestheticForRequest = isSwitchingEntry
         ? (appearanceAestheticByEntry[sourceEntry.id] || "any")
         : appearanceAesthetic
+      const ageGroupForRequest = isSwitchingEntry
+        ? (appearanceAgeGroupByEntry[sourceEntry.id] || "any")
+        : appearanceAgeGroup
       if (isSwitchingEntry) {
         setAppearanceFacialDescription(facialForRequest)
         setAppearanceRace(raceForRequest)
         setAppearanceCustomRace(customRaceForRequest)
         setAppearanceAesthetic(aestheticForRequest)
+        setAppearanceAgeGroup(ageGroupForRequest)
       }
       const raceValue = raceForRequest === "custom" ? customRaceForRequest.trim() : raceForRequest
       const activeFormKeys = enforceCategoryForms
@@ -3060,6 +3076,7 @@ function EditorContent() {
           facialFeatures: facialForRequest.trim() || undefined,
           race: raceValue !== "any" ? raceValue : undefined,
           aesthetic: aestheticForRequest !== "any" ? aestheticForRequest : undefined,
+          ageGroup: ageGroupForRequest !== "any" ? ageGroupForRequest : undefined,
           isAdHoc: isAdHocRequest,
           loreEntry: {
             name: sourceEntry.name,
@@ -12039,6 +12056,28 @@ ${navPoints}  </navMap>
                         <option value="haunting">Haunting (ghostly, memorable, striking)</option>
                         <option value="heroic">Heroic (valiant, inspiring)</option>
                         <option value="villainous">Villainous (sinister, menacing)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Age Group Selector */}
+                  {selectedAppearanceEntry?.category !== "place" && selectedAppearanceEntry?.category !== "world" && selectedAppearanceEntry?.category !== "item" && (
+                    <div className="ai-form-field">
+                      <label>Age Group</label>
+                      <select
+                        className="ai-select"
+                        value={appearanceAgeGroup}
+                        onChange={(e) => setAppearanceAgeGroup(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default / Inferred from context</option>
+                        <option value="child">Child (soft, round, smooth skin)</option>
+                        <option value="teenager">Teenager (youthful, clean jaw)</option>
+                        <option value="young-adult">Young Adult (defined, vibrant)</option>
+                        <option value="adult">Adult (mature, firm contours)</option>
+                        <option value="middle-aged">Middle-aged (seasoned, faint lines)</option>
+                        <option value="elderly">Elderly (deep wrinkles, weathered skin)</option>
+                        <option value="ancient">Ancient Being (timeless, paper-thin or stone skin)</option>
                       </select>
                     </div>
                   )}

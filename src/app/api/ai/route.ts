@@ -895,13 +895,26 @@ function cleanFaceShape(faceShape: string, hasEyes: boolean): string {
     .trim()
 }
 
-function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string): string {
+function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string, ageGroup?: string): string {
   const normalizedKey = formKey.toLowerCase()
   const safeLabel = label || formKey
   const nameHash = getStringHash(characterName || safeLabel)
 
   const aesthetics = ["ethereal", "noble", "regal", "cute", "dangerous", "soft", "intellectual", "battle-scarred", "charming", "innocent", "cold", "mischievous", "serene", "mysterious", "haunting", "heroic", "villainous"]
   const chosenAesthetic = (aesthetic && aesthetic !== "any") ? aesthetic.toLowerCase() : aesthetics[nameHash % aesthetics.length]
+
+  const ageGroups = ["child", "teenager", "young-adult", "adult", "middle-aged", "elderly", "ancient"]
+  const chosenAgeGroup = (ageGroup && ageGroup !== "any") ? ageGroup.toLowerCase() : ageGroups[nameHash % ageGroups.length]
+
+  const ageDescriptions: Record<string, string> = {
+    child: "soft, round face with large, wide-set eyes, thick eyelashes, small button nose, full cheeks, and smooth, flawless porcelain-soft skin, with no wrinkles, fine lines, or facial hair",
+    teenager: "a slightly soft oval or round face with expressive eyes, soft eyebrows, smooth clear skin, and a youthful, clean jawline with minimal cheekbone definition",
+    "young-adult": "a defined face with clean cheekbones, sharp jawline, smooth, firm skin, and a vibrant, energetic expression",
+    adult: "a mature face with fully defined cheekbones and jawline, smooth but firm skin texture, faint laugh lines, and a composed expression",
+    "middle-aged": "a mature face with defined cheekbones, slight gauntness or fullness in the cheeks, faint wrinkles at the corners of the eyes (crow's feet), subtle laugh lines, and a wise, seasoned expression, where the skin has a slightly weathered, realistic texture",
+    elderly: "a deeply weathered face with pronounced wrinkles, crow's feet, dry thin skin with visible age spots and texture, sagging cheeks, a soft or gaunt jawline, thinning eyebrows, and a calm, ancient gaze",
+    ancient: "a mystical, timeless face with paper-thin translucent skin showing faint silver or golden veins, deep-set hollow eyes that hold cosmic depth, fine silver-white hair, thin arched brows, and a serene, otherworldly, or battle-worn expression. Skin has a crackled stone, porcelain, or celestial texture"
+  }
 
   const aestheticDescriptions: Record<string, string> = {
     ethereal: "an otherworldly, delicate face with soft celestial lighting, long fine eyelashes, narrow high-arched brows, and a serene, dreamlike expression. Proportions are elegant and symmetrical with a narrow chin",
@@ -1346,6 +1359,10 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
       if (aestheticDesc) {
         faceDirective += `. The face must embody a dominant ${chosenAesthetic} aesthetic: ${aestheticDesc}`
       }
+      const ageDesc = ageDescriptions[chosenAgeGroup]
+      if (ageDesc) {
+        faceDirective += `. Visually portray the character as a ${chosenAgeGroup} with ${ageDesc}`
+      }
     }
 
     let poseDirective = ""
@@ -1400,7 +1417,7 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
   return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfileCleaned}${raceString} plus ${poseProfile}.`
 }
 
-function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string): string {
+function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string, ageGroup?: string): string {
   const trimmedPrompt = prompt.trim()
   if (!trimmedPrompt) return trimmedPrompt
 
@@ -1418,7 +1435,7 @@ function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string
     return trimmedPrompt
   }
 
-  return `${trimmedPrompt} ${getDistinctAppearanceDirective(trimmedPrompt, formKey, label, index, totalForms, entryCategory, characterName, race, aesthetic)}`
+  return `${trimmedPrompt} ${getDistinctAppearanceDirective(trimmedPrompt, formKey, label, index, totalForms, entryCategory, characterName, race, aesthetic, ageGroup)}`
 }
 
 function formatMemoryContext(memory: unknown) {
@@ -1572,7 +1589,7 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, isAdHoc } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc } = body
       const isAdHocMode = isAdHoc === true
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
@@ -1861,7 +1878,7 @@ export async function POST(req: NextRequest) {
             : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
         const contextTextForFiltering = `${userProvided || ""} ${selectedText || ""} ${chapterText || ""} ${safeLoreEntry?.content || ""}`
-        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(contextTextForFiltering, k, label, index, formKeys.length, entryCategory, name, race, aesthetic)}` : ""
+        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(contextTextForFiltering, k, label, index, formKeys.length, entryCategory, name, race, aesthetic, ageGroup)}` : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}${distinctNote}`
       }).join("\n")
 
@@ -1877,6 +1894,7 @@ export async function POST(req: NextRequest) {
         (isCharacterLike ? `STRICT RULE FOR NON-HUMAN TRAITS: In humanoid or human forms, ONLY include tails, wings, horns, fur, scales, animal ears, claws or other non-human body features if they are explicitly described in the chapter or lore for that form. If nothing is stated, the humanoid form must be fully human with no such additions. Do not infer or default to them from the character's category or name.\n\n` : "") +
         (isCharacterLike && race && race !== "any" ? `RACE/CULTURAL APPEARANCE MANDATE: The character has the physical features and appearance of a ${race} person. You MUST explicitly describe their facial features, bone structure, skin tone, eye shape, and hair characteristics to reflect this specific heritage. Do NOT use generic or vague descriptors; ensure their facial structure is clearly, distinctly, and authentically ${race}.\n\n` : "") +
         (isCharacterLike && aesthetic && aesthetic !== "any" ? `AESTHETIC MANDATE: The character has a dominant visual aesthetic of "${aesthetic}". You MUST explicitly structure their facial bone structure, facial proportions, expression, eyes, nose, lips, jawline, and eyebrows to support and project this specific "${aesthetic}" mood (e.g. ethereal, dangerous, soft, etc.). Never make them generically attractive or default to generic templates.\n\n` : "") +
+        (isCharacterLike && ageGroup && ageGroup !== "any" ? `AGE LOGIC MANDATE: Visually portray the character strictly as a member of the "${ageGroup}" age group. You MUST explicitly structure their facial proportions, eye style, expression, wrinkles, and skin texture to match this specific age (e.g. child, middle-aged, elderly, ancient). Older age groups MUST have realistic weathering, crow's feet, age lines, and textured skin; never default to smooth, young skin templates for older characters.\n\n` : "") +
         (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form only retains tail/fur/scales/build traits if the chapter or Story Bible explicitly says so.\n\n` : "") +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
           ? (isCharacterLike
@@ -2814,6 +2832,7 @@ export async function POST(req: NextRequest) {
       const characterName = String(body?.name || responseLoreEntry?.name || "").trim()
       const race = typeof body?.race === "string" ? body.race.trim() : ""
       const aesthetic = typeof body?.aesthetic === "string" ? body.aesthetic.trim() : ""
+      const ageGroup = typeof body?.ageGroup === "string" ? body.ageGroup.trim() : ""
       const responseFormLabels = body?.formLabels && typeof body.formLabels === "object"
         ? body.formLabels as Record<string, string>
         : {}
@@ -2832,7 +2851,7 @@ export async function POST(req: NextRequest) {
             const label = responseFormLabels[key] || fallbackLabel
             const expandedPrompt = expandShortAppearancePrompt(text, key)
             prompts[key] = responseIsCharacterLike
-              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName, race, aesthetic)
+              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName, race, aesthetic, ageGroup)
               : expandedPrompt
           }
         }
