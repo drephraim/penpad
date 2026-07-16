@@ -884,16 +884,7 @@ function getStringHash(str: string): number {
   return Math.abs(hash)
 }
 
-function cleanFaceShape(faceShape: string, hasEyes: boolean): string {
-  if (!hasEyes) return faceShape
-  return faceShape
-    .replace(/,\s*wide-set eyes\b/i, "")
-    .replace(/\bwide-set eyes,\s*/i, "")
-    .replace(/\band\s+wide,\s+expressive\s+eyes\b/i, "")
-    .replace(/,\s*and\s+wide,\s+expressive\s+eyes\b/i, "")
-    .replace(/\s+/g, " ")
-    .trim()
-}
+
 
 function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string, ageGroup?: string): string {
   const normalizedKey = formKey.toLowerCase()
@@ -1015,17 +1006,17 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
     ];
 
     // Determine values dynamically based on nameHash
-    let faceShape = FACE_SHAPES[nameHash % FACE_SHAPES.length];
-    let humanInspiration1 = HUMAN_INSPIRATIONS[(nameHash * 3) % HUMAN_INSPIRATIONS.length];
-    let humanInspiration2 = HUMAN_INSPIRATIONS[(nameHash * 7) % HUMAN_INSPIRATIONS.length];
-    let blendedInspiration = humanInspiration1 === humanInspiration2 ? humanInspiration1 : `${humanInspiration1} and ${humanInspiration2}`;
+    const faceShape = FACE_SHAPES[nameHash % FACE_SHAPES.length];
+    const humanInspiration1 = HUMAN_INSPIRATIONS[(nameHash * 3) % HUMAN_INSPIRATIONS.length];
+    const humanInspiration2 = HUMAN_INSPIRATIONS[(nameHash * 7) % HUMAN_INSPIRATIONS.length];
+    const blendedInspiration = humanInspiration1 === humanInspiration2 ? humanInspiration1 : `${humanInspiration1} and ${humanInspiration2}`;
 
     let eyeShape = EYE_SHAPES[(nameHash * 11) % EYE_SHAPES.length];
     let eyePupil = EYE_PUPILS[(nameHash * 13) % EYE_PUPILS.length];
     let eyeColor = EYE_COLORS[(nameHash * 17) % EYE_COLORS.length];
 
-    let nose = NOSES[(nameHash * 19) % NOSES.length];
-    let mouthLips = MOUTH_LIPS[(nameHash * 23) % MOUTH_LIPS.length];
+    const nose = NOSES[(nameHash * 19) % NOSES.length];
+    const mouthLips = MOUTH_LIPS[(nameHash * 23) % MOUTH_LIPS.length];
     let mouthTeeth = MOUTH_TEETH[(nameHash * 29) % MOUTH_TEETH.length];
     let ear = EARS[(nameHash * 31) % EARS.length];
     let morphology = FANTASY_MORPHOLOGIES[(nameHash * 37) % FANTASY_MORPHOLOGIES.length];
@@ -1033,7 +1024,7 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
     let hairStyle = HAIR_STYLES[(nameHash * 43) % HAIR_STYLES.length];
     let hairMaterial = HAIR_MATERIALS[(nameHash * 47) % HAIR_MATERIALS.length];
     let hairColor = HAIR_COLORS[(nameHash * 53) % HAIR_COLORS.length];
-    let imperfection = IMPERFECTIONS[(nameHash * 59) % IMPERFECTIONS.length];
+    const imperfection = IMPERFECTIONS[(nameHash * 59) % IMPERFECTIONS.length];
 
     // Apply race constraints if specified to keep thematic logic
     if (race && race !== "any") {
@@ -1091,14 +1082,14 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
     }
     if (!hasFace) faceParts.push(anatomyDesc)
 
-    let eyeDesc = `${eyeShape} eyes displaying a ${eyeColor} color with ${eyePupil}`
+    const eyeDesc = `${eyeShape} eyes displaying a ${eyeColor} color with ${eyePupil}`
     if (!hasEyes) faceParts.push(eyeDesc)
 
     let mouthDesc = `a mouth showing ${mouthLips}`
     if (mouthTeeth && mouthTeeth !== "none") mouthDesc += ` with ${mouthTeeth}`
     mouthDesc += `, and ${ear}`
 
-    let noseDesc = `a ${nose} nose`
+    const noseDesc = `a ${nose} nose`
 
     faceParts.push(noseDesc)
     faceParts.push(mouthDesc)
