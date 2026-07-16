@@ -1377,7 +1377,7 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
     const faceSection = faceDirective ? `${faceDirective}. ` : ""
     const poseSection = poseDirective ? `${poseDirective} ` : ""
 
-    return `Distinct face and pose for ${safeLabel}: ${faceSection}${poseSection}This face must feel entirely unique to this character — do NOT reuse generic "striking face" or "ethereal face" templates; derive the face from the character's role and lore instead.`
+    return `Distinct face and pose for ${safeLabel}: ${faceSection}${poseSection}This face must feel entirely unique to this character, derived from their role and lore instead of generic templates. Focus on defining a distinct facial anatomy (underlying bone structure, cheekbones, jawline, nose profile) so the face remains recognizable even if hair, eyes, clothing, or accessories are changed.`
   }
 
   const faceProfiles = [
@@ -1750,6 +1750,7 @@ export async function POST(req: NextRequest) {
       const facialRules = isAdHocMode
         ? "7. VISUAL CLARITY & CHARACTER DESIGN MANDATE (CRITICAL - always apply):\n" +
           "   - For character/creature portraits, apply the EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE: you are an expert character concept artist and character designer for a high-fantasy cinematic novel. Ensure every character has a unique and memorable face. Never reuse facial structures, proportions, or combinations of features. Treat every character as a completely new individual.\n" +
+          "   - FACIAL RECOGNITION GOLDEN RULE: A character's face should be recognizable even if their hair is removed, their eye color changes, their clothes change, or their accessories are removed. The unique identity must arise from their facial anatomy (underlying bone structure, jawline, cheekbones, nose profile, forehead, and proportions) rather than superficial details.\n" +
           "   - Age logic: Adjust all facial features based on age:\n" +
           "     * Children (soft round face, large wide-set eyes, thick eyelashes, small button nose, full cheeks, smooth, flawless porcelain-soft skin. No wrinkles, fine lines, or facial hair)\n" +
           "     * Teenagers (soft round/oval face, expressive eyes, smooth clear skin, youthful clean jaw, minimal cheekbone definition)\n" +
@@ -1770,6 +1771,7 @@ export async function POST(req: NextRequest) {
           ? "7. EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE (CRITICAL - ALWAYS APPLY):\n" +
             "   You are an expert character concept artist and character designer for a high-fantasy cinematic novel. Your primary task is to generate complete visual descriptions for characters while ensuring every character has a unique and memorable face.\n" +
             "   - INDIVIDUALITY: Treat every character as a completely new individual. Never reuse facial structures, proportions, or combinations of features unless explicitly requested.\n" +
+            "   - FACIAL RECOGNITION GOLDEN RULE: A character's face should be recognizable even if their hair is removed, their eye color changes, their clothes change, or their accessories are removed. The unique identity must arise from their facial anatomy (underlying bone structure, jawline, cheekbones, nose profile, forehead, and proportions) rather than superficial details.\n" +
             "   - INTEGRATE USER/SOURCE DETAILS: If the user or chapter text provides appearance details, preserve every detail exactly, expand it naturally, add realistic complementary facial features, and improve visual quality without contradicting the source.\n" +
             "   - CREATING FROM SCRATCH: If the user provides little or no appearance information, create an entirely original appearance from scratch.\n" +
             "   - FACE DESIGN PILLARS: Every generated face must have a unique face shape, unique jawline, unique cheekbones, unique eye shape, unique eyebrow shape, unique nose, unique lips, unique ears, unique forehead, unique facial proportions, unique expression, unique beauty imperfections, and unique age characteristics. Never default to the same attractive face.\n" +
