@@ -895,10 +895,33 @@ function cleanFaceShape(faceShape: string, hasEyes: boolean): string {
     .trim()
 }
 
-function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
+function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string): string {
   const normalizedKey = formKey.toLowerCase()
   const safeLabel = label || formKey
   const nameHash = getStringHash(characterName || safeLabel)
+
+  const aesthetics = ["ethereal", "noble", "regal", "cute", "dangerous", "soft", "intellectual", "battle-scarred", "charming", "innocent", "cold", "mischievous", "serene", "mysterious", "haunting", "heroic", "villainous"]
+  const chosenAesthetic = (aesthetic && aesthetic !== "any") ? aesthetic.toLowerCase() : aesthetics[nameHash % aesthetics.length]
+
+  const aestheticDescriptions: Record<string, string> = {
+    ethereal: "an otherworldly, delicate face with soft celestial lighting, long fine eyelashes, narrow high-arched brows, and a serene, dreamlike expression. Proportions are elegant and symmetrical with a narrow chin",
+    noble: "a highly refined, symmetric face with a proud straight nose bridge, calm and dignified dark eyes under arched brows, a firm balanced jawline, and a composed, poised expression",
+    regal: "a commanding, majestic face with a sharp, defined jaw, high cheekbones, heavy brow, a high forehead, and an authoritative, cold, or proud expression",
+    cute: "a youthful, round face with soft full cheeks, wide-set luminous eyes with long eyelashes, a tiny nose, soft full lips, and a warm, cheerful, or sweet expression",
+    dangerous: "an intimidating, sharp face with close-set slitted eyes under low-set angled brows, a gaunt jaw, thin lips, and a menacing, cold, or predatory expression",
+    soft: "a gentle, warm face with rounded cheeks, wide open hazel/brown eyes, soft rounded eyebrows, and an approachable, kind, or serene smile",
+    intellectual: "a scholarly, focused face with narrow calculating eyes, thin high brows, a long straight nose bridge, a high forehead, and a calm, analytical expression",
+    "battle-scarred": "a rugged, battle-worn face with a weathered leather-like skin texture, a crooked broken nose bridge, a heavy square jaw, uneven eyebrows, and a prominent scar or markings, showing a tough, resilient look",
+    charming: "an alluring, attractive face with a diamond face shape, a warm asymmetrical smile, dimples, long eyelashes, and a playful, confident, or charismatic gaze",
+    innocent: "a pure, naive face with wide-set large eyes showing open curiosity, soft natural eyebrows, a soft oval chin, and an innocent, gentle expression",
+    cold: "an icy, detached face with pale translucent skin, narrow half-lidded eyes with a cold unblinking stare, thin pale lips, and an emotionless, frozen expression",
+    mischievous: "a sly, playful face with slanted fox-like eyes, an asymmetrical smirk, uneven eyebrows, and a cunning, playful expression",
+    serene: "a peaceful, tranquil face with soft symmetrical features, half-lidded calm eyes, a gentle neutral mouth, and a serene, Zen-like expression",
+    mysterious: "an enigmatic, shadowed face with hooded dark eyes casting deep shadows under a heavy brow, hidden cheekbones, a dark hood or hair style, and an unreadable, quiet expression",
+    haunting: "a striking, ghostly face with pale ashen skin, deep-set hollow eyes framed by dark shadows, sharp gaunt cheekbones, and a memorable, hauntingly beautiful or gaunt expression",
+    heroic: "a valiant, inspiring face with a strong chiseled jaw, a broad forehead, bright determined eyes under firm brows, and a confident, heroic expression",
+    villainous: "a sinister, menacing face with sharp angular cheekbones, thin downturned lips, calculating cold eyes under low furrowed brows, and an arrogant or cruel expression"
+  }
 
   if (entryCategory === "beast" && normalizedKey.includes("beast") && !normalizedKey.includes("demi")) {
     return `Distinct face and pose for ${safeLabel}: Ensure the pose is a dynamic or majestic beast stance (such as coiling, lunging, soaring, swimming, or crouching) that directly captures the creature's class (e.g., serpentine coiling for a Leviathan, wing-spreading for a Phoenix) and matches the action and environmental intensity of the active chapter. The face must be 100% bestial and non-human (e.g. razor-fanged jaws, scales, horns, or a draconic snout), reflecting the scene's danger level (feral and aggressive if in battle, majestic and wise if calm).`
@@ -1319,6 +1342,10 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
       if (raceClause) {
         faceDirective += `, ${raceClause}`
       }
+      const aestheticDesc = aestheticDescriptions[chosenAesthetic]
+      if (aestheticDesc) {
+        faceDirective += `. The face must embody a dominant ${chosenAesthetic} aesthetic: ${aestheticDesc}`
+      }
     }
 
     let poseDirective = ""
@@ -1373,7 +1400,7 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
   return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfileCleaned}${raceString} plus ${poseProfile}.`
 }
 
-function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string): string {
+function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string): string {
   const trimmedPrompt = prompt.trim()
   if (!trimmedPrompt) return trimmedPrompt
 
@@ -1391,7 +1418,7 @@ function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string
     return trimmedPrompt
   }
 
-  return `${trimmedPrompt} ${getDistinctAppearanceDirective(trimmedPrompt, formKey, label, index, totalForms, entryCategory, characterName, race)}`
+  return `${trimmedPrompt} ${getDistinctAppearanceDirective(trimmedPrompt, formKey, label, index, totalForms, entryCategory, characterName, race, aesthetic)}`
 }
 
 function formatMemoryContext(memory: unknown) {
@@ -1545,7 +1572,7 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, isAdHoc } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, isAdHoc } = body
       const isAdHocMode = isAdHoc === true
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
@@ -1834,7 +1861,7 @@ export async function POST(req: NextRequest) {
             : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
         const contextTextForFiltering = `${userProvided || ""} ${selectedText || ""} ${chapterText || ""} ${safeLoreEntry?.content || ""}`
-        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(contextTextForFiltering, k, label, index, formKeys.length, entryCategory, name, race)}` : ""
+        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(contextTextForFiltering, k, label, index, formKeys.length, entryCategory, name, race, aesthetic)}` : ""
         return `- ${label} (${k}): ${baseInfer}${beastNote}${distinctNote}`
       }).join("\n")
 
@@ -1849,6 +1876,7 @@ export async function POST(req: NextRequest) {
         `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n` +
         (isCharacterLike ? `STRICT RULE FOR NON-HUMAN TRAITS: In humanoid or human forms, ONLY include tails, wings, horns, fur, scales, animal ears, claws or other non-human body features if they are explicitly described in the chapter or lore for that form. If nothing is stated, the humanoid form must be fully human with no such additions. Do not infer or default to them from the character's category or name.\n\n` : "") +
         (isCharacterLike && race && race !== "any" ? `RACE/CULTURAL APPEARANCE MANDATE: The character has the physical features and appearance of a ${race} person. You MUST explicitly describe their facial features, bone structure, skin tone, eye shape, and hair characteristics to reflect this specific heritage. Do NOT use generic or vague descriptors; ensure their facial structure is clearly, distinctly, and authentically ${race}.\n\n` : "") +
+        (isCharacterLike && aesthetic && aesthetic !== "any" ? `AESTHETIC MANDATE: The character has a dominant visual aesthetic of "${aesthetic}". You MUST explicitly structure their facial bone structure, facial proportions, expression, eyes, nose, lips, jawline, and eyebrows to support and project this specific "${aesthetic}" mood (e.g. ethereal, dangerous, soft, etc.). Never make them generically attractive or default to generic templates.\n\n` : "") +
         (entryCategory === "beast" ? `BEAST ANATOMY RULES (MANDATORY): Beast form = 100% beast. Demi-human = 50-80% beast 20-50% human with upright posture, humanoid torso, human-like arms, beast/partial beast head, beast legs, retained tail + fur/scales, larger than human. Humanoid form only retains tail/fur/scales/build traits if the chapter or Story Bible explicitly says so.\n\n` : "") +
         (facialFeatures && typeof facialFeatures === "string" && facialFeatures.trim()
           ? (isCharacterLike
@@ -2785,6 +2813,7 @@ export async function POST(req: NextRequest) {
       const responseEntryCategory = typeof responseLoreEntry?.category === "string" ? responseLoreEntry.category : ""
       const characterName = String(body?.name || responseLoreEntry?.name || "").trim()
       const race = typeof body?.race === "string" ? body.race.trim() : ""
+      const aesthetic = typeof body?.aesthetic === "string" ? body.aesthetic.trim() : ""
       const responseFormLabels = body?.formLabels && typeof body.formLabels === "object"
         ? body.formLabels as Record<string, string>
         : {}
@@ -2803,7 +2832,7 @@ export async function POST(req: NextRequest) {
             const label = responseFormLabels[key] || fallbackLabel
             const expandedPrompt = expandShortAppearancePrompt(text, key)
             prompts[key] = responseIsCharacterLike
-              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName, race)
+              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName, race, aesthetic)
               : expandedPrompt
           }
         }

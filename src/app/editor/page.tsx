@@ -2647,6 +2647,10 @@ function EditorContent() {
   const [appearanceRaceByEntry, setAppearanceRaceByEntry] = useState<Record<string, string>>({})
   const [appearanceCustomRaceByEntry, setAppearanceCustomRaceByEntry] = useState<Record<string, string>>({})
 
+  // Beauty / Dominant Aesthetic states
+  const [appearanceAesthetic, setAppearanceAesthetic] = useState("any")
+  const [appearanceAestheticByEntry, setAppearanceAestheticByEntry] = useState<Record<string, string>>({})
+
   // Per-entry persistence for last generated result + images (survives entry switches & refresh)
   const [appearanceResultsByEntry, setAppearanceResultsByEntry] = useState<Record<string, AppearancePromptResult>>({})
   const [appearanceImagesByEntry, setAppearanceImagesByEntry] = useState<Record<string, Record<string, string>>>({})
@@ -2665,6 +2669,9 @@ function EditorContent() {
       if (storedRace) setAppearanceRaceByEntry(JSON.parse(storedRace))
       const storedCustomRace = localStorage.getItem("penpad_appearance_custom_race_by_entry")
       if (storedCustomRace) setAppearanceCustomRaceByEntry(JSON.parse(storedCustomRace))
+
+      const storedAesthetic = localStorage.getItem("penpad_appearance_aesthetic_by_entry")
+      if (storedAesthetic) setAppearanceAestheticByEntry(JSON.parse(storedAesthetic))
     } catch {}
   }, [])
 
@@ -2701,6 +2708,9 @@ function EditorContent() {
   useEffect(() => {
     try { localStorage.setItem("penpad_appearance_custom_race_by_entry", JSON.stringify(appearanceCustomRaceByEntry)) } catch {}
   }, [appearanceCustomRaceByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_appearance_aesthetic_by_entry", JSON.stringify(appearanceAestheticByEntry)) } catch {}
+  }, [appearanceAestheticByEntry])
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -2859,6 +2869,7 @@ function EditorContent() {
         return next
       })
     }
+    setAppearanceAestheticByEntry(prev => ({ ...prev, [entryId]: appearanceAesthetic }))
   }
 
   // Load a previously stored result + images + facial for an entry into the live UI state
@@ -2886,6 +2897,9 @@ function EditorContent() {
     setAppearanceRace(savedRace)
     const savedCustomRace = appearanceCustomRaceByEntry[entryId] || ""
     setAppearanceCustomRace(savedCustomRace)
+
+    const savedAesthetic = appearanceAestheticByEntry[entryId] || "any"
+    setAppearanceAesthetic(savedAesthetic)
   }
 
   const switchAppearanceEntry = (entryId: string | null) => {
@@ -3000,10 +3014,14 @@ function EditorContent() {
       const customRaceForRequest = isSwitchingEntry
         ? (appearanceCustomRaceByEntry[sourceEntry.id] || "")
         : appearanceCustomRace
+      const aestheticForRequest = isSwitchingEntry
+        ? (appearanceAestheticByEntry[sourceEntry.id] || "any")
+        : appearanceAesthetic
       if (isSwitchingEntry) {
         setAppearanceFacialDescription(facialForRequest)
         setAppearanceRace(raceForRequest)
         setAppearanceCustomRace(customRaceForRequest)
+        setAppearanceAesthetic(aestheticForRequest)
       }
       const raceValue = raceForRequest === "custom" ? customRaceForRequest.trim() : raceForRequest
       const activeFormKeys = enforceCategoryForms
@@ -3041,6 +3059,7 @@ function EditorContent() {
           perFormNegatives: appearancePerFormNegative,
           facialFeatures: facialForRequest.trim() || undefined,
           race: raceValue !== "any" ? raceValue : undefined,
+          aesthetic: aestheticForRequest !== "any" ? aestheticForRequest : undefined,
           isAdHoc: isAdHocRequest,
           loreEntry: {
             name: sourceEntry.name,
@@ -11991,6 +12010,38 @@ ${navPoints}  </navMap>
                       />
                     )}
                   </div>
+
+                  {/* Dominant Aesthetic Selector */}
+                  {selectedAppearanceEntry?.category !== "place" && selectedAppearanceEntry?.category !== "world" && selectedAppearanceEntry?.category !== "item" && (
+                    <div className="ai-form-field">
+                      <label>Beauty / Dominant Aesthetic</label>
+                      <select
+                        className="ai-select"
+                        value={appearanceAesthetic}
+                        onChange={(e) => setAppearanceAesthetic(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default / Inferred from name & context</option>
+                        <option value="ethereal">Ethereal (otherworldly, delicate)</option>
+                        <option value="noble">Noble (dignified, refined)</option>
+                        <option value="regal">Regal (majestic, commanding)</option>
+                        <option value="cute">Cute (youthful, charmingly sweet)</option>
+                        <option value="dangerous">Dangerous (threatening, intimidating)</option>
+                        <option value="soft">Soft (gentle, warm, approachable)</option>
+                        <option value="intellectual">Intellectual (scholarly, focused, sharp)</option>
+                        <option value="battle-scarred">Battle-scarred (rugged, battle-worn)</option>
+                        <option value="charming">Charming (alluring, attractive)</option>
+                        <option value="innocent">Innocent (naive, pure, open)</option>
+                        <option value="cold">Cold (emotionless, detached, icy)</option>
+                        <option value="mischievous">Mischievous (sly, playful, cunning)</option>
+                        <option value="serene">Serene (peaceful, tranquil)</option>
+                        <option value="mysterious">Mysterious (enigmatic, shadowed)</option>
+                        <option value="haunting">Haunting (ghostly, memorable, striking)</option>
+                        <option value="heroic">Heroic (valiant, inspiring)</option>
+                        <option value="villainous">Villainous (sinister, menacing)</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* Dedicated Facial Features input - key for generating good faces even when chapter is silent */}
                   <div className="ai-form-field">
