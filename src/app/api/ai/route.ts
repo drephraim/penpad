@@ -1750,6 +1750,15 @@ export async function POST(req: NextRequest) {
       const facialRules = isAdHocMode
         ? "7. VISUAL CLARITY & CHARACTER DESIGN MANDATE (CRITICAL - always apply):\n" +
           "   - For character/creature portraits, apply the EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE: you are an expert character concept artist and character designer for a high-fantasy cinematic novel. Ensure every character has a unique and memorable face. Never reuse facial structures, proportions, or combinations of features. Treat every character as a completely new individual.\n" +
+          "   - Age logic: Adjust all facial features based on age:\n" +
+          "     * Children (soft round face, large wide-set eyes, thick eyelashes, small button nose, full cheeks, smooth, flawless porcelain-soft skin. No wrinkles, fine lines, or facial hair)\n" +
+          "     * Teenagers (soft round/oval face, expressive eyes, smooth clear skin, youthful clean jaw, minimal cheekbone definition)\n" +
+          "     * Young Adults (defined features, clean cheekbones, sharp jawline, smooth, firm skin, vibrant expression)\n" +
+          "     * Adults (mature face, defined cheekbones/jawline, smooth but firm skin texture, faint laugh lines, composed expression)\n" +
+          "     * Middle-aged (defined cheekbones, seasoned expression, faint crow's feet and laugh lines, weathered skin texture)\n" +
+          "     * Elderly (weathered face, deep wrinkles, crow's feet, dry thin skin with visible age spots and texture, sagging cheeks, soft or gaunt jawline, thinning eyebrows, calm ancient gaze)\n" +
+          "     * Ancient Beings (timeless face, paper-thin translucent skin with faint silver/golden veins, deep-set hollow eyes holding cosmic depth, fine silver-white hair, thin arched brows, crackled stone, porcelain, or celestial skin texture)\n" +
+          "     * Older characters must have age-appropriate features. Never generate identical skin for every age.\n" +
           "   - Shape variation: round, heart-shaped, diamond, long, rectangular, square, triangular, oval.\n" +
           "   - Proportion variation: eye spacing, depth, eyelids, eyelashes, brow thickness/angle, nose bridge/tip, nostril size, mouth width, lip fullness, chin/jaw width, cheek fullness, forehead height.\n" +
           "   - Imperfections: beauty marks, freckles, scars, dimples, asymmetrical smiles, laugh lines, uneven eyebrows, wrinkles, skin texture.\n" +
@@ -1766,6 +1775,15 @@ export async function POST(req: NextRequest) {
             "   - FACE DESIGN PILLARS: Every generated face must have a unique face shape, unique jawline, unique cheekbones, unique eye shape, unique eyebrow shape, unique nose, unique lips, unique ears, unique forehead, unique facial proportions, unique expression, unique beauty imperfections, and unique age characteristics. Never default to the same attractive face.\n" +
             "   - VARIATION IN SHAPES: Vary face shapes: round, heart-shaped, diamond, long, rectangular, square, triangular, oval.\n" +
             "   - VARIATION IN PROPORTIONS: Vary proportions: eye spacing, eye depth, eyelids, eyelashes, brow thickness, brow angle, nose bridge, nose tip, nostril size, mouth width, lip fullness, chin length, jaw width, cheek fullness, forehead height.\n" +
+            "   - AGE LOGIC: Adjust all facial features and skin textures based on age group:\n" +
+            "     * Children: Soft, round face, large wide-set eyes, thick eyelashes, small button nose, full cheeks, smooth, flawless porcelain-soft skin. No wrinkles, fine lines, or facial hair.\n" +
+            "     * Teenagers: Soft round/oval face, expressive eyes, soft natural eyebrows, smooth clear skin, youthful clean jawline with minimal cheekbone definition.\n" +
+            "     * Young Adults: Defined features, clean cheekbones, sharp jawline, smooth, firm skin, vibrant expression.\n" +
+            "     * Adults: Mature face, defined cheekbones and jawline, smooth but firm skin texture, faint laugh lines, composed expression.\n" +
+            "     * Middle-aged: Defined cheekbones, slight gauntness/fullness in cheeks, faint wrinkles at corners of eyes (crow's feet), subtle laugh lines, wise/seasoned expression, slightly weathered/realistic skin texture.\n" +
+            "     * Elderly: Weathered face, deep wrinkles, pronounced crow's feet and laugh lines, dry thin skin with visible age spots/texture, sagging cheeks, soft or gaunt jawline, thinning eyebrows, calm ancient gaze.\n" +
+            "     * Ancient Beings: Timeless face, paper-thin translucent skin with faint silver/golden veins, deep-set hollow eyes holding cosmic depth, fine silver-white hair, thin arched brows, crackled stone, porcelain, or celestial texture skin.\n" +
+            "     * Older characters MUST have age-appropriate features (wrinkles, weathering, spots). Never generate identical skin for every age.\n" +
             "   - MEMORABLE IMPERFECTIONS: Include subtle imperfections when appropriate: beauty marks, freckles, scars, dimples, asymmetrical smiles, laugh lines, uneven eyebrows, skin texture, faint wrinkles. These imperfections make every face memorable.\n" +
             "   - AVOID CONVENTIONAL ATTRACTIVENESS: Do NOT always create conventionally attractive characters. Tailor their look to visually communicate their personality: regal, cute, mysterious, rugged, cold, gentle, intimidating, scholarly, ancient, battle-hardened, youthful, elegant, wild, feral, alien, ethereal. Avoid repeating facial archetypes.\n" +
             "   - HAIR VARIETY: If hair is unspecified in the source/user input, randomly generate: style, length, volume, texture, parting, braids, curls, waves, undercuts, ponytails, buzz cuts, dreadlocks, locs, spikes, ornaments. Hair color should suit the character.\n" +
