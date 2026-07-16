@@ -953,369 +953,127 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
       "introspective seated pose, elbows resting on knees, eyes cast downward, aura softly radiating outward",
       "wide-legged power stance, arms loosely crossed, chin raised, exuding dominance and presence"
     ]
-    // Large pool of distinct face structures — anchored by character name hash to avoid reuse across characters
-    let faceShapes = [
-      "a round face with a soft jawline, low cheekbones, and a short forehead",
-      "a heart-shaped face with a tapered jaw, high cheekbones, and a wide forehead",
-      "a diamond-shaped face with a narrow jaw, dramatic high cheekbones, and a narrow forehead",
-      "a long face with a slender jawline, flat cheekbones, and a towering forehead",
-      "a rectangular face with a wide, chiseled jaw, strong cheekbones, and a high brow",
-      "a square face with a broad, sharp jaw, flat cheekbones, and a low forehead",
-      "a triangular face with a wide jaw, subtle cheekbones, and a narrow forehead",
-      "an oval face with a balanced jaw, soft cheekbones, and a medium-height forehead"
-    ]
-    let eyeTypes = [
-      "narrow, deep-set amber eyes with vertical slit-pupils under thick straight brows, showing a cold expression",
-      "wide, wide-set turquoise-blue eyes with thin arched brows and delicate eyelashes, showing a cute, youthful expression",
-      "hooded, close-set violet eyes with bushy angled brows and sparse eyelashes, showing a mysterious, enigmatic expression",
-      "almond-shaped, deep-set jade-green eyes with soft rounded brows and thick eyelashes, showing a gentle, serene expression",
-      "large, round silver-grey eyes with thin slanted brows and long eyelashes, showing a regal expression",
-      "slanted, wide-set gold eyes with thick arched brows and heavy eyelashes, showing an intimidating, feral glare",
-      "half-lidded, deep-set crimson eyes with sparse straight brows, showing a cold, battle-hardened expression",
-      "asymmetric eyes with complete heterochromia (one deep sapphire blue, one emerald green) under uneven brows, showing a curious expression"
-    ]
-    let skinAndHair = [
-      "porcelain skin with faint freckles and a beauty mark on the cheek, with waist-length straight silver hair in a ponytail",
-      "warm golden-brown skin with smooth texture and deep dimples, with thick, shoulder-length curly brown hair",
-      "ashen-grey stone-like skin with faint wrinkles and a jagged scar across the brow, with a messy undercut of spiky dark hair",
-      "sun-bronzed olive skin with a rough, weathered texture and laugh lines, with long, voluminous wavy auburn hair in dreadlocks",
-      "rich mahogany skin with a flawless, glowing texture and a subtle birthmark, with short, tightly-coiled jet-black locs",
-      "translucent, celestial-glowing skin with a soft blush, with fine, straight lavender-colored hair styled with elaborate braids",
-      "cool pale-blue skin with metallic silver speckles, with a sleek, asymmetric bob of copper-red hair",
-      "shadow-infused dark skin with a velvety texture and a faint tattoo on the jaw, with a messy, windswept buzz cut of silver-white hair"
-    ]
 
+    const FACE_SHAPES = [
+      "oval", "round", "diamond", "heart", "triangle", "reverse triangle", "rectangular", "square", "pear", "teardrop", "hexagonal", "long", "short", "wide", "narrow", "angular", "soft", "predatory", "serpentine", "draconic", "avian", "aquatic", "canine", "feline", "bovine", "insectoid", "arachnid", "reptilian", "ethereal", "celestial", "eldritch", "abstract", "crystalline", "symmetrical", "intentionally asymmetrical"
+    ];
+
+    const HUMAN_INSPIRATIONS = [
+      "West African", "East African", "Central African", "North African", "Southern African", "Nilotic", "Horn of Africa", "Arabian", "Persian", "Turkic", "Greek", "Roman", "Celtic", "Nordic", "Germanic", "Slavic", "Baltic", "Mediterranean", "Italian", "French", "Spanish", "Portuguese", "Basque", "Jewish", "Indian", "Pakistani", "Bangladeshi", "Sri Lankan", "Nepalese", "Tibetan", "Chinese", "Japanese", "Korean", "Vietnamese", "Thai", "Cambodian", "Filipino", "Malay", "Indonesian", "Polynesian", "Micronesian", "Melanesian", "Maori", "Native American", "Mayan", "Aztec", "Incan", "Amazonian", "Inuit", "Australian Aboriginal"
+    ];
+
+    const FANTASY_MORPHOLOGIES = [
+      "none", "elongated skull structure", "compressed skull structure", "a smooth crystal forehead", "a split jawline structure", "multiple cheekbone ridges", "double eyelids", "triple eyelids", "subtle horn ridges along the hairline", "a crown-like bone structure", "a floating faint light halo", "living vines interwoven with the skin", "stone growths along the temples", "metallic facial plates plating the jaw", "fine dragon scales along the cheekbones", "feathered brow ridges", "glowing tattoo patterns", "bioluminescent freckles", "constellation skin markings", "lava-like cracks in the skin", "ice-like veins", "golden fracture lines", "nebula-patterned skin", "living crystal growths", "wooden bark-like skin patches", "coral-textured skin", "opal-like iridescent skin", "porcelain-smooth skin", "obsidian-like reflective skin", "mercury-like shifting skin", "mirror-like reflective skin", "transparent skin showing underlying silver veins", "starlight-glow skin", "void-like shadow skin", "misty vaporous skin", "cloud-textured skin", "living smoke skin", "living flame accents", "flowing liquid water patterns", "crackling living lightning veins", "cosmic galaxies shifting beneath the skin"
+    ];
+
+    const EYE_SHAPES = [
+      "round", "almond-shaped", "hooded", "deep-set", "sunken", "wide", "slanted", "narrow", "drooping", "sharp", "large", "small"
+    ];
+
+    const EYE_PUPILS = [
+      "standard round pupils", "cat pupils", "dragon pupils", "star-shaped pupils", "cross pupils", "spiral pupils", "ring-like pupils", "hexagonal pupils", "diamond pupils", "multiple pupils", "glowing pupils", "void-black pupils", "nebula-filled pupils", "fractured pupils", "liquid-filled pupils", "crystal-like pupils", "clockwork-gear pupils", "galaxy-filled pupils", "a floating iris", "an iris with moving constellations", "multiple concentric iris rings", "a living iris shifting colors"
+    ];
+
+    const NOSES = [
+      "straight", "aquiline", "hooked", "button", "broad", "thin", "flat", "short", "long", "broken", "wide bridge", "high bridge", "low bridge", "split bridge", "bone plated", "horned bridge", "crystal bridge", "metallic bridge", "draconic snout", "feline muzzle", "avian beak", "wolf-like muzzle", "serpent nose slits", "no visible nose (smooth skin)", "glowing energy vents instead of a nose", "breathing crystals"
+    ];
+
+    const MOUTH_LIPS = [
+      "thin lips", "full lips", "a wide mouth", "a small mouth", "a sharp cupid's bow", "an asymmetrical smile", "double lips", "glowing lips", "metallic lips", "crystal lips", "living flame mouth", "smoke-breathing mouth", "no visible mouth (telepathic)"
+    ];
+
+    const MOUTH_TEETH = [
+      "none", "pointed fangs", "jutting tusks", "multiple rows of teeth", "serrated teeth", "gold-plated teeth", "gemstone teeth", "transparent glass-like teeth"
+    ];
+
+    const EARS = [
+      "standard human ears", "long pointed elf ears", "short pointed elf ears", "drooping pointed ears", "pointed beast-like ears", "rounded ears", "winged ears", "finned ears", "horn-shaped ears", "multiple ears (two sets)", "hidden ears covered by hair/scales", "floating ears detached from the skull", "crystal ears", "feathered ears", "dragon fins", "glowing energy ears"
+    ];
+
+    const SKIN_TEXTURES = [
+      "smooth", "rough", "scarred", "aged", "weathered", "porcelain-smooth", "granite-textured", "marble-like", "crystal-facetted", "obsidian-reflective", "glass-like", "liquid metal-sheen", "bark-like", "coral-textured", "ice-veined", "magma-veined", "cloud-textured", "mist-like", "nebula-patterned", "cosmic-patterned", "shadow-like", "starlight-glowing", "gold leaf-textured", "silver leaf-textured", "emerald crystal-encrusted", "covered in living vines", "covered in living moss", "rune-covered", "moving tattoo-covered", "living constellation-covered", "flowing energy vein-covered"
+    ];
+
+    const HAIR_STYLES = [
+      "straight", "wavy", "curly", "coily", "spiral", "braided", "locs", "twisted", "windswept", "gravity-defying", "floating"
+    ];
+
+    const HAIR_MATERIALS = [
+      "standard hair fibers", "hair made of living fire", "hair made of flowing water", "hair made of crackling lightning", "hair made of wispy smoke", "hair made of glowing stars", "hair made of living vines", "hair made of soft feathers", "hair made of fine crystal strands", "hair made of living liquid metal", "hair made of wisps of shadows", "hair made of wild flowers", "hair made of autumn leaves", "hair made of shifting galaxies", "hair made of living writhing snakes", "hair made of living silk ribbons", "hair made of glowing energy strands"
+    ];
+
+    const EYE_COLORS = [
+      "amber", "hazel", "silver", "lavender", "gold", "turquoise", "jade", "bronze", "grey", "violet", "crimson", "emerald", "deep brown", "complete heterochromia"
+    ];
+
+    const HAIR_COLORS = [
+      "silver-white", "golden-blonde", "crimson-red", "jet-black", "charcoal-grey", "auburn", "lavender-purple", "emerald-green", "cobalt-blue", "copper-brown"
+    ];
+
+    const IMPERFECTIONS = [
+      "freckles", "moles", "birthmarks", "scars", "a missing eyebrow", "burn marks", "ritual tattoos", "deep dimples", "a crooked smile", "an uneven jawline", "a blind milky eye", "cracked crystal skin patches", "a broken horn", "a missing fang", "golden repair scars (kintsugi)", "magical corruption veins", "void fractures", "lightning burns", "ancient wrinkles", "battle damage"
+    ];
+
+    // Determine values dynamically based on nameHash
+    let faceShape = FACE_SHAPES[nameHash % FACE_SHAPES.length];
+    let humanInspiration1 = HUMAN_INSPIRATIONS[(nameHash * 3) % HUMAN_INSPIRATIONS.length];
+    let humanInspiration2 = HUMAN_INSPIRATIONS[(nameHash * 7) % HUMAN_INSPIRATIONS.length];
+    let blendedInspiration = humanInspiration1 === humanInspiration2 ? humanInspiration1 : `${humanInspiration1} and ${humanInspiration2}`;
+
+    let eyeShape = EYE_SHAPES[(nameHash * 11) % EYE_SHAPES.length];
+    let eyePupil = EYE_PUPILS[(nameHash * 13) % EYE_PUPILS.length];
+    let eyeColor = EYE_COLORS[(nameHash * 17) % EYE_COLORS.length];
+
+    let nose = NOSES[(nameHash * 19) % NOSES.length];
+    let mouthLips = MOUTH_LIPS[(nameHash * 23) % MOUTH_LIPS.length];
+    let mouthTeeth = MOUTH_TEETH[(nameHash * 29) % MOUTH_TEETH.length];
+    let ear = EARS[(nameHash * 31) % EARS.length];
+    let morphology = FANTASY_MORPHOLOGIES[(nameHash * 37) % FANTASY_MORPHOLOGIES.length];
+    let skinTexture = SKIN_TEXTURES[(nameHash * 41) % SKIN_TEXTURES.length];
+    let hairStyle = HAIR_STYLES[(nameHash * 43) % HAIR_STYLES.length];
+    let hairMaterial = HAIR_MATERIALS[(nameHash * 47) % HAIR_MATERIALS.length];
+    let hairColor = HAIR_COLORS[(nameHash * 53) % HAIR_COLORS.length];
+    let imperfection = IMPERFECTIONS[(nameHash * 59) % IMPERFECTIONS.length];
+
+    // Apply race constraints if specified to keep thematic logic
     if (race && race !== "any") {
-      const normalizedRace = race.toLowerCase()
-      if (normalizedRace === "japanese" || normalizedRace === "east asian") {
-        faceShapes = [
-          "a slim oval face with a soft jawline, delicate chin, and high cheekbones",
-          "a heart-shaped face with a tapered chin and soft forehead",
-          "a refined angular face with a defined but elegant jaw and subtle cheekbones",
-          "a round face with soft contours, smooth temples, and a youthful chin"
-        ]
-        eyeTypes = [
-          "dark brown almond-shaped eyes with distinct epicanthic folds and an enigmatic, quiet gaze",
-          "large, expressive dark brown eyes with soft eyelids and a gentle, observant look",
-          "narrow, sharp eyes with an upward tilt and a calculating, focused intensity",
-          "slanted, fox-like dark eyes that are quick-moving and convey sharp intelligence"
-        ]
-        skinAndHair = [
-          "smooth, pale porcelain skin, with straight, glossy jet-black hair tied up in a neat topknot",
-          "warm ivory skin with a healthy glow, with thick straight dark brown hair falling in natural bangs",
-          "sun-bronzed golden skin from outdoor training, with windswept black hair worn loose",
-          "pale ivory skin with cool undertones, with straight raven-black hair cascading down the shoulders"
-        ]
-      } else if (normalizedRace === "chinese" || normalizedRace === "xianxia") {
-        faceShapes = [
-          "a slender oval face with soft, symmetrical proportions and a delicate jaw",
-          "a heart-shaped face with high, elegant cheekbones and a gently pointed chin",
-          "a smooth, rounded face with gentle contours and a classic look",
-          "a sharp, angular face with a high brow ridge and refined, clean jawline"
-        ]
-        eyeTypes = [
-          "almond-shaped dark eyes with a slight upward tilt, exuding a serene and deep spiritual calm",
-          "narrow, calculating dark phoenix-eyes with double eyelids and a piercing, sharp gaze",
-          "large, bright obsidian-colored eyes with long dark lashes and an air of pure vitality",
-          "half-lidded, tranquil dark eyes that seem to hold ancient wisdom and quiet focus"
-        ]
-        skinAndHair = [
-          "flawless pale jade-like skin, with waist-length straight jet-black hair held by an ornate silver hairpin",
-          "fair porcelain skin with a subtle pink warmth, with long straight dark hair flowing freely in the wind",
-          "warm ivory skin with an ethereal clarity, with glossy black hair styled in intricate traditional buns",
-          "cool pale skin with a smooth texture, with silver-streaked dark hair tied back with a silk ribbon"
-        ]
-      } else if (normalizedRace === "korean") {
-        faceShapes = [
-          "a slim oval face with a smooth, soft chin and high cheekbones",
-          "a heart-shaped face with a narrow jaw and soft temples",
-          "a balanced face with clean contours and refined proportions",
-          "a long face with a slender nose bridge and elegant jawline"
-        ]
-        eyeTypes = [
-          "dark brown almond-shaped eyes with clean, single-folded eyelids and an intense, focused gaze",
-          "wide, bright dark eyes with soft contours and an expressive, warm look",
-          "narrow, sharp dark brown eyes with long lashes and a calculating expression",
-          "slightly upward-tilted almond eyes with a cool, poised look"
-        ]
-        skinAndHair = [
-          "extremely clear, glowing pale skin, with straight jet-black hair styled neatly",
-          "flawless ivory skin with a soft finish, with thick dark brown hair falling naturally",
-          "cool pale skin with a rosy undertone, with glossy dark hair worn long and sleek",
-          "fair skin with a dewy texture, with straight black hair tied back"
-        ]
-      } else if (normalizedRace === "middle eastern" || normalizedRace === "persian" || normalizedRace === "arabic") {
-        faceShapes = [
-          "a strong, angular face with a chiseled jaw, high cheekbones, and a prominent brow",
-          "a striking oval face with balanced, noble features and a strong chin",
-          "a diamond-shaped face with dramatic cheekbones and a tapered jawline",
-          "a long, regal face with a straight nose bridge and defined, sharp contours"
-        ]
-        eyeTypes = [
-          "large, deep-set dark brown eyes framed by thick, dark eyelashes and an intense, passionate gaze",
-          "amber-colored almond eyes with a slight upward slant and a calculating, sharp look",
-          "piercing dark brown eyes under thick, arched brows that convey absolute authority",
-          "warm hazel eyes with a soft tilt and an air of quiet determination"
-        ]
-        skinAndHair = [
-          "rich warm olive skin, with thick, wavy jet-black hair styled with natural volume",
-          "golden-bronzed skin with a warm radiance, with thick curly dark brown hair worn short",
-          "sun-kissed tan skin with a smooth texture, with long, cascading wavy black hair",
-          "deep olive complexion with clean undertones, with a neatly trimmed thick black beard and wavy hair"
-        ]
-      } else if (normalizedRace === "norwegian" || normalizedRace === "nordic" || normalizedRace === "viking") {
-        faceShapes = [
-          "a broad, square-jawed face with a strong chin and heavy brow ridge",
-          "a long, angular face with a high forehead and defined, prominent cheekbones",
-          "a robust, chiseled face with weathered features and a straight nose bridge",
-          "a wide heart-shaped face with high cheekbones and a solid jaw"
-        ]
-        eyeTypes = [
-          "piercing ice-blue eyes with a cold, focused intensity under low-set light eyebrows",
-          "clear grey eyes that shift like stormy seas, expressing a quiet and stubborn resolve",
-          "luminous pale green eyes with a calculating tilt and a sharp, watchful gaze",
-          "deep-set blue-grey eyes with faint shadows, showing a battle-hardened wisdom"
-        ]
-        skinAndHair = [
-          "pale, fair skin with a slight ruddy flush, with thick braided golden-blonde hair",
-          "weathered fair skin with light freckles, with ash-blonde or light brown windswept hair",
-          "cool, pale skin with visible veins, with long, straight strawberry-blonde hair",
-          "fair skin with a rugged texture, with thick, wild platinum-blonde hair worn loose"
-        ]
-      } else if (normalizedRace === "scottish" || normalizedRace === "celtic" || normalizedRace === "gaelic") {
-        faceShapes = [
-          "a heart-shaped face with a delicately pointed chin and high, defined cheekbones",
-          "a long oval face with soft contours, a straight nose, and a high forehead",
-          "a sharp, angular face with a narrow jaw and high cheekbones",
-          "a square-jawed, rugged face with a freckled forehead and strong brow"
-        ]
-        eyeTypes = [
-          "clear green eyes with an upward tilt, conveying a lively curiosity and fierce spirit",
-          "bright grey-blue eyes with faint laughter lines, showing a warm and quick-witted nature",
-          "deep-set forest-green eyes under thick reddish brows, locking onto targets with focus",
-          "large, soft blue eyes that look calm and thoughtful"
-        ]
-        skinAndHair = [
-          "porcelain-freckled skin with a rosy flush, with vibrant copper-red hair worn in wild waves",
-          "pale skin with a rosy flush on the cheeks, with thick auburn hair falling in soft curls",
-          "fair skin with a smooth texture, with sandy-brown or ginger-blonde hair styled in loose braids",
-          "sun-freckled light skin, with deep chestnut hair worn long and windswept"
-        ]
-      } else if (normalizedRace === "african") {
-        faceShapes = [
-          "a strong face with broad, high cheekbones, a rounded chin, and a defined jaw",
-          "a wide, expressive oval face with balanced proportions and full, striking features",
-          "a heart-shaped face with high, prominent cheekbones and a tapered chin",
-          "a square face with a strong, solid jawline and a wide forehead"
-        ]
-        eyeTypes = [
-          "large, deep dark brown eyes with a warm, luminous quality and thick dark lashes",
-          "expressive obsidian-colored eyes under thick, naturally arched brows with a sharp focus",
-          "warm amber-brown eyes with a gentle downward tilt, conveying quiet strength",
-          "piercing dark brown eyes that are wide-set and show deep wisdom"
-        ]
-        skinAndHair = [
-          "rich dark mahogany skin with a flawless sheen, with short tightly-coiled jet-black hair",
-          "warm golden-brown skin with an inner glow, with thick black hair styled in intricate cornrows",
-          "deep warm espresso skin, with long micro-braids cascading down the shoulders",
-          "smooth copper-brown skin with rich undertones, with a textured black afro"
-        ]
-      } else if (normalizedRace === "indian" || normalizedRace === "south asian") {
-        faceShapes = [
-          "a soft oval face with balanced proportions, a straight nose bridge, and a gentle jawline",
-          "a heart-shaped face with high cheekbones and a delicately curved chin",
-          "a refined angular face with a clear jawline and a high forehead",
-          "a round face with soft contours and expressive, balanced features"
-        ]
-        eyeTypes = [
-          "large, expressive dark brown almond eyes with a warm, deep, and liquid quality",
-          "deep hazel-brown eyes with a slight upward tilt, showing a calculating and sharp intellect",
-          "piercing dark eyes framed by long, thick black eyelashes and thick, dark arched brows",
-          "warm golden-brown eyes with a calm, serene expression"
-        ]
-        skinAndHair = [
-          "rich warm bronze skin with a smooth texture, with thick, glossy wavy jet-black hair",
-          "golden-tan skin with warm undertones, with long cascading dark brown wavy hair",
-          "deep warm brown skin with a golden radiance, with thick black hair worn in a long braid",
-          "olive-tan skin with a healthy glow, with thick black hair styled back"
-        ]
-      } else if (normalizedRace === "american" || normalizedRace === "native american") {
-        faceShapes = [
-          "a strong oval face with high, broad cheekbones and a solid jawline",
-          "a balanced oval face with a straight nose bridge and a rounded chin",
-          "an angular face with defined, sharp cheekbones and a narrow chin",
-          "a broad face with a strong brow and defined, rugged contours"
-        ]
-        eyeTypes = [
-          "deep dark brown eyes with a sharp, calculating focus under straight eyebrows",
-          "warm hazel eyes with light flecks, conveying a calm and observant nature",
-          "expressive dark brown eyes under arched brows, showing quick-witted intelligence",
-          "clear brown eyes with a steady, unblinking gaze"
-        ]
-        skinAndHair = [
-          "sun-bronzed copper-tan skin, with long, straight jet-black hair worn loose",
-          "warm golden-tan skin with a smooth texture, with thick wavy dark brown hair",
-          "light golden-brown skin, with long straight black hair styled in braids",
-          "tan skin with faint sun freckles, with windswept dark hair"
-        ]
-      } else if (normalizedRace === "mediterranean") {
-        faceShapes = [
-          "a classic oval face with balanced, symmetric features and a straight nose",
-          "a strong-jawed face with a defined chin and prominent cheekbones",
-          "a diamond-shaped face with high cheekbones and a clear jawline",
-          "a soft oval face with gentle contours and a warm expression"
-        ]
-        eyeTypes = [
-          "piercing dark brown eyes with a calculating slant and thick dark eyelashes",
-          "warm amber-colored eyes under defined brows, conveying intelligence and passion",
-          "deep hazel eyes with a soft tilt, showing a quiet and persistent focus",
-          "dark almond-shaped eyes with a watchful, alert gaze"
-        ]
-        skinAndHair = [
-          "warm olive skin with a golden undertone, with thick, wavy dark brown hair styled back",
-          "sun-kissed light tan skin with a smooth finish, with thick curly black hair",
-          "rich olive complexion, with long cascading dark chestnut wavy hair",
-          "smooth golden skin, with wavy jet-black hair falling naturally"
-        ]
-      } else if (normalizedRace === "elf" || normalizedRace === "ethereal") {
-        faceShapes = [
-          "an elegant, elongated heart-shaped face with high, sweeping cheekbones and a delicately pointed chin",
-          "a slender, long oval face with sharp, refined jawline and high, narrow forehead",
-          "a delicate, narrow diamond face with high cheekbones and a narrow brow",
-          "a graceful, angular face with fine symmetry and a smooth, tapering chin"
-        ]
-        eyeTypes = [
-          "large, tilted almond-shaped eyes of glowing jade-green with thin, high-arched silver brows",
-          "deep-set, luminous violet eyes with an otherworldly depth and long, fine eyelashes",
-          "slanted, narrow golden eyes with a sharp, ethereal intensity and faint celestial glow",
-          "wide, expressive sapphire eyes that shimmer with ancient memories and soft wisdom"
-        ]
-        skinAndHair = [
-          "porcelain-pale skin with a faint, moonlit celestial glow, with waist-length straight silver-white hair",
-          "smooth, light-copper skin with a soft golden sheen, with flowing honey-gold wavy hair",
-          "cool, pale-lavender skin with a soft matte finish, with straight twilight-blue hair falling in a neat braid",
-          "soft, alabaster skin with a delicate pearlescent shimmer, with windswept silk-textured white hair"
-        ]
-      } else if (normalizedRace === "dwarf" || normalizedRace === "stout") {
-        faceShapes = [
-          "a broad, rectangular face with a massive, square jaw and a low, heavy forehead",
-          "a solid, square face with pronounced cheekbones, a deep brow ridge, and a robust chin",
-          "a rugged, round face with full cheeks, a wide weathered nose bridge, and a thick jaw",
-          "a compact, stocky face with deep-set features, a wide forehead, and a prominent chin cleft"
-        ]
-        eyeTypes = [
-          "deep-set, dark amber eyes under thick, bushy dark eyebrows with a stubborn, fierce glare",
-          "small, piercing granite-grey eyes framed by heavy laugh lines and a focused, intense gaze",
-          "shrewd bronze-colored eyes that sparkle with mechanical intelligence under a heavy, furrowed brow",
-          "dark brown, wide-set eyes with a warm but unyielding focus and thick, heavy eyelashes"
-        ]
-        skinAndHair = [
-          "rugged, weathered stone-textured skin with faint lines, with a massive braided copper-red beard and hair",
-          "deep sun-bronzed, freckled skin with thick pores, with a long, flowing dark brown beard and braided hair",
-          "ash-grey, soot-stained skin with a tough leather-like texture, with a short, stiff iron-grey beard and spiky hair",
-          "warm, ruddy skin with prominent cheeks, with a thick, well-kept golden-blonde beard and side-braids"
-        ]
-      } else if (normalizedRace === "orc" || normalizedRace === "rugged" || normalizedRace === "goblinoid") {
-        faceShapes = [
-          "a brutal, angular face with a massive protruding lower jaw, prominent underbite fangs, and a low sloping forehead",
-          "a rugged, broad face with heavy brow ridges, scarred cheeks, and a wide flat nose",
-          "a lean, triangular face with pointed, flared ears, a sharp jutting chin, and high gaunt cheekbones",
-          "a square, battle-hardened face with a thick neck, broken nose bridge, and a solid, asymmetrical jawline"
-        ]
-        eyeTypes = [
-          "glinting crimson eyes under a heavy, scarred brow ridge, exuding a wild, feral intensity",
-          "small, deep-set yellow-amber eyes that glow faintly in the dark with a predatory, cold focus",
-          "burning orange eyes with slitted pupils, conveying a battle-hardened, intimidating glare",
-          "narrow, bloodshot dark brown eyes with uneven eyebrows and a fierce, watchful gaze"
-        ]
-        skinAndHair = [
-          "thick, weathered dull-green skin with battle scars, with coarse black hair shaved into a topknot",
-          "tough, ash-grey skin with a rough leather texture, with a wild mane of stiff white hair",
-          "coarse, deep bronze-brown skin with faint tribal markings, with dreadlocked dark hair",
-          "pale olive skin with rough, stone-like patches, with a spiky undercut Mohawk of crimson-dyed hair"
-        ]
-      } else if (normalizedRace === "celestial" || normalizedRace === "divine") {
-        faceShapes = [
-          "a perfectly symmetrical, radiant oval face with soft, noble contours and a high, clear forehead",
-          "a regal, heart-shaped face with high cheekbones, a straight slender nose, and a gentle jaw",
-          "an elegant diamond-shaped face with refined, clean contours and a calm, majestic chin",
-          "a soft, glowing face with balanced proportions and a serene, divine expression"
-        ]
-        eyeTypes = [
-          "luminous gold eyes that radiate a soft, warm light under thin, elegant brows",
-          "clear, star-like silver eyes with no pupils, expressing a calm, omniscient intelligence",
-          "brilliant sky-blue eyes that shimmer like twilight under arched, flawless white brows",
-          "deep sapphire-blue eyes with faint nebula-like patterns swirling within the irises"
-        ]
-        skinAndHair = [
-          "immaculate pale skin with a soft, warm celestial glow, with flowing hair of pure, shimmering gold filaments",
-          "smooth, pearlescent alabaster skin that reflects light, with waist-length hair of spun silver",
-          "light-bronze skin that glows with a quiet warmth, with thick, wavy hair of deep violet-blue",
-          "luminous golden-tan skin with an ethereal clarity, with hair of soft white light that billows gently"
-        ]
-      } else if (normalizedRace === "shadow" || normalizedRace === "void") {
-        faceShapes = [
-          "a sharp, gaunt diamond face with hollow cheeks, a narrow pointed chin, and a high brow",
-          "an angular, long face with a razor-sharp jawline and shadowed, deep-set features",
-          "a slim, mysterious oval face with dark contours, a slender nose, and a guarded expression",
-          "a heart-shaped face with a narrow jaw and high cheekbones that cast long, dark shadows"
-        ]
-        eyeTypes = [
-          "void-black eyes with faintly glowing amethyst pupils, conveying a cold, mysterious intensity",
-          "narrow, piercing crimson eyes that burn like embers in the shadows under thin, dark brows",
-          "luminous silver eyes that contrast sharply with dark surroundings, showing a calculating gaze",
-          "half-lidded lavender eyes with slitted dark pupils and an enigmatic, quiet watchfulness"
-        ]
-        skinAndHair = [
-          "shadow-infused, ashen-grey skin that seems to absorb light, with vaporous black hair that drifts like smoke",
-          "cool, pale-lavender skin with a matte finish, with straight, ink-black hair styled with sharp angles",
-          "deep obsidian-black skin with a faint metallic sheen, with silver-white hair styled in tight braids",
-          "dusk-purple skin with a velvety texture, with long, straight indigo hair falling loose to the shoulders"
-        ]
-      } else if (normalizedRace === "draconic" || normalizedRace === "dragon") {
-        faceShapes = [
-          "a reptilian-influenced humanoid face with fine scales along the cheeks, a strong jaw, and a defined chin",
-          "a sharp, angular face with a pronounced brow ridge, small horns at the temples, and a straight nose bridge",
-          "a bold, square-jawed face with fine crimson scales tracing the jawline and a prominent chin",
-          "a fierce, heart-shaped face with high, scale-crested cheekbones and a narrow, pointed chin"
-        ]
-        eyeTypes = [
-          "slit-pupil reptilian eyes of burning amber-gold, exuding a regal, intimidating presence",
-          "glowing emerald eyes with slitted pupils under thick, dark brows that slant downward",
-          "bright ruby-red eyes with a reflective tapetum, locking onto targets with a hot, focused glare",
-          "deep bronze eyes with vertical slits, conveying ancient patience and a calculating mind"
-        ]
-        skinAndHair = [
-          "warm golden-tan skin with shimmering gold scales on the cheekbones, with a thick mane of dark bronze hair",
-          "cool charcoal-grey skin with fine obsidian scales along the jaw, with spikes of ash-grey hair",
-          "rich copper-red skin with patches of crimson scales, with long, straight scarlet hair tied in a high ponytail",
-          "deep jade-green skin with delicate emerald scales on the neck, with flowing dark green wavy hair"
-        ]
-      } else if (normalizedRace === "stone" || normalizedRace === "crystal" || normalizedRace === "golem") {
-        faceShapes = [
-          "a chiselled face with flat planes, a square-cut jawline, and a solid forehead, resembling carved granite",
-          "a sharp, geometric diamond face with facets like polished crystal, a narrow nose, and high cheekbones",
-          "a rugged rectangular face with cracked, weathered features and a heavy brow ridge",
-          "a blocky, solid face with heavy proportions, a broad flat nose bridge, and a thick chin"
-        ]
-        eyeTypes = [
-          "solid, glowing amethyst-purple eyes with no pupils, emitting a soft crystal radiance under stone brows",
-          "piercing jade-green eyes that shine like polished gems from deep-set sockets",
-          "faintly glowing cobalt-blue eyes that resemble cracks in stone filled with energy",
-          "warm, golden amber eyes that look like fossilized sap, reflecting a slow, ancient wisdom"
-        ]
-        skinAndHair = [
-          "cool, granite-grey skin with a fine stone texture and faint cracks, with hair of stiff, fibrous dark moss",
-          "translucent crystal-like skin with a soft pink quartz hue, with spikes of glowing rose-quartz crystal instead of hair",
-          "weathered, basalt-black skin with rough fissures, with a beard and hair of glowing blue crystal shards",
-          "smooth, marbled white skin with gold veins, with flowing hair of fine golden fibers"
-        ]
+      const r = race.toLowerCase();
+      if (r === "elf" || r === "ethereal") {
+        ear = EARS[(nameHash * 31) % 3 === 0 ? 1 : (nameHash * 31) % 3 === 1 ? 2 : 3]; // Pointed elf ears
+        if (morphology === "none") morphology = "a floating faint light halo";
+      } else if (r === "dwarf" || r === "stout") {
+        ear = "rounded ears";
+        if (mouthTeeth === "pointed fangs" || mouthTeeth === "jutting tusks") mouthTeeth = "none";
+      } else if (r === "orc" || r === "rugged" || r === "goblinoid") {
+        mouthTeeth = (nameHash * 29) % 2 === 0 ? "pointed fangs" : "jutting tusks";
+        ear = "pointed beast-like ears";
+      } else if (r === "celestial" || r === "divine") {
+        eyeColor = "gold";
+        eyePupil = "void-black pupils";
+        morphology = "a floating faint light halo";
+      } else if (r === "shadow" || r === "void") {
+        eyeColor = "lavender";
+        eyePupil = "void-black pupils";
+        hairMaterial = "hair made of wisps of shadows";
+      } else if (r === "draconic" || r === "dragon") {
+        morphology = "fine dragon scales along the cheekbones";
+        eyePupil = "dragon pupils";
+      } else if (r === "stone" || r === "crystal" || r === "golem") {
+        morphology = "living crystal growths";
+        skinTexture = "granite-textured";
+      } else if (r === "japanese" || r === "chinese" || r === "korean" || r === "east asian" || r === "vietnamese" || r === "thai" || r === "xianxia") {
+        eyeShape = "almond-shaped";
+        hairColor = "jet-black";
+        hairMaterial = "standard hair fibers";
+      } else if (r === "african" || r === "nilotic" || r === "horn of africa" || r === "west african") {
+        hairStyle = (nameHash * 43) % 3 === 0 ? "locs" : (nameHash * 43) % 3 === 1 ? "braided" : "coily";
+        hairMaterial = "standard hair fibers";
+      } else if (r === "nordic" || r === "celtic" || r === "viking") {
+        hairColor = (nameHash * 53) % 2 === 0 ? "silver-white" : "golden-blonde";
+        hairMaterial = "standard hair fibers";
       }
     }
 
-    const faceShape = faceShapes[nameHash % faceShapes.length]
-    const eyeType = eyeTypes[(nameHash + 3) % eyeTypes.length]
-    const skinHair = skinAndHair[(nameHash + 7) % skinAndHair.length]
     const pose = humanPoses[(nameHash + 1) % humanPoses.length]
 
     // Detect if details are already present in the prompt to prevent contradictions
@@ -1325,26 +1083,36 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
     const hasPose = /\b(pose|posing|posed|posture|stance|standing|stands|crouch(?:ed|ing)?|kneel(?:ed|ing)?|seated|sit(?:s|ting)?|lean(?:ed|ing)?|running|walking|ready posture)\b/i.test(trimmedPrompt)
     const hasFace = /\b(face|facial|jaw|jawline|cheekbones|cheeks|chin)\b/i.test(trimmedPrompt)
 
-    // Split skinAndHair into skin and hair parts to selectively append them
-    const skinHairParts = skinHair.split(/(?:,\s+with\s+|,?\s+hair\s+)/i)
-    const skinPart = skinHairParts[0] ? skinHairParts[0].trim() : ""
-    let hairPart = skinHairParts[1] ? skinHairParts[1].trim() : ""
-    if (hairPart && !hairPart.toLowerCase().startsWith("hair")) {
-      hairPart = "hair " + hairPart
-    }
-
-    const faceShapeCleaned = cleanFaceShape(faceShape, hasEyes || hasFace)
-
     const faceParts: string[] = []
-    if (!hasFace && faceShapeCleaned) faceParts.push(faceShapeCleaned)
-    if (!hasEyes && eyeType) faceParts.push(eyeType)
+    
+    let anatomyDesc = `a ${faceShape} face shape showing blended anatomical inspirations from ${blendedInspiration}`
+    if (morphology && morphology !== "none") {
+      anatomyDesc += `, characterized by ${morphology}`
+    }
+    if (!hasFace) faceParts.push(anatomyDesc)
+
+    let eyeDesc = `${eyeShape} eyes displaying a ${eyeColor} color with ${eyePupil}`
+    if (!hasEyes) faceParts.push(eyeDesc)
+
+    let mouthDesc = `a mouth showing ${mouthLips}`
+    if (mouthTeeth && mouthTeeth !== "none") mouthDesc += ` with ${mouthTeeth}`
+    mouthDesc += `, and ${ear}`
+
+    let noseDesc = `a ${nose} nose`
+
+    faceParts.push(noseDesc)
+    faceParts.push(mouthDesc)
 
     const skinHairPartsList: string[] = []
-    if (!hasSkin && skinPart) skinHairPartsList.push(skinPart)
-    if (!hasHair && hairPart) skinHairPartsList.push(hairPart)
+    if (!hasSkin) skinHairPartsList.push(`skin with a ${skinTexture} texture`)
+    if (!hasHair) skinHairPartsList.push(`styled in ${hairStyle} ${hairColor} locks made of ${hairMaterial}`)
 
     if (skinHairPartsList.length > 0) {
       faceParts.push(skinHairPartsList.join(", and "))
+    }
+
+    if (!hasFace) {
+      faceParts.push(`with a distinct imperfection: ${imperfection}`)
     }
 
     const raceClause = race && race !== "any" ? `reflecting a clear ${race} heritage and facial structure` : ""
