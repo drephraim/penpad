@@ -11971,6 +11971,13 @@ ${navPoints}  </navMap>
                       <option value="Indian">South Asian / Indian</option>
                       <option value="American">North American / Native American</option>
                       <option value="Mediterranean">Mediterranean / Greek / Roman</option>
+                      <option value="Elf">Elf / Ethereal</option>
+                      <option value="Dwarf">Dwarf / Stout</option>
+                      <option value="Orc">Orc / Rugged / Goblinoid</option>
+                      <option value="Celestial">Celestial / Divine Glow</option>
+                      <option value="Shadow">Shadow / Void-infused</option>
+                      <option value="Draconic">Draconic / Dragon-kin</option>
+                      <option value="Stone">Stone / Crystal / Golem</option>
                       <option value="custom">Custom...</option>
                     </select>
                     {appearanceRace === "custom" && (

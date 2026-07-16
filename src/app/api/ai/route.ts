@@ -919,34 +919,34 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
     ]
     // Large pool of distinct face structures — anchored by character name hash to avoid reuse across characters
     let faceShapes = [
-      "a long, angular face with a sharp, defined jaw and prominent cheekbones",
-      "a broad, square-jawed face with a wide brow and heavy set features",
-      "a slim oval face with a rounded chin, high forehead, and softly curved cheeks",
-      "a heart-shaped face with a wide forehead, wide-set eyes, and a delicately pointed chin",
-      "a diamond-shaped face with a narrow forehead, dramatic cheekbones, and a tapered jaw",
-      "a round, full-cheeked face with a soft jawline and wide, expressive eyes",
-      "a gaunt, hollow-cheeked face with a pronounced brow ridge and sharp nose bridge",
-      "a classically chiseled face with a straight nose, balanced proportions, and timeless symmetry"
+      "a round face with a soft jawline, low cheekbones, and a short forehead",
+      "a heart-shaped face with a tapered jaw, high cheekbones, and a wide forehead",
+      "a diamond-shaped face with a narrow jaw, dramatic high cheekbones, and a narrow forehead",
+      "a long face with a slender jawline, flat cheekbones, and a towering forehead",
+      "a rectangular face with a wide, chiseled jaw, strong cheekbones, and a high brow",
+      "a square face with a broad, sharp jaw, flat cheekbones, and a low forehead",
+      "a triangular face with a wide jaw, subtle cheekbones, and a narrow forehead",
+      "an oval face with a balanced jaw, soft cheekbones, and a medium-height forehead"
     ]
     let eyeTypes = [
-      "narrow, hooded eyes with a calculating, watchful intensity and dark heavy lashes",
-      "wide, luminous eyes with a slightly upward tilt and an air of open curiosity or wonder",
-      "deep-set, brooding eyes under a heavy brow, framed by faint shadows that suggest past hardship",
-      "almond-shaped, fox-like eyes with an upward slant, sharp at the corners, and a cunning glint",
-      "large, round eyes that shift quickly and betray both intelligence and vulnerability",
-      "half-lidded, languid eyes with a graceful tilt suggesting effortless superiority or deep calm",
-      "piercing, close-set eyes that lock onto their target with fierce, unblinking focus",
-      "warm, downward-angled eyes that convey gentleness and hidden sorrow at the same time"
+      "narrow, deep-set amber eyes with vertical slit-pupils under thick straight brows, showing a cold expression",
+      "wide, wide-set turquoise-blue eyes with thin arched brows and delicate eyelashes, showing a cute, youthful expression",
+      "hooded, close-set violet eyes with bushy angled brows and sparse eyelashes, showing a mysterious, enigmatic expression",
+      "almond-shaped, deep-set jade-green eyes with soft rounded brows and thick eyelashes, showing a gentle, serene expression",
+      "large, round silver-grey eyes with thin slanted brows and long eyelashes, showing a regal expression",
+      "slanted, wide-set gold eyes with thick arched brows and heavy eyelashes, showing an intimidating, feral glare",
+      "half-lidded, deep-set crimson eyes with sparse straight brows, showing a cold, battle-hardened expression",
+      "asymmetric eyes with complete heterochromia (one deep sapphire blue, one emerald green) under uneven brows, showing a curious expression"
     ]
     let skinAndHair = [
-      "pale, almost translucent skin with visible faint veins at the temples, hair ink-black and straight",
-      "deep warm brown skin with an inner luminosity, hair thick and tightly coiled or braided",
-      "sun-bronzed olive skin with faint freckles across the nose bridge, hair a dark auburn",
-      "ashen grey skin with a cool undertone, hair silver-white and fine, worn loose to the shoulders",
-      "rich dark mahogany skin, flawlessly smooth, hair a deep jet black with a natural sheen",
-      "golden-tan skin with fine golden undertones, hair honey-blonde or light brown with windswept texture",
-      "porcelain-pale skin with a rosy flush on the cheeks, hair a vivid copper-red",
-      "cool blue-grey tinted skin suggesting an otherworldly heritage, hair dark with silver streaks"
+      "porcelain skin with faint freckles and a beauty mark on the cheek, with waist-length straight silver hair in a ponytail",
+      "warm golden-brown skin with smooth texture and deep dimples, with thick, shoulder-length curly brown hair",
+      "ashen-grey stone-like skin with faint wrinkles and a jagged scar across the brow, with a messy undercut of spiky dark hair",
+      "sun-bronzed olive skin with a rough, weathered texture and laugh lines, with long, voluminous wavy auburn hair in dreadlocks",
+      "rich mahogany skin with a flawless, glowing texture and a subtle birthmark, with short, tightly-coiled jet-black locs",
+      "translucent, celestial-glowing skin with a soft blush, with fine, straight lavender-colored hair styled with elaborate braids",
+      "cool pale-blue skin with metallic silver speckles, with a sleek, asymmetric bob of copper-red hair",
+      "shadow-infused dark skin with a velvety texture and a faint tattoo on the jaw, with a messy, windswept buzz cut of silver-white hair"
     ]
 
     if (race && race !== "any") {
@@ -1140,6 +1140,139 @@ function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, 
           "sun-kissed light tan skin with a smooth finish, with thick curly black hair",
           "rich olive complexion, with long cascading dark chestnut wavy hair",
           "smooth golden skin, with wavy jet-black hair falling naturally"
+        ]
+      } else if (normalizedRace === "elf" || normalizedRace === "ethereal") {
+        faceShapes = [
+          "an elegant, elongated heart-shaped face with high, sweeping cheekbones and a delicately pointed chin",
+          "a slender, long oval face with sharp, refined jawline and high, narrow forehead",
+          "a delicate, narrow diamond face with high cheekbones and a narrow brow",
+          "a graceful, angular face with fine symmetry and a smooth, tapering chin"
+        ]
+        eyeTypes = [
+          "large, tilted almond-shaped eyes of glowing jade-green with thin, high-arched silver brows",
+          "deep-set, luminous violet eyes with an otherworldly depth and long, fine eyelashes",
+          "slanted, narrow golden eyes with a sharp, ethereal intensity and faint celestial glow",
+          "wide, expressive sapphire eyes that shimmer with ancient memories and soft wisdom"
+        ]
+        skinAndHair = [
+          "porcelain-pale skin with a faint, moonlit celestial glow, with waist-length straight silver-white hair",
+          "smooth, light-copper skin with a soft golden sheen, with flowing honey-gold wavy hair",
+          "cool, pale-lavender skin with a soft matte finish, with straight twilight-blue hair falling in a neat braid",
+          "soft, alabaster skin with a delicate pearlescent shimmer, with windswept silk-textured white hair"
+        ]
+      } else if (normalizedRace === "dwarf" || normalizedRace === "stout") {
+        faceShapes = [
+          "a broad, rectangular face with a massive, square jaw and a low, heavy forehead",
+          "a solid, square face with pronounced cheekbones, a deep brow ridge, and a robust chin",
+          "a rugged, round face with full cheeks, a wide weathered nose bridge, and a thick jaw",
+          "a compact, stocky face with deep-set features, a wide forehead, and a prominent chin cleft"
+        ]
+        eyeTypes = [
+          "deep-set, dark amber eyes under thick, bushy dark eyebrows with a stubborn, fierce glare",
+          "small, piercing granite-grey eyes framed by heavy laugh lines and a focused, intense gaze",
+          "shrewd bronze-colored eyes that sparkle with mechanical intelligence under a heavy, furrowed brow",
+          "dark brown, wide-set eyes with a warm but unyielding focus and thick, heavy eyelashes"
+        ]
+        skinAndHair = [
+          "rugged, weathered stone-textured skin with faint lines, with a massive braided copper-red beard and hair",
+          "deep sun-bronzed, freckled skin with thick pores, with a long, flowing dark brown beard and braided hair",
+          "ash-grey, soot-stained skin with a tough leather-like texture, with a short, stiff iron-grey beard and spiky hair",
+          "warm, ruddy skin with prominent cheeks, with a thick, well-kept golden-blonde beard and side-braids"
+        ]
+      } else if (normalizedRace === "orc" || normalizedRace === "rugged" || normalizedRace === "goblinoid") {
+        faceShapes = [
+          "a brutal, angular face with a massive protruding lower jaw, prominent underbite fangs, and a low sloping forehead",
+          "a rugged, broad face with heavy brow ridges, scarred cheeks, and a wide flat nose",
+          "a lean, triangular face with pointed, flared ears, a sharp jutting chin, and high gaunt cheekbones",
+          "a square, battle-hardened face with a thick neck, broken nose bridge, and a solid, asymmetrical jawline"
+        ]
+        eyeTypes = [
+          "glinting crimson eyes under a heavy, scarred brow ridge, exuding a wild, feral intensity",
+          "small, deep-set yellow-amber eyes that glow faintly in the dark with a predatory, cold focus",
+          "burning orange eyes with slitted pupils, conveying a battle-hardened, intimidating glare",
+          "narrow, bloodshot dark brown eyes with uneven eyebrows and a fierce, watchful gaze"
+        ]
+        skinAndHair = [
+          "thick, weathered dull-green skin with battle scars, with coarse black hair shaved into a topknot",
+          "tough, ash-grey skin with a rough leather texture, with a wild mane of stiff white hair",
+          "coarse, deep bronze-brown skin with faint tribal markings, with dreadlocked dark hair",
+          "pale olive skin with rough, stone-like patches, with a spiky undercut Mohawk of crimson-dyed hair"
+        ]
+      } else if (normalizedRace === "celestial" || normalizedRace === "divine") {
+        faceShapes = [
+          "a perfectly symmetrical, radiant oval face with soft, noble contours and a high, clear forehead",
+          "a regal, heart-shaped face with high cheekbones, a straight slender nose, and a gentle jaw",
+          "an elegant diamond-shaped face with refined, clean contours and a calm, majestic chin",
+          "a soft, glowing face with balanced proportions and a serene, divine expression"
+        ]
+        eyeTypes = [
+          "luminous gold eyes that radiate a soft, warm light under thin, elegant brows",
+          "clear, star-like silver eyes with no pupils, expressing a calm, omniscient intelligence",
+          "brilliant sky-blue eyes that shimmer like twilight under arched, flawless white brows",
+          "deep sapphire-blue eyes with faint nebula-like patterns swirling within the irises"
+        ]
+        skinAndHair = [
+          "immaculate pale skin with a soft, warm celestial glow, with flowing hair of pure, shimmering gold filaments",
+          "smooth, pearlescent alabaster skin that reflects light, with waist-length hair of spun silver",
+          "light-bronze skin that glows with a quiet warmth, with thick, wavy hair of deep violet-blue",
+          "luminous golden-tan skin with an ethereal clarity, with hair of soft white light that billows gently"
+        ]
+      } else if (normalizedRace === "shadow" || normalizedRace === "void") {
+        faceShapes = [
+          "a sharp, gaunt diamond face with hollow cheeks, a narrow pointed chin, and a high brow",
+          "an angular, long face with a razor-sharp jawline and shadowed, deep-set features",
+          "a slim, mysterious oval face with dark contours, a slender nose, and a guarded expression",
+          "a heart-shaped face with a narrow jaw and high cheekbones that cast long, dark shadows"
+        ]
+        eyeTypes = [
+          "void-black eyes with faintly glowing amethyst pupils, conveying a cold, mysterious intensity",
+          "narrow, piercing crimson eyes that burn like embers in the shadows under thin, dark brows",
+          "luminous silver eyes that contrast sharply with dark surroundings, showing a calculating gaze",
+          "half-lidded lavender eyes with slitted dark pupils and an enigmatic, quiet watchfulness"
+        ]
+        skinAndHair = [
+          "shadow-infused, ashen-grey skin that seems to absorb light, with vaporous black hair that drifts like smoke",
+          "cool, pale-lavender skin with a matte finish, with straight, ink-black hair styled with sharp angles",
+          "deep obsidian-black skin with a faint metallic sheen, with silver-white hair styled in tight braids",
+          "dusk-purple skin with a velvety texture, with long, straight indigo hair falling loose to the shoulders"
+        ]
+      } else if (normalizedRace === "draconic" || normalizedRace === "dragon") {
+        faceShapes = [
+          "a reptilian-influenced humanoid face with fine scales along the cheeks, a strong jaw, and a defined chin",
+          "a sharp, angular face with a pronounced brow ridge, small horns at the temples, and a straight nose bridge",
+          "a bold, square-jawed face with fine crimson scales tracing the jawline and a prominent chin",
+          "a fierce, heart-shaped face with high, scale-crested cheekbones and a narrow, pointed chin"
+        ]
+        eyeTypes = [
+          "slit-pupil reptilian eyes of burning amber-gold, exuding a regal, intimidating presence",
+          "glowing emerald eyes with slitted pupils under thick, dark brows that slant downward",
+          "bright ruby-red eyes with a reflective tapetum, locking onto targets with a hot, focused glare",
+          "deep bronze eyes with vertical slits, conveying ancient patience and a calculating mind"
+        ]
+        skinAndHair = [
+          "warm golden-tan skin with shimmering gold scales on the cheekbones, with a thick mane of dark bronze hair",
+          "cool charcoal-grey skin with fine obsidian scales along the jaw, with spikes of ash-grey hair",
+          "rich copper-red skin with patches of crimson scales, with long, straight scarlet hair tied in a high ponytail",
+          "deep jade-green skin with delicate emerald scales on the neck, with flowing dark green wavy hair"
+        ]
+      } else if (normalizedRace === "stone" || normalizedRace === "crystal" || normalizedRace === "golem") {
+        faceShapes = [
+          "a chiselled face with flat planes, a square-cut jawline, and a solid forehead, resembling carved granite",
+          "a sharp, geometric diamond face with facets like polished crystal, a narrow nose, and high cheekbones",
+          "a rugged rectangular face with cracked, weathered features and a heavy brow ridge",
+          "a blocky, solid face with heavy proportions, a broad flat nose bridge, and a thick chin"
+        ]
+        eyeTypes = [
+          "solid, glowing amethyst-purple eyes with no pupils, emitting a soft crystal radiance under stone brows",
+          "piercing jade-green eyes that shine like polished gems from deep-set sockets",
+          "faintly glowing cobalt-blue eyes that resemble cracks in stone filled with energy",
+          "warm, golden amber eyes that look like fossilized sap, reflecting a slow, ancient wisdom"
+        ]
+        skinAndHair = [
+          "cool, granite-grey skin with a fine stone texture and faint cracks, with hair of stiff, fibrous dark moss",
+          "translucent crystal-like skin with a soft pink quartz hue, with spikes of glowing rose-quartz crystal instead of hair",
+          "weathered, basalt-black skin with rough fissures, with a beard and hair of glowing blue crystal shards",
+          "smooth, marbled white skin with gold veins, with flowing hair of fine golden fibers"
         ]
       }
     }
@@ -1571,18 +1704,32 @@ export async function POST(req: NextRequest) {
             "5. PRESERVE SETTING & OBJECT TRUTH — STRICT RULE: Only include landmarks, borders, routes, celestial bodies, architecture, materials, magical effects, damage, inscriptions, ownership marks, and technology that are supported by the chapter, Story Bible, or user-provided form notes. Do not copy generic fantasy map symbols or Earth-like geography unless the lore supports it.\n" +
             "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details are sparse, create a coherent visual design that suits the world's genre, culture, power system, climate, danger level, and story mood. Fill in layout, scale, materials, lighting, atmosphere, and environmental storytelling, but mark invented-but-plausible choices in consistencyNotes.\n")
       const facialRules = isAdHocMode
-        ? "7. VISUAL CLARITY MANDATE: For character portraits, generate a distinct, memorable facial description and unique face structure (face shape, eyes, expression, hair, jawline, chin, etc.). Do not use generic adjectives like 'striking' or 'handsome'. For locations, maps, planets, or items, ensure the subject is immediately recognizable with layout, materials, landmarks, and atmospheric details.\n"
+        ? "7. VISUAL CLARITY & CHARACTER DESIGN MANDATE (CRITICAL - always apply):\n" +
+          "   - For character/creature portraits, apply the EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE: you are an expert character concept artist and character designer for a high-fantasy cinematic novel. Ensure every character has a unique and memorable face. Never reuse facial structures, proportions, or combinations of features. Treat every character as a completely new individual.\n" +
+          "   - Shape variation: round, heart-shaped, diamond, long, rectangular, square, triangular, oval.\n" +
+          "   - Proportion variation: eye spacing, depth, eyelids, eyelashes, brow thickness/angle, nose bridge/tip, nostril size, mouth width, lip fullness, chin/jaw width, cheek fullness, forehead height.\n" +
+          "   - Imperfections: beauty marks, freckles, scars, dimples, asymmetrical smiles, laugh lines, uneven eyebrows, wrinkles, skin texture.\n" +
+          "   - Tone and persona: regal, cute, mysterious, rugged, cold, gentle, intimidating, scholarly, ancient, battle-hardened, youthful, elegant, wild, feral, alien, ethereal.\n" +
+          "   - Hair, Eye, Skin colors: broad variety of colors and styles, including fantasy hues (metallic, stone, crystal textures, celestial glow, shadow-infused skin).\n" +
+          "   - Avoid generic adjectives like 'striking', 'beautiful', or 'handsome'. Describe real structural features, shapes, and textures.\n" +
+          "   - For locations, maps, planets, or items, ensure the subject is immediately recognizable with layout, materials, landmarks, and atmospheric details.\n"
         : (isCharacterLike
-          ? "7. FACIAL FEATURES MANDATE (CRITICAL - always apply): The face, head, and expression are the single most important part of a recognizable character portrait. **Even when the chapter and Story Bible provide ZERO explicit description of the face, hair, eyes, or expression**, you are REQUIRED to generate a vivid, specific, memorable facial design. EVERY character must have a COMPLETELY UNIQUE face — do NOT recycle the same \"striking face\", \"ethereal face\", \"handsome warrior face\" or any other generic archetype across different characters. Base the face SPECIFICALLY on:\n" +
-            "   - Specified Race/Culture/Ethnic descent (if any): you MUST align the character's facial structure, bone structure, eye shape, and skin tone with the selected race, culture, or descent (e.g. Indian descent, East Asian features, Mesoamerican features, Nordic features). For characters of Indian descent (like Shiva), specify features like warm golden-brown or olive skin tone, deep-set dark brown or black almond-shaped eyes, strong dark eyebrows, and a straight well-defined nose bridge, and thick dark hair. Do NOT use generic templates; describe authentic structural characteristics of that heritage.\n" +
-            "   - Facial Hair: Always explicitly include any described beards, mustaches, whiskers, stubble, or lack thereof. Be specific about style, color, length, and texture (e.g., 'a neatly trimmed salt-and-pepper short beard and mustache', 'thick, wild black beard flowing to his chest', 'smooth clean-shaven jaw'). If a character has a beard (like Shiva), it MUST be explicitly described.\n" +
-            "   - The character's exact name: use the name to reference the character, but do NOT assume or infer any real-world cultural, ethnic, or racial heritage from the name itself (e.g., a Japanese name does not mean the character has East Asian features). Real-world heritage, ethnicity, or fantasy race details must only be incorporated if they are explicitly stated in the chapter text, Story Bible, or user notes.\n" +
-            "   - Aliases, cultural background, ethnic or clan origin, groups, bloodline, or sect — use these to infer bone structure, skin tone, hair texture, and eye shape specific to this character's heritage (but only when explicitly detailed in the lore, not inferred from names alone)\n" +
-            "   - Personality, age, status, power level, or role hints in the lore or chapter — a scheming advisor has a different face than a wild beast-tamer or a noble young master\n" +
-            "   - The chosen art style and genre (e.g. sharp fox-like eyes + high cheekbones for a cunning xianxia cultivator; square jaw + heavy brow for a battle-hardened warrior; delicate ethereal features for a spirit; deep-set tired eyes for a seasoned veteran)\n" +
-            "   - Any mentioned hair, skin, aura, posture, or clothing that can inform the face\n" +
-            "   - AVOID GENERIC ADJECTIVES: Do NOT use buzzwords like 'striking', 'beautiful', 'handsome', 'gorgeous', 'pretty', 'perfect face', 'handsome young man'. Stable Diffusion/SDXL defaults to the same look-alike faces when encountering these generic words. Instead, describe real structural features: specify the exact face shape (e.g., strong square jaw with a prominent chin cleft, soft oval face with gentle curves, gaunt diamond face with high cheekbones), nose shape (e.g., straight slender nose bridge, slightly upturned tip, aquiline nose), lip shape (e.g., thin upper lip, full lower lip, downturned mouth corners), eyebrows (e.g., thick straight dark brows, thin arched brows), and unique eye characteristics (e.g., hooded dark brown eyes with heavy epicanthic folds, deep-set pale blue eyes under a heavy brow ridge). Make the face structure completely unique and detailed.\n" +
-            "   Always explicitly describe in the prompt: face shape, unique eye shape/size/tilt/color/expression, eyebrow arch, nose bridge and tip shape, mouth/lips, cheekbone height and prominence, jawline, chin shape, facial hair details, any scars/markings/birthmarks/tattoos, skin tone and texture. Make the face unmistakably distinctive and never interchangeable with any other character.\n"
+          ? "7. EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE (CRITICAL - ALWAYS APPLY):\n" +
+            "   You are an expert character concept artist and character designer for a high-fantasy cinematic novel. Your primary task is to generate complete visual descriptions for characters while ensuring every character has a unique and memorable face.\n" +
+            "   - INDIVIDUALITY: Treat every character as a completely new individual. Never reuse facial structures, proportions, or combinations of features unless explicitly requested.\n" +
+            "   - INTEGRATE USER/SOURCE DETAILS: If the user or chapter text provides appearance details, preserve every detail exactly, expand it naturally, add realistic complementary facial features, and improve visual quality without contradicting the source.\n" +
+            "   - CREATING FROM SCRATCH: If the user provides little or no appearance information, create an entirely original appearance from scratch.\n" +
+            "   - FACE DESIGN PILLARS: Every generated face must have a unique face shape, unique jawline, unique cheekbones, unique eye shape, unique eyebrow shape, unique nose, unique lips, unique ears, unique forehead, unique facial proportions, unique expression, unique beauty imperfections, and unique age characteristics. Never default to the same attractive face.\n" +
+            "   - VARIATION IN SHAPES: Vary face shapes: round, heart-shaped, diamond, long, rectangular, square, triangular, oval.\n" +
+            "   - VARIATION IN PROPORTIONS: Vary proportions: eye spacing, eye depth, eyelids, eyelashes, brow thickness, brow angle, nose bridge, nose tip, nostril size, mouth width, lip fullness, chin length, jaw width, cheek fullness, forehead height.\n" +
+            "   - MEMORABLE IMPERFECTIONS: Include subtle imperfections when appropriate: beauty marks, freckles, scars, dimples, asymmetrical smiles, laugh lines, uneven eyebrows, skin texture, faint wrinkles. These imperfections make every face memorable.\n" +
+            "   - AVOID CONVENTIONAL ATTRACTIVENESS: Do NOT always create conventionally attractive characters. Tailor their look to visually communicate their personality: regal, cute, mysterious, rugged, cold, gentle, intimidating, scholarly, ancient, battle-hardened, youthful, elegant, wild, feral, alien, ethereal. Avoid repeating facial archetypes.\n" +
+            "   - HAIR VARIETY: If hair is unspecified in the source/user input, randomly generate: style, length, volume, texture, parting, braids, curls, waves, undercuts, ponytails, buzz cuts, dreadlocks, locs, spikes, ornaments. Hair color should suit the character.\n" +
+            "   - EYE COLORS: Do not default to blue or red. Use a broad range: amber, hazel, silver, lavender, gold, turquoise, jade, bronze, grey, violet, crimson, emerald, deep brown, heterochromia.\n" +
+            "   - SKIN TONES: Span the entire fantasy spectrum: human ethnicities, fantasy hues, metallic tones, stone textures, wood textures, crystal textures, celestial glow, shadow-infused skin.\n" +
+            "   - RACE/HERITAGE: When races/heritages are given (e.g., East Asian, Nordic, African, Elf, Dwarf, Orc, Celestial, Shadow, Draconic, Stone, etc.), generate facial features appropriate to that race while maintaining uniqueness.\n" +
+            "   - AVOID GENERIC ADJECTIVES: Do NOT use buzzwords like 'striking', 'beautiful', 'handsome', 'gorgeous', 'pretty', 'perfect face'. Instead, describe real structural features, shapes, and textures.\n" +
+            "   - CONCEPT ART STYLE: The completed appearance should read like professional concept art instructions suitable for AI image generation.\n"
           : "7. ENVIRONMENT, MAP & OBJECT CLARITY MANDATE (CRITICAL - always apply): The visual subject must be immediately recognizable. For environments, describe a clear foreground/midground/background, scale cues, landmarks, weather, and lighting. For maps, describe top-down or atlas composition, coastlines, terrain symbols, routes, borders, compass/legend style, and avoid fake unreadable labels unless exact names are supplied. For planets, describe continents, atmosphere, moons/rings, cloud systems, lights, or magical phenomena. For items, describe silhouette, materials, markings, damage, scale, effects, and how it sits in the story environment.\n")
       const distinctFormRules = isAdHocMode
         ? "8. DISTINCT FACE + POSE PER FORM (CRITICAL): If generating multiple character forms, every form must have its own face and pose. For scenes/maps/items, ensure different forms show different angles, layouts, closeups, or contexts.\n"
