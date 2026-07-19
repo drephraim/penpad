@@ -856,347 +856,6 @@ function formatKnownCharacterDetails(details: unknown, activeChapterNumber?: num
   return lines.join("\n")
 }
 
-function countPromptWords(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length
-}
-
-function expandShortAppearancePrompt(prompt: string, formKey: string): string {
-  if (countPromptWords(prompt) >= 145) return prompt
-
-  const normalizedKey = formKey.toLowerCase()
-  const formSpecific = normalizedKey.includes("beast")
-    ? "For this beast form: 100% beast. Full animal anatomy, natural beast stance (typically quadrupedal), complete beast head, body covered in fur/scales/hide, tail, no humanoid posture or features."
-    : normalizedKey.includes("demi")
-      ? "For this demi-human form: 50-80% beast / 20-50% human. MUST have: upright posture, humanoid torso, human-like arms with hands, beast or partially beast head (animal ears/muzzle/snout or full beast head on human body), beast legs, retained tail, retained fur or scales on most of the body, significantly larger than humans."
-      : "For this humanoid form: the character must appear as a clean, predominantly human humanoid. Only include tails, wings, horns, fur, scales, animal ears, claws or other non-human traits if they are explicitly described in the chapter or lore for the humanoid form. Do not add or retain them by default."
-
-  return `${prompt} Full head-to-toe composition, complete visual design with face, silhouette, skin or surface texture, clothing or natural covering, accessories, posture, atmosphere, and surrounding environment all clearly readable. ${formSpecific} Preserve every explicit trait from the chapter, Story Bible, and user notes while adding coherent secondary details that fit the scene mood, power level, social status, materials, lighting, and background.`
-}
-
-const APPEARANCE_FACE_TERMS = /\b(face|facial|jaw|cheekbones?|cheeks?|brows?|eyebrows?|eyes?|nose|mouth|lips?|expression|scar|markings?|tattoos?|skin|complexion|muzzle|snout|beak|fangs?)\b/i
-const APPEARANCE_POSE_TERMS = /\b(pose|posture|stance|standing|crouch(?:ed|ing)?|prowling|kneeling|leaning|walking|running|leaping|gripping|holding|wielding|gesture|three-quarter|profile|turned|shoulders?|limbs?|claws?|paws?)\b/i
-
-function getStringHash(str: string): number {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return Math.abs(hash)
-}
-
-
-
-function getDistinctAppearanceDirective(trimmedPrompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string, ageGroup?: string): string {
-  const normalizedKey = formKey.toLowerCase()
-  const safeLabel = label || formKey
-  const nameHash = getStringHash(characterName || safeLabel)
-
-  const aesthetics = ["ethereal", "noble", "regal", "cute", "dangerous", "soft", "intellectual", "battle-scarred", "charming", "innocent", "cold", "mischievous", "serene", "mysterious", "haunting", "heroic", "villainous"]
-  const chosenAesthetic = (aesthetic && aesthetic !== "any") ? aesthetic.toLowerCase() : aesthetics[nameHash % aesthetics.length]
-
-  const ageGroups = ["child", "teenager", "young-adult", "adult", "middle-aged", "elderly", "ancient"]
-  const chosenAgeGroup = (ageGroup && ageGroup !== "any") ? ageGroup.toLowerCase() : ageGroups[nameHash % ageGroups.length]
-
-  const ageDescriptions: Record<string, string> = {
-    child: "soft, round face with large, wide-set eyes, thick eyelashes, small button nose, full cheeks, and smooth, flawless porcelain-soft skin, with no wrinkles, fine lines, or facial hair",
-    teenager: "a slightly soft oval or round face with expressive eyes, soft eyebrows, smooth clear skin, and a youthful, clean jawline with minimal cheekbone definition",
-    "young-adult": "a defined face with clean cheekbones, sharp jawline, smooth, firm skin, and a vibrant, energetic expression",
-    adult: "a mature face with fully defined cheekbones and jawline, smooth but firm skin texture, faint laugh lines, and a composed expression",
-    "middle-aged": "a mature face with defined cheekbones, slight gauntness or fullness in the cheeks, faint wrinkles at the corners of the eyes (crow's feet), subtle laugh lines, and a wise, seasoned expression, where the skin has a slightly weathered, realistic texture",
-    elderly: "a deeply weathered face with pronounced wrinkles, crow's feet, dry thin skin with visible age spots and texture, sagging cheeks, a soft or gaunt jawline, thinning eyebrows, and a calm, ancient gaze",
-    ancient: "a mystical, timeless face with paper-thin translucent skin showing faint silver or golden veins, deep-set hollow eyes that hold cosmic depth, fine silver-white hair, thin arched brows, and a serene, otherworldly, or battle-worn expression. Skin has a crackled stone, porcelain, or celestial texture"
-  }
-
-  const aestheticDescriptions: Record<string, string> = {
-    ethereal: "an otherworldly, delicate face with soft celestial lighting, long fine eyelashes, narrow high-arched brows, and a serene, dreamlike expression. Proportions are elegant and symmetrical with a narrow chin",
-    noble: "a highly refined, symmetric face with a proud straight nose bridge, calm and dignified dark eyes under arched brows, a firm balanced jawline, and a composed, poised expression",
-    regal: "a commanding, majestic face with a sharp, defined jaw, high cheekbones, heavy brow, a high forehead, and an authoritative, cold, or proud expression",
-    cute: "a youthful, round face with soft full cheeks, wide-set luminous eyes with long eyelashes, a tiny nose, soft full lips, and a warm, cheerful, or sweet expression",
-    dangerous: "an intimidating, sharp face with close-set slitted eyes under low-set angled brows, a gaunt jaw, thin lips, and a menacing, cold, or predatory expression",
-    soft: "a gentle, warm face with rounded cheeks, wide open hazel/brown eyes, soft rounded eyebrows, and an approachable, kind, or serene smile",
-    intellectual: "a scholarly, focused face with narrow calculating eyes, thin high brows, a long straight nose bridge, a high forehead, and a calm, analytical expression",
-    "battle-scarred": "a rugged, battle-worn face with a weathered leather-like skin texture, a crooked broken nose bridge, a heavy square jaw, uneven eyebrows, and a prominent scar or markings, showing a tough, resilient look",
-    charming: "an alluring, attractive face with a diamond face shape, a warm asymmetrical smile, dimples, long eyelashes, and a playful, confident, or charismatic gaze",
-    innocent: "a pure, naive face with wide-set large eyes showing open curiosity, soft natural eyebrows, a soft oval chin, and an innocent, gentle expression",
-    cold: "an icy, detached face with pale translucent skin, narrow half-lidded eyes with a cold unblinking stare, thin pale lips, and an emotionless, frozen expression",
-    mischievous: "a sly, playful face with slanted fox-like eyes, an asymmetrical smirk, uneven eyebrows, and a cunning, playful expression",
-    serene: "a peaceful, tranquil face with soft symmetrical features, half-lidded calm eyes, a gentle neutral mouth, and a serene, Zen-like expression",
-    mysterious: "an enigmatic, shadowed face with hooded dark eyes casting deep shadows under a heavy brow, hidden cheekbones, a dark hood or hair style, and an unreadable, quiet expression",
-    haunting: "a striking, ghostly face with pale ashen skin, deep-set hollow eyes framed by dark shadows, sharp gaunt cheekbones, and a memorable, hauntingly beautiful or gaunt expression",
-    heroic: "a valiant, inspiring face with a strong chiseled jaw, a broad forehead, bright determined eyes under firm brows, and a confident, heroic expression",
-    villainous: "a sinister, menacing face with sharp angular cheekbones, thin downturned lips, calculating cold eyes under low furrowed brows, and an arrogant or cruel expression"
-  }
-
-  if (entryCategory === "beast" && normalizedKey.includes("beast") && !normalizedKey.includes("demi")) {
-    return `Distinct face and pose for ${safeLabel}: Ensure the pose is a dynamic or majestic beast stance (such as coiling, lunging, soaring, swimming, or crouching) that directly captures the creature's class (e.g., serpentine coiling for a Leviathan, wing-spreading for a Phoenix) and matches the action and environmental intensity of the active chapter. The face must be 100% bestial and non-human (e.g. razor-fanged jaws, scales, horns, or a draconic snout), reflecting the scene's danger level (feral and aggressive if in battle, majestic and wise if calm).`
-  }
-
-  if (normalizedKey.includes("demi")) {
-    return `Distinct face and pose for ${safeLabel}: Pose the demi-human in an upright, two-legged stance with human-like arms and chest, but with beastly lower legs, claws, tail, and body coverage (fur, scales, or feathers). The face must be a highly stylized, high-quality hybrid blending recognizable humanoid features (eyes, expression) with beastly details (horns, ears, facial markings, fangs, or fine scales). Ensure the pose, elemental aura, and expression perfectly capture the energy, speed, combat readiness, or spellcasting intensity of the active chapter.`
-  }
-
-  if (normalizedKey.includes("human") || normalizedKey.includes("humanoid")) {
-    const humanPoses = [
-      "upright three-quarter character stance with a deliberate hand gesture, dynamic hand sign, or aura interaction",
-      "relaxed, side-profile pose with one hand resting on their belt, head turned towards the viewer with an enigmatic expression",
-      "dynamic spellcasting stance with arms outstretched, hands glowing with magical energy, robes billowing, weight shifted back",
-      "grounded, centered stance with feet shoulder-width apart, arms raised in a ready posture or defensive guard, focused gaze",
-      "introspective seated pose, elbows resting on knees, eyes cast downward, aura softly radiating outward",
-      "wide-legged power stance, arms loosely crossed, chin raised, exuding dominance and presence"
-    ]
-
-    const FACE_SHAPES = [
-      "oval", "round", "diamond", "heart", "triangle", "reverse triangle", "rectangular", "square", "pear", "teardrop", "hexagonal", "long", "short", "wide", "narrow", "angular", "soft", "predatory", "serpentine", "draconic", "avian", "aquatic", "canine", "feline", "bovine", "insectoid", "arachnid", "reptilian", "ethereal", "celestial", "eldritch", "abstract", "crystalline", "symmetrical", "intentionally asymmetrical"
-    ];
-
-    const HUMAN_INSPIRATIONS = [
-      "West African", "East African", "Central African", "North African", "Southern African", "Nilotic", "Horn of Africa", "Arabian", "Persian", "Turkic", "Greek", "Roman", "Celtic", "Nordic", "Germanic", "Slavic", "Baltic", "Mediterranean", "Italian", "French", "Spanish", "Portuguese", "Basque", "Jewish", "Indian", "Pakistani", "Bangladeshi", "Sri Lankan", "Nepalese", "Tibetan", "Chinese", "Japanese", "Korean", "Vietnamese", "Thai", "Cambodian", "Filipino", "Malay", "Indonesian", "Polynesian", "Micronesian", "Melanesian", "Maori", "Native American", "Mayan", "Aztec", "Incan", "Amazonian", "Inuit", "Australian Aboriginal"
-    ];
-
-    const FANTASY_MORPHOLOGIES = [
-      "none", "elongated skull structure", "compressed skull structure", "a smooth crystal forehead", "a split jawline structure", "multiple cheekbone ridges", "double eyelids", "triple eyelids", "subtle horn ridges along the hairline", "a crown-like bone structure", "a floating faint light halo", "living vines interwoven with the skin", "stone growths along the temples", "metallic facial plates plating the jaw", "fine dragon scales along the cheekbones", "feathered brow ridges", "glowing tattoo patterns", "bioluminescent freckles", "constellation skin markings", "lava-like cracks in the skin", "ice-like veins", "golden fracture lines", "nebula-patterned skin", "living crystal growths", "wooden bark-like skin patches", "coral-textured skin", "opal-like iridescent skin", "porcelain-smooth skin", "obsidian-like reflective skin", "mercury-like shifting skin", "mirror-like reflective skin", "transparent skin showing underlying silver veins", "starlight-glow skin", "void-like shadow skin", "misty vaporous skin", "cloud-textured skin", "living smoke skin", "living flame accents", "flowing liquid water patterns", "crackling living lightning veins", "cosmic galaxies shifting beneath the skin"
-    ];
-
-    const EYE_SHAPES = [
-      "round", "almond-shaped", "hooded", "deep-set", "sunken", "wide", "slanted", "narrow", "drooping", "sharp", "large", "small"
-    ];
-
-    const EYE_PUPILS = [
-      "standard round pupils", "cat pupils", "dragon pupils", "star-shaped pupils", "cross pupils", "spiral pupils", "ring-like pupils", "hexagonal pupils", "diamond pupils", "multiple pupils", "glowing pupils", "void-black pupils", "nebula-filled pupils", "fractured pupils", "liquid-filled pupils", "crystal-like pupils", "clockwork-gear pupils", "galaxy-filled pupils", "a floating iris", "an iris with moving constellations", "multiple concentric iris rings", "a living iris shifting colors"
-    ];
-
-    const NOSES = [
-      "straight", "aquiline", "hooked", "button", "broad", "thin", "flat", "short", "long", "broken", "wide bridge", "high bridge", "low bridge", "split bridge", "bone plated", "horned bridge", "crystal bridge", "metallic bridge", "draconic snout", "feline muzzle", "avian beak", "wolf-like muzzle", "serpent nose slits", "no visible nose (smooth skin)", "glowing energy vents instead of a nose", "breathing crystals"
-    ];
-
-    const MOUTH_LIPS = [
-      "thin lips", "full lips", "a wide mouth", "a small mouth", "a sharp cupid's bow", "an asymmetrical smile", "double lips", "glowing lips", "metallic lips", "crystal lips", "living flame mouth", "smoke-breathing mouth", "no visible mouth (telepathic)"
-    ];
-
-    const MOUTH_TEETH = [
-      "none", "pointed fangs", "jutting tusks", "multiple rows of teeth", "serrated teeth", "gold-plated teeth", "gemstone teeth", "transparent glass-like teeth"
-    ];
-
-    const EARS = [
-      "standard human ears", "long pointed elf ears", "short pointed elf ears", "drooping pointed ears", "pointed beast-like ears", "rounded ears", "winged ears", "finned ears", "horn-shaped ears", "multiple ears (two sets)", "hidden ears covered by hair/scales", "floating ears detached from the skull", "crystal ears", "feathered ears", "dragon fins", "glowing energy ears"
-    ];
-
-    const SKIN_TEXTURES = [
-      "smooth", "rough", "scarred", "aged", "weathered", "porcelain-smooth", "granite-textured", "marble-like", "crystal-facetted", "obsidian-reflective", "glass-like", "liquid metal-sheen", "bark-like", "coral-textured", "ice-veined", "magma-veined", "cloud-textured", "mist-like", "nebula-patterned", "cosmic-patterned", "shadow-like", "starlight-glowing", "gold leaf-textured", "silver leaf-textured", "emerald crystal-encrusted", "covered in living vines", "covered in living moss", "rune-covered", "moving tattoo-covered", "living constellation-covered", "flowing energy vein-covered"
-    ];
-
-    const HAIR_STYLES = [
-      "straight", "wavy", "curly", "coily", "spiral", "braided", "locs", "twisted", "windswept", "gravity-defying", "floating"
-    ];
-
-    const HAIR_MATERIALS = [
-      "standard hair fibers", "hair made of living fire", "hair made of flowing water", "hair made of crackling lightning", "hair made of wispy smoke", "hair made of glowing stars", "hair made of living vines", "hair made of soft feathers", "hair made of fine crystal strands", "hair made of living liquid metal", "hair made of wisps of shadows", "hair made of wild flowers", "hair made of autumn leaves", "hair made of shifting galaxies", "hair made of living writhing snakes", "hair made of living silk ribbons", "hair made of glowing energy strands"
-    ];
-
-    const EYE_COLORS = [
-      "amber", "hazel", "silver", "lavender", "gold", "turquoise", "jade", "bronze", "grey", "violet", "crimson", "emerald", "deep brown", "complete heterochromia"
-    ];
-
-    const HAIR_COLORS = [
-      "silver-white", "golden-blonde", "crimson-red", "jet-black", "charcoal-grey", "auburn", "lavender-purple", "emerald-green", "cobalt-blue", "copper-brown"
-    ];
-
-    const IMPERFECTIONS = [
-      "freckles", "moles", "birthmarks", "scars", "a missing eyebrow", "burn marks", "ritual tattoos", "deep dimples", "a crooked smile", "an uneven jawline", "a blind milky eye", "cracked crystal skin patches", "a broken horn", "a missing fang", "golden repair scars (kintsugi)", "magical corruption veins", "void fractures", "lightning burns", "ancient wrinkles", "battle damage"
-    ];
-
-    // Determine values dynamically based on nameHash
-    const faceShape = FACE_SHAPES[nameHash % FACE_SHAPES.length];
-    const humanInspiration1 = HUMAN_INSPIRATIONS[(nameHash * 3) % HUMAN_INSPIRATIONS.length];
-    const humanInspiration2 = HUMAN_INSPIRATIONS[(nameHash * 7) % HUMAN_INSPIRATIONS.length];
-    const blendedInspiration = humanInspiration1 === humanInspiration2 ? humanInspiration1 : `${humanInspiration1} and ${humanInspiration2}`;
-
-    let eyeShape = EYE_SHAPES[(nameHash * 11) % EYE_SHAPES.length];
-    let eyePupil = EYE_PUPILS[(nameHash * 13) % EYE_PUPILS.length];
-    let eyeColor = EYE_COLORS[(nameHash * 17) % EYE_COLORS.length];
-
-    const nose = NOSES[(nameHash * 19) % NOSES.length];
-    const mouthLips = MOUTH_LIPS[(nameHash * 23) % MOUTH_LIPS.length];
-    let mouthTeeth = MOUTH_TEETH[(nameHash * 29) % MOUTH_TEETH.length];
-    let ear = EARS[(nameHash * 31) % EARS.length];
-    let morphology = FANTASY_MORPHOLOGIES[(nameHash * 37) % FANTASY_MORPHOLOGIES.length];
-    let skinTexture = SKIN_TEXTURES[(nameHash * 41) % SKIN_TEXTURES.length];
-    let hairStyle = HAIR_STYLES[(nameHash * 43) % HAIR_STYLES.length];
-    let hairMaterial = HAIR_MATERIALS[(nameHash * 47) % HAIR_MATERIALS.length];
-    let hairColor = HAIR_COLORS[(nameHash * 53) % HAIR_COLORS.length];
-    const imperfection = IMPERFECTIONS[(nameHash * 59) % IMPERFECTIONS.length];
-
-    // Apply race constraints if specified to keep thematic logic
-    if (race && race !== "any") {
-      const r = race.toLowerCase();
-      if (r === "elf" || r === "ethereal") {
-        ear = EARS[(nameHash * 31) % 3 === 0 ? 1 : (nameHash * 31) % 3 === 1 ? 2 : 3]; // Pointed elf ears
-        if (morphology === "none") morphology = "a floating faint light halo";
-      } else if (r === "dwarf" || r === "stout") {
-        ear = "rounded ears";
-        if (mouthTeeth === "pointed fangs" || mouthTeeth === "jutting tusks") mouthTeeth = "none";
-      } else if (r === "orc" || r === "rugged" || r === "goblinoid") {
-        mouthTeeth = (nameHash * 29) % 2 === 0 ? "pointed fangs" : "jutting tusks";
-        ear = "pointed beast-like ears";
-      } else if (r === "celestial" || r === "divine") {
-        eyeColor = "gold";
-        eyePupil = "void-black pupils";
-        morphology = "a floating faint light halo";
-      } else if (r === "shadow" || r === "void") {
-        eyeColor = "lavender";
-        eyePupil = "void-black pupils";
-        hairMaterial = "hair made of wisps of shadows";
-      } else if (r === "draconic" || r === "dragon") {
-        morphology = "fine dragon scales along the cheekbones";
-        eyePupil = "dragon pupils";
-      } else if (r === "stone" || r === "crystal" || r === "golem") {
-        morphology = "living crystal growths";
-        skinTexture = "granite-textured";
-      } else if (r === "japanese" || r === "chinese" || r === "korean" || r === "east asian" || r === "vietnamese" || r === "thai" || r === "xianxia") {
-        eyeShape = "almond-shaped";
-        hairColor = "jet-black";
-        hairMaterial = "standard hair fibers";
-      } else if (r === "african" || r === "nilotic" || r === "horn of africa" || r === "west african") {
-        hairStyle = (nameHash * 43) % 3 === 0 ? "locs" : (nameHash * 43) % 3 === 1 ? "braided" : "coily";
-        hairMaterial = "standard hair fibers";
-      } else if (r === "nordic" || r === "celtic" || r === "viking") {
-        hairColor = (nameHash * 53) % 2 === 0 ? "silver-white" : "golden-blonde";
-        hairMaterial = "standard hair fibers";
-      }
-    }
-
-    const pose = humanPoses[(nameHash + 1) % humanPoses.length]
-
-    // Detect if details are already present in the prompt to prevent contradictions
-    const hasHair = /\b(hair|locks|braid(?:s|ed)?|bald|coiffure|tresses|ponytail|curls|waves|shaven)\b/i.test(trimmedPrompt)
-    const hasEyes = /\b(eyes|gaze|look|iris|pupils|lashes)\b/i.test(trimmedPrompt)
-    const hasSkin = /\b(skin|complexion|flesh|hide)\b/i.test(trimmedPrompt)
-    const hasPose = /\b(pose|posing|posed|posture|stance|standing|stands|crouch(?:ed|ing)?|kneel(?:ed|ing)?|seated|sit(?:s|ting)?|lean(?:ed|ing)?|running|walking|ready posture)\b/i.test(trimmedPrompt)
-    const hasFace = /\b(face|facial|jaw|jawline|cheekbones|cheeks|chin)\b/i.test(trimmedPrompt)
-
-    const faceParts: string[] = []
-    
-    let anatomyDesc = `a ${faceShape} face shape showing blended anatomical inspirations from ${blendedInspiration}`
-    if (morphology && morphology !== "none") {
-      anatomyDesc += `, characterized by ${morphology}`
-    }
-    if (!hasFace) faceParts.push(anatomyDesc)
-
-    const eyeDesc = `${eyeShape} eyes displaying a ${eyeColor} color with ${eyePupil}`
-    if (!hasEyes) faceParts.push(eyeDesc)
-
-    let mouthDesc = `a mouth showing ${mouthLips}`
-    if (mouthTeeth && mouthTeeth !== "none") mouthDesc += ` with ${mouthTeeth}`
-    mouthDesc += `, and ${ear}`
-
-    const noseDesc = `a ${nose} nose`
-
-    faceParts.push(noseDesc)
-    faceParts.push(mouthDesc)
-
-    const skinHairPartsList: string[] = []
-    if (!hasSkin) skinHairPartsList.push(`skin with a ${skinTexture} texture`)
-    if (!hasHair) skinHairPartsList.push(`styled in ${hairStyle} ${hairColor} locks made of ${hairMaterial}`)
-
-    if (skinHairPartsList.length > 0) {
-      faceParts.push(skinHairPartsList.join(", and "))
-    }
-
-    if (!hasFace) {
-      faceParts.push(`with a distinct imperfection: ${imperfection}`)
-    }
-
-    const raceClause = race && race !== "any" ? `reflecting a clear ${race} heritage and facial structure` : ""
-
-    let faceDirective = ""
-    if (faceParts.length > 0) {
-      faceDirective = `design a humanoid face with ${faceParts.join(", ")}`
-      if (raceClause) {
-        faceDirective += `, ${raceClause}`
-      }
-      const aestheticDesc = aestheticDescriptions[chosenAesthetic]
-      if (aestheticDesc) {
-        faceDirective += `. The face must embody a dominant ${chosenAesthetic} aesthetic: ${aestheticDesc}`
-      }
-      const ageDesc = ageDescriptions[chosenAgeGroup]
-      if (ageDesc) {
-        faceDirective += `. Visually portray the character as a ${chosenAgeGroup} with ${ageDesc}`
-      }
-    }
-
-    let poseDirective = ""
-    if (!hasPose && pose) {
-      poseDirective = `Pose the figure in a ${pose}.`
-    }
-
-    if (!faceDirective && !poseDirective) {
-      return ""
-    }
-
-    const faceSection = faceDirective ? `${faceDirective}. ` : ""
-    const poseSection = poseDirective ? `${poseDirective} ` : ""
-
-    return `Distinct face and pose for ${safeLabel}: ${faceSection}${poseSection}This face must feel entirely unique to this character, derived from their role and lore instead of generic templates. Focus on defining a distinct facial anatomy (underlying bone structure, cheekbones, jawline, nose profile) so the face remains recognizable even if hair, eyes, clothing, or accessories are changed.`
-  }
-
-  const faceProfiles = [
-    "an angular face with narrowed alert eyes, firm brows, pronounced cheekbones, and a controlled mouth",
-    "a softer oval face with wide searching eyes, lifted brows, a guarded half-frown, and visible skin details",
-    "a severe weathered face with heavy brows, a sharp nose, tight lips, and a battle-ready expression",
-    "a composed regal face with calm eyes, refined nose, elegant jawline, and restrained expression"
-  ]
-  const poseProfiles = [
-    "a three-quarter standing pose with one hand, limb, or aura lifted into the composition",
-    "a forward-leaning movement pose with weight shifted through the shoulders and hips",
-    "a side-on guarded stance with the head turned and the silhouette clearly readable",
-    "an upright commanding pose with squared shoulders and energy or environment arranged behind the figure"
-  ]
-  const faceProfile = faceProfiles[nameHash % faceProfiles.length]
-  const poseProfile = poseProfiles[(nameHash + index) % poseProfiles.length]
-
-  const hasEyes = /\b(eyes|gaze|look|iris|pupils|lashes)\b/i.test(trimmedPrompt)
-  const hasPose = /\b(pose|posing|posed|posture|stance|standing|stands|crouch(?:ed|ing)?|kneel(?:ed|ing)?|seated|sit(?:s|ting)?|lean(?:ed|ing)?|running|walking|ready posture)\b/i.test(trimmedPrompt)
-
-  let faceProfileCleaned = faceProfile
-  if (hasEyes) {
-    faceProfileCleaned = faceProfileCleaned
-      .replace(/with narrowed alert eyes,\s*/i, "")
-      .replace(/with wide searching eyes,\s*/i, "")
-      .replace(/with calm eyes,\s*/i, "with a ")
-      .replace(/\s+/g, " ")
-      .trim()
-  }
-
-  const raceString = race && race !== "any" ? `, exhibiting characteristic ${race} features,` : ""
-
-  if (hasPose) {
-    return `Distinct face for ${safeLabel}: do not reuse the same facial design as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfileCleaned}${raceString}.`
-  }
-
-  return `Distinct face and pose for ${safeLabel}: do not reuse the same facial design or body pose as the other ${Math.max(totalForms, 2)} forms; give this form ${faceProfileCleaned}${raceString} plus ${poseProfile}.`
-}
-
-function ensureDistinctCharacterAppearancePrompt(prompt: string, formKey: string, label: string, index: number, totalForms: number, entryCategory: string, characterName: string = "", race?: string, aesthetic?: string, ageGroup?: string): string {
-  const trimmedPrompt = prompt.trim()
-  if (!trimmedPrompt) return trimmedPrompt
-
-  // If the prompt is already detailed (e.g., has 120+ words), return it as is.
-  // The LLM generates high-quality, customized prompts directly; appending static text ruins them.
-  if (countPromptWords(trimmedPrompt) >= 120) {
-    return trimmedPrompt
-  }
-
-  const needsFace = !APPEARANCE_FACE_TERMS.test(trimmedPrompt)
-  const needsPose = !APPEARANCE_POSE_TERMS.test(trimmedPrompt)
-  const shouldForceDistinctVariant = totalForms > 1
-
-  if (!shouldForceDistinctVariant && !needsFace && !needsPose) {
-    return trimmedPrompt
-  }
-
-  return `${trimmedPrompt} ${getDistinctAppearanceDirective(trimmedPrompt, formKey, label, index, totalForms, entryCategory, characterName, race, aesthetic, ageGroup)}`
-}
-
 function formatMemoryContext(memory: unknown) {
   if (!memory || typeof memory !== "object") return ""
 
@@ -1348,7 +1007,21 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc, existingAppearances } = body
+      const rawExistingAppearances = Array.isArray(existingAppearances) ? existingAppearances : []
+      let existingAppearancesBlock = ""
+      if (rawExistingAppearances.length > 0) {
+        existingAppearancesBlock = "\n\nEXISTING CHARACTER APPEARANCES (do NOT duplicate their combinations of hair, eye colors, body build, or overall visual concepts):\n" +
+          rawExistingAppearances.map((item: any) => {
+            const details = item.characterDetails || {}
+            const detailsStr = Object.entries(details)
+              .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(", ")
+            const promptStr = item.promptSheet ? `Prompt Sheet details:\n${item.promptSheet}` : ""
+            return `- Character Name: ${item.characterName || "Unknown"}\n  Details: ${detailsStr || "None"}\n  ${promptStr}`
+          }).join("\n\n")
+      }
       const isAdHocMode = isAdHoc === true
       const safeFormLabels = formLabels && typeof formLabels === "object" ? formLabels as Record<string, string> : {}
       const safeFormEnabled = formEnabled && typeof formEnabled === "object" ? formEnabled as Record<string, boolean> : {}
@@ -1571,8 +1244,10 @@ export async function POST(req: NextRequest) {
         "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
         "ACCURATE CHAPTER CAPTURE (HIGHEST PRIORITY):\n" +
         "STRICT FIDELITY RULE: The generated image prompt MUST faithfully incorporate EVERY visual detail explicitly mentioned in the Highlighted Passage and Chapter Context about the subject. For example, if the text describes a character with 'long hair and a long beard', or an item/planet as 'brown with rings around it', these details MUST be the central focus of the generated prompt. Under no circumstances should you invent contradictory details (like making the character bald, clean-shaven, or short-haired) or default to generic styling. The prompt must be built around the text's explicit descriptions first and foremost.\n" +
+        "APPEARANCE UNIQUENESS MANDATE (CRITICAL): No two characters can have the same visual appearance. If a list of 'EXISTING CHARACTER APPEARANCES' is provided in the prompt, you MUST check their details and prompt sheets to ensure the character you are designing has a visually distinct set of traits (e.g. different combinations of hair color/style, eye color, body shape/build, height, and clothing) from any existing character. Do not repeat visual identities.\n\n" +
         chapterScanRule +
         "CONTENT & MERGING RULES (critical):\n" +
+        "0. NO RANDOM ETHNIC BLENDS: Do NOT mix random real-world ethnicities or force unmentioned fantasy morphologies (like scales, wings, or animal features) unless explicitly described in the chapter or Story Bible for this character.\n" +
         "1. PRIORITIZE AND MERGE USER INPUTS: Any details the user explicitly typed in the form description (e.g., hair, eyes, clothing, or style in the 'Forms to generate prompts for' section) must be treated as absolute truth and included. Integrate them perfectly.\n" +
         "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this " + visualSubjectLabel + ". These chapter-written details outrank generic fantasy defaults.\n" +
         "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing the target. Treat every specific visual detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. Do not replace author-written details with your inventions or defaults.\n" +
@@ -1646,7 +1321,7 @@ export async function POST(req: NextRequest) {
         ? `\nStory Bible Entry:\nName: ${safeLoreEntry.name || name || "Unknown"}\nType: ${safeLoreEntry.category || "unknown"}\nAliases: ${Array.isArray(safeLoreEntry.aliases) ? safeLoreEntry.aliases.join(", ") : "none"}\nGroups: ${Array.isArray(safeLoreEntry.groups) ? safeLoreEntry.groups.join(", ") : "none"}\nLore Notes:\n${safeLoreEntry.content || ""}`
         : ""
 
-      const formDescriptions = formKeys.map((k, index) => {
+      const formDescriptions = formKeys.map((k) => {
         const fallbackLabel = k === "humanForm" ? "Humanoid Form" : k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
         const label = safeFormLabels[k] || fallbackLabel
         const userProvided = appForms[k]?.trim()
@@ -1656,9 +1331,7 @@ export async function POST(req: NextRequest) {
             ? "Infer from chapter evidence and lore (include chapter visual details accurately as foundation, then enhance). If the character is described holding or using a weapon (sword, bow, staff, etc.), this MUST be included in the visual description with specific details."
             : "Infer from chapter evidence and lore (include setting, geography, object, map, route, material, scale, and atmosphere details accurately as foundation, then enhance)."
         const beastNote = (entryCategory === "beast" && !userProvided) ? " For beast entries, strictly apply the mandatory beast/demi-human/humanoid anatomical rules even with minimal information. In humanoid form, do not add tails, wings or other non-human traits unless explicitly stated in the chapter." : ""
-        const contextTextForFiltering = `${userProvided || ""} ${selectedText || ""} ${chapterText || ""} ${safeLoreEntry?.content || ""}`
-        const distinctNote = isCharacterLike ? ` ${getDistinctAppearanceDirective(contextTextForFiltering, k, label, index, formKeys.length, entryCategory, name, race, aesthetic, ageGroup)}` : ""
-        return `- ${label} (${k}): ${baseInfer}${beastNote}${distinctNote}`
+        return `- ${label} (${k}): ${baseInfer}${beastNote}`
       }).join("\n")
 
       userPrompt =
@@ -1684,6 +1357,7 @@ export async function POST(req: NextRequest) {
             : `VISUAL ANCHOR INSTRUCTION: If the chapter gives sparse setting or object detail, infer a coherent environment, map, planet, or artifact design from the name, category, lore, groups, genre, and current chapter mood. Make the subject visually specific and immediately usable.\n\n`)
         ) +
         `Forms to generate prompts for:\n${formDescriptions}` +
+        existingAppearancesBlock +
         `${memoryContext}`
     } else if (action === "progression_update") {
       const { selectedText, loreEntry, chapter, existingProfile, progressionSystem, candidateProfiles, candidateLoreEntries } = body
@@ -2604,34 +2278,15 @@ export async function POST(req: NextRequest) {
         }
         return ""
       }
-      const responseLoreEntry = body?.loreEntry && typeof body.loreEntry === "object"
-        ? body.loreEntry as { category?: string; name?: string }
-        : null
-      const responseEntryCategory = typeof responseLoreEntry?.category === "string" ? responseLoreEntry.category : ""
-      const characterName = String(body?.name || responseLoreEntry?.name || "").trim()
-      const race = typeof body?.race === "string" ? body.race.trim() : ""
-      const aesthetic = typeof body?.aesthetic === "string" ? body.aesthetic.trim() : ""
-      const ageGroup = typeof body?.ageGroup === "string" ? body.ageGroup.trim() : ""
-      const responseFormLabels = body?.formLabels && typeof body.formLabels === "object"
-        ? body.formLabels as Record<string, string>
-        : {}
       const prompts: Record<string, string> = {}
       const negativePrompts: Record<string, string> = {}
       if (appearance.prompts && typeof appearance.prompts === "object") {
         const promptKeys = Object.keys(appearance.prompts)
-        const responseIsCharacterLike = responseEntryCategory === "beast" ||
-          responseEntryCategory === "character" ||
-          promptKeys.some(key => /\b(beast|demi|human|humanoid|form)\b/i.test(key.replace(/([A-Z])/g, " $1")))
 
         for (const key of promptKeys) {
           const text = extractString(appearance.prompts[key], key)
           if (text) {
-            const fallbackLabel = key === "humanForm" ? "Humanoid Form" : key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
-            const label = responseFormLabels[key] || fallbackLabel
-            const expandedPrompt = expandShortAppearancePrompt(text, key)
-            prompts[key] = responseIsCharacterLike
-              ? ensureDistinctCharacterAppearancePrompt(expandedPrompt, key, label, Object.keys(prompts).length, promptKeys.length, responseEntryCategory, characterName, race, aesthetic, ageGroup)
-              : expandedPrompt
+            prompts[key] = text
           }
         }
       }

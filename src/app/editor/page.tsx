@@ -3058,6 +3058,19 @@ function EditorContent() {
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
       const isAdHocRequest = sourceEntry.id === "adhoc-selection"
+      const existingAppearances = bibleEntries
+        .filter(entry => entry.id !== sourceEntry.id && (entry.category === "character" || entry.category === "beast"))
+        .map(entry => {
+          const sheetIndex = entry.content.indexOf("## Appearance Prompt Sheet")
+          const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex) : ""
+          return {
+            characterName: entry.name,
+            characterDetails: entry.characterDetails,
+            promptSheet: promptSheet || undefined
+          }
+        })
+        .filter(item => item.promptSheet || (item.characterDetails && Object.values(item.characterDetails).some(val => typeof val === "string" && val.trim().length > 0)))
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3078,6 +3091,7 @@ function EditorContent() {
           aesthetic: aestheticForRequest !== "any" ? aestheticForRequest : undefined,
           ageGroup: ageGroupForRequest !== "any" ? ageGroupForRequest : undefined,
           isAdHoc: isAdHocRequest,
+          existingAppearances,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -3162,6 +3176,19 @@ function EditorContent() {
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
       const raceValue = appearanceRace === "custom" ? appearanceCustomRace.trim() : appearanceRace
+      const existingAppearances = bibleEntries
+        .filter(entry => entry.id !== sourceEntry.id && (entry.category === "character" || entry.category === "beast"))
+        .map(entry => {
+          const sheetIndex = entry.content.indexOf("## Appearance Prompt Sheet")
+          const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex) : ""
+          return {
+            characterName: entry.name,
+            characterDetails: entry.characterDetails,
+            promptSheet: promptSheet || undefined
+          }
+        })
+        .filter(item => item.promptSheet || (item.characterDetails && Object.values(item.characterDetails).some(val => typeof val === "string" && val.trim().length > 0)))
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3177,6 +3204,7 @@ function EditorContent() {
           perFormNegatives: appearancePerFormNegative,
           facialFeatures: appearanceFacialDescription.trim() || undefined,
           race: raceValue !== "any" ? raceValue : undefined,
+          existingAppearances,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
