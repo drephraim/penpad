@@ -993,21 +993,31 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate a pose description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the style "${poseStyle || "dynamic"}".${charDetails}`
     } else if (action === "generate_attire") {
-      const { name, category, formLabel, attireNature, loreEntry } = body
+      const { name, category, formLabel, attireNature, novelGenre, loreEntry } = body
       systemInstruction =
-        "You are an expert fantasy/sci-fi clothing and armor designer. " +
+        "You are an expert fantasy, sci-fi, and historical attire and armor designer.\n" +
         "Your task is to generate a highly detailed, textured description of a character's clothing, armor, or attire.\n" +
         "Guidelines:\n" +
         "1. Write a vivid, focused description of approximately 50-80 words.\n" +
         "2. Focus entirely on fabrics, materials, colors, armor plates, trim, accessories, fit, drape, and how the clothing/armor flows or sits on the body.\n" +
         "3. Do NOT mention the character's name, face, or general pose. Only describe the attire itself.\n" +
-        "4. Match the selected attire nature: " + String(attireNature || "fantasy robes") + ".\n" +
-        "5. Output ONLY the raw descriptive phrase. No intro, no quotes, no markdown headers, and no outro comments."
+        "4. STRICT NOVEL GENRE & ATTIRE NATURE ADHERENCE: Synthesize the clothing/armor specifically for the selected genre style: " + String(attireNature || novelGenre || "eastern_fantasy") + ".\n" +
+        "   - Futuristic / Sci-Fi Armor: high-tech composite alloys, nanotech weave, bio-luminescent fibers, exoskeleton joints, holo-visors, tactical utility harnesses, sleek carbon-fiber plating.\n" +
+        "   - Eastern Fantasy / Xianxia / Wuxia: flowing Hanfu or Daoist silk robes, gold/silver embroidery, Qi talismans, ornate hairpins, cloth sashes, spirit-beast leather vambraces.\n" +
+        "   - Cyberpunk / Techwear: neon-accented synthetic leather, tactical chest rigs, neural interface ports, dark duster coats, techwear straps, augmented urban streetwear.\n" +
+        "   - Dark Fantasy / Gothic: weathered leather, battle-damaged heavy plate armor, dark hooded cloaks, iron rivets, tattered hems, gothic filigree.\n" +
+        "   - High Fantasy / Medieval: polished steel mail, padded tunics, embroidered velvet, family crests, leather belts, knightly tabards.\n" +
+        "   - Stealth / Assassin: matte-black shadow suits, hooded cowls, silent boots, utility straps, concealed sheath slots, lightweight leather plating.\n" +
+        "   - Post-Apocalyptic: scavenged scrap armor, gas mask harnesses, reinforced canvas, shredded leather wraps, tactical pouches, makeshift welding.\n" +
+        "   - Samurai / Bushido: traditional Japanese samurai shogun armor, lacing, silk haori, menpo facial guard, traditional obi sash.\n" +
+        "   - Victorian Gothic: Victorian velvet tailcoats, corset dresses, lace ruffles, brass clockwork buckles, high collars, leather gaiters.\n" +
+        "5. If the author specifies simple clothing like 'a brown cloak' or 'clad in armor', translate that into a full, genre-faithful outfit matching the exact technology level and visual rules above.\n" +
+        "6. Output ONLY the raw descriptive phrase. No intro, no quotes, no markdown headers, and no outro comments."
       
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
-      userPrompt = `Generate an attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the nature "${attireNature || "fantasy robes"}".${charDetails}`
+      userPrompt = `Generate a complete attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the genre/nature "${attireNature || novelGenre || "eastern_fantasy"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc, existingAppearances } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc, existingAppearances, novelGenre, attireNature } = body
       const rawExistingAppearances = Array.isArray(existingAppearances) ? existingAppearances : []
       let existingAppearancesBlock = ""
       if (rawExistingAppearances.length > 0) {
@@ -1252,6 +1262,7 @@ export async function POST(req: NextRequest) {
         "2. READ THE ACTIVE CHAPTER FIRST: Before designing, silently scan the Full Active Chapter Context and extract every visual clue written by the author about this " + visualSubjectLabel + ". These chapter-written details outrank generic fantasy defaults.\n" +
         "3. MERGE CHAPTER EVIDENCE & STORY BIBLE: The Target-Focused Chapter Evidence and Full Active Chapter Context contain the author's own words describing the target. Treat every specific visual detail from them as **mandatory** to include accurately. Highlighted passage is highest priority. Do not replace author-written details with your inventions or defaults.\n" +
         subjectDesignRules +
+        (novelGenre || attireNature ? `   - NOVEL GENRE & ATTIRE NATURE MANDATE (${novelGenre || attireNature}): Synthesize all clothing, armor, cloaks, and gear in the exact design language, material textures, and technology level of "${novelGenre || attireNature}". If the text describes simple garments like 'a brown cloak' or 'clad in armor', expand them into complete, genre-faithful attire (e.g., carbon-fiber nanotech weave for Futuristic, Hanfu/Daoist embroidered silk for Eastern Fantasy, neon techwear for Cyberpunk, weathered plate mail for Dark Fantasy).\n` : "") +
         "   - Cultivation/Xianxia: flowing Daoist silk robes with gold/silver embroidery, elaborate hairpins/crowns, dynamic hand gestures (sword seals), swirling Qi energy, floating spiritual talismans, and backgrounds like mist-shrouded mountain peaks or ancient temples.\n" +
         "   - Dark Fantasy: weathered leather, heavy plate armor with battle damage, dark hooded cloaks, rugged or scarred features, dramatic chiaroscuro lighting, and gothic, ruined, or stormy environments.\n" +
         "   - LitRPG/Sci-Fi: sleek armor plates, glowing runes or neon accents, holographic displays, athletic build, and high-tech or cybernetic backgrounds.\n" +

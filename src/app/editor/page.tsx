@@ -2501,6 +2501,7 @@ function EditorContent() {
   const [selectedAttireNature, setSelectedAttireNature] = useState<Record<string, string>>({})
   const [generatingAttireKey, setGeneratingAttireKey] = useState<string | null>(null)
   const [generatedAttirePrompt, setGeneratedAttirePrompt] = useState<Record<string, string>>({})
+  const [novelGenre, setNovelGenre] = useState<string>("eastern_fantasy")
 
   const getDefaultEntryForms = useCallback((category: string): AppearanceFormConfig => {
     if (category === "beast") {
@@ -2678,6 +2679,8 @@ function EditorContent() {
       if (storedAesthetic) setAppearanceAestheticByEntry(JSON.parse(storedAesthetic))
       const storedAgeGroup = localStorage.getItem("penpad_appearance_age_group_by_entry")
       if (storedAgeGroup) setAppearanceAgeGroupByEntry(JSON.parse(storedAgeGroup))
+      const storedGenre = localStorage.getItem("penpad_novel_genre")
+      if (storedGenre) setNovelGenre(storedGenre)
     } catch {}
   }, [])
 
@@ -2720,6 +2723,9 @@ function EditorContent() {
   useEffect(() => {
     try { localStorage.setItem("penpad_appearance_age_group_by_entry", JSON.stringify(appearanceAgeGroupByEntry)) } catch {}
   }, [appearanceAgeGroupByEntry])
+  useEffect(() => {
+    try { localStorage.setItem("penpad_novel_genre", novelGenre) } catch {}
+  }, [novelGenre])
 
   // Hover Tooltip States
   const [hoveredLore, setHoveredLore] = useState<BibleEntry | null>(null)
@@ -3092,6 +3098,8 @@ function EditorContent() {
           ageGroup: ageGroupForRequest !== "any" ? ageGroupForRequest : undefined,
           isAdHoc: isAdHocRequest,
           existingAppearances,
+          novelGenre: novelGenre,
+          attireNature: Object.values(selectedAttireNature)[0] || novelGenre,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -3311,7 +3319,7 @@ function EditorContent() {
     setAppearanceError("")
     try {
       const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
-      const natureToUse = selectedAttireNature[formKey] || "eastern_fantasy"
+      const natureToUse = selectedAttireNature[formKey] || novelGenre || "eastern_fantasy"
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3321,6 +3329,7 @@ function EditorContent() {
           category: sourceEntry.category,
           formLabel: appearanceFormLabels[formKey] || formKey,
           attireNature: natureToUse,
+          novelGenre: novelGenre,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -12056,6 +12065,35 @@ ${navPoints}  </navMap>
                     )}
                   </div>
 
+                  {/* Novel Genre & Attire World Aesthetic Selector */}
+                  <div className="ai-form-field">
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      <span>Novel Genre / Attire World Aesthetic</span>
+                    </label>
+                    <select
+                      className="ai-select"
+                      value={novelGenre}
+                      onChange={(e) => setNovelGenre(e.target.value)}
+                      disabled={appearanceLoading}
+                    >
+                      <option value="eastern_fantasy">☯️ Eastern Fantasy / Xianxia / Wuxia (Daoist Robes, Hanfu, Qi Talismans)</option>
+                      <option value="futuristic_armor">🚀 Futuristic Sci-Fi (High-Tech Composite Armor, Exo-Suits, Nanotech Weave)</option>
+                      <option value="cyberpunk_streetwear">⚡ Cyberpunk / Techwear (Neon Accents, Tactical Vests, Neural Weave)</option>
+                      <option value="dark_fantasy">🗡️ Dark Fantasy & Gothic (Weathered Leather, Battle-Damaged Heavy Plate)</option>
+                      <option value="high_fantasy">⚔️ High Fantasy / Medieval (Polished Steel Mail, Tunics, Embossed Leather)</option>
+                      <option value="stealth_gear">🥷 Stealth / Assassin / Shinobi (Hooded Shadow Bodysuits, Concealed Blades)</option>
+                      <option value="nomad_traveler">🐪 Desert Nomad & Traveler (Layered Linen Wraps, Weathered Travel Cloaks)</option>
+                      <option value="post_apocalyptic">☣️ Post-Apocalyptic Scavenger (Scrapped Metal Armor, Gas Mask Harnesses)</option>
+                      <option value="samurai_armor">🏯 Traditional Japanese Samurai (Shogun Armor, Lacing, Silk Haori)</option>
+                      <option value="victorian_gothic">🎩 Victorian Gothic & Steampunk (Velvet Tailcoats, Corset Dresses, Brass Trim)</option>
+                      <option value="modern_urban">🏙️ Modern Urban & Tactical (Sleek Streetwear, Tailored Suits)</option>
+                      <option value="greek_chiton">🏛️ Classical Antiquity (Greek Chiton, Roman Toga, Golden Laurel Leaves)</option>
+                      <option value="royal_gown">👑 Royal & Ceremonial (Silk Brocade Gowns, Ermine Trimmed Capes)</option>
+                      <option value="mystic_robe">🔮 Archmage & Scholar (Arcane Embroidered Robes, Runed Collars)</option>
+                      <option value="beast_hide">🐉 Natural Beast Hide / Dragon Scales (Pelt Cloaks, Bone Ornaments)</option>
+                    </select>
+                  </div>
+
                   {/* Dominant Aesthetic Selector */}
                   {selectedAppearanceEntry?.category !== "place" && selectedAppearanceEntry?.category !== "world" && selectedAppearanceEntry?.category !== "item" && (
                     <div className="ai-form-field">
@@ -12715,23 +12753,24 @@ ${navPoints}  </navMap>
                                 <select 
                                   className="ai-input" 
                                   style={{ flex: 1, fontSize: "0.7rem", minHeight: "26px", padding: "0px 6px" }}
-                                  value={selectedAttireNature[formKey] || "eastern_fantasy"}
+                                  value={selectedAttireNature[formKey] || novelGenre || "eastern_fantasy"}
                                   onChange={(e) => setSelectedAttireNature(prev => ({ ...prev, [formKey]: e.target.value }))}
                                 >
-                                  <option value="eastern_fantasy">Eastern Fantasy Robes (Hanfu/Daoist)</option>
-                                  <option value="futuristic_armor">Futuristic Nanotech Armor / Cloak</option>
-                                  <option value="dark_fantasy">Dark Fantasy Plate & Leather Cloak</option>
-                                  <option value="royal_gown">Royal / Ceremonial Silk Gown</option>
-                                  <option value="mystic_robe">Mystic Mage / Scholar Robes</option>
-                                  <option value="beast_hide">Natural Beast Hide / Scales / Armor Plates</option>
-                                  <option value="stealth_gear">Stealth/Assassin Hooded Bodysuit</option>
-                                  <option value="cyberpunk_streetwear">Cyberpunk Neon Streetwear / Techwear</option>
-                                  <option value="post_apocalyptic">Post-Apocalyptic Scavenger rags & armor</option>
-                                  <option value="greek_chiton">Ancient Greek Chiton & Golden Ornaments</option>
-                                  <option value="victorian_gothic">Victorian Gothic Tailcoat / Corset Dress</option>
-                                  <option value="nomad_traveler">Desert Nomad / Traveler Cloak & Wraps</option>
-                                  <option value="tribal_ceremonial">Tribal Ceremonial Feathers & Warpaint</option>
-                                  <option value="samurai_armor">Traditional Japanese Samurai Shogun Armor</option>
+                                  <option value="eastern_fantasy">☯️ Eastern Fantasy Robes (Hanfu / Daoist)</option>
+                                  <option value="futuristic_armor">🚀 Futuristic Nanotech Armor & Cloak</option>
+                                  <option value="cyberpunk_streetwear">⚡ Cyberpunk Neon Techwear & Streetwear</option>
+                                  <option value="dark_fantasy">🗡️ Dark Fantasy Battle Plate & Leather Cloak</option>
+                                  <option value="high_fantasy">⚔️ High Fantasy Medieval Mail & Tabard</option>
+                                  <option value="stealth_gear">🥷 Stealth / Assassin Hooded Bodysuit</option>
+                                  <option value="nomad_traveler">🐪 Desert Nomad / Traveler Cloak & Wraps</option>
+                                  <option value="post_apocalyptic">☣️ Post-Apocalyptic Scavenger Rags & Scrap Armor</option>
+                                  <option value="samurai_armor">🏯 Traditional Japanese Samurai Shogun Armor</option>
+                                  <option value="victorian_gothic">🎩 Victorian Gothic Tailcoat / Corset Dress</option>
+                                  <option value="modern_urban">🏙️ Modern Urban Tactical & Streetwear</option>
+                                  <option value="greek_chiton">🏛️ Ancient Greek Chiton & Golden Ornaments</option>
+                                  <option value="royal_gown">👑 Royal & Ceremonial Silk Brocade Gown</option>
+                                  <option value="mystic_robe">🔮 Arcane Mage / Scholar Embroidered Robes</option>
+                                  <option value="beast_hide">🐉 Natural Beast Hide / Dragon Scales / Pelts</option>
                                 </select>
                                 <button
                                   type="button"
