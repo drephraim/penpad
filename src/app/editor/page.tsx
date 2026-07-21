@@ -2493,14 +2493,6 @@ function EditorContent() {
   const [showCustomFormAdder, setShowCustomFormAdder] = useState(false)
   const [customFormLabel, setCustomFormLabel] = useState("")
   const [customFormDesc, setCustomFormDesc] = useState("")
-
-  const [selectedPoseStyle, setSelectedPoseStyle] = useState<Record<string, string>>({})
-  const [generatingPoseKey, setGeneratingPoseKey] = useState<string | null>(null)
-  const [generatedPosePrompt, setGeneratedPosePrompt] = useState<Record<string, string>>({})
-
-  const [selectedAttireNature, setSelectedAttireNature] = useState<Record<string, string>>({})
-  const [generatingAttireKey, setGeneratingAttireKey] = useState<string | null>(null)
-  const [generatedAttirePrompt, setGeneratedAttirePrompt] = useState<Record<string, string>>({})
   const [novelGenre, setNovelGenre] = useState<string>("eastern_fantasy")
 
   const getDefaultEntryForms = useCallback((category: string): AppearanceFormConfig => {
@@ -3012,9 +3004,30 @@ function EditorContent() {
 
     try {
       const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
-      const chapterContext = activeNote?.content
-        ? activeNote.content
-        : ""
+      // Multi-chapter text gathering (current chapter + previous chapters)
+      let chapterContext = activeNote?.content ? activeNote.content : ""
+      if (activeNote && notes.length > 0) {
+        const sortedNotes = [...notes].sort((a, b) => {
+          const numA = getNoteChapterNumber(a) || 0
+          const numB = getNoteChapterNumber(b) || 0
+          return numA - numB
+        })
+        const activeIdx = sortedNotes.findIndex(n => n.id === activeNote.id)
+        if (activeIdx > 0) {
+          const prevNotes = sortedNotes.slice(Math.max(0, activeIdx - 2), activeIdx)
+          const prevTexts = prevNotes
+            .filter(n => n.content && n.content.trim())
+            .map(n => {
+              const num = getNoteChapterNumber(n)
+              return `--- PREVIOUS CHAPTER (${num ? `Chapter ${num}: ` : ""}${n.title}) ---\n${n.content.trim()}`
+            })
+          if (prevTexts.length > 0) {
+            const activeNum = getNoteChapterNumber(activeNote)
+            const currentHeader = `--- CURRENT CHAPTER (${activeNum ? `Chapter ${activeNum}: ` : ""}${activeNote.title}) ---\n${activeNote.content?.trim() || ""}`
+            chapterContext = [...prevTexts, currentHeader].join("\n\n")
+          }
+        }
+      }
       const appearanceTargetEvidence = buildProgressionTargetEvidence(sourceEntry, chapterContext, selectedText)
       const defaultFormConfig = getDefaultEntryForms(sourceEntry.category)
       const enforceCategoryForms = sourceEntry.category === "beast" || sourceEntry.category === "character"
@@ -3099,7 +3112,7 @@ function EditorContent() {
           isAdHoc: isAdHocRequest,
           existingAppearances,
           novelGenre: novelGenre,
-          attireNature: Object.values(selectedAttireNature)[0] || novelGenre,
+          attireNature: novelGenre,
           loreEntry: {
             name: sourceEntry.name,
             category: sourceEntry.category,
@@ -3259,118 +3272,6 @@ function EditorContent() {
       setAppearanceError(err instanceof Error ? err.message : "Failed to regenerate form")
     } finally {
       setAppearanceGeneratingForm(null)
-    }
-  }
-
-  const handleGeneratePosePrompt = async (formKey: string) => {
-    const selectedText = aiSelectionText
-    const sourceEntry = selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
-    if (!sourceEntry) {
-      setAppearanceError("No entry selected.")
-      return
-    }
-    setGeneratingPoseKey(formKey)
-    setAppearanceError("")
-    try {
-      const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
-      const styleToUse = selectedPoseStyle[formKey] || "dynamic"
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "generate_pose",
-          name: sourceEntry.name,
-          category: sourceEntry.category,
-          formLabel: appearanceFormLabels[formKey] || formKey,
-          poseStyle: styleToUse,
-          loreEntry: {
-            name: sourceEntry.name,
-            category: sourceEntry.category,
-            content: sourceEntry.content
-          },
-          chapter: activeNote ? {
-            title: activeNote.title,
-            chapterNumber: activeChapterNumber,
-            content: activeNote.content
-          } : null
-        })
-      })
-      const data = await res.json()
-      if (data.error) {
-        setAppearanceError(data.error)
-      } else if (data.text) {
-        setGeneratedPosePrompt(prev => ({ ...prev, [formKey]: String(data.text).trim() }))
-      }
-    } catch (err) {
-      setAppearanceError(err instanceof Error ? err.message : "Failed to generate pose prompt")
-    } finally {
-      setGeneratingPoseKey(null)
-    }
-  }
-
-  const handleGenerateAttirePrompt = async (formKey: string) => {
-    const selectedText = aiSelectionText
-    const sourceEntry = selectedAppearanceEntry || findLoreEntryFromSelection(selectedText)
-    if (!sourceEntry) {
-      setAppearanceError("No entry selected.")
-      return
-    }
-    setGeneratingAttireKey(formKey)
-    setAppearanceError("")
-    try {
-      const activeChapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
-      const natureToUse = selectedAttireNature[formKey] || novelGenre || "eastern_fantasy"
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "generate_attire",
-          name: sourceEntry.name,
-          category: sourceEntry.category,
-          formLabel: appearanceFormLabels[formKey] || formKey,
-          attireNature: natureToUse,
-          novelGenre: novelGenre,
-          loreEntry: {
-            name: sourceEntry.name,
-            category: sourceEntry.category,
-            content: sourceEntry.content
-          },
-          chapter: activeNote ? {
-            title: activeNote.title,
-            chapterNumber: activeChapterNumber,
-            content: activeNote.content
-          } : null
-        })
-      })
-      const data = await res.json()
-      if (data.error) {
-        setAppearanceError(data.error)
-      } else if (data.text) {
-        setGeneratedAttirePrompt(prev => ({ ...prev, [formKey]: String(data.text).trim() }))
-      }
-    } catch (err) {
-      setAppearanceError(err instanceof Error ? err.message : "Failed to generate attire prompt")
-    } finally {
-      setGeneratingAttireKey(null)
-    }
-  }
-
-  const handleAppendToPrompt = (formKey: string, textToAppend: string) => {
-    if (!appearanceResult) return
-    const currentPrompt = appearanceResult.prompts?.[formKey] || ""
-    if (currentPrompt.includes(textToAppend)) return
-    const separator = currentPrompt.trim().endsWith(".") ? " " : ". "
-    const newPrompt = `${currentPrompt.trim()}${separator}${textToAppend.trim()}`
-    const updatedResult = {
-      ...appearanceResult,
-      prompts: {
-        ...appearanceResult.prompts,
-        [formKey]: newPrompt
-      }
-    }
-    setAppearanceResult(updatedResult)
-    if (appearanceSelectedEntryId) {
-      setAppearanceResultsByEntry(prev => ({ ...prev, [appearanceSelectedEntryId]: updatedResult }))
     }
   }
 
@@ -12019,135 +11920,6 @@ ${navPoints}  </navMap>
                     </div>
                   </div>
 
-                  {/* Race / Culture Selector */}
-                  <div className="ai-form-field">
-                    <label>Race / Cultural Heritage</label>
-                    <select
-                      className="ai-select"
-                      value={appearanceRace}
-                      onChange={(e) => {
-                        setAppearanceRace(e.target.value)
-                        if (e.target.value !== "custom") {
-                          setAppearanceCustomRace("")
-                        }
-                      }}
-                      disabled={appearanceLoading}
-                    >
-                      <option value="any">Default / Inferred from name & lore</option>
-                      <option value="Japanese">Japanese / East Asian</option>
-                      <option value="Chinese">Chinese / Xianxia</option>
-                      <option value="Korean">Korean / East Asian</option>
-                      <option value="Middle Eastern">Middle Eastern / Persian / Arabic</option>
-                      <option value="Norwegian">Norwegian / Nordic / Viking</option>
-                      <option value="Scottish">Scottish / Celtic / Gaelic</option>
-                      <option value="African">African (Swahili/Yoruba/Zulu)</option>
-                      <option value="Indian">South Asian / Indian</option>
-                      <option value="American">North American / Native American</option>
-                      <option value="Mediterranean">Mediterranean / Greek / Roman</option>
-                      <option value="Elf">Elf / Ethereal</option>
-                      <option value="Dwarf">Dwarf / Stout</option>
-                      <option value="Orc">Orc / Rugged / Goblinoid</option>
-                      <option value="Celestial">Celestial / Divine Glow</option>
-                      <option value="Shadow">Shadow / Void-infused</option>
-                      <option value="Draconic">Draconic / Dragon-kin</option>
-                      <option value="Stone">Stone / Crystal / Golem</option>
-                      <option value="custom">Custom...</option>
-                    </select>
-                    {appearanceRace === "custom" && (
-                      <input
-                        className="ai-input"
-                        style={{ marginTop: "0.2rem" }}
-                        value={appearanceCustomRace}
-                        onChange={(e) => setAppearanceCustomRace(e.target.value)}
-                        placeholder="e.g. Nordic elf, Mayan warrior, Polynesian voyager..."
-                        disabled={appearanceLoading}
-                      />
-                    )}
-                  </div>
-
-                  {/* Novel Genre & Attire World Aesthetic Selector */}
-                  <div className="ai-form-field">
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                      <span>Novel Genre / Attire World Aesthetic</span>
-                    </label>
-                    <select
-                      className="ai-select"
-                      value={novelGenre}
-                      onChange={(e) => setNovelGenre(e.target.value)}
-                      disabled={appearanceLoading}
-                    >
-                      <option value="eastern_fantasy">☯️ Eastern Fantasy / Xianxia / Wuxia (Daoist Robes, Hanfu, Qi Talismans)</option>
-                      <option value="futuristic_armor">🚀 Futuristic Sci-Fi (High-Tech Composite Armor, Exo-Suits, Nanotech Weave)</option>
-                      <option value="cyberpunk_streetwear">⚡ Cyberpunk / Techwear (Neon Accents, Tactical Vests, Neural Weave)</option>
-                      <option value="dark_fantasy">🗡️ Dark Fantasy & Gothic (Weathered Leather, Battle-Damaged Heavy Plate)</option>
-                      <option value="high_fantasy">⚔️ High Fantasy / Medieval (Polished Steel Mail, Tunics, Embossed Leather)</option>
-                      <option value="stealth_gear">🥷 Stealth / Assassin / Shinobi (Hooded Shadow Bodysuits, Concealed Blades)</option>
-                      <option value="nomad_traveler">🐪 Desert Nomad & Traveler (Layered Linen Wraps, Weathered Travel Cloaks)</option>
-                      <option value="post_apocalyptic">☣️ Post-Apocalyptic Scavenger (Scrapped Metal Armor, Gas Mask Harnesses)</option>
-                      <option value="samurai_armor">🏯 Traditional Japanese Samurai (Shogun Armor, Lacing, Silk Haori)</option>
-                      <option value="victorian_gothic">🎩 Victorian Gothic & Steampunk (Velvet Tailcoats, Corset Dresses, Brass Trim)</option>
-                      <option value="modern_urban">🏙️ Modern Urban & Tactical (Sleek Streetwear, Tailored Suits)</option>
-                      <option value="greek_chiton">🏛️ Classical Antiquity (Greek Chiton, Roman Toga, Golden Laurel Leaves)</option>
-                      <option value="royal_gown">👑 Royal & Ceremonial (Silk Brocade Gowns, Ermine Trimmed Capes)</option>
-                      <option value="mystic_robe">🔮 Archmage & Scholar (Arcane Embroidered Robes, Runed Collars)</option>
-                      <option value="beast_hide">🐉 Natural Beast Hide / Dragon Scales (Pelt Cloaks, Bone Ornaments)</option>
-                    </select>
-                  </div>
-
-                  {/* Dominant Aesthetic Selector */}
-                  {selectedAppearanceEntry?.category !== "place" && selectedAppearanceEntry?.category !== "world" && selectedAppearanceEntry?.category !== "item" && (
-                    <div className="ai-form-field">
-                      <label>Beauty / Dominant Aesthetic</label>
-                      <select
-                        className="ai-select"
-                        value={appearanceAesthetic}
-                        onChange={(e) => setAppearanceAesthetic(e.target.value)}
-                        disabled={appearanceLoading}
-                      >
-                        <option value="any">Default / Inferred from name & context</option>
-                        <option value="ethereal">Ethereal (otherworldly, delicate)</option>
-                        <option value="noble">Noble (dignified, refined)</option>
-                        <option value="regal">Regal (majestic, commanding)</option>
-                        <option value="cute">Cute (youthful, charmingly sweet)</option>
-                        <option value="dangerous">Dangerous (threatening, intimidating)</option>
-                        <option value="soft">Soft (gentle, warm, approachable)</option>
-                        <option value="intellectual">Intellectual (scholarly, focused, sharp)</option>
-                        <option value="battle-scarred">Battle-scarred (rugged, battle-worn)</option>
-                        <option value="charming">Charming (alluring, attractive)</option>
-                        <option value="innocent">Innocent (naive, pure, open)</option>
-                        <option value="cold">Cold (emotionless, detached, icy)</option>
-                        <option value="mischievous">Mischievous (sly, playful, cunning)</option>
-                        <option value="serene">Serene (peaceful, tranquil)</option>
-                        <option value="mysterious">Mysterious (enigmatic, shadowed)</option>
-                        <option value="haunting">Haunting (ghostly, memorable, striking)</option>
-                        <option value="heroic">Heroic (valiant, inspiring)</option>
-                        <option value="villainous">Villainous (sinister, menacing)</option>
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Age Group Selector */}
-                  {selectedAppearanceEntry?.category !== "place" && selectedAppearanceEntry?.category !== "world" && selectedAppearanceEntry?.category !== "item" && (
-                    <div className="ai-form-field">
-                      <label>Age Group</label>
-                      <select
-                        className="ai-select"
-                        value={appearanceAgeGroup}
-                        onChange={(e) => setAppearanceAgeGroup(e.target.value)}
-                        disabled={appearanceLoading}
-                      >
-                        <option value="any">Default / Inferred from context</option>
-                        <option value="child">Child (soft, round, smooth skin)</option>
-                        <option value="teenager">Teenager (youthful, clean jaw)</option>
-                        <option value="young-adult">Young Adult (defined, vibrant)</option>
-                        <option value="adult">Adult (mature, firm contours)</option>
-                        <option value="middle-aged">Middle-aged (seasoned, faint lines)</option>
-                        <option value="elderly">Elderly (deep wrinkles, weathered skin)</option>
-                        <option value="ancient">Ancient Being (timeless, paper-thin or stone skin)</option>
-                      </select>
-                    </div>
-                  )}
-
                   {/* Dedicated Facial Features input - key for generating good faces even when chapter is silent */}
                   <div className="ai-form-field">
                     <label>
@@ -12679,137 +12451,7 @@ ${navPoints}  </navMap>
                               <p style={{ margin: "0.2rem 0 0", color: "var(--text-secondary)" }}>{formNegPrompt}</p>
                             </div>
                           )}
-                          {/* Pose & Attire Enhancer */}
-                          <div className="pose-attire-customizer" style={{ marginTop: "0.6rem", padding: "0.5rem", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                            <small style={{ fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "0.1rem" }}>
-                              Pose & Attire Enhancer
-                            </small>
-                            
-                            {/* Pose Section */}
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                              <div style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
-                                <select 
-                                  className="ai-input" 
-                                  style={{ flex: 1, fontSize: "0.7rem", minHeight: "26px", padding: "0px 6px" }}
-                                  value={selectedPoseStyle[formKey] || "dynamic"}
-                                  onChange={(e) => setSelectedPoseStyle(prev => ({ ...prev, [formKey]: e.target.value }))}
-                                >
-                                  <option value="dynamic">Dynamic Action Stance</option>
-                                  <option value="crouching">Low Crouching / Beast Prowl</option>
-                                  <option value="meditating">Qi Gathering / Meditation Stance</option>
-                                  <option value="airborne">Airborne / Hovering mid-air</option>
-                                  <option value="elegant">Elegant Standing Portrait</option>
-                                  <option value="combat">Combat-Ready / Weapon Drawn</option>
-                                  <option value="stealth">Stealthy / Shadow-stalking posture</option>
-                                  <option value="spellcasting">Active Spellcasting / Summoning posture</option>
-                                  <option value="wounded">Wounded / Battling through pain stance</option>
-                                  <option value="flying">Dynamic Flight / Diving through clouds stance</option>
-                                  <option value="sitting">Resting / Seated on a throne/rock pose</option>
-                                  <option value="taunting">Defiant Taunt / Open arms gesture</option>
-                                  <option value="sleeping">Dormant / Slumbering pose</option>
-                                  <option value="archery">Aiming Bow / Drawing String stance</option>
-                                </select>
-                                <button
-                                  type="button"
-                                  className="btn-ai-sub btn-ai-primary"
-                                  style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem", minHeight: "26px", flexShrink: 0 }}
-                                  onClick={() => handleGeneratePosePrompt(formKey)}
-                                  disabled={generatingPoseKey === formKey}
-                                >
-                                  {generatingPoseKey === formKey ? <Loader2 size={10} className="spin" /> : "Gen Pose"}
-                                </button>
-                              </div>
-                              {generatedPosePrompt[formKey] && (
-                                <div style={{ background: "rgba(0,0,0,0.15)", padding: "0.35rem", borderRadius: "var(--radius-sm)", fontSize: "0.7rem" }}>
-                                  <p style={{ margin: 0, color: "var(--text-secondary)" }}>{generatedPosePrompt[formKey]}</p>
-                                  <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
-                                    <button 
-                                      type="button"
-                                      className="btn-ai-sub btn-ai-secondary" 
-                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
-                                      onClick={() => handleAppendToPrompt(formKey, generatedPosePrompt[formKey])}
-                                    >
-                                      Append to Prompt
-                                    </button>
-                                    <button 
-                                      type="button"
-                                      className="btn-ai-sub btn-ai-secondary" 
-                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(generatedPosePrompt[formKey]);
-                                        alert("Pose prompt copied to clipboard!");
-                                      }}
-                                    >
-                                      Copy Pose
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
 
-                            {/* Attire Section */}
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                              <div style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
-                                <select 
-                                  className="ai-input" 
-                                  style={{ flex: 1, fontSize: "0.7rem", minHeight: "26px", padding: "0px 6px" }}
-                                  value={selectedAttireNature[formKey] || novelGenre || "eastern_fantasy"}
-                                  onChange={(e) => setSelectedAttireNature(prev => ({ ...prev, [formKey]: e.target.value }))}
-                                >
-                                  <option value="eastern_fantasy">☯️ Eastern Fantasy Robes (Hanfu / Daoist)</option>
-                                  <option value="futuristic_armor">🚀 Futuristic Nanotech Armor & Cloak</option>
-                                  <option value="cyberpunk_streetwear">⚡ Cyberpunk Neon Techwear & Streetwear</option>
-                                  <option value="dark_fantasy">🗡️ Dark Fantasy Battle Plate & Leather Cloak</option>
-                                  <option value="high_fantasy">⚔️ High Fantasy Medieval Mail & Tabard</option>
-                                  <option value="stealth_gear">🥷 Stealth / Assassin Hooded Bodysuit</option>
-                                  <option value="nomad_traveler">🐪 Desert Nomad / Traveler Cloak & Wraps</option>
-                                  <option value="post_apocalyptic">☣️ Post-Apocalyptic Scavenger Rags & Scrap Armor</option>
-                                  <option value="samurai_armor">🏯 Traditional Japanese Samurai Shogun Armor</option>
-                                  <option value="victorian_gothic">🎩 Victorian Gothic Tailcoat / Corset Dress</option>
-                                  <option value="modern_urban">🏙️ Modern Urban Tactical & Streetwear</option>
-                                  <option value="greek_chiton">🏛️ Ancient Greek Chiton & Golden Ornaments</option>
-                                  <option value="royal_gown">👑 Royal & Ceremonial Silk Brocade Gown</option>
-                                  <option value="mystic_robe">🔮 Arcane Mage / Scholar Embroidered Robes</option>
-                                  <option value="beast_hide">🐉 Natural Beast Hide / Dragon Scales / Pelts</option>
-                                </select>
-                                <button
-                                  type="button"
-                                  className="btn-ai-sub btn-ai-primary"
-                                  style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem", minHeight: "26px", flexShrink: 0 }}
-                                  onClick={() => handleGenerateAttirePrompt(formKey)}
-                                  disabled={generatingAttireKey === formKey}
-                                >
-                                  {generatingAttireKey === formKey ? <Loader2 size={10} className="spin" /> : "Gen Attire"}
-                                </button>
-                              </div>
-                              {generatedAttirePrompt[formKey] && (
-                                <div style={{ background: "rgba(0,0,0,0.15)", padding: "0.35rem", borderRadius: "var(--radius-sm)", fontSize: "0.7rem" }}>
-                                  <p style={{ margin: 0, color: "var(--text-secondary)" }}>{generatedAttirePrompt[formKey]}</p>
-                                  <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
-                                    <button 
-                                      type="button"
-                                      className="btn-ai-sub btn-ai-secondary" 
-                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
-                                      onClick={() => handleAppendToPrompt(formKey, generatedAttirePrompt[formKey])}
-                                    >
-                                      Append to Prompt
-                                    </button>
-                                    <button 
-                                      type="button"
-                                      className="btn-ai-sub btn-ai-secondary" 
-                                      style={{ fontSize: "0.6rem", padding: "1px 6px", minHeight: "20px" }} 
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(generatedAttirePrompt[formKey]);
-                                        alert("Attire prompt copied to clipboard!");
-                                      }}
-                                    >
-                                      Copy Attire
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
                           {/* #6: Image preview button (requires IMAGE_GEN_API_KEY env var to work) */}
                           <div style={{ marginTop: "0.4rem" }}>
                             <button
