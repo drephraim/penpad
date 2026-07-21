@@ -2494,6 +2494,7 @@ function EditorContent() {
   const [customFormLabel, setCustomFormLabel] = useState("")
   const [customFormDesc, setCustomFormDesc] = useState("")
   const [novelGenre, setNovelGenre] = useState<string>("eastern_fantasy")
+  const [appearanceAspectRatio, setAppearanceAspectRatio] = useState<string>("auto")
 
   const getDefaultEntryForms = useCallback((category: string): AppearanceFormConfig => {
     if (category === "beast") {
@@ -3100,6 +3101,7 @@ function EditorContent() {
           lighting: appearanceLighting !== "any" ? appearanceLighting : undefined,
           atmosphere: appearanceAtmosphere !== "any" ? appearanceAtmosphere : undefined,
           camera: appearanceCamera !== "any" ? appearanceCamera : undefined,
+          aspectRatio: appearanceAspectRatio !== "auto" ? appearanceAspectRatio : undefined,
           selectedText,
           forms: Object.keys(forms).length > 0 ? forms : undefined,
           formLabels: formLabelsForRequest,
@@ -11915,8 +11917,56 @@ ${navPoints}  </navMap>
                         <option value="wide-angle action shot">Wide Action Shot</option>
                         <option value="three-quarter character concept art view">Three-Quarter View</option>
                         <option value="top-down orthographic cartography view">Top-Down Map</option>
-                        <option value="cinematic medium shot">Medium Shot</option>
                       </select>
+                    </div>
+                  </div>
+
+                  {/* Aspect Ratio & Camera Shot Presets */}
+                  <div className="ai-form-field">
+                    <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Aspect Ratio / Canvas Framing</span>
+                    </label>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.3rem" }}>
+                      <button
+                        type="button"
+                        className={`btn-ai-sub ${appearanceAspectRatio === "9:16" ? "btn-ai-primary" : "btn-ai-secondary"}`}
+                        style={{ fontSize: "0.65rem", padding: "0.3rem 0.2rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.1rem" }}
+                        onClick={() => setAppearanceAspectRatio("9:16")}
+                        title="9:16 Tall Full-Body Portrait (Ideal for wallpapers & covers)"
+                      >
+                        <span style={{ fontWeight: 700 }}>📱 9:16</span>
+                        <span style={{ fontSize: "0.55rem", opacity: 0.8 }}>Full Body</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn-ai-sub ${appearanceAspectRatio === "1:1" ? "btn-ai-primary" : "btn-ai-secondary"}`}
+                        style={{ fontSize: "0.65rem", padding: "0.3rem 0.2rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.1rem" }}
+                        onClick={() => setAppearanceAspectRatio("1:1")}
+                        title="1:1 Square Portrait / Avatar (Ideal for profile icons & close-ups)"
+                      >
+                        <span style={{ fontWeight: 700 }}>👤 1:1</span>
+                        <span style={{ fontSize: "0.55rem", opacity: 0.8 }}>Avatar</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn-ai-sub ${appearanceAspectRatio === "16:9" ? "btn-ai-primary" : "btn-ai-secondary"}`}
+                        style={{ fontSize: "0.65rem", padding: "0.3rem 0.2rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.1rem" }}
+                        onClick={() => setAppearanceAspectRatio("16:9")}
+                        title="16:9 Wide Landscape (Ideal for scenes, environments & maps)"
+                      >
+                        <span style={{ fontWeight: 700 }}>🌄 16:9</span>
+                        <span style={{ fontSize: "0.55rem", opacity: 0.8 }}>Wide Scene</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn-ai-sub ${appearanceAspectRatio === "auto" ? "btn-ai-primary" : "btn-ai-secondary"}`}
+                        style={{ fontSize: "0.65rem", padding: "0.3rem 0.2rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.1rem" }}
+                        onClick={() => setAppearanceAspectRatio("auto")}
+                        title="Auto-select framing based on entry type"
+                      >
+                        <span style={{ fontWeight: 700 }}>✨ Auto</span>
+                        <span style={{ fontSize: "0.55rem", opacity: 0.8 }}>Smart</span>
+                      </button>
                     </div>
                   </div>
 

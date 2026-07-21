@@ -1017,7 +1017,7 @@ export async function POST(req: NextRequest) {
       const charDetails = loreEntry && typeof loreEntry === "object" ? ` (Category: ${category || "character"}, Lore: ${loreEntry.content || ""})` : ""
       userPrompt = `Generate a complete attire description for a character named "${name}" in their "${formLabel || "Humanoid Form"}" matching the genre/nature "${attireNature || novelGenre || "eastern_fantasy"}".${charDetails}`
     } else if (action === "appearance_prompts") {
-      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc, existingAppearances, novelGenre, attireNature } = body
+      const { name, selectedText, forms, chapter, loreEntry, formLabels, formEnabled, style, lighting, atmosphere, camera, aspectRatio, regenerateForm, perFormNegatives, facialFeatures, race, aesthetic, ageGroup, isAdHoc, existingAppearances, novelGenre, attireNature } = body
       const rawExistingAppearances = Array.isArray(existingAppearances) ? existingAppearances : []
       let existingAppearancesBlock = ""
       if (rawExistingAppearances.length > 0) {
@@ -1142,6 +1142,15 @@ export async function POST(req: NextRequest) {
       }
       if (typeof camera === "string" && camera.trim()) {
         expandedStyle += `, ${camera.trim()}`
+      }
+      if (typeof aspectRatio === "string" && aspectRatio.trim()) {
+        if (aspectRatio === "9:16") {
+          expandedStyle += `, 9:16 vertical aspect ratio, full-body portrait composition`
+        } else if (aspectRatio === "1:1") {
+          expandedStyle += `, 1:1 square aspect ratio, focused character avatar framing`
+        } else if (aspectRatio === "16:9") {
+          expandedStyle += `, 16:9 widescreen aspect ratio, wide environmental landscape framing`
+        }
       }
       const visualSubjectLabel = entryCategory === "place"
         ? "place, environment, or location"
