@@ -2564,9 +2564,11 @@ function EditorContent() {
     if (saved) {
       if (enforceCategoryForms) {
         const defaults = getDefaultEntryForms(entryCategory)
+        const savedCustomKeys = (saved.keys || []).filter(k => !defaults.keys.includes(k))
+        const combinedKeys = Array.from(new Set([...defaults.keys, ...savedCustomKeys]))
         return {
-          keys: defaults.keys,
-          labels: defaults.labels,
+          keys: combinedKeys,
+          labels: { ...defaults.labels, ...(saved.labels || {}) },
           enabled: {
             ...defaults.enabled,
             ...saved.enabled
@@ -3079,12 +3081,13 @@ function EditorContent() {
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
       const isAdHocRequest = sourceEntry.id === "adhoc-selection"
       const existingAppearances = bibleEntries
-        .filter(entry => entry.id !== sourceEntry.id && (entry.category === "character" || entry.category === "beast"))
+        .filter(entry => entry.id !== sourceEntry.id)
         .map(entry => {
-          const sheetIndex = entry.content.indexOf("## Appearance Prompt Sheet")
+          const sheetIndex = entry.content ? entry.content.indexOf("## Appearance Prompt Sheet") : -1
           const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex) : ""
           return {
             characterName: entry.name,
+            category: entry.category,
             characterDetails: entry.characterDetails,
             promptSheet: promptSheet || undefined
           }
@@ -3194,18 +3197,19 @@ function EditorContent() {
       const appearanceTargetEvidence = buildProgressionTargetEvidence(sourceEntry, chapterContext, selectedText)
       const defaultFormConfig = getDefaultEntryForms(sourceEntry.category)
       const forms: Record<string, string> = {}
-      for (const key of defaultFormConfig.keys.includes(formKey) ? [formKey] : appearanceFormKeys.filter(k => appearanceFormEnabled[k] !== false)) {
+      for (const key of [formKey]) {
         if (appearanceFormDescriptions[key]?.trim()) forms[key] = appearanceFormDescriptions[key].trim()
       }
       const styleToUse = appearanceCustomStyle.trim() || appearanceStyle
       const raceValue = appearanceRace === "custom" ? appearanceCustomRace.trim() : appearanceRace
       const existingAppearances = bibleEntries
-        .filter(entry => entry.id !== sourceEntry.id && (entry.category === "character" || entry.category === "beast"))
+        .filter(entry => entry.id !== sourceEntry.id)
         .map(entry => {
-          const sheetIndex = entry.content.indexOf("## Appearance Prompt Sheet")
+          const sheetIndex = entry.content ? entry.content.indexOf("## Appearance Prompt Sheet") : -1
           const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex) : ""
           return {
             characterName: entry.name,
+            category: entry.category,
             characterDetails: entry.characterDetails,
             promptSheet: promptSheet || undefined
           }
@@ -11917,6 +11921,80 @@ ${navPoints}  </navMap>
                         <option value="wide-angle action shot">Wide Action Shot</option>
                         <option value="three-quarter character concept art view">Three-Quarter View</option>
                         <option value="top-down orthographic cartography view">Top-Down Map</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Character Specs / Culture & Age Customizers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.4rem", marginBottom: "0.6rem" }}>
+                    <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: "0.65rem" }}>Race / Culture</label>
+                      <select
+                        className="ai-select"
+                        style={{ fontSize: "0.7rem", minHeight: "28px", padding: "0.2rem" }}
+                        value={appearanceRace}
+                        onChange={(e) => setAppearanceRace(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default / Auto</option>
+                        <option value="East Asian">East Asian (Xianxia/Wuxia)</option>
+                        <option value="South Asian / Indian">South Asian / Indian</option>
+                        <option value="Nordic / European">Nordic / European</option>
+                        <option value="African / Mesoamerican">African / Mesoamerican</option>
+                        <option value="Elf / Fae">Elf / Fae</option>
+                        <option value="Celestial / Divine">Celestial / Divine</option>
+                        <option value="Shadow / Demon">Shadow / Demon</option>
+                        <option value="Draconic / Beast-Kin">Draconic / Beast-Kin</option>
+                        <option value="custom">Custom...</option>
+                      </select>
+                      {appearanceRace === "custom" && (
+                        <input
+                          className="ai-input"
+                          style={{ fontSize: "0.65rem", marginTop: "0.2rem", minHeight: "24px" }}
+                          value={appearanceCustomRace}
+                          onChange={(e) => setAppearanceCustomRace(e.target.value)}
+                          placeholder="e.g. Ancient Merfolk..."
+                          disabled={appearanceLoading}
+                        />
+                      )}
+                    </div>
+
+                    <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: "0.65rem" }}>Aesthetic Tone</label>
+                      <select
+                        className="ai-select"
+                        style={{ fontSize: "0.7rem", minHeight: "28px", padding: "0.2rem" }}
+                        value={appearanceAesthetic}
+                        onChange={(e) => setAppearanceAesthetic(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default / Auto</option>
+                        <option value="elegant regal">Elegant & Regal</option>
+                        <option value="battle-hardened scarred">Battle-Hardened & Scarred</option>
+                        <option value="ethereal mystical">Ethereal & Mystical</option>
+                        <option value="dark menacing shadow">Dark & Menacing</option>
+                        <option value="cute youthful soft">Cute & Youthful</option>
+                        <option value="wild feral primal">Wild & Feral</option>
+                      </select>
+                    </div>
+
+                    <div className="ai-form-field" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: "0.65rem" }}>Age Group</label>
+                      <select
+                        className="ai-select"
+                        style={{ fontSize: "0.7rem", minHeight: "28px", padding: "0.2rem" }}
+                        value={appearanceAgeGroup}
+                        onChange={(e) => setAppearanceAgeGroup(e.target.value)}
+                        disabled={appearanceLoading}
+                      >
+                        <option value="any">Default / Auto</option>
+                        <option value="child">Child</option>
+                        <option value="teenager">Teenager</option>
+                        <option value="young adult">Young Adult</option>
+                        <option value="adult">Adult</option>
+                        <option value="middle-aged">Middle-Aged</option>
+                        <option value="elderly">Elderly</option>
+                        <option value="ancient being">Ancient Being</option>
                       </select>
                     </div>
                   </div>

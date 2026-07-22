@@ -1021,15 +1021,15 @@ export async function POST(req: NextRequest) {
       const rawExistingAppearances = Array.isArray(existingAppearances) ? existingAppearances : []
       let existingAppearancesBlock = ""
       if (rawExistingAppearances.length > 0) {
-        existingAppearancesBlock = "\n\nEXISTING CHARACTER APPEARANCES (do NOT duplicate their combinations of hair, eye colors, body build, or overall visual concepts):\n" +
+        existingAppearancesBlock = "\n\nEXISTING & LOCKED APPEARANCES / PROMPT SHEETS (do NOT reuse or duplicate any of these visual details, combinations of hair/eye colors, body build, attire concepts, or visual signatures for any other character or thing):\n" +
           rawExistingAppearances.map((item: any) => {
             const details = item.characterDetails || {}
             const detailsStr = Object.entries(details)
               .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
               .map(([k, v]) => `${k}: ${v}`)
               .join(", ")
-            const promptStr = item.promptSheet ? `Prompt Sheet details:\n${item.promptSheet}` : ""
-            return `- Character Name: ${item.characterName || "Unknown"}\n  Details: ${detailsStr || "None"}\n  ${promptStr}`
+            const promptStr = item.promptSheet ? `Locked Prompt Sheet:\n${item.promptSheet}` : ""
+            return `- Entry Name: ${item.characterName || "Unknown"} (Category: ${item.category || "General"})\n  Locked Details: ${detailsStr || "None"}\n  ${promptStr}`
           }).join("\n\n")
       }
       const isAdHocMode = isAdHoc === true
@@ -1261,9 +1261,11 @@ export async function POST(req: NextRequest) {
         "- Be specific: prefer 'waist-length silver hair with black streaks' over 'long hair'. Prefer 'glowing amber slitted eyes' over 'interesting eyes'.\n" +
         "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
         "- Each prompt MUST be at least 150 words and should usually be 170-280 words. A prompt under 150 words is invalid. Do not stop after listing key traits; expand them into a full head-to-toe design with scene, posture, materials, lighting, aura, and background.\n\n" +
-        "ACCURATE CHAPTER CAPTURE (HIGHEST PRIORITY):\n" +
-        "STRICT FIDELITY RULE: The generated image prompt MUST faithfully incorporate EVERY visual detail explicitly mentioned in the Highlighted Passage and Chapter Context about the subject. For example, if the text describes a character with 'long hair and a long beard', or an item/planet as 'brown with rings around it', these details MUST be the central focus of the generated prompt. Under no circumstances should you invent contradictory details (like making the character bald, clean-shaven, or short-haired) or default to generic styling. The prompt must be built around the text's explicit descriptions first and foremost.\n" +
-        "APPEARANCE UNIQUENESS MANDATE (CRITICAL): No two characters can have the same visual appearance. If a list of 'EXISTING CHARACTER APPEARANCES' is provided in the prompt, you MUST check their details and prompt sheets to ensure the character you are designing has a visually distinct set of traits (e.g. different combinations of hair color/style, eye color, body shape/build, height, and clothing) from any existing character. Do not repeat visual identities.\n\n" +
+        "ACCURATE CHAPTER CAPTURE & DETAIL EXTRACTION (HIGHEST PRIORITY):\n" +
+        "STRICT FIDELITY RULE: When the prompt generation command is executed, you MUST first read the Full Active Chapter Context and extract EVERY SINGLE VISUAL DETAIL explicitly mentioned about the character, creature, place, world, or item (facial features, hair, eyes, body build, scale, skin state, height, age, clothes, armor, weapons, aura, posture, landmarks, materials, weather, biomes, etc.). All of these extracted details MUST form the non-negotiable core foundation of the generated image prompt. Under no circumstances should you invent contradictory details (like making a bearded character clean-shaven) or default to generic styling.\n" +
+        "APPEARANCE UNIQUENESS & PERMANENT DETAIL LOCKING MANDATE (CRITICAL & NON-NEGOTIABLE):\n" +
+        "1. EXHAUSTIVE CHAPTER EXTRACTION: Every detail written about the target in the active chapter MUST be captured and incorporated into the prompt.\n" +
+        "2. PERMANENT DETAIL LOCKING: Once a prompt sheet is appended/saved for an entry, all of its visual details, feature combinations, attire concepts, facial signatures, and distinct elements become PERMANENTLY LOCKED to that subject. You are STRICTLY FORBIDDEN from using or reusing any of those locked details or feature combinations for any other character, beast, place, world, or item. Check the 'EXISTING & LOCKED APPEARANCES / PROMPT SHEETS' list in the prompt payload and guarantee that your generated prompt for this target is 100% visually distinct from all locked entries.\n\n" +
         chapterScanRule +
         "CONTENT & MERGING RULES (critical):\n" +
         "0. NO RANDOM ETHNIC BLENDS: Do NOT mix random real-world ethnicities or force unmentioned fantasy morphologies (like scales, wings, or animal features) unless explicitly described in the chapter or Story Bible for this character.\n" +
