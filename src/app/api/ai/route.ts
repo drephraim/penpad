@@ -730,25 +730,42 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   }
 
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
-  const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash"
+  const candidateModels = Array.from(new Set([
+    process.env.GEMINI_MODEL,
+    "gemini-2.0-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-flash-002",
+    "gemini-1.5-flash"
+  ].filter(Boolean))) as string[]
 
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ 
-    model: modelName,
-    systemInstruction: systemInstruction,
-    generationConfig: {
-      temperature,
-      maxOutputTokens: jsonMode ? 8192 : 4096,
+  let lastError: unknown = null
+
+  for (const modelName of candidateModels) {
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        systemInstruction: systemInstruction,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: jsonMode ? 8192 : 4096,
+        }
+      })
+
+      const result = await model.generateContent(userPrompt)
+      const text = result.response.text()
+
+      if (text && typeof text === "string") {
+        return text
+      }
+    } catch (err) {
+      console.warn(`[Gemini] Model ${modelName} failed:`, err)
+      lastError = err
     }
-  })
-
-  const result = await model.generateContent(userPrompt)
-  const text = result.response.text()
-
-  if (!text || typeof text !== "string") {
-    throw new Error("Gemini returned an empty response.")
   }
-  return text
+
+  throw lastError || new Error("Gemini returned an empty response across all model candidates.")
 }
 
 // Maps user-facing style labels to image-generator quality modifier tokens
