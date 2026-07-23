@@ -1273,6 +1273,7 @@ export async function POST(req: NextRequest) {
         "- ONLY after Stages 1–4 are completely finished, intelligently infer values for missing fields (hair texture, face shape, eye shape, lip shape, jawline, height, body proportions, posture) THAT THE NOVEL NEVER STATED.\n\n" +
         "STAGE 6 — BUILD IMAGE PROMPT & MANDATORY VALIDATION CHECKLIST:\n" +
         "- Generate the final continuous image prompt (150–280 words).\n" +
+        subjectOrderRule +
         "- MANDATORY VALIDATION CHECKLIST: Every extracted detail from Stages 1–4 MUST appear in the final prompt. If Hair Color was found -> Hair Color MUST appear. If Eye Color was found -> Eye Color MUST appear. If Height was found -> Height MUST appear. If Weapon was found -> Weapon MUST appear. If Clothing was found -> Clothing MUST appear. If Pose/Action was found -> Pose/Action MUST appear.\n" +
         "- DYNAMIC SCENE ACTION POSE MANDATE: NEVER generate static, generic studio poses ('standing tall', 'facing camera'). The pose MUST portray the character's active physical action in the scene (e.g. crouched low over wet cobblestones with hand on hilt, mid-stride spinning backward, slumped against a pillar).\n" +
         "- UNIQUE FACE ENGINE: Ensure facial bone structure and features are distinct and non-generic.\n" +
