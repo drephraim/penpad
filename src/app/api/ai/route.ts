@@ -1258,18 +1258,24 @@ export async function POST(req: NextRequest) {
         "PRIMARY OBJECTIVE & CANON RULES:\n" +
         "- Anything explicitly stated in the novel is CANON. Never alter, omit, overwrite, or contradict canon details. Only expand missing details naturally around canon.\n" +
         "- Exhaustively extract: Identity (name, race, species, gender, age, apparent age, occupation, rank, class, cultivation level), Height, Body Build, Skin (color, tone, texture, marks, scars, tattoos, scales), Hair (color, length, texture, style, ornaments), Eyes (color, shape, glow, pupils), Face (jawline, cheekbones, shape), Facial Features (nose, lips, eyebrows, ears, horns, fangs), Facial Expression (inferred from current scene action), Clothing/Armor (garments, damage, materials, colors, shoes, cloaks), Weapons, Aura, Pose, Environment, and Lighting.\n\n" +
+        "EXHAUSTIVE CHAPTER DETAIL EXTRACTION MANDATE (HIGHEST PRIORITY):\n" +
+        "- BEFORE writing any prompt text, you MUST thoroughly scan the Full Active Chapter Context and Target-Focused Evidence to identify EVERY SINGLE visual detail mentioned by the author.\n" +
+        "- Extract hair color/style, eye color/expression, face shape/texture, skin condition, scars, clothing/armor, shoes, weapons held/sheathed, posture, and current environment.\n" +
+        "- You MUST include ALL extracted chapter details in `characterDetails` and make them the non-negotiable core foundation of the image prompt. Never drop or ignore a detail mentioned in the text.\n\n" +
+        "STRICT DYNAMIC SCENE ACTION POSE MANDATE (NO GENERIC POSES):\n" +
+        "- NEVER generate generic, static, or passive studio poses such as 'standing tall', 'looking at viewer', 'standing heroically', 'standing with broad shoulders', or 'facing camera'. Generic poses render your prompts useless.\n" +
+        "- DYNAMIC SCENE ACTION POSE: The character's pose, posture, limb positions, body angle, weight distribution, and hand gestures MUST directly portray the character's active physical action in the current chapter scene.\n" +
+        "- Examples of scene action poses: 'crouched low on one knee over wet cobblestones with left hand bracing the ground and right hand on sword hilt', 'mid-stride spinning backward while unsheathing a curved blade', 'slumped against a cracked stone pillar with head tilted down in exhaustion', 'sitting cross-legged atop a mossy stone altar with floating Qi energy encircling open palms', 'leaning back against a tavern counter with ankles crossed and eyes darting toward the entryway'.\n" +
+        "- If the chapter does not explicitly specify a physical pose, infer a highly expressive, asymmetric, contextual action pose derived from the scene's emotional tension, physical setting, and character activity.\n\n" +
         "UNIQUE FACE GENERATION ENGINE (CRITICAL):\n" +
         "- No two characters should EVER have the same face. Never repeatedly generate 'sharp jawline, high cheekbones, perfect face' for everyone.\n" +
         "- Use varied combinations of face shape (oval, round, heart, square, diamond, triangular, rectangular, long), jawline, cheekbones, eye spacing, eyebrows, nose bridge/tip, lip shape, chin, forehead, and proportions to build a unique facial identity.\n" +
-        "- Character faces must be recognizable even without hair or accessories.\n" +
         "- BEAUTY INTERPRETATION: Translate abstract adjectives ('beautiful', 'handsome', 'pretty', 'cute', 'ethereal') into concrete anatomical traits (e.g. elegant oval face, softly curved brows, luminous almond eyes with delicate lashes, refined nose, naturally full lips, smooth porcelain skin texture).\n\n" +
         "PROMPT FORMAT RULES (critical):\n" +
         "- Write each prompt as ONE long continuous paragraph (150-280 words) optimized for AI image generation without bullet points.\n" +
         subjectOrderRule +
         "- Include the expanded art style and quality tokens at the START of every prompt.\n" +
         "- Always end with professional rendering direction: 'cinematic fantasy character concept art, ultra detailed, highly realistic, masterpiece, AAA game concept art, unreal engine quality, octane render, ray tracing, dramatic volumetric lighting, cinematic composition, sharp focus, intricate textures, physically based rendering, 8k resolution'.\n\n" +
-        "ACCURATE CHAPTER CAPTURE & DETAIL EXTRACTION (HIGHEST PRIORITY):\n" +
-        "STRICT FIDELITY RULE: When generating prompts, you MUST extract EVERY SINGLE VISUAL DETAIL explicitly mentioned about the character/target. These details MUST form the non-negotiable foundation of the generated image prompt.\n\n" +
         chapterScanRule +
         "CONTENT & MERGING RULES:\n" +
         "0. NO RANDOM ETHNIC BLENDS: Do NOT mix random real-world ethnicities or force unmentioned fantasy morphologies unless explicitly described.\n" +
@@ -1289,8 +1295,8 @@ export async function POST(req: NextRequest) {
         (usePerFormNegatives
           ? "12. Every form's negativePrompt must be FORM-SPECIFIC and exclude elements that break that form's visual logic:\n" +
             formNegativeGuidance + "\n" +
-            "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
-          : "12. Provide ONE strong shared negative prompt covering quality issues. Include: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured.\n\n"
+            "   Always also include in every negative: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured, generic studio pose, static standing pose.\n\n"
+          : "12. Provide ONE strong shared negative prompt covering quality issues. Include: low quality, blurry, watermark, text, cropped, deformed anatomy, extra limbs, bad proportions, duplicate, disfigured, generic studio pose, static standing pose.\n\n"
         ) +
         (isAdHocMode
           ? "AD-HOC CLASSIFICATION MANDATE:\n" +
@@ -1299,7 +1305,7 @@ export async function POST(req: NextRequest) {
           : "") +
         "OUTPUT RULES:\n" +
         "13. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails" + (isAdHocMode ? ", inferredCategory, inferredName, formLabels" : "") + ".\n" +
-        "   - overview: 200–300 word Visual Core concise summary describing overall appearance, personality reflected in design, body language, expression, clothing, and unique identity.\n" +
+        "   - overview: 200–300 word Visual Core concise summary describing overall appearance, personality reflected in design, dynamic scene pose/action, clothing, and unique identity.\n" +
         "   - prompts: object with keys " + formLabelsStr + " — each value is a single continuous paragraph prompt string (Image Prompt) without bullet points.\n" +
         (usePerFormNegatives
           ? "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n"
@@ -1307,7 +1313,7 @@ export async function POST(req: NextRequest) {
         ) +
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred.\n" +
         "   - negativePrompt: a single shared negative prompt string as fallback.\n" +
-        "   - characterDetails: object with fields appearance, hair, eyes, body, height, age, attire, distinguishingFeatures, weapon — extracted from active chapter and Story Bible.\n" +
+        "   - characterDetails: object with fields appearance, hair, eyes, body, height, age, attire, distinguishingFeatures, weapon — extracted directly from active chapter and Story Bible.\n" +
         "14. No markdown fences. No bullet points inside prompt values."
 
       const chapterLine = chapterContext
