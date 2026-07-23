@@ -1350,12 +1350,23 @@ export async function POST(req: NextRequest) {
       userPrompt =
         `Visual target name: ${safeLoreEntry?.name || name || "Unknown / infer from context"}\n` +
         `World Bible category: ${safeLoreEntry?.category || "unknown"}\n` +
-        `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n` +
-        `${knownDetailsBlock}` +
+        `Art style and quality modifiers to use at the START of every prompt: ${expandedStyle}\n\n` +
+        `=== SUPREME SOURCE OF TRUTH (HIGHEST PRIORITY) ===\n` +
         `${selectedLine}${chapterEvidence}\n` +
-        `${chapterLine}${chapterContent}${loreLine}\n\n` +
+        `${chapterLine}${chapterContent}\n\n` +
+        `=== SECONDARY CONTEXT (STORY BIBLE & LORE) ===\n` +
+        `${loreLine}\n` +
+        `${knownDetailsBlock}\n\n` +
+        `CRITICAL CANON OVERRIDE & FIDELITY MANDATE (MUST FOLLOW EXACTLY):\n` +
+        `1. ACTIVE CHAPTER IS THE SUPREME TRUTH: The Active Chapter Context and Highlighted Passage reflect the CURRENT SCENE STATE of the character. If the chapter text specifies details (e.g. hair color, eye color, attire, armor, weapons, height, physique, scars, or posture), those exact details OVERRIDE any conflicting Story Bible lore, user dropdown defaults, or LLM assumptions.\n` +
+        `2. NO COLOR/ITEM HALLUCINATIONS OR SUBSTITUTIONS:\n` +
+        `   - IF HAIR COLOR IS IN THE TEXT (e.g. "flowing red hair"), the prompt MUST specify "flowing red hair". NEVER substitute with "brown", "black", or "silver" hair.\n` +
+        `   - IF EYE COLOR IS IN THE TEXT (e.g. "ruby eyes"), the prompt MUST specify "ruby eyes". NEVER replace with vague adjectives like "piercing eyes" without stating "ruby".\n` +
+        `   - IF ATTIRE IS IN THE TEXT (e.g. "red-and-white cloak"), the prompt MUST specify the exact garments ("red-and-white cloak") and NEVER replace them with generic default outfits (like "white shirt and black pants").\n` +
+        `   - IF WEAPONS ARE IN THE TEXT (e.g. "sword strapped to his back"), the prompt MUST explicitly include that weapon ("sheathed sword strapped across his back").\n` +
+        `   - IF PHYSIQUE IS IN THE TEXT (e.g. "slender physique", "barely 6'7\""), the prompt MUST explicitly state their build and height ("slender, tall physique standing 6'7\"").\n` +
+        `3. NO GENERIC POSES: NEVER write "turned to face the viewer", "standing heroically", or "looking at camera". Describe the physical scene action (e.g. "standing motionless as swirling white mist parts around his 6'7\" slender frame").\n\n` +
         (selectedText ? `CRITICAL SPECIFIC FOCUS CHECK: The user highlighted "${selectedText}". If this describes a specific body part, organ, accessory, or sub-part (e.g. an eye, a claw, a sword) rather than the whole body of the creature/character, you MUST construct the prompts as detailed close-ups/focused descriptions of that specific part (styled and context-matched per requested form) rather than full-body portraits.\n` : "") +
-        `IMPORTANT INSTRUCTION FOR THIS GENERATION: Faithfully use and preserve every visual description from the chapter/evidence above in the prompts. Build the artistic description AROUND those exact details first (the Target-Focused Evidence and Highlighted Passage are the highest priority source), then enhance for completeness and beauty. Do not drop or alter chapter details.\n` +
         (isCharacterLike ? `STRICT RULE FOR NON-HUMAN TRAITS: In humanoid or human forms, ONLY include tails, wings, horns, fur, scales, animal ears, claws or other non-human body features if they are explicitly described in the chapter or lore for that form. If nothing is stated, the humanoid form must be fully human with no such additions. Do not infer or default to them from the character's category or name.\n\n` : "") +
         (isCharacterLike && race && race !== "any" ? `RACE/CULTURAL APPEARANCE MANDATE: The character has the physical features and appearance of a ${race} person. You MUST explicitly describe their facial features, bone structure, skin tone, eye shape, and hair characteristics to reflect this specific heritage. Do NOT use generic or vague descriptors; ensure their facial structure is clearly, distinctly, and authentically ${race}.\n\n` : "") +
         (isCharacterLike && aesthetic && aesthetic !== "any" ? `AESTHETIC MANDATE: The character has a dominant visual aesthetic of "${aesthetic}". You MUST explicitly structure their facial bone structure, facial proportions, expression, eyes, nose, lips, jawline, and eyebrows to support and project this specific "${aesthetic}" mood (e.g. ethereal, dangerous, soft, etc.). Never make them generically attractive or default to generic templates.\n\n` : "") +
@@ -1366,7 +1377,7 @@ export async function POST(req: NextRequest) {
             ? `FACIAL FEATURES GUIDANCE (treat as high-priority truth - use this to define the face, eyes, expression, hair, and head even if the chapter is completely silent on appearance):\n"${facialFeatures.trim()}"\n\n`
             : `VISUAL ANCHOR GUIDANCE (treat as high-priority truth for geography, environment, object design, map style, materials, scale, and mood):\n"${facialFeatures.trim()}"\n\n`)
           : (isCharacterLike
-            ? `FACIAL UNIQUENESS INSTRUCTION: No explicit facial features were provided. You MUST invent a face that is EXCLUSIVELY derived from this specific character's identity \u2014 their name (use its phonetic/cultural origin), clan/sect/bloodline, social status, age, personality, and the emotional tone of the current chapter. NEVER fall back on the same generic archetypes ("striking cultivator face", "ethereal beauty", "rugged warrior") across different characters. Each character must be visually irreplaceable. Define: exact face shape, unique eye shape and color and expression, brow style, nose profile, lip shape, jawline, chin, skin tone, hair style and color, and any defining marks or textures.\n\n`
+            ? `FACIAL UNIQUENESS INSTRUCTION: No explicit facial features were provided in dropdowns. You MUST invent a face that is EXCLUSIVELY derived from this specific character's identity — their name, clan/sect/bloodline, social status, age, personality, and the emotional tone of the current chapter. NEVER fall back on generic archetypes. Define: exact face shape, unique eye shape and color and expression, brow style, nose profile, lip shape, jawline, chin, skin tone, hair style and color, and any defining marks or textures.\n\n`
             : `VISUAL ANCHOR INSTRUCTION: If the chapter gives sparse setting or object detail, infer a coherent environment, map, planet, or artifact design from the name, category, lore, groups, genre, and current chapter mood. Make the subject visually specific and immediately usable.\n\n`)
         ) +
         `Forms to generate prompts for:\n${formDescriptions}` +
