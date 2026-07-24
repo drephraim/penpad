@@ -693,35 +693,51 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
   }
 
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.15 : 0.7)
+  const candidateModels = Array.from(new Set([
+    process.env.GROQ_MODEL,
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant"
+  ].filter(Boolean))) as string[]
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: userPrompt }
-      ],
-      temperature,
-      max_tokens: jsonMode ? 8192 : 4096,
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {})
-    })
-  })
+  let lastError: unknown = null
 
-  const data = await response.json()
-  if (!response.ok) {
-    throw new Error(data?.error?.message || `Groq API error: ${response.status}`)
+  for (const modelName of candidateModels) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: userPrompt }
+          ],
+          temperature,
+          max_tokens: jsonMode ? 8192 : 4096,
+          ...(jsonMode ? { response_format: { type: "json_object" } } : {})
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error?.message || `Groq API error (${modelName}): ${response.status}`)
+      }
+
+      const text = data?.choices?.[0]?.message?.content
+      if (text && typeof text === "string") {
+        return text
+      }
+    } catch (err) {
+      console.warn(`[Groq] Model ${modelName} failed:`, err)
+      lastError = err
+    }
   }
 
-  const text = data?.choices?.[0]?.message?.content
-  if (!text || typeof text !== "string") {
-    throw new Error("Groq returned an empty response.")
-  }
-  return text
+  throw lastError || new Error("Groq returned an empty response across all candidate models.")
 }
 
 async function generateWithGemini(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number) {
@@ -2153,12 +2169,14 @@ export async function POST(req: NextRequest) {
         ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || fallbackAppearanceKey || process.env.GROQ_API_KEY)
         : undefined
 
-      // Use Gemini hand-in-hand with Groq:
-      // - Prefer Gemini for progression_update (superior long-context reasoning and multi-character disambiguation)
-      // - Groq for speed on other creative/structured tasks
       const useGemini = (action === "progression_update" || action === "brain_analyze") && !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY)
       const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
-      if (useGemini) {
+      const isAppearanceLabAction = action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire"
+
+      if (isAppearanceLabAction) {
+        // STRICT USER MANDATE: Appearance Lab MUST use ONLY Groq
+        text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+      } else if (useGemini) {
         try {
           text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
         } catch (geminiErr) {
