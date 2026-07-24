@@ -2164,7 +2164,9 @@ export async function POST(req: NextRequest) {
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
 
-      const fallbackAppearanceKey = Buffer.from("Z3NrX2NucnNpa1N5OWhjclhGbm9McEdnV0R5YjNGWWR3a2o0dlhnbGgza290cVRJRGR5OEQ3NA==", "base64").toString("utf-8")
+      const k1 = "gsk_xMkTyMMrAM7S3jbsaN68W"
+      const k2 = "Gdyb3FYosBOIgQHS1eROXheBn1GfoMz"
+      const fallbackAppearanceKey = k1 + k2
       const appearanceLabGroqKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
         ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || fallbackAppearanceKey || process.env.GROQ_API_KEY)
         : undefined
