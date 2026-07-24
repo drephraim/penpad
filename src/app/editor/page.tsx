@@ -278,6 +278,7 @@ interface ExportHistoryRecord {
 interface AppearancePromptResult {
   characterName?: string
   overview?: string
+  faceDna?: Record<string, string> | string
   prompts?: Record<string, string>
   consistencyNotes?: string[]
   negativePrompt?: string
@@ -2943,6 +2944,12 @@ function EditorContent() {
       ? Object.entries(result.negativePrompts).map(([key, text]) => `${getFormLabel(key)} Negative Prompt: ${typeof text === "string" ? text : ""}`).join("\r\n")
       : ""
 
+    const faceDnaText = result.faceDna
+      ? typeof result.faceDna === "string"
+        ? `### Face DNA Profile\r\n${result.faceDna}\r\n`
+        : `### Face DNA Profile\r\n${Object.entries(result.faceDna).map(([k, v]) => `- **${k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase())}**: ${v}`).join("\r\n")}\r\n`
+      : ""
+
     return [
       "## Appearance Prompt Sheet",
       `Source: ${chapterLine}`,
@@ -2950,6 +2957,7 @@ function EditorContent() {
       appearanceFacialDescription ? `Facial Features Guidance: ${appearanceFacialDescription}` : "",
       "",
       result.overview ? `### Visual Core\r\n${result.overview}\r\n` : "",
+      faceDnaText,
       promptSections,
       "### Consistency Notes",
       notes,
@@ -12526,6 +12534,38 @@ ${navPoints}  </navMap>
                       <div className="appearance-overview">
                         <span>Visual Core</span>
                         <p>{appearanceResult.overview}</p>
+                      </div>
+                    )}
+
+                    {appearanceResult.faceDna && (
+                      <div className="appearance-face-dna" style={{
+                        background: "rgba(139, 92, 246, 0.08)",
+                        border: "1px solid rgba(167, 139, 250, 0.25)",
+                        borderRadius: "8px",
+                        padding: "0.75rem",
+                        marginBottom: "1rem"
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                          <strong style={{ fontSize: "0.75rem", color: "var(--accent-light, #a78bfa)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            🧬 Face DNA Blueprint
+                          </strong>
+                        </div>
+                        {typeof appearanceResult.faceDna === "string" ? (
+                          <p style={{ fontSize: "0.75rem", color: "var(--text-main)", whiteSpace: "pre-wrap", margin: 0 }}>{appearanceResult.faceDna}</p>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.4rem 0.8rem", fontSize: "0.72rem" }}>
+                            {Object.entries(appearanceResult.faceDna).map(([key, val]) => {
+                              if (!val) return null
+                              const label = key.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())
+                              return (
+                                <div key={key} style={{ display: "flex", flexDirection: "column" }}>
+                                  <span style={{ color: "var(--text-dim)", fontSize: "0.65rem", fontWeight: 600 }}>{label}</span>
+                                  <span style={{ color: "var(--text-main)", fontWeight: 500 }}>{String(val)}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -15,6 +15,7 @@ type BrainAnalysis = {
 type AppearancePromptResult = {
   characterName?: string
   overview?: string
+  faceDna?: Record<string, string> | string
   prompts?: Record<string, string>
   consistencyNotes?: string[]
   negativePrompt?: string
@@ -685,10 +686,10 @@ function parseCultivationSettingsFromText(rawText: string, currentSettings?: unk
   }
 }
 
-async function generateWithGroq(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number) {
-  const apiKey = process.env.GROQ_API_KEY
+async function generateWithGroq(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number, customApiKey?: string) {
+  const apiKey = customApiKey || process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY
   if (!apiKey) {
-    throw new Error("Groq API key is not configured on the server. Please add GROQ_API_KEY to your environment.")
+    throw new Error("Groq API key is not configured on the server. Please add GROQ_API_KEY or APPEARANCE_LAB_GROQ_API_KEY to your environment.")
   }
 
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.15 : 0.7)
@@ -1217,51 +1218,25 @@ export async function POST(req: NextRequest) {
             "6. INTELLIGENT EXTRAPOLATION FROM PARTIAL DETAILS: If the combined details are sparse, create a coherent visual design that suits the world's genre, culture, power system, climate, danger level, and story mood. Fill in layout, scale, materials, lighting, atmosphere, and environmental storytelling, but mark invented-but-plausible choices in consistencyNotes.\n")
       const facialRules = isAdHocMode
         ? "7. VISUAL CLARITY & CHARACTER DESIGN MANDATE (CRITICAL - always apply):\n" +
-          "   - For character/creature portraits, apply the EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE: you are an expert character concept artist and character designer for a high-fantasy cinematic novel. Ensure every character has a unique and memorable face. Never reuse facial structures, proportions, or combinations of features. Treat every character as a completely new individual.\n" +
-          "   - FACIAL RECOGNITION GOLDEN RULE: A character's face should be recognizable even if their hair is removed, their eye color changes, their clothes change, or their accessories are removed. The unique identity must arise from their facial anatomy (underlying bone structure, jawline, cheekbones, nose profile, forehead, and proportions) rather than superficial details.\n" +
-          "   - Age logic: Adjust all facial features based on age:\n" +
-          "     * Children (soft round face, large wide-set eyes, thick eyelashes, small button nose, full cheeks, smooth, flawless porcelain-soft skin. No wrinkles, fine lines, or facial hair)\n" +
-          "     * Teenagers (soft round/oval face, expressive eyes, smooth clear skin, youthful clean jaw, minimal cheekbone definition)\n" +
-          "     * Young Adults (defined features, clean cheekbones, sharp jawline, smooth, firm skin, vibrant expression)\n" +
-          "     * Adults (mature face, defined cheekbones/jawline, smooth but firm skin texture, faint laugh lines, composed expression)\n" +
-          "     * Middle-aged (defined cheekbones, seasoned expression, faint crow's feet and laugh lines, weathered skin texture)\n" +
-          "     * Elderly (weathered face, deep wrinkles, crow's feet, dry thin skin with visible age spots and texture, sagging cheeks, soft or gaunt jawline, thinning eyebrows, calm ancient gaze)\n" +
-          "     * Ancient Beings (timeless face, paper-thin translucent skin with faint silver/golden veins, deep-set hollow eyes holding cosmic depth, fine silver-white hair, thin arched brows, crackled stone, porcelain, or celestial skin texture)\n" +
-          "     * Older characters must have age-appropriate features. Never generate identical skin for every age.\n" +
-          "   - Shape variation: round, heart-shaped, diamond, long, rectangular, square, triangular, oval.\n" +
-          "   - Proportion variation: eye spacing, depth, eyelids, eyelashes, brow thickness/angle, nose bridge/tip, nostril size, mouth width, lip fullness, chin/jaw width, cheek fullness, forehead height.\n" +
-          "   - Imperfections: beauty marks, freckles, scars, dimples, asymmetrical smiles, laugh lines, uneven eyebrows, wrinkles, skin texture.\n" +
-          "   - Tone and persona: regal, cute, mysterious, rugged, cold, gentle, intimidating, scholarly, ancient, battle-hardened, youthful, elegant, wild, feral, alien, ethereal.\n" +
-          "   - Hair, Eye, Skin colors: broad variety of colors and styles, including fantasy hues (metallic, stone, crystal textures, celestial glow, shadow-infused skin).\n" +
-          "   - Avoid generic adjectives like 'striking', 'beautiful', or 'handsome'. Describe real structural features, shapes, and textures.\n" +
-          "   - For locations, maps, planets, or items, ensure the subject is immediately recognizable with layout, materials, landmarks, and atmospheric details.\n"
+          "   - For character/creature portraits, apply the EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE: your primary objective is NOT to create a beautiful character, but a visually unique and immediately recognizable individual. Ensure every character has a face biologically and visually distinct from every other character.\n"
         : (isCharacterLike
           ? "7. EXPERT CHARACTER DESIGN & FACIAL UNIQUENESS MANDATE (CRITICAL - ALWAYS APPLY):\n" +
-            "   You are an expert character concept artist and character designer for a high-fantasy cinematic novel. Your primary task is to generate complete visual descriptions for characters while ensuring every character has a unique and memorable face.\n" +
-            "   - INDIVIDUALITY: Treat every character as a completely new individual. Never reuse facial structures, proportions, or combinations of features unless explicitly requested.\n" +
-            "   - FACIAL RECOGNITION GOLDEN RULE: A character's face should be recognizable even if their hair is removed, their eye color changes, their clothes change, or their accessories are removed. The unique identity must arise from their facial anatomy (underlying bone structure, jawline, cheekbones, nose profile, forehead, and proportions) rather than superficial details.\n" +
-            "   - INTEGRATE USER/SOURCE DETAILS: If the user or chapter text provides appearance details, preserve every detail exactly, expand it naturally, add realistic complementary facial features, and improve visual quality without contradicting the source.\n" +
-            "   - CREATING FROM SCRATCH: If the user provides little or no appearance information, create an entirely original appearance from scratch.\n" +
-            "   - FACE DESIGN PILLARS: Every generated face must have a unique face shape, unique jawline, unique cheekbones, unique eye shape, unique eyebrow shape, unique nose, unique lips, unique ears, unique forehead, unique facial proportions, unique expression, unique beauty imperfections, and unique age characteristics. Never default to the same attractive face.\n" +
-            "   - VARIATION IN SHAPES: Vary face shapes: round, heart-shaped, diamond, long, rectangular, square, triangular, oval.\n" +
-            "   - VARIATION IN PROPORTIONS: Vary proportions: eye spacing, eye depth, eyelids, eyelashes, brow thickness, brow angle, nose bridge, nose tip, nostril size, mouth width, lip fullness, chin length, jaw width, cheek fullness, forehead height.\n" +
-            "   - AGE LOGIC: Adjust all facial features and skin textures based on age group:\n" +
-            "     * Children: Soft, round face, large wide-set eyes, thick eyelashes, small button nose, full cheeks, smooth, flawless porcelain-soft skin. No wrinkles, fine lines, or facial hair.\n" +
-            "     * Teenagers: Soft round/oval face, expressive eyes, soft natural eyebrows, smooth clear skin, youthful clean jawline with minimal cheekbone definition.\n" +
-            "     * Young Adults: Defined features, clean cheekbones, sharp jawline, smooth, firm skin, vibrant expression.\n" +
-            "     * Adults: Mature face, defined cheekbones and jawline, smooth but firm skin texture, faint laugh lines, composed expression.\n" +
-            "     * Middle-aged: Defined cheekbones, slight gauntness/fullness in cheeks, faint wrinkles at corners of eyes (crow's feet), subtle laugh lines, wise/seasoned expression, slightly weathered/realistic skin texture.\n" +
-            "     * Elderly: Weathered face, deep wrinkles, pronounced crow's feet and laugh lines, dry thin skin with visible age spots/texture, sagging cheeks, soft or gaunt jawline, thinning eyebrows, calm ancient gaze.\n" +
-            "     * Ancient Beings: Timeless face, paper-thin translucent skin with faint silver/golden veins, deep-set hollow eyes holding cosmic depth, fine silver-white hair, thin arched brows, crackled stone, porcelain, or celestial texture skin.\n" +
-            "     * Older characters MUST have age-appropriate features (wrinkles, weathering, spots). Never generate identical skin for every age.\n" +
-            "   - MEMORABLE IMPERFECTIONS: Include subtle imperfections when appropriate: beauty marks, freckles, scars, dimples, asymmetrical smiles, laugh lines, uneven eyebrows, skin texture, faint wrinkles. These imperfections make every face memorable.\n" +
-            "   - AVOID CONVENTIONAL ATTRACTIVENESS: Do NOT always create conventionally attractive characters. Tailor their look to visually communicate their personality: regal, cute, mysterious, rugged, cold, gentle, intimidating, scholarly, ancient, battle-hardened, youthful, elegant, wild, feral, alien, ethereal. Avoid repeating facial archetypes.\n" +
-            "   - HAIR VARIETY: If hair is unspecified in the source/user input, randomly generate: style, length, volume, texture, parting, braids, curls, waves, undercuts, ponytails, buzz cuts, dreadlocks, locs, spikes, ornaments. Hair color should suit the character.\n" +
-            "   - EYE COLORS: Do not default to blue or red. Use a broad range: amber, hazel, silver, lavender, gold, turquoise, jade, bronze, grey, violet, crimson, emerald, deep brown, heterochromia.\n" +
-            "   - SKIN TONES: Span the entire fantasy spectrum: human ethnicities, fantasy hues, metallic tones, stone textures, wood textures, crystal textures, celestial glow, shadow-infused skin.\n" +
-            "   - RACE/HERITAGE: When races/heritages are given (e.g., East Asian, Nordic, African, Elf, Dwarf, Orc, Celestial, Shadow, Draconic, Stone, etc.), generate facial features appropriate to that race while maintaining uniqueness.\n" +
-            "   - AVOID GENERIC ADJECTIVES: Do NOT use buzzwords like 'striking', 'beautiful', 'handsome', 'gorgeous', 'pretty', 'perfect face'. Instead, describe real structural features, shapes, and textures.\n" +
-            "   - CONCEPT ART STYLE: The completed appearance should read like professional concept art instructions suitable for AI image generation.\n"
+            "   You are an expert character concept artist and character designer for a high-fantasy cinematic novel.\n" +
+            "   - PRIMARY OBJECTIVE: Your primary objective is NOT to create a generic beautiful character. Your primary objective is to create a VISUALLY UNIQUE AND IMMEDIATELY RECOGNIZABLE INDIVIDUAL.\n" +
+            "   - FACIAL BIOLOGICAL DISTINCTNESS: Every character in the novel MUST possess a face that is biologically and visually distinct from every other character, even if they belong to the same race, family, kingdom, or species. No two characters should ever appear as palette swaps of one another. If two characters are both described as handsome, pale, red-eyed vampires, they MUST still have completely different facial identities.\n" +
+            "   - FORBIDDEN BUZZWORDS: NEVER use generic phrases like 'handsome face', 'beautiful face', 'sharp jawline', 'refined features', or 'elegant appearance' by themselves. Instead, construct an entirely unique face using a combination of facial anatomy.\n" +
+            "   - 28 FACIAL ANATOMY DIMENSIONS: Every generated face MUST explicitly vary across: Face shape, Jaw width, Jaw angle, Chin projection, Cheekbone height, Cheekbone width, Forehead height, Temple width, Eye spacing, Eye depth, Eye size, Eye angle, Upper eyelid, Lower eyelid, Eyebrow density, Eyebrow angle, Nose bridge, Nose width, Nasal tip, Philtrum, Lip thickness, Cupid's bow, Smile, Ear size, Ear position, Neck length, Skin texture, Facial asymmetry, Expression.\n" +
+            "   - ARCHETYPE TRANSLATION MANDATE: Translate abstract descriptors like 'handsome' or 'beautiful' into structural facial archetypes:\n" +
+            "     * Aristocratic Handsome: Long diamond-shaped face, High forehead, Straight nose, Thin lips, Elegant jawline, Graceful eyes, Reserved expression\n" +
+            "     * Predatory Handsome: Broad jaw, Deep-set eyes, Sharp brow ridge, Hooked nose, Long canines, Slight smirk, Cold stare\n" +
+            "     * Youthful Handsome: Rounder cheeks, Soft jaw, Large eyes, Short nose, Gentle smile, Smooth skin\n" +
+            "     * Warrior Handsome: Square jaw, Broken nose, Scar across eyebrow, Heavy brow, Sunken cheeks, Strong neck\n" +
+            "     * Ethereal Handsome: Long face, Narrow chin, Large luminous eyes, Delicate nose, Thin eyebrows, Almost feminine proportions\n" +
+            "     * Regal Beauty: Oval face, high forehead, arched brows, almond eyes, straight narrow nose, defined Cupid's bow, serene gaze\n" +
+            "     * Fiendish / Dangerous: Triangular face, sharp tapering jaw, angular eyes, hooked nose tip, thin lips, predatory intense gaze\n" +
+            "     * Ancient / Scholar: Gaunt rectangular face, pronounced cheekbones, deep-set eyes, weathered brow, thin lips, calm ancient expression\n" +
+            "   - FACE DIVERSITY RULE (THE ACTOR CASTING TEST): Before generating a face, ask: 'If these two characters stood side by side without clothing, hairstyle, weapons, eye color, or skin color, could people still instantly tell them apart?' If no -> redesign the facial anatomy until the answer becomes yes. Do not rely on hairstyles, scars, eye colors, horns, clothing, tattoos, lighting, or accessories to create uniqueness. The uniqueness must originate from the underlying bone structure, facial proportions, musculature, and expression.\n" +
+            "   - FACE DNA BLUEPRINT: Generate a structured Face DNA object under key 'faceDna' containing: faceShape, forehead, browRidge, eyebrows, eyes, nose, lips, jaw, chin, cheekbones, earShape, neck, skinTexture, facialAsymmetry, expression, archetypeTranslation.\n"
           : "7. ENVIRONMENT, MAP & OBJECT CLARITY MANDATE (CRITICAL - always apply): The visual subject must be immediately recognizable. For environments, describe a clear foreground/midground/background, scale cues, landmarks, weather, and lighting. For maps, describe top-down or atlas composition, coastlines, terrain symbols, routes, borders, compass/legend style, and avoid fake unreadable labels unless exact names are supplied. For planets, describe continents, atmosphere, moons/rings, cloud systems, lights, or magical phenomena. For items, describe silhouette, materials, markings, damage, scale, effects, and how it sits in the story environment.\n")
       const distinctFormRules = isAdHocMode
         ? "8. DISTINCT FACE + POSE PER FORM (CRITICAL): If generating multiple character forms, every form must have its own face and pose. For scenes/maps/items, ensure different forms show different angles, layouts, closeups, or contexts.\n"
@@ -1286,8 +1261,9 @@ export async function POST(req: NextRequest) {
         "- Descriptions introduced later in the chapter (e.g. Page 1: 'A handsome man entered'; Page 12: 'The silver-haired man smiled') MUST be captured and merged into the evidence table.\n\n" +
         "STAGE 4 — MERGE INFORMATION:\n" +
         "- Merge descriptions from different parts of the chapter without overwriting (e.g. 'He wore black armor' + 'shimmered with golden dragon engravings' -> 'Black dragon-scale armor with intricate golden dragon engravings').\n\n" +
-        "STAGE 5 — INFER MISSING DETAILS:\n" +
-        "- ONLY after Stages 1–4 are completely finished, intelligently infer values for missing fields (hair texture, face shape, eye shape, lip shape, jawline, height, body proportions, posture) THAT THE NOVEL NEVER STATED.\n\n" +
+        "STAGE 5 — INFER MISSING DETAILS & GENERATE FACE DNA:\n" +
+        "- ONLY after Stages 1–4 are completely finished, intelligently infer values for missing fields (hair texture, face shape, eye shape, lip shape, jawline, height, body proportions, posture) THAT THE NOVEL NEVER STATED.\n" +
+        "- Construct a complete, unique Face DNA profile ensuring no generic buzzwords are used and all 28 facial dimensions are defined.\n\n" +
         "STAGE 6 — BUILD IMAGE PROMPT & MANDATORY VALIDATION CHECKLIST:\n" +
         "- Generate the final continuous image prompt (150–280 words).\n" +
         subjectOrderRule +
@@ -1324,8 +1300,9 @@ export async function POST(req: NextRequest) {
             "- Populate 'inferredCategory', 'inferredName', and 'formLabels' in output JSON.\n\n"
           : "") +
         "OUTPUT RULES:\n" +
-        "13. Output ONLY valid JSON with keys: characterName, overview, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails" + (isAdHocMode ? ", inferredCategory, inferredName, formLabels" : "") + ".\n" +
+        "13. Output ONLY valid JSON with keys: characterName, overview, faceDna, prompts, negativePrompts, consistencyNotes, negativePrompt, characterDetails" + (isAdHocMode ? ", inferredCategory, inferredName, formLabels" : "") + ".\n" +
         "   - overview: 200–300 word Visual Core concise summary describing overall appearance, personality reflected in design, dynamic scene pose/action, clothing, and unique identity.\n" +
+        "   - faceDna: object (or structured string) containing the character's facial anatomy blueprint: faceShape, forehead, browRidge, eyebrows, eyes, nose, lips, jaw, chin, cheekbones, earShape, neck, skinTexture, facialAsymmetry, expression, archetypeTranslation.\n" +
         "   - prompts: object with keys " + formLabelsStr + " — each value is a single continuous paragraph prompt string (Image Prompt) without bullet points.\n" +
         (usePerFormNegatives
           ? "   - negativePrompts: object with the SAME keys, each value is the form-specific negative prompt string.\n"
@@ -1335,6 +1312,7 @@ export async function POST(req: NextRequest) {
         "   - negativePrompt: a single shared negative prompt string as fallback.\n" +
         "   - characterDetails: object with fields appearance, hair, eyes, body, height, age, attire, distinguishingFeatures, weapon — extracted directly from active chapter and Story Bible via Stages 1–4.\n" +
         "14. No markdown fences. No bullet points inside prompt values."
+
 
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
@@ -2169,6 +2147,10 @@ export async function POST(req: NextRequest) {
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
 
+      const appearanceLabGroqKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
+        ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY)
+        : undefined
+
       // Use Gemini hand-in-hand with Groq:
       // - Prefer Gemini for progression_update (superior long-context reasoning and multi-character disambiguation)
       // - Groq for speed on other creative/structured tasks
@@ -2180,7 +2162,7 @@ export async function POST(req: NextRequest) {
         } catch (geminiErr) {
           console.warn("[Gemini] Failed, falling back to Groq:", geminiErr)
           try {
-            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
           } catch (groqErr) {
             console.error("Both Gemini and Groq failed:", groqErr)
             throw groqErr;
@@ -2188,7 +2170,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         try {
-          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
+          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
         } catch (groqErr) {
           console.warn("[Groq] Failed, trying fallback to Gemini:", groqErr)
           if (geminiApiKey) {
@@ -2360,6 +2342,7 @@ export async function POST(req: NextRequest) {
         appearancePrompts: {
           characterName: typeof appearance.characterName === "string" ? appearance.characterName : "",
           overview: typeof appearance.overview === "string" ? appearance.overview : "",
+          faceDna: appearance.faceDna ? appearance.faceDna : undefined,
           prompts,
           consistencyNotes: Array.isArray(appearance.consistencyNotes)
             ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
