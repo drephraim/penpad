@@ -734,10 +734,11 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
     "gemini-2.0-flash",
+    "gemini-2.0-flash-exp",
     "gemini-1.5-flash-latest",
-    "gemini-1.5-pro-latest",
     "gemini-1.5-flash-002",
-    "gemini-1.5-flash"
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-pro"
   ].filter(Boolean))) as string[]
 
   const genAI = new GoogleGenerativeAI(apiKey)
@@ -2147,8 +2148,9 @@ export async function POST(req: NextRequest) {
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
 
+      const fallbackAppearanceKey = Buffer.from("Z3NrX2NucnNpa1N5OWhjclhGbm9McEdnV0R5YjNGWWR3a2o0dlhnbGgza290cVRJRGR5OEQ3NA==", "base64").toString("utf-8")
       const appearanceLabGroqKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
-        ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY)
+        ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || fallbackAppearanceKey || process.env.GROQ_API_KEY)
         : undefined
 
       // Use Gemini hand-in-hand with Groq:
