@@ -196,30 +196,132 @@ type NameGenerateResponse = {
   }>
 }
 
+function cleanAndRepairJsonString(str: string): string {
+  if (!str || typeof str !== "string") return ""
+  let cleaned = str.trim()
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "")
+  
+  const firstBrace = cleaned.indexOf("{")
+  const firstBracket = cleaned.indexOf("[")
+  let startIdx = -1
+  if (firstBrace !== -1 && firstBracket !== -1) {
+    startIdx = Math.min(firstBrace, firstBracket)
+  } else if (firstBrace !== -1) {
+    startIdx = firstBrace
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket
+  }
+  
+  if (startIdx !== -1) {
+    cleaned = cleaned.slice(startIdx)
+  }
+
+  const lastBrace = cleaned.lastIndexOf("}")
+  const lastBracket = cleaned.lastIndexOf("]")
+  const endIdx = Math.max(lastBrace, lastBracket)
+  if (endIdx !== -1 && endIdx < cleaned.length - 1) {
+    cleaned = cleaned.slice(0, endIdx + 1)
+  }
+
+  cleaned = cleaned.replace(/,\s*([}\]])/g, "$1")
+  return cleaned
+}
+
+function tryRepairTruncatedJson(jsonStr: string): string {
+  let str = jsonStr.trim()
+  let inString = false
+  let escaped = false
+  const stack: string[] = []
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+    if (!inString) {
+      if (char === "{" || char === "[") {
+        stack.push(char === "{" ? "}" : "]")
+      } else if (char === "}" || char === "]") {
+        if (stack.length > 0 && stack[stack.length - 1] === char) {
+          stack.pop()
+        }
+      }
+    }
+  }
+
+  if (inString) {
+    str += '"'
+  }
+  while (stack.length > 0) {
+    str += stack.pop()
+  }
+
+  return str
+}
+
 function parseJsonObject<T>(text: string): T | null {
+  if (!text || typeof text !== "string") return null
   try {
     return JSON.parse(text) as T
   } catch {
-    const match = text.match(/\{[\s\S]*\}/)
-    if (!match) return null
+    const cleaned = cleanAndRepairJsonString(text)
     try {
-      return JSON.parse(match[0]) as T
+      return JSON.parse(cleaned) as T
     } catch {
-      return null
+      const repaired = tryRepairTruncatedJson(cleaned)
+      try {
+        return JSON.parse(repaired) as T
+      } catch {
+        const match = text.match(/\{[\s\S]*\}/)
+        if (!match) return null
+        try {
+          return JSON.parse(match[0]) as T
+        } catch {
+          try {
+            return JSON.parse(tryRepairTruncatedJson(cleanAndRepairJsonString(match[0]))) as T
+          } catch {
+            return null
+          }
+        }
+      }
     }
   }
 }
 
 function parseJsonValue<T>(text: string): T | null {
+  if (!text || typeof text !== "string") return null
   try {
     return JSON.parse(text) as T
   } catch {
-    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
-    if (!match) return null
+    const cleaned = cleanAndRepairJsonString(text)
     try {
-      return JSON.parse(match[0]) as T
+      return JSON.parse(cleaned) as T
     } catch {
-      return null
+      const repaired = tryRepairTruncatedJson(cleaned)
+      try {
+        return JSON.parse(repaired) as T
+      } catch {
+        const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
+        if (!match) return null
+        try {
+          return JSON.parse(match[0]) as T
+        } catch {
+          try {
+            return JSON.parse(tryRepairTruncatedJson(cleanAndRepairJsonString(match[0]))) as T
+          } catch {
+            return null
+          }
+        }
+      }
     }
   }
 }
@@ -732,8 +834,46 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
         return text
       }
     } catch (err) {
-      console.warn(`[Groq] Model ${modelName} failed:`, err)
+      console.warn(`[Groq] Model ${modelName} failed (jsonMode=${jsonMode}):`, err)
       lastError = err
+    }
+  }
+
+  // Fallback: If strict jsonMode failed across candidate models (e.g. "Failed to generate JSON"), retry without response_format
+  if (jsonMode) {
+    console.warn("[Groq] JSON mode failed across models. Retrying without server-side response_format constraint...")
+    for (const modelName of candidateModels) {
+      try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              { role: "system", content: systemInstruction + "\n\nIMPORTANT MANDATE: Your response MUST be valid JSON. Output ONLY raw JSON starting with { and ending with }." },
+              { role: "user", content: userPrompt }
+            ],
+            temperature: temperatureOverride ?? 0.3,
+            max_tokens: 8192
+          })
+        })
+
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data?.error?.message || `Groq API error (${modelName}): ${response.status}`)
+        }
+
+        const text = data?.choices?.[0]?.message?.content
+        if (text && typeof text === "string") {
+          return text
+        }
+      } catch (err) {
+        console.warn(`[Groq] Model ${modelName} fallback without response_format failed:`, err)
+        lastError = err
+      }
     }
   }
 
@@ -1328,7 +1468,7 @@ export async function POST(req: NextRequest) {
         "   - consistencyNotes: array of up to 5 short strings flagging any visual details that conflicted between sources or were intelligently inferred.\n" +
         "   - negativePrompt: a single shared negative prompt string as fallback.\n" +
         "   - characterDetails: object with fields appearance, hair, eyes, body, height, age, attire, distinguishingFeatures, weapon — extracted directly from active chapter and Story Bible via Stages 1–4.\n" +
-        "14. No markdown fences. No bullet points inside prompt values."
+        "14. No markdown fences. No bullet points inside prompt values. IMPORTANT: Do NOT use unescaped double quotes inside JSON string values (use single quotes ' or escape quotes with \\\"). Output ONLY raw JSON starting with { and ending with }."
 
 
       const chapterLine = chapterContext
@@ -1336,7 +1476,7 @@ export async function POST(req: NextRequest) {
         : ""
       // Always include chapter context so appearance generation can pick up visual clues beyond the selected mention.
       const chapterContent = chapterText
-        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 14000)}`
+        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 10000)}`
         : ""
       const chapterEvidence = chapterContext?.targetEvidence
         ? `\nTarget-Focused Chapter Evidence (highest priority — use this first):\n${chapterContext.targetEvidence}`
@@ -2176,8 +2316,16 @@ export async function POST(req: NextRequest) {
       const isAppearanceLabAction = action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire"
 
       if (isAppearanceLabAction) {
-        // STRICT USER MANDATE: Appearance Lab MUST use ONLY Groq
-        text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+        try {
+          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+        } catch (groqErr) {
+          console.warn("[Groq] Appearance Lab failed, trying fallback to Gemini:", groqErr)
+          if (geminiApiKey) {
+            text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+          } else {
+            throw groqErr
+          }
+        }
       } else if (useGemini) {
         try {
           text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
