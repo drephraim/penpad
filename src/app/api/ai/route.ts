@@ -1162,6 +1162,63 @@ function verifyAndLockPromptDetails(
       p = p + `, elderly man with weathered facial features`
       injectedNotes.push(`Enforced elder age markers into ${formKey} prompt.`)
     }
+
+    // WEAVE FACE DNA DIRECTLY INTO HUMANOID FORM PROMPT
+    if ((formKey === "humanForm" || formKey === "humanoidForm") && faceDna && typeof faceDna === "object") {
+      const pLower = p.toLowerCase()
+      const dna = faceDna as Record<string, unknown>
+      const missingDnaPieces: string[] = []
+
+      if (dna.faceShape && !pLower.includes(String(dna.faceShape).toLowerCase())) {
+        missingDnaPieces.push(`${dna.faceShape} face shape`)
+      }
+      if (dna.nose && !pLower.includes("nose")) {
+        missingDnaPieces.push(`${dna.nose} nose bridge`)
+      }
+      if (dna.jaw && !pLower.includes("jaw")) {
+        missingDnaPieces.push(`${dna.jaw} jawline`)
+      }
+      if (dna.lips && !pLower.includes("lips")) {
+        missingDnaPieces.push(`${dna.lips} lips`)
+      }
+      if (dna.cheekbones && !pLower.includes("cheekbone")) {
+        missingDnaPieces.push(`${dna.cheekbones} cheekbones`)
+      }
+      if (dna.eyebrows && !pLower.includes("eyebrow") && !pLower.includes("brow")) {
+        missingDnaPieces.push(`${dna.eyebrows} eyebrows`)
+      }
+      if (dna.skinTexture && !pLower.includes("skin")) {
+        missingDnaPieces.push(`${dna.skinTexture} skin texture`)
+      }
+
+      if (missingDnaPieces.length > 0) {
+        p = p + `, explicit facial anatomy featuring ${missingDnaPieces.join(", ")}`
+        injectedNotes.push(`Wove structural Face DNA features directly into ${formKey} prompt string.`)
+      }
+    }
+
+    // ENFORCE BEAST FORM SCALE & TEXTURE
+    if (formKey === "beastForm") {
+      const pLower = p.toLowerCase()
+      if (!pLower.includes("colossal") && !pLower.includes("gargantuan") && !pLower.includes("massive") && !pLower.includes("titanic")) {
+        p = p + `, colossal beast scale`
+      }
+      if (!pLower.includes("fangs") && !pLower.includes("scales") && !pLower.includes("fur") && !pLower.includes("claws") && !pLower.includes("carapace")) {
+        p = p + `, intricate creature textures with sharp fangs and beastly hide`
+      }
+    }
+
+    // ENFORCE DEMI-HUMAN HYBRID ANATOMY
+    if (formKey === "demiHumanForm") {
+      const pLower = p.toLowerCase()
+      if (!pLower.includes("upright") && !pLower.includes("bipedal") && !pLower.includes("stance") && !pLower.includes("humanoid")) {
+        p = p + `, powerful upright bipedal warrior stance`
+      }
+      if (!pLower.includes("hybrid") && !pLower.includes("claws") && !pLower.includes("fur") && !pLower.includes("tail") && !pLower.includes("horns")) {
+        p = p + `, hybrid beast-human features with digitigrade clawed legs and a beast tail`
+      }
+    }
+
     prompts[formKey] = p
   }
 
@@ -1400,16 +1457,22 @@ export async function POST(req: NextRequest) {
           "1. IDENTIFY THE BEAST SPECIES/CLASS: Read the name and lore (e.g., 'Leviathan', 'Titan-Ape', 'Qilin'). If the creature is a known mythical type (like a Leviathan), generate an awe-inspiring, massive, and powerful representation of that class (e.g., colossal armor-plated marine serpent, leviathan-scale sea titan, fiery celestial avian, storm-clad dragon) even if the description in the Bible is sparse.\n" +
           "2. ADAPT TO CHAPTER ACTION & INTENSITY (READ CHAPTER WELL): You MUST read and analyze the active chapter context. If the scene is intense, chaotic, or combat-focused, the beast's pose, expression, and surrounding elements must reflect this intensity. For example, a fighting Leviathan should be coiling, lunging, roaring, churning titanic waves, with eyes glowing like molten gold, jaws wide, surrounded by crackling lightning or stormy seas. If the scene is calm or mysterious, the beast should look majestic, ancient, and dormant, blending with the environment.\n" +
           "3. STRICT BEAST FORM PROGRESSION RULES:\n" +
-          (formKeys.includes("beastForm") ? "   - Beast Form: 100% beast. Fully animal/creature anatomy. No human stance, no humanoid hands, no human clothing. Use colossal, gargantuan scale keywords. Focus on powerful claws, tails, fangs, scales, wings, or horns. The pose must match the chapter action (e.g., coiling, lunging, breathing energy, soaring through clouds).\n" : "") +
-          (formKeys.includes("demiHumanForm") ? "   - Demi-Human Form: 50%-80% Beast, 20%-50% Human. A stylized, high-quality hybrid. Must combine:\n" +
-            "     • Upright, powerful humanoid stance (two legs)\n" +
-            "     • Human-like arms and hands, but with beastly claws or scales\n" +
-            "     • Hybrid face (e.g., human features combined with glowing beast eyes, animal ears, horns, or cheek scales)\n" +
-            "     • Beast legs (digitigrade, clawed paws, or hooves)\n" +
-            "     • A long beast tail and body coverage of fine fur, feathers, or shimmering scales\n" +
-            "     • Heightened scale: significantly larger and broader than average humans\n" +
-            "     • Dress and gear: tribal wraps, leather armor plates, or robes that fit a warrior or shaman, with elemental aura matching the chapter's tone.\n" : "") +
-          (formKeys.includes("humanForm") ? "   - Humanoid Form: Fully human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise. Note that 'humanoid form' refers to the silhouette and base species morphology; it MUST still fully incorporate any described human-compatible physical characteristics like extreme obesity, colossal size, screaming expressions, or damaged/peeling skin.\n" : "")
+          (formKeys.includes("beastForm") ? "   - Beast Form: 100% beast / monstrosity. Fully animal, draconic, or mythical creature body plan. Zero human stance, zero human hands, zero human clothing.\n" +
+            "     • SPECIES ARCHETYPE & SCALE: Use colossal, gargantuan scale keywords. Identify the core beast class (e.g. Leviathan, Titan Ape, Dragon, Frost Wolf, Phoenix, Serpent, Chimera).\n" +
+            "     • BEAST ANATOMY & TEXTURES: Describe intricate beastly textures: razor-sharp fangs, glowing predatory pupils, interlocking dragon scales, thick frost-matted fur, chitinous carapace plates, massive wingspan, or spiked tail.\n" +
+            "     • DYNAMIC SCENE ACTION & AURA: The beast's pose must reflect active scene intensity (e.g., coiling around ruined pillars, lunging forward with jaws agape, roaring into a stormy sky, breathing elemental flames, churning titanic ocean waves).\n" +
+            "     • ACCURATE GENERATION FROM SIMPLE DESCRIPTIONS: Even if the author only writes a simple description (e.g. 'a giant wolf with blue eyes' or 'a black dragon'), extrapolate a majestic, 8k AAA concept art prompt detailing its colossal scale, matted fur, glowing eyes, razor fangs, muscle structure, and dynamic scene action without losing any written facts.\n" : "") +
+          (formKeys.includes("demiHumanForm") ? "   - Demi-Human Form: 50%-80% Beast, 20%-50% Human. A stylized, high-quality hybrid warrior or creature concept. Must combine:\n" +
+            "     • Upright, powerful humanoid stance (two legs, broad chest, muscular humanoid torso)\n" +
+            "     • Human-like arms, hands, and fingers, but ending in beastly obsidian claws, talon fingertips, or scaled forearms\n" +
+            "     • Hybrid face & head: human facial proportions and bone structure combined with glowing beast eyes, animal ears, horns, cheek fur/scales, or fangs resting in a human mouth\n" +
+            "     • Beast legs: digitigrade lower limbs, clawed paws, hooves, or scaled feet\n" +
+            "     • Tail & Body Coverage: A long beast tail and partial body coverage of fine fur, feathers, chitin, or shimmering scales across shoulders and spine\n" +
+            "     • Heightened Scale: significantly larger, broader, and more intimidating than an average human\n" +
+            "     • Attire & Gear: tribal leather wraps, battle-worn armor plates, or silk robes fitting a beast warrior, shaman, or chieftain, with an elemental aura matching the species.\n" +
+            "     • ACCURATE GENERATION FROM SIMPLE DESCRIPTIONS: Even if the chapter description is minimal (e.g. 'a tiger man' or 'wolf warrior'), extrapolate a complete, majestic, high-detail hybrid image prompt combining all the anatomical rules above without hallucinating conflicting human armor or dropping the beast features.\n" : "") +
+          (formKeys.includes("humanForm") ? "   - Humanoid Form: Fully human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise.\n" +
+            "     • FACE DNA IN-PROMPT SYNTHESIS MANDATE (CRITICAL): You MUST explicitly write ALL structural facial anatomy details from Face DNA directly INSIDE the Humanoid Form image prompt text. The Humanoid Form prompt string itself MUST detail: face shape, forehead height, brow ridge, eyebrow style and density, eye depth/shape/color/expression, nose bridge and width, lip thickness and shape, jawline structure and angle, chin projection, cheekbone height, ear shape, neck structure, skin texture/age lines, and facial expression. Do NOT relegate Face DNA to a separate summary block only — the image generation prompt string MUST contain every single anatomical facial dimension so AI image generators produce the exact intended face.\n" : "")
         : entryCategory === "character"
           ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
           : entryCategory === "place"
