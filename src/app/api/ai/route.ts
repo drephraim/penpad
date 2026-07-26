@@ -1015,11 +1015,7 @@ function formatKnownCharacterDetails(details: unknown, activeChapterNumber?: num
         item.eyes,
         item.body,
         item.height,
-        item.age,
-        item.attire,
-        item.weapon,
-        item.distinguishingFeatures,
-        item.evidence ? `evidence: ${item.evidence}` : ""
+          item.evidence ? `evidence: ${item.evidence}` : ""
       ].filter(value => typeof value === "string" && value.trim()).join("; ")
 
       if (detailsLine) {
@@ -1031,9 +1027,148 @@ function formatKnownCharacterDetails(details: unknown, activeChapterNumber?: num
   return lines.join("\n")
 }
 
-function formatMemoryContext(memory: unknown) {
-  if (!memory || typeof memory !== "object") return ""
+function extractTargetEvidenceFromFullChapter(chapterText: string, targetNames: string[], selectedText?: string): string {
+  if (!chapterText) return ""
+  
+  const searchTerms = new Set<string>()
+  if (selectedText && selectedText.trim().length > 3) {
+    searchTerms.add(selectedText.trim().toLowerCase())
+    const words = selectedText.trim().toLowerCase().split(/\s+/).filter(w => w.length > 3)
+    words.forEach(w => searchTerms.add(w))
+  }
+  
+  targetNames.forEach(n => {
+    if (n && n.trim().length > 1) {
+      searchTerms.add(n.trim().toLowerCase())
+    }
+  })
 
+  if (searchTerms.size === 0) return ""
+
+  const termsArr = Array.from(searchTerms)
+  const paragraphs = chapterText.split(/\n\s*\n/)
+  const matchedParas: string[] = []
+
+  for (const para of paragraphs) {
+    const pLower = para.toLowerCase()
+    if (termsArr.some(term => pLower.includes(term))) {
+      matchedParas.push(para.trim())
+    }
+  }
+
+  if (matchedParas.length > 0) {
+    return matchedParas.slice(0, 15).join("\n\n---\n\n")
+  }
+
+  const sentences = chapterText.split(/(?<=[.!?])\s+/)
+  const matchedSentences: string[] = []
+  for (let i = 0; i < sentences.length; i++) {
+    const sLower = sentences[i].toLowerCase()
+    if (termsArr.some(term => sLower.includes(term))) {
+      const prev = sentences[i - 1] ? sentences[i - 1] + " " : ""
+      const curr = sentences[i]
+      const next = sentences[i + 1] ? " " + sentences[i + 1] : ""
+      matchedSentences.push(`${prev}${curr}${next}`.trim())
+    }
+  }
+
+  return Array.from(new Set(matchedSentences)).slice(0, 20).join("\n---\n")
+}
+
+function verifyAndLockPromptDetails(
+  prompts: Record<string, string>,
+  evidenceText: string,
+  faceDna?: any
+): { prompts: Record<string, string>; faceDna?: any; injectedNotes: string[] } {
+  const injectedNotes: string[] = []
+  if (!evidenceText || !prompts || Object.keys(prompts).length === 0) {
+    return { prompts, faceDna, injectedNotes }
+  }
+
+  const evLower = evidenceText.toLowerCase()
+
+  const propsToCheck = [
+    { key: "walking stick", label: "walking stick" },
+    { key: "staff", label: "staff" },
+    { key: "sword", label: "sword" },
+    { key: "dagger", label: "dagger" },
+    { key: "lantern", label: "lantern" },
+    { key: "book", label: "book" },
+    { key: "pipe", label: "pipe" },
+    { key: "spear", label: "spear" },
+    { key: "shield", label: "shield" }
+  ]
+
+  const missingProps: string[] = []
+  for (const prop of propsToCheck) {
+    if (evLower.includes(prop.key)) {
+      const existsInPrompts = Object.values(prompts).some(p => p.toLowerCase().includes(prop.key))
+      if (!existsInPrompts) {
+        missingProps.push(prop.label)
+      }
+    }
+  }
+
+  const colorGarmentsToCheck = [
+    { key: "red robe", label: "simple red robe" },
+    { key: "crimson robe", label: "crimson robe" },
+    { key: "white robe", label: "white robe" },
+    { key: "black cloak", label: "black cloak" },
+    { key: "blue tunic", label: "blue tunic" },
+    { key: "green cloak", label: "green cloak" },
+    { key: "gold armor", label: "golden armor" },
+    { key: "silver cloak", label: "silver cloak" }
+  ]
+
+  const missingGarments: string[] = []
+  for (const item of colorGarmentsToCheck) {
+    if (evLower.includes(item.key)) {
+      const existsInPrompts = Object.values(prompts).some(p => p.toLowerCase().includes(item.key.split(" ")[0]))
+      if (!existsInPrompts) {
+        missingGarments.push(item.label)
+      }
+    }
+  }
+
+  const isElderInText = evLower.includes("old man") || evLower.includes("elderly") || evLower.includes("ancient elder")
+  if (isElderInText) {
+    if (faceDna && typeof faceDna === "object") {
+      if (typeof faceDna.skinTexture === "string" && faceDna.skinTexture.toLowerCase().includes("smooth")) {
+        faceDna.skinTexture = "weathered with age lines and wrinkles"
+        injectedNotes.push("Corrected Face DNA skinTexture from smooth to weathered elder skin based on chapter evidence.")
+      }
+    }
+  }
+
+  for (const formKey of Object.keys(prompts)) {
+    let p = prompts[formKey]
+    if (missingProps.length > 0) {
+      for (const prop of missingProps) {
+        if (!p.toLowerCase().includes(prop)) {
+          p = p + `, holding a ${prop} in hand`
+          injectedNotes.push(`Enforced missing held item '${prop}' directly into ${formKey} prompt.`)
+        }
+      }
+    }
+    if (missingGarments.length > 0) {
+      for (const garment of missingGarments) {
+        if (!p.toLowerCase().includes(garment.split(" ")[0])) {
+          p = p + `, clad in a ${garment}`
+          injectedNotes.push(`Enforced missing garment '${garment}' directly into ${formKey} prompt.`)
+        }
+      }
+    }
+    if (isElderInText && !p.toLowerCase().includes("elderly") && !p.toLowerCase().includes("old man") && !p.toLowerCase().includes("aged") && !p.toLowerCase().includes("weathered")) {
+      p = p + `, elderly man with weathered facial features`
+      injectedNotes.push(`Enforced elder age markers into ${formKey} prompt.`)
+    }
+    prompts[formKey] = p
+  }
+
+  return { prompts, faceDna, injectedNotes }
+}
+
+function formatMemoryContext(memory: unknown) {
   const safeMemory = memory as {
     projectName?: string
     activeChapter?: { title?: string; chapterNumber?: number } | null
@@ -1473,15 +1608,32 @@ export async function POST(req: NextRequest) {
         "14. No markdown fences. No bullet points inside prompt values. IMPORTANT: Do NOT use unescaped double quotes inside JSON string values (use single quotes ' or escape quotes with \\\"). Output ONLY raw JSON starting with { and ending with }."
 
 
+      const targetNames = [
+        safeLoreEntry?.name,
+        name,
+        ...(Array.isArray(safeLoreEntry?.aliases) ? safeLoreEntry.aliases : [])
+      ].filter(Boolean) as string[]
+
+      const fullChapterTargetEvidence = extractTargetEvidenceFromFullChapter(
+        chapterText || "",
+        targetNames,
+        selectedText
+      )
+
+      const mergedTargetEvidence = [
+        chapterContext?.targetEvidence,
+        fullChapterTargetEvidence
+      ].filter(Boolean).join("\n\n---\n\n")
+
       const chapterLine = chapterContext
         ? `\nActive Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}`
         : ""
-      // Always include chapter context so appearance generation can pick up visual clues beyond the selected mention.
+      // Expand chapter context scan window and prioritize target evidence
       const chapterContent = chapterText
-        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 10000)}`
+        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 25000)}`
         : ""
-      const chapterEvidence = chapterContext?.targetEvidence
-        ? `\nTarget-Focused Chapter Evidence (highest priority — use this first):\n${chapterContext.targetEvidence}`
+      const chapterEvidence = mergedTargetEvidence
+        ? `\nTarget-Focused Chapter Evidence (UNTRUNCATED FULL CHAPTER SCAN — HIGHEST PRIORITY):\n${mergedTargetEvidence}`
         : ""
       const selectedLine = selectedText ? `\nHighlighted Passage (highest priority):\n${selectedText}` : ""
       const loreLine = safeLoreEntry
@@ -2510,15 +2662,24 @@ export async function POST(req: NextRequest) {
           }
         : undefined
 
+      const verified = verifyAndLockPromptDetails(
+        prompts,
+        String(body.selectedText || "") + " " + String(body.chapterContent || "") + " " + String(body.chapterText || ""),
+        appearance.faceDna
+      )
+
+      const finalConsistencyNotes = [
+        ...(Array.isArray(appearance.consistencyNotes) ? appearance.consistencyNotes.filter(item => typeof item === "string") : []),
+        ...verified.injectedNotes
+      ].slice(0, 6)
+
       return NextResponse.json({
         appearancePrompts: {
           characterName: typeof appearance.characterName === "string" ? appearance.characterName : "",
           overview: typeof appearance.overview === "string" ? appearance.overview : "",
-          faceDna: appearance.faceDna ? appearance.faceDna : undefined,
-          prompts,
-          consistencyNotes: Array.isArray(appearance.consistencyNotes)
-            ? appearance.consistencyNotes.filter(item => typeof item === "string").slice(0, 6)
-            : [],
+          faceDna: verified.faceDna || appearance.faceDna || undefined,
+          prompts: verified.prompts,
+          consistencyNotes: finalConsistencyNotes,
           negativePrompt: typeof appearance.negativePrompt === "string" ? appearance.negativePrompt : "",
           negativePrompts,
           characterDetails: characterDetails && Object.values(characterDetails).some(Boolean) ? characterDetails : undefined,
