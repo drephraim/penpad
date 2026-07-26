@@ -1971,6 +1971,17 @@ function EditorContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNoteId])
 
+  // Persist activeNoteId in localStorage per project so refreshed page stays on focused chapter
+  useEffect(() => {
+    if (activeNoteId && projectId) {
+      try {
+        localStorage.setItem(`penpad_active_note_${projectId}`, activeNoteId)
+      } catch (e) {
+        console.error("Failed to save active note ID:", e)
+      }
+    }
+  }, [activeNoteId, projectId])
+
   // Sync editorContent when activeNote.content changes from OUTSIDE (e.g. AI, restore version)
   useEffect(() => {
     if (activeNote && activeNote.id === activeNoteId) {
@@ -6975,15 +6986,30 @@ const fillEmptyCustomJsonData = (
       }
       noteList.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(noteList)
-      if (noteList.length > 0 && !activeNoteIdRef.current) {
-        setActiveNoteId(noteList[0].id)
+
+      const savedActiveNoteId = typeof window !== "undefined" ? localStorage.getItem(`penpad_active_note_${projectId}`) : null
+      const savedNoteExists = savedActiveNoteId ? noteList.some(n => n && n.id === savedActiveNoteId) : false
+
+      if (noteList.length > 0) {
+        if (savedNoteExists && savedActiveNoteId) {
+          setActiveNoteId(savedActiveNoteId)
+        } else if (!activeNoteIdRef.current) {
+          setActiveNoteId(noteList[0].id)
+        }
       }
       
       const syncedNotes = await syncChaptersWithCloud(user.uid, projectId, noteList)
       const orderedSyncedNotes = syncedNotes.sort((a: Note, b: Note) => (b.sortOrder ?? b.createdAt) - (a.sortOrder ?? a.createdAt))
       setNotes(orderedSyncedNotes)
-      if (syncedNotes.length > 0 && !activeNoteIdRef.current) {
-        setActiveNoteId(orderedSyncedNotes[0].id)
+
+      const savedNoteInSynced = savedActiveNoteId ? orderedSyncedNotes.some(n => n && n.id === savedActiveNoteId) : false
+
+      if (orderedSyncedNotes.length > 0) {
+        if (savedNoteInSynced && savedActiveNoteId) {
+          setActiveNoteId(savedActiveNoteId)
+        } else if (!activeNoteIdRef.current) {
+          setActiveNoteId(orderedSyncedNotes[0].id)
+        }
       }
     } catch (e) {
       console.error("Fetch/Sync notes failed:", e)
