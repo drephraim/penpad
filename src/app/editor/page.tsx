@@ -3072,9 +3072,9 @@ function EditorContent() {
         setAppearanceAgeGroup(ageGroupForRequest)
       }
       const raceValue = raceForRequest === "custom" ? customRaceForRequest.trim() : raceForRequest
-      const activeFormKeys = enforceCategoryForms
-        ? defaultFormConfig.keys.filter(k => requestFormEnabled[k] !== false)
-        : requestFormKeys.filter(k => requestFormEnabled[k] !== false)
+      const hasExplicitEnabled = Object.values(requestFormEnabled).some(v => v === true)
+      const targetFormKeys = enforceCategoryForms ? defaultFormConfig.keys : requestFormKeys
+      const activeFormKeys = targetFormKeys.filter(k => hasExplicitEnabled ? requestFormEnabled[k] === true : requestFormEnabled[k] !== false)
       if (activeFormKeys.length === 0) {
         setAppearanceError("Select at least one form to generate prompts for.")
         setAppearanceLoading(false)
@@ -3083,7 +3083,10 @@ function EditorContent() {
       const formLabelsForRequest = enforceCategoryForms
         ? defaultFormConfig.labels
         : requestFormLabels
-      const formEnabledForRequest = requestFormEnabled
+      const formEnabledForRequest: Record<string, boolean> = {}
+      for (const key of targetFormKeys) {
+        formEnabledForRequest[key] = requestFormEnabled[key] === true
+      }
       const forms: Record<string, string> = {}
       for (const key of activeFormKeys) {
         if (requestFormDescriptions[key]?.trim()) forms[key] = requestFormDescriptions[key].trim()

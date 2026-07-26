@@ -1447,8 +1447,10 @@ export async function POST(req: NextRequest) {
           : entryCategory === "item"
             ? ["artifactCloseup", "inUseScene"]
             : ["environmentScene", "mapView"]
+      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] === true)
+      const hasExplicitEnabled = Object.values(safeFormEnabled).some(v => v === true)
       const baseFormKeys = categoryFormKeys
-        ? categoryFormKeys.filter(k => safeFormEnabled[k] !== false)
+        ? (hasExplicitEnabled ? categoryFormKeys.filter(k => safeFormEnabled[k] === true) : categoryFormKeys.filter(k => safeFormEnabled[k] !== false))
         : (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : defaultVisualFormKeys))
       const formKeys = requestedFormKey && (baseFormKeys.includes(requestedFormKey) || (categoryFormKeys && categoryFormKeys.includes(requestedFormKey)))
         ? [requestedFormKey]
