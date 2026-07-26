@@ -1438,7 +1438,8 @@ export async function POST(req: NextRequest) {
       const categoryFormKeys = isCharacterLike
         ? ["beastForm", "demiHumanForm", "humanForm"]
         : null
-      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] !== false)
+      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] === true)
+      const hasExplicitEnabled = Object.values(safeFormEnabled).some(v => v === true)
       const requestedFormKey = typeof regenerateForm === "string" && regenerateForm.trim() ? regenerateForm.trim() : ""
       const defaultVisualFormKeys = entryCategory === "place"
         ? ["environmentScene", "mapView", "interiorDetail"]
@@ -1447,8 +1448,6 @@ export async function POST(req: NextRequest) {
           : entryCategory === "item"
             ? ["artifactCloseup", "inUseScene"]
             : ["environmentScene", "mapView"]
-      const enabledFormKeys = Object.keys(safeFormEnabled).filter(k => safeFormEnabled[k] === true)
-      const hasExplicitEnabled = Object.values(safeFormEnabled).some(v => v === true)
       const baseFormKeys = categoryFormKeys
         ? (hasExplicitEnabled ? categoryFormKeys.filter(k => safeFormEnabled[k] === true) : categoryFormKeys.filter(k => safeFormEnabled[k] !== false))
         : (enabledFormKeys.length > 0 ? enabledFormKeys : (Object.keys(appForms).length > 0 ? Object.keys(appForms) : defaultVisualFormKeys))
