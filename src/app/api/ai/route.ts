@@ -1197,25 +1197,45 @@ function verifyAndLockPromptDetails(
       }
     }
 
-    // ENFORCE BEAST FORM SCALE & TEXTURE
-    if (formKey === "beastForm") {
+    // WEAVE DEMI-HUMAN FORM DNA DIRECTLY INTO DEMI-HUMAN PROMPT
+    if (formKey === "demiHumanForm") {
       const pLower = p.toLowerCase()
-      if (!pLower.includes("colossal") && !pLower.includes("gargantuan") && !pLower.includes("massive") && !pLower.includes("titanic")) {
-        p = p + `, colossal beast scale`
+      const missingDemiDna: string[] = []
+
+      if (!pLower.includes("upright") && !pLower.includes("bipedal") && !pLower.includes("stance") && !pLower.includes("humanoid")) {
+        missingDemiDna.push("powerful upright bipedal warrior stance")
       }
-      if (!pLower.includes("fangs") && !pLower.includes("scales") && !pLower.includes("fur") && !pLower.includes("claws") && !pLower.includes("carapace")) {
-        p = p + `, intricate creature textures with sharp fangs and beastly hide`
+      if (!pLower.includes("digitigrade") && !pLower.includes("claws") && !pLower.includes("paws") && !pLower.includes("hooves")) {
+        missingDemiDna.push("digitigrade lower limbs ending in beast claws")
+      }
+      if (!pLower.includes("hybrid") && !pLower.includes("ears") && !pLower.includes("horns") && !pLower.includes("eyes")) {
+        missingDemiDna.push("hybrid face with glowing predatory beast eyes and species ears")
+      }
+      if (!pLower.includes("tail")) {
+        missingDemiDna.push("dense beast tail")
+      }
+
+      if (missingDemiDna.length > 0) {
+        p = p + `, explicit demi-human DNA featuring ${missingDemiDna.join(", ")}`
+        injectedNotes.push(`Wove Demi-Human DNA features directly into ${formKey} prompt string.`)
       }
     }
 
-    // ENFORCE DEMI-HUMAN HYBRID ANATOMY
-    if (formKey === "demiHumanForm") {
+    // WEAVE BEAST FORM DNA DIRECTLY INTO BEAST PROMPT
+    if (formKey === "beastForm") {
       const pLower = p.toLowerCase()
-      if (!pLower.includes("upright") && !pLower.includes("bipedal") && !pLower.includes("stance") && !pLower.includes("humanoid")) {
-        p = p + `, powerful upright bipedal warrior stance`
+      const missingBeastDna: string[] = []
+
+      if (!pLower.includes("colossal") && !pLower.includes("gargantuan") && !pLower.includes("massive") && !pLower.includes("titanic")) {
+        missingBeastDna.push("colossal gargantuan beast scale")
       }
-      if (!pLower.includes("hybrid") && !pLower.includes("claws") && !pLower.includes("fur") && !pLower.includes("tail") && !pLower.includes("horns")) {
-        p = p + `, hybrid beast-human features with digitigrade clawed legs and a beast tail`
+      if (!pLower.includes("fangs") && !pLower.includes("scales") && !pLower.includes("fur") && !pLower.includes("hide") && !pLower.includes("carapace")) {
+        missingBeastDna.push("intricate creature hide textures with sharp fangs and beastly hide")
+      }
+
+      if (missingBeastDna.length > 0) {
+        p = p + `, explicit beast DNA featuring ${missingBeastDna.join(", ")}`
+        injectedNotes.push(`Wove Beast DNA features directly into ${formKey} prompt string.`)
       }
     }
 

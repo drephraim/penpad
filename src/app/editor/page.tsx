@@ -2948,17 +2948,12 @@ function EditorContent() {
     const styleToUse = appearanceCustomStyle || appearanceStyle
 
     const promptSections = Object.keys(prompts).length > 0
-      ? Object.entries(prompts).map(([key, text]) => `### ${getFormLabel(key)}\r\n${typeof text === "string" ? text : "Not generated."}`).join("\r\n\r\n")
-      : ""
-
-    const negPromptSections = result.negativePrompts && Object.keys(result.negativePrompts).length > 0
-      ? Object.entries(result.negativePrompts).map(([key, text]) => `${getFormLabel(key)} Negative Prompt: ${typeof text === "string" ? text : ""}`).join("\r\n")
-      : ""
-
-    const faceDnaText = result.faceDna
-      ? typeof result.faceDna === "string"
-        ? `### Face DNA Profile\r\n${result.faceDna}\r\n`
-        : `### Face DNA Profile\r\n${Object.entries(result.faceDna).map(([k, v]) => `- **${k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase())}**: ${v}`).join("\r\n")}\r\n`
+      ? Object.entries(prompts).map(([key, text]) => {
+          const formLabel = getFormLabel(key)
+          const pText = typeof text === "string" ? text : "Not generated."
+          const negText = result.negativePrompts?.[key] || result.negativePrompt || ""
+          return `### ${formLabel} (Prompt + Form DNA)\r\n${pText}${negText ? `\r\n\r\nNegative Prompt:\r\n${negText}` : ""}`
+        }).join("\r\n\r\n")
       : ""
 
     return [
@@ -2968,13 +2963,9 @@ function EditorContent() {
       appearanceFacialDescription ? `Facial Features Guidance: ${appearanceFacialDescription}` : "",
       "",
       result.overview ? `### Visual Core\r\n${result.overview}\r\n` : "",
-      faceDnaText,
       promptSections,
       "### Consistency Notes",
-      notes,
-      "",
-      result.negativePrompt ? `### Negative Prompt\r\n${result.negativePrompt}` : "",
-      negPromptSections ? `### Per-Form Negative Prompts\r\n${negPromptSections}` : ""
+      notes
     ].filter(Boolean).join("\r\n")
   }
 
@@ -12563,48 +12554,50 @@ ${navPoints}  </navMap>
                       </div>
                     )}
 
-                    {appearanceResult.faceDna && (
-                      <div className="appearance-face-dna" style={{
-                        background: "rgba(139, 92, 246, 0.08)",
-                        border: "1px solid rgba(167, 139, 250, 0.25)",
-                        borderRadius: "8px",
-                        padding: "0.75rem",
-                        marginBottom: "1rem"
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-                          <strong style={{ fontSize: "0.75rem", color: "var(--accent-light, #a78bfa)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            🧬 Face DNA Blueprint
-                          </strong>
-                        </div>
-                        {typeof appearanceResult.faceDna === "string" ? (
-                          <p style={{ fontSize: "0.75rem", color: "var(--text-main)", whiteSpace: "pre-wrap", margin: 0 }}>{appearanceResult.faceDna}</p>
-                        ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.4rem 0.8rem", fontSize: "0.72rem" }}>
-                            {Object.entries(appearanceResult.faceDna).map(([key, val]) => {
-                              if (!val) return null
-                              const label = key.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())
-                              return (
-                                <div key={key} style={{ display: "flex", flexDirection: "column" }}>
-                                  <span style={{ color: "var(--text-dim)", fontSize: "0.65rem", fontWeight: 600 }}>{label}</span>
-                                  <span style={{ color: "var(--text-main)", fontWeight: 500 }}>{String(val)}</span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", background: "rgba(139, 92, 246, 0.08)", border: "1px solid rgba(167, 139, 250, 0.25)", borderRadius: "8px", padding: "0.6rem 0.8rem" }}>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <strong style={{ fontSize: "0.75rem", color: "var(--accent-light, #a78bfa)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          🧬 Form Prompts & Embedded DNA
+                        </strong>
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>
+                          Form DNA is embedded directly inside each prompt string
+                        </span>
                       </div>
-                    )}
+                      <button
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={() => {
+                          const fullSheet = buildAppearancePromptSheet(appearanceResult)
+                          copyAppearanceText("all_forms_sheet", fullSheet)
+                        }}
+                        style={{ fontSize: "0.7rem", padding: "0.25rem 0.6rem" }}
+                        title="Copy all form prompts with their DNA and negative prompts"
+                      >
+                        <Copy size={12} />
+                        {appearanceCopiedKey === "all_forms_sheet" ? "Copied All Forms" : "Copy All Forms"}
+                      </button>
+                    </div>
 
                     {Object.entries(appearanceResult.prompts || {}).map(([formKey, rawPrompt]) => {
                       const promptText = typeof rawPrompt === "string" ? rawPrompt : ""
                       if (!promptText) return null
                       const label = appearanceFormLabels[formKey] || formKey.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
                       const rawFormNegPrompt = appearanceResult.negativePrompts?.[formKey]
-                      const formNegPrompt = typeof rawFormNegPrompt === "string" ? rawFormNegPrompt : ""
+                      const formNegPrompt = typeof rawFormNegPrompt === "string" ? rawFormNegPrompt : (appearanceResult.negativePrompt || "")
+
+                      const copyPromptOnly = promptText
+                      const copyPromptAndNeg = formNegPrompt
+                        ? `### ${label} Prompt (with DNA):\n${promptText}\n\nNegative Prompt:\n${formNegPrompt}`
+                        : `### ${label} Prompt (with DNA):\n${promptText}`
+
                       return (
                         <div className="appearance-prompt-card" key={formKey}>
                           <div className="appearance-prompt-header">
-                            <strong>{label}</strong>
+                            <div>
+                              <strong>{label}</strong>
+                              <span style={{ fontSize: "0.62rem", color: "var(--accent-light, #a78bfa)", marginLeft: "0.3rem", fontWeight: 600 }}>
+                                (Prompt + DNA)
+                              </span>
+                            </div>
                             <span style={{ fontSize: "0.6rem", color: "var(--text-dim)", marginLeft: "auto", marginRight: "0.35rem" }}>
                               {promptText.split(/\s+/).filter(Boolean).length}w
                             </span>
@@ -12620,19 +12613,27 @@ ${navPoints}  </navMap>
                                 {appearanceGeneratingForm === formKey ? <Loader2 size={10} className="spin" /> : <RefreshCw size={10} />}
                                 Regen
                               </button>
+
+                              {/* Copy Prompt with DNA */}
                               <button
                                 className="btn-ai-sub btn-ai-secondary"
-                                onClick={() => {
-                                  const neg = formNegPrompt || (appearanceResult?.negativePrompt || "")
-                                  const combined = neg
-                                    ? `${promptText}\n\nNegative prompt: ${neg}`
-                                    : promptText
-                                  copyAppearanceText(formKey, combined)
-                                }}
-                                title={formNegPrompt || appearanceResult?.negativePrompt ? "Copy prompt + negative prompt" : "Copy prompt"}
+                                style={{ fontSize: "0.65rem", padding: "0.2rem 0.45rem", minHeight: "24px" }}
+                                onClick={() => copyAppearanceText(`${formKey}_prompt`, copyPromptOnly)}
+                                title="Copy image prompt (includes embedded form DNA)"
                               >
-                                <Copy size={12} />
-                                {appearanceCopiedKey === formKey ? "Copied" : (formNegPrompt || appearanceResult?.negativePrompt ? "Copy + Neg" : "Copy")}
+                                <Copy size={10} />
+                                {appearanceCopiedKey === `${formKey}_prompt` ? "Copied Prompt" : "Copy Prompt"}
+                              </button>
+
+                              {/* Copy Prompt with DNA + Negative Prompt */}
+                              <button
+                                className="btn-ai-sub btn-ai-primary"
+                                style={{ fontSize: "0.65rem", padding: "0.2rem 0.45rem", minHeight: "24px" }}
+                                onClick={() => copyAppearanceText(`${formKey}_full`, copyPromptAndNeg)}
+                                title="Copy prompt with DNA + Negative Prompt"
+                              >
+                                <Copy size={10} />
+                                {appearanceCopiedKey === `${formKey}_full` ? "Copied All" : "Copy + Neg"}
                               </button>
                             </div>
                           </div>
