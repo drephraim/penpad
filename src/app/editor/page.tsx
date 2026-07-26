@@ -12566,7 +12566,7 @@ ${navPoints}  </navMap>
                       <button
                         className="btn-ai-sub btn-ai-secondary"
                         onClick={() => {
-                          const fullSheet = buildAppearancePromptSheet(appearanceResult)
+                          const fullSheet = buildAppearanceLoreContent(appearanceResult)
                           copyAppearanceText("all_forms_sheet", fullSheet)
                         }}
                         style={{ fontSize: "0.7rem", padding: "0.25rem 0.6rem" }}
