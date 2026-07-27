@@ -10046,7 +10046,7 @@ ${navPoints}  </navMap>
       title: trimmedTitle,
       createdAt: now,
       updatedAt: now,
-      sortOrder: volumes.length > 0 ? Math.max(...volumes.map(volume => volume.sortOrder)) + 1 : 1,
+      sortOrder: volumes.length > 0 ? Math.min(...volumes.map(volume => volume.sortOrder)) - 1 : 1,
       isOpen: newVolumeIsOpen
     }
     persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
@@ -10109,11 +10109,11 @@ ${navPoints}  </navMap>
         id: volumeId,
         title: trimmedTitle,
         isOpen: true,
-        sortOrder: volumes.length > 0 ? Math.max(...volumes.map(v => v.sortOrder)) + 1 : 1,
+        sortOrder: volumes.length > 0 ? Math.min(...volumes.map(v => v.sortOrder)) - 1 : 1,
         createdAt: now,
         updatedAt: now
       }
-      persistVolumes([...volumes, newVol])
+      persistVolumes([...volumes, newVol].sort((a, b) => a.sortOrder - b.sortOrder))
     }
   }
 
@@ -10244,7 +10244,7 @@ ${navPoints}  </navMap>
       title: trimmedTitle,
       createdAt: now,
       updatedAt: now,
-      sortOrder: volumes.length > 0 ? Math.max(...volumes.map(v => v.sortOrder)) + 1 : 1,
+      sortOrder: volumes.length > 0 ? Math.min(...volumes.map(v => v.sortOrder)) - 1 : 1,
       isOpen: true
     }
     persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
