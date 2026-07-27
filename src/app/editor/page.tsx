@@ -2001,6 +2001,8 @@ function EditorContent() {
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set())
   const [showMultiDeleteModal, setShowMultiDeleteModal] = useState(false)
+  const [showBatchMoveVolumeModal, setShowBatchMoveVolumeModal] = useState(false)
+  const [batchMoveNewVolumeName, setBatchMoveNewVolumeName] = useState("")
 
   const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [isFocusMode, setIsFocusMode] = useState(false)
@@ -10175,6 +10177,81 @@ ${navPoints}  </navMap>
     }
   }
 
+  const moveSelectedChaptersToVolume = async (targetVolumeId: string | null) => {
+    if (!projectId || selectedNoteIds.size === 0) return
+    const normalizedVolumeId = targetVolumeId === UNASSIGNED_VOLUME_ID ? null : targetVolumeId
+
+    const unselectedNotes = notes.filter(n => n && !selectedNoteIds.has(n.id))
+    const existingInVolume = unselectedNotes.filter(n => (n.volumeId || null) === normalizedVolumeId)
+
+    let baseSortOrder = existingInVolume.length > 0
+      ? Math.max(...existingInVolume.map(n => getNoteSortValue(n)))
+      : getNextChapterSortOrder(unselectedNotes)
+
+    const selectedNotes = notes.filter(n => n && selectedNoteIds.has(n.id))
+    selectedNotes.sort((a, b) => (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt))
+
+    const updatedNotesMap = new Map<string, Note>()
+    notes.forEach(n => { if (n) updatedNotesMap.set(n.id, n) })
+
+    const updatedSelectedList: Note[] = []
+    selectedNotes.forEach(note => {
+      baseSortOrder += 0.01
+      const updated: Note = {
+        ...note,
+        volumeId: normalizedVolumeId,
+        sortOrder: baseSortOrder,
+        updatedAt: Date.now()
+      }
+      updatedNotesMap.set(note.id, updated)
+      updatedSelectedList.push(updated)
+    })
+
+    const updatedNotes = getOrderedNotesList(Array.from(updatedNotesMap.values()))
+    setNotes(updatedNotes)
+    await saveManuscriptLocal(projectId, updatedNotes)
+    setChapterMoveMenu(null)
+    setDraggedChapterId(null)
+
+    if (user?.uid) {
+      for (const note of updatedSelectedList) {
+        saveChapterToCloud(user.uid, projectId, note).catch(err => console.error("Cloud sync move error:", err))
+      }
+    }
+
+    if (normalizedVolumeId) {
+      setCollapsedVolumeIds(prev => {
+        if (prev.has(normalizedVolumeId)) {
+          const next = new Set(prev)
+          next.delete(normalizedVolumeId)
+          localStorage.setItem(getCollapsedVolumesStorageKey(), JSON.stringify(Array.from(next)))
+          return next
+        }
+        return prev
+      })
+    }
+
+    setShowBatchMoveVolumeModal(false)
+  }
+
+  const confirmCreateVolumeAndMoveSelected = async () => {
+    if (!projectId || selectedNoteIds.size === 0) return
+    const defaultName = `Volume ${volumes.length + 1}`
+    const trimmedTitle = batchMoveNewVolumeName.trim() || defaultName
+    const now = Date.now()
+    const newVolume: ManuscriptVolume = {
+      id: crypto.randomUUID(),
+      title: trimmedTitle,
+      createdAt: now,
+      updatedAt: now,
+      sortOrder: volumes.length > 0 ? Math.max(...volumes.map(v => v.sortOrder)) + 1 : 1,
+      isOpen: true
+    }
+    persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
+    setBatchMoveNewVolumeName("")
+    await moveSelectedChaptersToVolume(newVolume.id)
+  }
+
   const deleteNote = async () => {
     if (!projectId || !deleteModal.noteId) return
     try {
@@ -11382,6 +11459,15 @@ ${navPoints}  </navMap>
                         <button className="btn-text-action" onClick={toggleSelectAll}>
                           {selectedNoteIds.size === filteredNotes.length ? 'None' : 'All'}
                         </button>
+                        <button
+                          className="btn-text-action"
+                          style={{ color: "var(--accent-light, #a78bfa)", fontWeight: 600 }}
+                          disabled={selectedNoteIds.size === 0}
+                          onClick={() => setShowBatchMoveVolumeModal(true)}
+                          title="Move selected chapters to any volume"
+                        >
+                          + Vol
+                        </button>
                         <button 
                           className="btn-text-action danger" 
                           disabled={selectedNoteIds.size === 0}
@@ -11417,7 +11503,11 @@ ${navPoints}  </navMap>
                         onDrop={(e) => {
                           e.preventDefault()
                           if (draggedChapterId) {
-                            moveChapterToVolume(draggedChapterId, group.id)
+                            if (selectedNoteIds.has(draggedChapterId) && selectedNoteIds.size > 1) {
+                              moveSelectedChaptersToVolume(group.id)
+                            } else {
+                              moveChapterToVolume(draggedChapterId, group.id)
+                            }
                           }
                         }}
                       >
@@ -11449,6 +11539,22 @@ ${navPoints}  </navMap>
                             </button>
                           )}
                           <span className="volume-count">{group.chapters.length}</span>
+
+                          {isSelectionMode && selectedNoteIds.size > 0 && (
+                            <button
+                              type="button"
+                              className="btn-ai-sub btn-ai-secondary"
+                              style={{ fontSize: "0.62rem", padding: "0.15rem 0.35rem", minHeight: "20px", marginLeft: "0.3rem" }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                moveSelectedChaptersToVolume(group.id)
+                              }}
+                              title={`Move ${selectedNoteIds.size} selected chapter(s) to ${group.title}`}
+                            >
+                              + Add {selectedNoteIds.size}
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             className="volume-add-chapter"
@@ -17305,18 +17411,98 @@ ${navPoints}  </navMap>
               }}
               onClick={e => e.stopPropagation()}
             >
-              <span className="chapter-move-title">Move to volume</span>
+              <span className="chapter-move-title">
+                {selectedNoteIds.has(chapterMoveMenu.noteId) && selectedNoteIds.size > 1
+                  ? `Move ${selectedNoteIds.size} Selected Chapters`
+                  : "Move to volume"}
+              </span>
               {sortedVolumes.map(volume => (
                 <button
                   key={volume.id}
-                  onClick={() => moveChapterToVolume(chapterMoveMenu.noteId, volume.id)}
+                  onClick={() => {
+                    if (selectedNoteIds.has(chapterMoveMenu.noteId) && selectedNoteIds.size > 1) {
+                      moveSelectedChaptersToVolume(volume.id)
+                    } else {
+                      moveChapterToVolume(chapterMoveMenu.noteId, volume.id)
+                    }
+                  }}
                 >
                   {volume.title}
                 </button>
               ))}
-              <button onClick={() => moveChapterToVolume(chapterMoveMenu.noteId, UNASSIGNED_VOLUME_ID)}>
+              <button onClick={() => {
+                if (selectedNoteIds.has(chapterMoveMenu.noteId) && selectedNoteIds.size > 1) {
+                  moveSelectedChaptersToVolume(UNASSIGNED_VOLUME_ID)
+                } else {
+                  moveChapterToVolume(chapterMoveMenu.noteId, UNASSIGNED_VOLUME_ID)
+                }
+              }}>
                 Unassigned Chapters
               </button>
+            </div>
+          </div>
+        )}
+
+        {showBatchMoveVolumeModal && (
+          <div className="modal-overlay" onClick={() => setShowBatchMoveVolumeModal(false)}>
+            <div className="modal" style={{ maxWidth: "480px" }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Move {selectedNoteIds.size} Selected Chapter(s) to Volume</h2>
+                <p className="modal-description">Select a target volume to move the selected chapters into:</p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", margin: "1rem 0", maxHeight: "260px", overflowY: "auto" }}>
+                {manuscriptVolumeGroups.map(group => (
+                  <button
+                    key={group.id}
+                    className="btn-ai-sub btn-ai-secondary"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "0.6rem 0.8rem",
+                      borderRadius: "6px",
+                      textAlign: "left",
+                      width: "100%"
+                    }}
+                    onClick={() => moveSelectedChaptersToVolume(group.id)}
+                  >
+                    <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{group.title}</span>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+                      {group.chapters.length} chapter(s) &rarr; Move Here
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "0.8rem", marginTop: "0.5rem" }}>
+                <label style={{ fontSize: "0.75rem", color: "var(--text-dim)", display: "block", marginBottom: "0.35rem" }}>
+                  Or create a new volume & move selected chapters:
+                </label>
+                <div style={{ display: "flex", gap: "0.4rem" }}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder={`Volume ${volumes.length + 1}`}
+                    value={batchMoveNewVolumeName}
+                    onChange={(e) => setBatchMoveNewVolumeName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") confirmCreateVolumeAndMoveSelected()
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={confirmCreateVolumeAndMoveSelected}
+                  >
+                    Create & Move
+                  </button>
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: "1rem" }}>
+                <button className="btn btn-ghost" onClick={() => setShowBatchMoveVolumeModal(false)}>Cancel</button>
+              </div>
             </div>
           </div>
         )}
