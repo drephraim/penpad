@@ -15888,9 +15888,6 @@ ${navPoints}  </navMap>
                         <div className="autocomplete-list">
                           {autocompleteSuggestions.slice(0, 5).map((suggestion, idx) => {
                             const matchedEntry = bibleEntries.find(e => e.name.toLowerCase() === suggestion.toLowerCase())
-                            const selects = matchedEntry ? ((bibleSelectCounts[matchedEntry.id] || 0) + (bibleSelectCounts[suggestion.toLowerCase()] || 0)) : 0
-                            const mentions = matchedEntry ? ((manuscriptMentionCounts[matchedEntry.id] || 0) + (manuscriptMentionCounts[suggestion.toLowerCase()] || 0)) : 0
-                            const totalCalls = selects + mentions
                             return (
                               <div 
                                 key={suggestion} 
@@ -15907,11 +15904,6 @@ ${navPoints}  </navMap>
                                   <span className="suggestion-text" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{suggestion}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem', flexShrink: 0 }}>
-                                  {totalCalls > 0 && (
-                                    <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--accent-light, #a78bfa)', background: 'rgba(167, 139, 250, 0.12)', padding: '0.08rem 0.3rem', borderRadius: '4px' }}>
-                                      {totalCalls}× called
-                                    </span>
-                                  )}
                                   {idx === autocompleteIndex && <span className="tab-hint">Enter/Tab</span>}
                                 </div>
                               </div>
