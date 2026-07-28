@@ -9733,11 +9733,14 @@ ${navPoints}  </navMap>
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setAutocompleteIndex(prev => (prev - 1 + Math.min(5, autocompleteSuggestions.length)) % Math.min(5, autocompleteSuggestions.length))
-      } else if (e.key === 'Tab' || e.key === 'Enter') {
+      } else if (e.key === 'Tab') {
         e.preventDefault()
         if (autocompleteSuggestions[autocompleteIndex]) {
           handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex])
         }
+      } else if (e.key === 'Enter') {
+        setShowAutocomplete(false)
+        setAutocompleteSuggestions([])
       } else if (e.key === 'Escape') {
         e.preventDefault()
         setShowAutocomplete(false)
@@ -10423,10 +10426,6 @@ ${navPoints}  </navMap>
     )
     setNotes(updatedNotes)
   }
-
-  const notesStructureKey = useMemo(() => {
-    return notes.map(n => (n ? `${n.id}:${n.title}:${n.volumeId || ''}:${n.sortOrder || 0}` : '')).join('|')
-  }, [notes])
 
   const filteredNotes = useMemo(() => {
     return notes.filter((n: Note) => n &&
