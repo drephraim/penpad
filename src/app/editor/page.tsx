@@ -2219,23 +2219,9 @@ function EditorContent() {
   const [unlockedMilestones, setUnlockedMilestones] = useState<Set<string>>(new Set())
   const [showMilestoneAlert, setShowMilestoneAlert] = useState<Milestone | null>(null)
 
-  const noteWordCountCacheRef = useRef<Map<string, { content: string; count: number }>>(new Map())
-
-  const getCachedNoteWordCount = useCallback((note: Note) => {
-    if (!note || !note.id) return 0
-    const content = note.content || ""
-    const cached = noteWordCountCacheRef.current.get(note.id)
-    if (cached && cached.content === content) {
-      return cached.count
-    }
-    const count = getNoteWordCount(note)
-    noteWordCountCacheRef.current.set(note.id, { content, count })
-    return count
-  }, [getNoteWordCount])
-
   const currentTotalWords = useMemo(() => {
-    return notes.reduce((total, note) => total + getCachedNoteWordCount(note), 0)
-  }, [notes, getCachedNoteWordCount])
+    return notes.reduce((total, note) => total + getNoteWordCount(note), 0)
+  }, [notes, getNoteWordCount])
 
   const last28Days = useMemo(() => {
     const days: { date: Date; dateStr: string; count: number }[] = []
@@ -8154,6 +8140,10 @@ const fillEmptyCustomJsonData = (
       return a.title.localeCompare(b.title, undefined, { numeric: true })
     })
   }, [getNoteSortValue])
+
+  const notesStructureKey = useMemo(() => {
+    return notes.map(n => (n ? `${n.id}:${n.title}:${n.volumeId || ''}:${n.sortOrder || 0}` : '')).join('|')
+  }, [notes])
 
   const chapterNumbersMap = useMemo(() => {
     const sorted = getManuscriptNotesList(notes)
