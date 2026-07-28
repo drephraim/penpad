@@ -2763,7 +2763,7 @@ function EditorContent() {
       const raw = localStorage.getItem(`penpad_bible_select_counts_${projectId}`)
       if (raw) setBibleSelectCounts(JSON.parse(raw))
       else setBibleSelectCounts({})
-    } catch (e) {
+    } catch {
       setBibleSelectCounts({})
     }
   }, [projectId])
