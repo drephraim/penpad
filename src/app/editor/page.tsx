@@ -2754,8 +2754,19 @@ function EditorContent() {
   const [showAutocomplete, setShowAutocomplete] = useState(false)
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([])
   const [autocompleteIndex, setAutocompleteIndex] = useState(0)
-
   const [autocompleteTriggerPos, setAutocompleteTriggerPos] = useState(0)
+  const [bibleSelectCounts, setBibleSelectCounts] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    if (!projectId) return
+    try {
+      const raw = localStorage.getItem(`penpad_bible_select_counts_${projectId}`)
+      if (raw) setBibleSelectCounts(JSON.parse(raw))
+      else setBibleSelectCounts({})
+    } catch (e) {
+      setBibleSelectCounts({})
+    }
+  }, [projectId])
 
 
 
@@ -9598,7 +9609,26 @@ ${navPoints}  </navMap>
   const handleAutocompleteSelect = (suggestion: string) => {
     const textarea = textareaRef.current
     if (!textarea || !activeNote) return
-    
+
+    const matchedEntry = bibleEntries.find(e => e.name.toLowerCase() === suggestion.toLowerCase())
+    if (matchedEntry) {
+      setBibleSelectCounts(prev => {
+        const next = {
+          ...prev,
+          [matchedEntry.id]: (prev[matchedEntry.id] || 0) + 1,
+          [suggestion.toLowerCase()]: (prev[suggestion.toLowerCase()] || 0) + 1
+        }
+        if (projectId) {
+          try {
+            localStorage.setItem(`penpad_bible_select_counts_${projectId}`, JSON.stringify(next))
+          } catch (e) {
+            console.error("Failed to save select counts:", e)
+          }
+        }
+        return next
+      })
+    }
+
     const text = textarea.value
     const cursor = textarea.selectionStart
     
@@ -9698,7 +9728,7 @@ ${navPoints}  </navMap>
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setAutocompleteIndex(prev => (prev - 1 + Math.min(5, autocompleteSuggestions.length)) % Math.min(5, autocompleteSuggestions.length))
-      } else if (e.key === 'Tab') {
+      } else if (e.key === 'Tab' || e.key === 'Enter') {
         e.preventDefault()
         if (autocompleteSuggestions[autocompleteIndex]) {
           handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex])
@@ -9749,12 +9779,46 @@ ${navPoints}  </navMap>
       
       const cleanWord = currentWord.replace(/[^A-Za-z]/g, "")
       if (cleanWord.length >= 2) {
-        const matches = bibleEntries
-          .map(entry => entry.name)
-          .filter(name => {
-            const words = name.split(/\s+/)
-            return words.some(w => w.toLowerCase().startsWith(cleanWord.toLowerCase()))
-          })
+        const lowerClean = cleanWord.toLowerCase()
+
+        // 1. Filter matching entries from Story Bible
+        const matchingEntries = bibleEntries.filter(entry => {
+          if (!entry || !entry.name) return false
+          const lowerName = entry.name.toLowerCase()
+          const words = lowerName.split(/\s+/)
+          return words.some(w => w.startsWith(lowerClean)) || lowerName.startsWith(lowerClean)
+        })
+
+        // 2. Rank strictly based on how frequently they are called (selection count + manuscript mentions)
+        matchingEntries.sort((a, b) => {
+          const aNameLower = a.name.toLowerCase()
+          const bNameLower = b.name.toLowerCase()
+
+          const aSelects = (bibleSelectCounts[a.id] || 0) + (bibleSelectCounts[aNameLower] || 0)
+          const bSelects = (bibleSelectCounts[b.id] || 0) + (bibleSelectCounts[bNameLower] || 0)
+
+          const aMentions = (manuscriptMentionCounts[a.id] || 0) + (manuscriptMentionCounts[aNameLower] || 0)
+          const bMentions = (manuscriptMentionCounts[b.id] || 0) + (manuscriptMentionCounts[bNameLower] || 0)
+
+          const aScore = (aSelects * 100) + aMentions
+          const bScore = (bSelects * 100) + bMentions
+
+          if (aScore !== bScore) {
+            return bScore - aScore // Higher call count comes first!
+          }
+
+          // Secondary sort: exact name prefix match first
+          const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
+          const bExactPrefix = bNameLower.startsWith(lowerClean) ? 1 : 0
+          if (aExactPrefix !== bExactPrefix) {
+            return bExactPrefix - aExactPrefix
+          }
+
+          // Tertiary sort: recency / update order
+          return (b.updatedAt || 0) - (a.updatedAt || 0)
+        })
+
+        const matches = matchingEntries.map(entry => entry.name)
 
         if (matches.length > 0) {
           setAutocompleteSuggestions(matches)
@@ -10364,6 +10428,27 @@ ${navPoints}  </navMap>
   const orderedFilteredNotes = useMemo(() => {
     return getOrderedNotesList(filteredNotes)
   }, [filteredNotes, getOrderedNotesList])
+
+  const manuscriptMentionCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    if (!notes || notes.length === 0 || !bibleEntries || bibleEntries.length === 0) return counts
+
+    const fullManuscript = notes.map(n => (n && n.content) ? n.content : "").join(" ").toLowerCase()
+
+    bibleEntries.forEach(entry => {
+      if (!entry || !entry.name || entry.name.trim().length === 0) return
+      const lowerName = entry.name.toLowerCase()
+      let count = 0
+      let pos = 0
+      while ((pos = fullManuscript.indexOf(lowerName, pos)) !== -1) {
+        count++
+        pos += lowerName.length
+      }
+      counts[entry.id] = count
+      counts[lowerName] = count
+    })
+    return counts
+  }, [notes, bibleEntries])
 
   const sortedVolumes = useMemo(() => {
     return [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -15801,16 +15886,37 @@ ${navPoints}  </navMap>
                           </button>
                         </div>
                         <div className="autocomplete-list">
-                          {autocompleteSuggestions.slice(0, 5).map((suggestion, idx) => (
-                            <div 
-                              key={suggestion} 
-                              className={`autocomplete-item ${idx === autocompleteIndex ? 'selected' : ''}`}
-                              onClick={() => handleAutocompleteSelect(suggestion)}
-                            >
-                              <span className="suggestion-text">{suggestion}</span>
-                              {idx === autocompleteIndex && <span className="tab-hint">Enter/Tab</span>}
-                            </div>
-                          ))}
+                          {autocompleteSuggestions.slice(0, 5).map((suggestion, idx) => {
+                            const matchedEntry = bibleEntries.find(e => e.name.toLowerCase() === suggestion.toLowerCase())
+                            const selects = matchedEntry ? ((bibleSelectCounts[matchedEntry.id] || 0) + (bibleSelectCounts[suggestion.toLowerCase()] || 0)) : 0
+                            const mentions = matchedEntry ? ((manuscriptMentionCounts[matchedEntry.id] || 0) + (manuscriptMentionCounts[suggestion.toLowerCase()] || 0)) : 0
+                            const totalCalls = selects + mentions
+                            return (
+                              <div 
+                                key={suggestion} 
+                                className={`autocomplete-item ${idx === autocompleteIndex ? 'selected' : ''}`}
+                                onClick={() => handleAutocompleteSelect(suggestion)}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: 0 }}>
+                                  {matchedEntry?.category && (
+                                    <span className={`category-tag ${matchedEntry.category}`} style={{ fontSize: '0.58rem', padding: '0.1rem 0.35rem', borderRadius: '4px', textTransform: 'capitalize' }}>
+                                      {matchedEntry.category}
+                                    </span>
+                                  )}
+                                  <span className="suggestion-text" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{suggestion}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem', flexShrink: 0 }}>
+                                  {totalCalls > 0 && (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--accent-light, #a78bfa)', background: 'rgba(167, 139, 250, 0.12)', padding: '0.08rem 0.3rem', borderRadius: '4px' }}>
+                                      {totalCalls}× called
+                                    </span>
+                                  )}
+                                  {idx === autocompleteIndex && <span className="tab-hint">Enter/Tab</span>}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                     )}
