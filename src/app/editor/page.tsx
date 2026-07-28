@@ -9797,23 +9797,26 @@ ${navPoints}  </navMap>
           return words.some(w => w.startsWith(lowerClean)) || lowerName.startsWith(lowerClean)
         })
 
-        // 2. Rank strictly based on how frequently they are called (selection count + manuscript mentions)
+        // 2. Compute scores ONCE per matching entry
+        const entryScores = new Map<string, number>()
+        matchingEntries.forEach(entry => {
+          const lowerName = entry.name.toLowerCase()
+          const selects = (bibleSelectCounts[entry.id] || 0) + (bibleSelectCounts[lowerName] || 0)
+          const mentions = getEntryManuscriptMentions(entry.name)
+          entryScores.set(entry.id, (selects * 100) + mentions)
+        })
+
+        // 3. Rank strictly based on pre-computed score
         matchingEntries.sort((a, b) => {
-          const aNameLower = a.name.toLowerCase()
-          const bNameLower = b.name.toLowerCase()
-
-          const aSelects = (bibleSelectCounts[a.id] || 0) + (bibleSelectCounts[aNameLower] || 0)
-          const bSelects = (bibleSelectCounts[b.id] || 0) + (bibleSelectCounts[bNameLower] || 0)
-
-          const aMentions = getEntryManuscriptMentions(a.name)
-          const bMentions = getEntryManuscriptMentions(b.name)
-
-          const aScore = (aSelects * 100) + aMentions
-          const bScore = (bSelects * 100) + bMentions
+          const aScore = entryScores.get(a.id) || 0
+          const bScore = entryScores.get(b.id) || 0
 
           if (aScore !== bScore) {
             return bScore - aScore // Higher call count comes first!
           }
+
+          const aNameLower = a.name.toLowerCase()
+          const bNameLower = b.name.toLowerCase()
 
           // Secondary sort: exact name prefix match first
           const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
@@ -10443,14 +10446,17 @@ ${navPoints}  </navMap>
     return getOrderedNotesList(filteredNotes)
   }, [filteredNotes, getOrderedNotesList])
 
+  const lowerNotesContentCache = useMemo(() => {
+    return notes.map(n => (n?.content || "").toLowerCase())
+  }, [notes])
+
   const getEntryManuscriptMentions = useCallback((entryName: string) => {
-    if (!entryName || !notes || notes.length === 0) return 0
+    if (!entryName || !lowerNotesContentCache || lowerNotesContentCache.length === 0) return 0
     const lowerName = entryName.toLowerCase()
     let total = 0
-    for (let i = 0; i < notes.length; i++) {
-      const content = notes[i]?.content
-      if (!content) continue
-      const lowerContent = content.toLowerCase()
+    for (let i = 0; i < lowerNotesContentCache.length; i++) {
+      const lowerContent = lowerNotesContentCache[i]
+      if (!lowerContent) continue
       let pos = 0
       while ((pos = lowerContent.indexOf(lowerName, pos)) !== -1) {
         total++
@@ -10458,7 +10464,7 @@ ${navPoints}  </navMap>
       }
     }
     return total
-  }, [notes])
+  }, [lowerNotesContentCache])
 
   const sortedVolumes = useMemo(() => {
     return [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -10888,7 +10894,9 @@ ${navPoints}  </navMap>
     }
   }
 
-  const wordCount = activeNote?.content ? activeNote.content.split(/\s+/).filter(Boolean).length : 0
+  const wordCount = useMemo(() => {
+    return editorContent ? countWords(editorContent) : 0
+  }, [editorContent])
   const wordGoal = activeNote?.wordGoal || 1200
   const progressPercent = Math.min(100, Math.round((wordCount / wordGoal) * 100))
 
