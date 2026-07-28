@@ -2219,9 +2219,23 @@ function EditorContent() {
   const [unlockedMilestones, setUnlockedMilestones] = useState<Set<string>>(new Set())
   const [showMilestoneAlert, setShowMilestoneAlert] = useState<Milestone | null>(null)
 
+  const noteWordCountCacheRef = useRef<Map<string, { content: string; count: number }>>(new Map())
+
+  const getCachedNoteWordCount = useCallback((note: Note) => {
+    if (!note || !note.id) return 0
+    const content = note.content || ""
+    const cached = noteWordCountCacheRef.current.get(note.id)
+    if (cached && cached.content === content) {
+      return cached.count
+    }
+    const count = getNoteWordCount(note)
+    noteWordCountCacheRef.current.set(note.id, { content, count })
+    return count
+  }, [getNoteWordCount])
+
   const currentTotalWords = useMemo(() => {
-    return notes.reduce((total, note) => total + getNoteWordCount(note), 0)
-  }, [notes, getNoteWordCount])
+    return notes.reduce((total, note) => total + getCachedNoteWordCount(note), 0)
+  }, [notes, getCachedNoteWordCount])
 
   const last28Days = useMemo(() => {
     const days: { date: Date; dateStr: string; count: number }[] = []
@@ -8149,7 +8163,8 @@ const fillEmptyCustomJsonData = (
       map.set(note.id, titleNumber || (index + 1))
     })
     return map
-  }, [notes, getManuscriptNotesList, getChapterNumberFromTitle])
+    // eslint-disable-next-deps
+  }, [notesStructureKey, getManuscriptNotesList, getChapterNumberFromTitle])
 
   const getNoteChapterNumber = useCallback((note: Note) => {
     return chapterNumbersMap.get(note.id) ?? null
@@ -9797,8 +9812,8 @@ ${navPoints}  </navMap>
           const aSelects = (bibleSelectCounts[a.id] || 0) + (bibleSelectCounts[aNameLower] || 0)
           const bSelects = (bibleSelectCounts[b.id] || 0) + (bibleSelectCounts[bNameLower] || 0)
 
-          const aMentions = (manuscriptMentionCounts[a.id] || 0) + (manuscriptMentionCounts[aNameLower] || 0)
-          const bMentions = (manuscriptMentionCounts[b.id] || 0) + (manuscriptMentionCounts[bNameLower] || 0)
+          const aMentions = getEntryManuscriptMentions(a.name)
+          const bMentions = getEntryManuscriptMentions(b.name)
 
           const aScore = (aSelects * 100) + aMentions
           const bScore = (bSelects * 100) + bMentions
@@ -9827,12 +9842,16 @@ ${navPoints}  </navMap>
           setShowAutocomplete(true)
           setAutocompleteIndex(0)
         } else {
+          if (showAutocomplete) {
+            setShowAutocomplete(false)
+            setAutocompleteSuggestions([])
+          }
+        }
+      } else {
+        if (showAutocomplete) {
           setShowAutocomplete(false)
           setAutocompleteSuggestions([])
         }
-      } else {
-        setShowAutocomplete(false)
-        setAutocompleteSuggestions([])
       }
     }
   }
@@ -10415,40 +10434,42 @@ ${navPoints}  </navMap>
     setNotes(updatedNotes)
   }
 
+  const notesStructureKey = useMemo(() => {
+    return notes.map(n => (n ? `${n.id}:${n.title}:${n.volumeId || ''}:${n.sortOrder || 0}` : '')).join('|')
+  }, [notes])
+
   const filteredNotes = useMemo(() => {
     return notes.filter((n: Note) => n &&
       n.title.toLowerCase().includes(searchQuery.toLowerCase())
     )
-  }, [notes, searchQuery])
+    // eslint-disable-next-deps
+  }, [notesStructureKey, searchQuery])
 
   const orderedNotes = useMemo(() => {
     return getOrderedNotesList(notes)
-  }, [notes, getOrderedNotesList])
+    // eslint-disable-next-deps
+  }, [notesStructureKey, getOrderedNotesList])
 
   const orderedFilteredNotes = useMemo(() => {
     return getOrderedNotesList(filteredNotes)
   }, [filteredNotes, getOrderedNotesList])
 
-  const manuscriptMentionCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    if (!notes || notes.length === 0 || !bibleEntries || bibleEntries.length === 0) return counts
-
-    const fullManuscript = notes.map(n => (n && n.content) ? n.content : "").join(" ").toLowerCase()
-
-    bibleEntries.forEach(entry => {
-      if (!entry || !entry.name || entry.name.trim().length === 0) return
-      const lowerName = entry.name.toLowerCase()
-      let count = 0
+  const getEntryManuscriptMentions = useCallback((entryName: string) => {
+    if (!entryName || !notes || notes.length === 0) return 0
+    const lowerName = entryName.toLowerCase()
+    let total = 0
+    for (let i = 0; i < notes.length; i++) {
+      const content = notes[i]?.content
+      if (!content) continue
+      const lowerContent = content.toLowerCase()
       let pos = 0
-      while ((pos = fullManuscript.indexOf(lowerName, pos)) !== -1) {
-        count++
+      while ((pos = lowerContent.indexOf(lowerName, pos)) !== -1) {
+        total++
         pos += lowerName.length
       }
-      counts[entry.id] = count
-      counts[lowerName] = count
-    })
-    return counts
-  }, [notes, bibleEntries])
+    }
+    return total
+  }, [notes])
 
   const sortedVolumes = useMemo(() => {
     return [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -15857,13 +15878,18 @@ ${navPoints}  </navMap>
                         const start = target.selectionStart
                         const end = target.selectionEnd
                         if (start !== end) {
-                          setAiSelectionText(target.value.substring(start, end))
-                          setAiSelectionStart(start)
-                          setAiSelectionEnd(end)
+                          const text = target.value.substring(start, end)
+                          if (text !== aiSelectionText) {
+                            setAiSelectionText(text)
+                            setAiSelectionStart(start)
+                            setAiSelectionEnd(end)
+                          }
                         } else {
-                          setAiSelectionText("")
-                          setAiSelectionStart(0)
-                          setAiSelectionEnd(0)
+                          if (aiSelectionText !== "") {
+                            setAiSelectionText("")
+                            setAiSelectionStart(0)
+                            setAiSelectionEnd(0)
+                          }
                         }
                       }}
                       placeholder="Begin writing (type '/' to insert elements)..."
