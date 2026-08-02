@@ -864,3 +864,152 @@ body {
   gap: 0.4rem;
 }
 
+/* Arc Map Styling */
+.arc-map-filter-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+}
+
+.arc-filter-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #a6adc8);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.arc-filter-btn:hover {
+  color: var(--text-primary, #cdd6f4);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.arc-filter-btn.active {
+  background: var(--color-primary, #6366f1);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.3);
+}
+
+.arc-filter-btn.open.active {
+  background: #10b981;
+}
+
+.arc-filter-btn.closed.active {
+  background: #64748b;
+}
+
+.arc-map-search-wrapper {
+  position: relative;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.arc-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-dim, #a6adc8);
+  pointer-events: none;
+}
+
+.arc-search-input {
+  width: 100%;
+  padding: 6px 26px 6px 28px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  color: var(--text-primary, #cdd6f4);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.arc-search-input:focus {
+  border-color: var(--color-primary, #6366f1);
+}
+
+.arc-search-clear {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #a6adc8);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.arc-item-card {
+  transition: all 0.2s ease;
+}
+
+.arc-item-card.is-closed {
+  opacity: 0.65;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.arc-status-checkbox {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.arc-status-checkbox.open {
+  color: var(--color-primary, #6366f1);
+}
+
+.arc-status-checkbox.open:hover {
+  color: #10b981;
+  transform: scale(1.15);
+}
+
+.arc-status-checkbox.closed {
+  color: #10b981;
+}
+
+.arc-status-checkbox.closed:hover {
+  color: #ef4444;
+  transform: scale(1.15);
+}
+
+.arc-tag-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--color-primary, #818cf8);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.arc-target-chapter-tag {
+  font-size: 11px;
+  color: var(--text-dim, #a6adc8);
+  margin-top: 2px;
+}
+
+.arc-target-chapter-tag span {
+  color: var(--text-primary, #cdd6f4);
+  font-weight: 600;
+}
+
+

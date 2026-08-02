@@ -15,9 +15,9 @@ import {
   Book, Volume2, VolumeX, Headphones,
   Bold, Italic, Strikethrough, Heading1, Heading2, Quote, Code, List, ChevronLeft, ChevronRight, ChevronDown,
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
-  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
+  Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, Circle,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
-  Upload, HardDrive, BarChart3, Gem, Award, Zap, Shield, Key
+  Upload, HardDrive, BarChart3, Gem, Award, Zap, Shield, Key, Compass
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -142,7 +142,7 @@ type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
 type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
 
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
-type NameForgePicker = string
+export type ArcMapStatus = 'open' | 'closed'
 
 interface ReferenceEntry {
   id: string
@@ -152,6 +152,8 @@ interface ReferenceEntry {
   description?: string
   tags?: string[]
   sortOrder: number
+  status?: ArcMapStatus
+  targetChapter?: string
 }
 
 interface ReferenceCategory {
@@ -163,6 +165,9 @@ interface ReferenceCategory {
   sortOrder: number
   createdAt: number
   updatedAt: number
+  status?: ArcMapStatus // 'open' (default) | 'closed' (turned off / addressed)
+  arcCategory?: string // 'Main Arc' | 'Subplot' | 'Foreshadowing' | 'Character Hook' | 'World Event'
+  targetChapter?: string
 }
 
 interface GlobalSearchResult {
@@ -1203,6 +1208,8 @@ const NAME_GEN_COUNT_OPTIONS = [
   { value: 15, label: "15", hint: "Deep dive" },
   { value: 20, label: "20", hint: "Maximum" }
 ]
+
+type NameForgePicker = string
 
 interface NameForgePreset {
   id: string
@@ -2511,8 +2518,10 @@ function EditorContent() {
   const [timelineCheckTimestamp, setTimelineCheckTimestamp] = useState<number | null>(null)
   const [hoveredGraphPoint, setHoveredGraphPoint] = useState<{ x: number; y: number; value: string | number; label: string; index: number } | null>(null)
 
-  // Reference Library States
+  // Arc Map (formerly Reference Library) States
   const [referenceCategories, setReferenceCategories] = useState<ReferenceCategory[]>([])
+  const [arcMapStatusFilter, setArcMapStatusFilter] = useState<'all' | 'open' | 'closed'>('all')
+  const [arcMapSearchQuery, setArcMapSearchQuery] = useState('')
   const [showRefCreateModal, setShowRefCreateModal] = useState(false)
   const [showRefAIImportModal, setShowRefAIImportModal] = useState(false)
   const [refAIImportText, setRefAIImportText] = useState("")
@@ -9673,7 +9682,7 @@ ${navPoints}  </navMap>
     { name: "Arc Seeds", cmd: "/arcs", desc: "Open Future Arc Seeds", action: () => { setActiveSidebarTab('arcs'); setIsLeftSidebarOpen(true) } },
     { name: "Name Forge", cmd: "/names", desc: "Generate fresh fantasy names", action: () => { setActiveSidebarTab('names'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
-    { name: "Reference Library", cmd: "/ref", desc: "Open Reference Library", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } },
+    { name: "Arc Map", cmd: "/arcmap", desc: "Open Arc Map for future chapters", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } },
     { name: "Word Report", cmd: "/words", desc: "Word Usage Report", action: () => { setActiveSidebarTab('wordreport'); setIsLeftSidebarOpen(true) } },
     { name: "Soundtrack", cmd: "/music", desc: "Background music", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
     { name: "NaNoWriMo", cmd: "/nano", desc: "NaNoWriMo 2026", action: () => { setActiveSidebarTab('insights'); setIsLeftSidebarOpen(true) } }
@@ -9791,19 +9800,54 @@ ${navPoints}  </navMap>
     }
   }
 
-  const handleForgeTreasureFromSelection = async (text: string) => {
+  const toggleArcItemStatus = useCallback((catId: string) => {
+    const next = referenceCategories.map(c => {
+      if (c.id === catId) {
+        const currentStatus = c.status || 'open'
+        const newStatus: ArcMapStatus = currentStatus === 'open' ? 'closed' : 'open'
+        return { ...c, status: newStatus, updatedAt: Date.now() }
+      }
+      return c
+    })
+    setReferenceCategories(next)
+    persistReferenceCategories(next)
+  }, [referenceCategories, persistReferenceCategories])
+
+  const handleAddToArcMap = async (text: string) => {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed || !projectId) return
+
+    const now = Date.now()
+    const lines = trimmed.split('\n').map(l => l.trim()).filter(Boolean)
+    const title = lines[0]?.slice(0, 80) || "New Arc Topic"
+    const description = lines.length > 1 ? lines.slice(1).join('\n') : (trimmed.length > 80 ? trimmed : "")
+
+    const newArcItem: ReferenceCategory = {
+      id: `arc-${now}-${Math.random().toString(36).substring(2, 7)}`,
+      name: title,
+      description: description || `Topic to address in future chapters: ${activeNote?.title || "Upcoming chapters"}`,
+      sourceText: trimmed,
+      entries: [],
+      sortOrder: referenceCategories.length,
+      createdAt: now,
+      updatedAt: now,
+      status: 'open',
+      arcCategory: 'Future Topic',
+      targetChapter: activeNote?.title || undefined
+    }
+
+    const updated = [newArcItem, ...referenceCategories]
+    setReferenceCategories(updated)
+    await persistReferenceCategories(updated)
+
+    // Open Arc Map sidebar
+    setActiveSidebarTab('references')
     setIsLeftSidebarOpen(true)
-    setActiveSidebarTab('names')
-    setNameCategory('treasure')
-    setNameCustomPrompt(trimmed)
+
+    // Clear floating text selection
     setAiSelectionText("")
     setAiSelectionStart(0)
     setAiSelectionEnd(0)
-    setTimeout(() => {
-      generateNameOptions(false)
-    }, 100)
   }
 
   // Handle textarea keyboard listener
@@ -11476,9 +11520,9 @@ ${navPoints}  </navMap>
                     setIsLeftSidebarOpen(true)
                   }
                 }}
-                title="Reference Library"
+                title="Arc Map (Future Chapters)"
               >
-                <BookMarked size={20} />
+                <Compass size={20} />
               </button>
 
               <button 
@@ -15685,18 +15729,62 @@ ${navPoints}  </navMap>
               <div className="sidebar-tab-content references-panel fade-in">
                 <div className="sidebar-section">
                   <div className="sidebar-section-header">
-                    <h3>Reference Library</h3>
-                    <span className="sidebar-count">{referenceCategories.length}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Compass size={18} style={{ color: 'var(--color-primary, #6366f1)' }} />
+                      <h3>Arc Map</h3>
+                    </div>
+                    <span className="sidebar-count" title="Open / Total Arcs">
+                      {referenceCategories.filter(c => (c.status || 'open') === 'open').length} / {referenceCategories.length}
+                    </span>
                   </div>
 
-                  <div className="bible-actions">
+                  {/* Arc Filter Tabs */}
+                  <div className="arc-map-filter-tabs">
+                    <button
+                      className={`arc-filter-btn ${arcMapStatusFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setArcMapStatusFilter('all')}
+                    >
+                      All ({referenceCategories.length})
+                    </button>
+                    <button
+                      className={`arc-filter-btn open ${arcMapStatusFilter === 'open' ? 'active' : ''}`}
+                      onClick={() => setArcMapStatusFilter('open')}
+                    >
+                      Open ({referenceCategories.filter(c => (c.status || 'open') === 'open').length})
+                    </button>
+                    <button
+                      className={`arc-filter-btn closed ${arcMapStatusFilter === 'closed' ? 'active' : ''}`}
+                      onClick={() => setArcMapStatusFilter('closed')}
+                    >
+                      Closed ({referenceCategories.filter(c => (c.status || 'open') === 'closed').length})
+                    </button>
+                  </div>
+
+                  {/* Arc Search Bar */}
+                  <div className="arc-map-search-wrapper">
+                    <Search size={14} className="arc-search-icon" />
+                    <input
+                      type="text"
+                      className="arc-search-input"
+                      placeholder="Search arc topics, notes, chapters..."
+                      value={arcMapSearchQuery}
+                      onChange={(e) => setArcMapSearchQuery(e.target.value)}
+                    />
+                    {arcMapSearchQuery && (
+                      <button className="arc-search-clear" onClick={() => setArcMapSearchQuery('')}>
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bible-actions" style={{ marginTop: '8px' }}>
                     <button className="btn-new" onClick={() => {
                       setRefEditCategoryName("")
                       setRefEditCategoryDesc("")
                       setShowRefCreateModal(true)
                     }}>
                       <Plus size={16} />
-                      New Reference
+                      New Arc
                     </button>
                     <button className="btn-export" onClick={() => {
                       setRefAIImportText("")
@@ -15709,59 +15797,120 @@ ${navPoints}  </navMap>
                   </div>
 
                   {referenceCategories.length === 0 ? (
-                    <div className="empty-state-text compact">
-                      No reference categories yet. Create one or use AI Import to format your cultivation stages, ranks, and more.
+                    <div className="empty-state-text compact" style={{ textAlign: 'center', padding: '16px 8px' }}>
+                      <Compass size={28} style={{ opacity: 0.4, margin: '0 auto 8px', display: 'block' }} />
+                      No arc items or future plot threads yet. Highlight text in the editor and click <strong>Arc Map</strong> to track future chapter topics!
                     </div>
                   ) : (
-                    <div className="references-list">
-                      {referenceCategories.map(cat => (
-                        <div key={cat.id} className="reference-category-card">
-                          <div
-                            className="reference-category-header"
-                            onClick={() => {
-                              setViewingRefCategory(cat)
-                              setShowRefViewModal(true)
-                            }}
-                          >
-                            <div className="reference-category-info">
-                              <strong>{cat.name}</strong>
-                              <span className="reference-entry-count">{cat.entries.length} {cat.entries.length === 1 ? 'entry' : 'entries'}</span>
+                    <div className="references-list" style={{ marginTop: '10px' }}>
+                      {referenceCategories
+                        .filter(cat => {
+                          const status = cat.status || 'open'
+                          if (arcMapStatusFilter === 'open' && status !== 'open') return false
+                          if (arcMapStatusFilter === 'closed' && status !== 'closed') return false
+                          if (arcMapSearchQuery.trim()) {
+                            const q = arcMapSearchQuery.toLowerCase()
+                            const matchesName = cat.name.toLowerCase().includes(q)
+                            const matchesDesc = (cat.description || '').toLowerCase().includes(q)
+                            const matchesSource = (cat.sourceText || '').toLowerCase().includes(q)
+                            const matchesChapter = (cat.targetChapter || '').toLowerCase().includes(q)
+                            return matchesName || matchesDesc || matchesSource || matchesChapter
+                          }
+                          return true
+                        })
+                        .map(cat => {
+                          const isOpen = (cat.status || 'open') === 'open'
+                          return (
+                            <div key={cat.id} className={`reference-category-card arc-item-card ${!isOpen ? 'is-closed' : ''}`}>
+                              <div className="reference-category-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                {/* Status Toggle Checkbox */}
+                                <button
+                                  className={`arc-status-checkbox ${isOpen ? 'open' : 'closed'}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleArcItemStatus(cat.id)
+                                  }}
+                                  title={isOpen ? "Mark arc as closed/addressed" : "Re-open arc"}
+                                >
+                                  {isOpen ? <Circle size={15} /> : <CheckCircle2 size={15} />}
+                                </button>
+
+                                <div
+                                  className="reference-category-info"
+                                  style={{ flex: 1, cursor: 'pointer' }}
+                                  onClick={() => {
+                                    setViewingRefCategory(cat)
+                                    setShowRefViewModal(true)
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                    <strong style={{ textDecoration: !isOpen ? 'line-through' : 'none', opacity: !isOpen ? 0.7 : 1 }}>
+                                      {cat.name}
+                                    </strong>
+                                    {cat.arcCategory && (
+                                      <span className="arc-tag-badge">{cat.arcCategory}</span>
+                                    )}
+                                  </div>
+                                  
+                                  {cat.targetChapter && (
+                                    <div className="arc-target-chapter-tag">
+                                      Target: <span>{cat.targetChapter}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div
+                                className="reference-category-desc"
+                                style={{
+                                  cursor: 'pointer',
+                                  textDecoration: !isOpen ? 'line-through' : 'none',
+                                  opacity: !isOpen ? 0.6 : 0.95
+                                }}
+                                onClick={() => {
+                                  setViewingRefCategory(cat)
+                                  setShowRefViewModal(true)
+                                }}
+                              >
+                                {cat.description || cat.sourceText || ''}
+                              </div>
+
+                              <div className="reference-category-actions">
+                                <span className="reference-entry-count" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                                  {cat.entries.length} sub-note{cat.entries.length === 1 ? '' : 's'}
+                                </span>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <button
+                                    className="btn-icon-sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setRefEditCategoryName(cat.name)
+                                      setRefEditCategoryDesc(cat.description || "")
+                                      setRefAIImportText(cat.sourceText || "")
+                                      setRefEditModeCategoryId(cat.id)
+                                      setRefAIImportResult(null)
+                                      setShowRefAIImportModal(true)
+                                    }}
+                                    title="Edit & AI Re-format"
+                                  >
+                                    <Sparkles size={14} />
+                                  </button>
+                                  <button
+                                    className="btn-icon-sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const next = referenceCategories.filter(c => c.id !== cat.id)
+                                      persistReferenceCategories(next)
+                                    }}
+                                    title="Delete Arc"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="reference-category-desc">{cat.description || ''}</div>
-
-                          <div className="reference-category-actions">
-                            <button
-                              className="btn-icon-sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setRefEditCategoryName(cat.name)
-                                setRefEditCategoryDesc(cat.description || "")
-                                setRefAIImportText(cat.sourceText || "")
-                                setRefEditModeCategoryId(cat.id)
-                                setRefAIImportResult(null)
-                                setShowRefAIImportModal(true)
-                              }}
-                              title="Edit and re-format with AI"
-                            >
-                              <Sparkles size={14} />
-                            </button>
-                            <button
-                              className="btn-icon-sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                const next = referenceCategories.filter(c => c.id !== cat.id)
-                                persistReferenceCategories(next)
-                              }}
-                              title="Delete category"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-
-
-                        </div>
-                      ))}
+                          )
+                        })}
                     </div>
                   )}
                 </div>
@@ -16000,13 +16149,13 @@ ${navPoints}  </navMap>
                     </button>
                     <button 
                       className={`fmt-btn-action ${!aiSelectionText.trim() ? 'disabled' : ''}`}
-                      onClick={() => handleForgeTreasureFromSelection(aiSelectionText)} 
-                      title="Select text describing a treasure, then click to forge names"
+                      onClick={() => handleAddToArcMap(aiSelectionText)} 
+                      title="Select text, then click to automatically add to Arc Map for future chapters"
                       style={{ marginLeft: '4px' }}
                       disabled={!aiSelectionText.trim()}
                     >
-                      <Gem size={13} style={{ marginRight: '4px' }} />
-                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Forge Treasure</span>
+                      <Compass size={13} style={{ marginRight: '4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600 }}>Arc Map</span>
                     </button>
                     <div className="fmt-divider"></div>
                     <button 
