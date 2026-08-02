@@ -1999,7 +1999,7 @@ function EditorContent() {
             )
           )
         }
-      }, 250)
+      }, 500)
     }
   }, [])
 
@@ -10593,9 +10593,18 @@ ${navPoints}  </navMap>
     return notes.map(n => (n?.content || "").toLowerCase())
   }, [notes])
 
+  const mentionsCacheRef = useRef<Map<string, number>>(new Map())
+
+  useEffect(() => {
+    mentionsCacheRef.current.clear()
+  }, [lowerNotesContentCache])
+
   const getEntryManuscriptMentions = useCallback((entryName: string) => {
     if (!entryName || !lowerNotesContentCache || lowerNotesContentCache.length === 0) return 0
     const lowerName = entryName.toLowerCase()
+    if (mentionsCacheRef.current.has(lowerName)) {
+      return mentionsCacheRef.current.get(lowerName)!
+    }
     let total = 0
     for (let i = 0; i < lowerNotesContentCache.length; i++) {
       const lowerContent = lowerNotesContentCache[i]
@@ -10606,6 +10615,7 @@ ${navPoints}  </navMap>
         pos += lowerName.length
       }
     }
+    mentionsCacheRef.current.set(lowerName, total)
     return total
   }, [lowerNotesContentCache])
 
