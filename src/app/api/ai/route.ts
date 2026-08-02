@@ -1246,6 +1246,8 @@ function verifyAndLockPromptDetails(
 }
 
 function formatMemoryContext(memory: unknown) {
+  if (!memory || typeof memory !== "object") return ""
+
   const safeMemory = memory as {
     projectName?: string
     activeChapter?: { title?: string; chapterNumber?: number } | null
