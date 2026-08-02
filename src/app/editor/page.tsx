@@ -17,7 +17,7 @@ import {
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, BookMarked,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
-  Upload, HardDrive, BarChart3, Gem
+  Upload, HardDrive, BarChart3, Gem, Award, Zap, Shield, Key
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -343,14 +343,18 @@ interface GeneratedNameOption {
 
 const NAME_CATEGORY_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
   { value: "character", label: "Character", hint: "Humanoid, Alien, Beast, Spirit, Demon..." },
+  { value: "technique", label: "Technique / Spell", hint: "Martial arts, Xianxia skills, arcane spells, divine arts..." },
+  { value: "faction", label: "Faction / Sect", hint: "Cultivation sects, mage guilds, secret societies, holy orders..." },
   { value: "bloodline", label: "Bloodline", hint: "Flame, Qilin, Star, Leviathan, Chaos rank..." },
   { value: "title", label: "Title", hint: "Heroic, Emperor, God, Fearsome, Ancient titles" },
   { value: "city", label: "City", hint: "Human, Demon, Underground, Floating cities" },
-  { value: "planet", label: "Planet", hint: "Ice, Jungle, Futuristic, Dragon planets" },
+  { value: "planet", label: "Planet", hint: "Ice, Jungle, Futuristic, Dragon, Eastern Xianxia planets" },
   { value: "realm", label: "Realm", hint: "Mortal, Immortal, Void, Chaos realms" },
   { value: "galaxy", label: "Galaxy", hint: "Light, Order, Elemental galaxies" },
   { value: "universe", label: "Universe", hint: "Cultivation, Scientific, Infinite universes" },
-  { value: "treasure", label: "Treasure", hint: "Fictional fruits, space rings, herbs, relics..." }
+  { value: "treasure", label: "Treasure", hint: "Fictional fruits, space rings, herbs, relics..." },
+  { value: "epithet", label: "Epithet / Nickname", hint: "Honorifics, title epithets, feared nicknames..." },
+  { value: "anagram", label: "Secret Alias / Anagram", hint: "Cryptic aliases, anagrams of character names..." }
 ]
 
 const SUBTYPE_OPTIONS: Record<string, string[]> = {
@@ -369,14 +373,58 @@ const SUBTYPE_OPTIONS: Record<string, string[]> = {
     "Formation Master (Zhen Master)", "Talisman Master (Fu Master)", "Beast Tamer (Yushou Master)",
     "Buddhist Cultivator (Chanxiu)", "Sound/Music Cultivator (Yinxiu)"
   ],
+  technique: [
+    "Xianxia Cultivation Art", "Sword Skill (Jianfa)", "Martial Art (Wuxia)", "Arcane Spell",
+    "Divine Ability (Divine Dao)", "Alchemical Formula", "Curse / Dark Art",
+    "Movement / Stepping Technique", "Defense / Body Refining Technique", "Soul / Mental Art", "Formation / Array Skill"
+  ],
+  faction: [
+    "Cultivation Sect (Zongmen)", "Holy Order / Temple", "Mage Guild", "Mercenary Band",
+    "Secret Society", "Merchant Alliance / Pavilion", "Demon Clan / Tribe", "Imperial Family / Empire",
+    "Assassins Guild", "Pirate Armada"
+  ],
   bloodline: [],
   title: [],
   city: [],
   planet: [],
   realm: [],
   galaxy: [],
-  universe: []
+  universe: [],
+  treasure: [],
+  epithet: [],
+  anagram: []
 }
+
+const TECHNIQUE_STYLE_OPTIONS = [
+  { value: "xianxia", label: "Xianxia / Daoist Art", hint: "Nine Heavens, Sword Qi, Immortal Elements" },
+  { value: "wuxia", label: "Wuxia / Martial", hint: "Palm techniques, fist arts, internal energy" },
+  { value: "arcane", label: "Arcane Magic", hint: "Runic spells, elemental circles, mana" },
+  { value: "divine", label: "Divine Ability", hint: "Godly domain, holy light, miracle laws" },
+  { value: "demonic", label: "Demonic / Dark", hint: "Blood art, soul devouring, sacrificial energy" }
+]
+
+const TECHNIQUE_ELEMENT_OPTIONS = [
+  { value: "sword", label: "Sword / Blade Intent", hint: "Sharp Qi, flying swords, decapitation" },
+  { value: "fire", label: "Fire / Yang", hint: "Solar flames, phoenix ember" },
+  { value: "ice", label: "Ice / Yin", hint: "Absolute zero, frost soul" },
+  { value: "lightning", label: "Lightning / Tribulation", hint: "Heavenly thunder, electric arc" },
+  { value: "space_time", label: "Space-Time / Void", hint: "Dimensional tear, teleportation, temporal freeze" },
+  { value: "chaos", label: "Chaos / Genesis", hint: "Primordial unformed power" }
+]
+
+const FACTION_TYPE_OPTIONS = [
+  { value: "sect", label: "Cultivation Sect", hint: "Righteous, Demonic, or Independent sects" },
+  { value: "guild", label: "Adventurers / Mage Guild", hint: "Quest-based ranks, mercenary contracts" },
+  { value: "pavilion", label: "Merchant House / Pavilion", hint: "Trading spatial rings, auction halls, pill shops" },
+  { value: "clan", label: "Ancient Clan / Tribe", hint: "Bloodline heritage, patriarch rule" },
+  { value: "secret", label: "Secret Society / Cult", hint: "Shadow council, forbidden rituals" }
+]
+
+const FACTION_ALIGNMENT_OPTIONS = [
+  { value: "righteous", label: "Righteous / Orthodox", hint: "Defenders of order and justice" },
+  { value: "demonic", label: "Demonic / Unorthodox", hint: "Ruthless, power at any cost" },
+  { value: "neutral", label: "Neutral / Independent", hint: "Mercenary, profit or research driven" }
+]
 // 2. Humanoid Generator
 const HUMANOID_CULTURE_OPTIONS = [
   // Real-world Cultures
@@ -1047,6 +1095,11 @@ const CITY_THEME_OPTIONS = [
 
 // 8. Planet Generator
 const PLANET_THEME_OPTIONS = [
+  { value: "eastern_cultivation", label: "Eastern Cultivation / Xianxia", hint: "Five Elements, Spiritual Qi veins, Floating Mountain Spheres" },
+  { value: "nine_heavens", label: "Nine Heavens / Nine Astral Spheres", hint: "Ancient Nine Heavens, Heavenly Star Planes, Supreme Dao Star" },
+  { value: "yin_yang", label: "Yin-Yang / Dual Polarity", hint: "Balance of Sun & Moon, Solar-Lunar Dual Star Spheres" },
+  { value: "grand_thousand", label: "Grand Thousand World Sphere", hint: "Major Thousand, Middle Thousand, Minor Thousand World Planes" },
+  { value: "beast_astral", label: "Beast / Mythical Spirit Star", hint: "Vermilion Bird Planet, Azure Dragon Star, White Tiger Peak" },
   { value: "fire", label: "Fire", hint: "Lava oceans, ash clouds" },
   { value: "ice", label: "Ice", hint: "Glaciers, frost storms, white wastes" },
   { value: "jungle", label: "Jungle", hint: "Overgrown flora, toxic spores" },
@@ -1065,6 +1118,8 @@ const PLANET_THEME_OPTIONS = [
 ]
 
 const PLANET_CIV_OPTIONS = [
+  { value: "xianxia_cultivation", label: "Cultivation / Daoist Sects", hint: "Immortal sects, Qi Refiners, Secret Realms, Tribulation Grounds" },
+  { value: "ancient_gods", label: "Ancient Gods / Primordial Fiends", hint: "Fiendgod relics, Ancient God corpses, Dao Source Star" },
   { value: "primitive", label: "Primitive", hint: "Stone age, tribal beasts" },
   { value: "medieval", label: "Medieval", hint: "Castles, steel swords, kingdoms" },
   { value: "magical", label: "Magical", hint: "Floating spires, wizard towers" },
@@ -1123,6 +1178,8 @@ const GENERAL_STRUCTURE_OPTIONS = [
 
 const CATEGORY_COLORS: Record<string, string> = {
   character: "#f87171",
+  technique: "#ec4899",
+  faction: "#8b5cf6",
   bloodline: "#f472b6",
   title: "#fb923c",
   city: "#34d399",
@@ -1134,7 +1191,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   item: "#a78bfa",
   place: "#fbbf24",
   cosmic: "#a78bfa",
-  treasure: "#eab308"
+  treasure: "#eab308",
+  epithet: "#f59e0b",
+  anagram: "#10b981"
 }
 
 const NAME_GEN_COUNT_OPTIONS = [
@@ -2155,6 +2214,8 @@ function EditorContent() {
   const [savePresetName, setSavePresetName] = useState("")
   const [showSavePresetInput, setShowSavePresetInput] = useState(false)
   const [nameUndoEntry, setNameUndoEntry] = useState<BibleEntry | null>(null)
+  const [showAnagramPanel, setShowAnagramPanel] = useState(false)
+  const [anagramInput, setAnagramInput] = useState("")
 
 
 
@@ -7201,7 +7262,7 @@ const fillEmptyCustomJsonData = (
         if (append && generatedNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
         uniqueNames.push({
           name,
-          category: ["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact", "treasure"].includes(String(option.category)) ? option.category : nameCategory,
+          category: ["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact", "treasure", "technique", "epithet", "anagram"].includes(String(option.category)) ? option.category : nameCategory,
           style: String(option.style || nameStyle).trim(),
           raceOrOrigin: String(option.raceOrOrigin || "").trim(),
           structure: String(option.structure || nameStructure).trim(),
@@ -7246,9 +7307,39 @@ const fillEmptyCustomJsonData = (
       if (sub.includes("beast") || sub.includes("shou") || sub === "insectoid") return "beast"
       return "character"
     }
-    if (cat === "bloodline" || cat === "title") return "world"
+    if (cat === "bloodline" || cat === "title" || cat === "technique" || cat === "epithet" || cat === "anagram") return "world"
+    if (cat === "faction") return "character"
     if (cat === "city" || cat === "planet" || cat === "realm" || cat === "galaxy" || cat === "universe") return "place"
     return "character"
+  }
+
+  const getManuscriptMentionCount = useCallback((name: string): number => {
+    if (!name || !name.trim()) return 0
+    const target = name.trim().toLowerCase()
+    if (target.length < 2) return 0
+    let count = 0
+    const fullText = notes.map(n => (n.title || "") + " " + (n.content || "")).join(" ").toLowerCase()
+    let pos = 0
+    while ((pos = fullText.indexOf(target, pos)) !== -1) {
+      count++
+      pos += target.length
+    }
+    return count
+  }, [notes])
+
+  const forgeEpithetsForName = (targetName: string) => {
+    setNameCategory("epithet")
+    setNameCustomPrompt(`Epithets and nicknames for "${targetName}"`)
+    setShowNamePrompt(true)
+    setTimeout(() => generateNameOptions(false), 50)
+  }
+
+  const forgeAnagramsForName = (targetName: string) => {
+    if (!targetName.trim()) return
+    setNameCategory("anagram")
+    setNameCustomPrompt(`True name: ${targetName}`)
+    setShowNamePrompt(true)
+    setTimeout(() => generateNameOptions(false), 50)
   }
 
   const acceptGeneratedName = async (option: GeneratedNameOption) => {
@@ -7398,6 +7489,14 @@ const fillEmptyCustomJsonData = (
         newConfig.beastFamily = BEAST_FAMILY_OPTIONS[Math.floor(Math.random() * BEAST_FAMILY_OPTIONS.length)].value
         newConfig.beastTier = BEAST_TIER_OPTIONS[Math.floor(Math.random() * BEAST_TIER_OPTIONS.length)].value
       }
+    } else if (cat === "technique") {
+      setNameSubType("")
+      newConfig.techniqueStyle = TECHNIQUE_STYLE_OPTIONS[Math.floor(Math.random() * TECHNIQUE_STYLE_OPTIONS.length)].value
+      newConfig.techniqueElement = TECHNIQUE_ELEMENT_OPTIONS[Math.floor(Math.random() * TECHNIQUE_ELEMENT_OPTIONS.length)].value
+    } else if (cat === "faction") {
+      setNameSubType("")
+      newConfig.factionType = FACTION_TYPE_OPTIONS[Math.floor(Math.random() * FACTION_TYPE_OPTIONS.length)].value
+      newConfig.factionAlignment = FACTION_ALIGNMENT_OPTIONS[Math.floor(Math.random() * FACTION_ALIGNMENT_OPTIONS.length)].value
     } else if (cat === "bloodline") {
       setNameSubType("")
       newConfig.bloodlineCategory = BLOODLINE_CATEGORY_OPTIONS[Math.floor(Math.random() * BLOODLINE_CATEGORY_OPTIONS.length)].value
@@ -13913,10 +14012,10 @@ ${navPoints}  </navMap>
                       { key: "category", label: "Generator", value: NAME_CATEGORY_OPTIONS.find(option => option.value === nameCategory)?.label || "Character" }
                     ]
                     
-                    if (nameCategory === "character") {
+                    if (nameCategory === "character" || nameCategory === "technique" || nameCategory === "faction") {
                       items.push({
                         key: "subtype",
-                        label: "Character Type",
+                        label: nameCategory === "technique" ? "Art Type" : nameCategory === "faction" ? "Faction Type" : "Character Type",
                         value: nameSubType ? (nameSubType.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")) : "Choose..."
                       })
                     }
@@ -13968,6 +14067,28 @@ ${navPoints}  </navMap>
                           value: BEAST_TIER_OPTIONS.find(opt => opt.value === nameGeneratorConfig.beastTier)?.label || "Primordial"
                         })
                       }
+                    } else if (nameCategory === "technique") {
+                      items.push({
+                        key: "techniqueStyle",
+                        label: "Style",
+                        value: TECHNIQUE_STYLE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.techniqueStyle)?.label || "Xianxia / Daoist Art"
+                      })
+                      items.push({
+                        key: "techniqueElement",
+                        label: "Element",
+                        value: TECHNIQUE_ELEMENT_OPTIONS.find(opt => opt.value === nameGeneratorConfig.techniqueElement)?.label || "Sword / Blade Intent"
+                      })
+                    } else if (nameCategory === "faction") {
+                      items.push({
+                        key: "factionType",
+                        label: "Type",
+                        value: FACTION_TYPE_OPTIONS.find(opt => opt.value === nameGeneratorConfig.factionType)?.label || "Cultivation Sect"
+                      })
+                      items.push({
+                        key: "factionAlignment",
+                        label: "Alignment",
+                        value: FACTION_ALIGNMENT_OPTIONS.find(opt => opt.value === nameGeneratorConfig.factionAlignment)?.label || "Righteous / Orthodox"
+                      })
                     } else if (nameCategory === "bloodline") {
                       items.push({
                         key: "bloodlineCategory",
@@ -14005,12 +14126,12 @@ ${navPoints}  </navMap>
                       items.push({
                         key: "planetTheme",
                         label: "Planet Theme",
-                        value: PLANET_THEME_OPTIONS.find(opt => opt.value === nameGeneratorConfig.planetTheme)?.label || "Ice"
+                        value: PLANET_THEME_OPTIONS.find(opt => opt.value === nameGeneratorConfig.planetTheme)?.label || "Eastern Cultivation"
                       })
                       items.push({
                         key: "planetCiv",
                         label: "Civilization Level",
-                        value: PLANET_CIV_OPTIONS.find(opt => opt.value === nameGeneratorConfig.planetCiv)?.label || "Magical"
+                        value: PLANET_CIV_OPTIONS.find(opt => opt.value === nameGeneratorConfig.planetCiv)?.label || "Cultivation / Daoist Sects"
                       })
                     } else if (nameCategory === "realm") {
                       items.push({
@@ -14073,6 +14194,10 @@ ${navPoints}  </navMap>
                         onChange={(e) => setNameCustomPrompt(e.target.value)}
                         placeholder={nameCategory === "treasure" 
                           ? "Description of the treasure: e.g. blue and red striped fruit, gold spatial ring, dark jade elixir..." 
+                          : nameCategory === "technique"
+                          ? "Technique description: e.g. sword aura, nine-headed thunder dragon, devouring blood..."
+                          : nameCategory === "faction"
+                          ? "Faction details: e.g. sword sect, shadow assassins, alchemy hall..."
                           : "Optional direction: desert elf princess, demon duke, thunder beast, sword sect elder..."}
                         rows={2}
                         onClick={(e) => e.stopPropagation()}
@@ -14080,24 +14205,76 @@ ${navPoints}  </navMap>
                       />
                     )}
                   </div>
-                  {/* Collapsible syllable bank */}
+                  {/* Interactive Syllable Matrix Chips */}
                   <div className="name-collapsible-card" onClick={() => setShowNameSyllables(!showNameSyllables)}>
                     <div className="name-collapsible-header">
-                      <span>{showNameSyllables ? "▾" : "▸"} Syllables {nameSyllableBank ? "✓" : ""}</span>
+                      <span>{showNameSyllables ? "▾" : "▸"} Syllable Matrix {nameSyllableBank ? `(${nameSyllableBank.split(',').filter(Boolean).length} roots)` : ""}</span>
                       {!showNameSyllables && nameSyllableBank && (
                         <small className="name-collapsible-preview">{nameSyllableBank.slice(0, 50)}{nameSyllableBank.length > 50 ? "…" : ""}</small>
                       )}
                     </div>
                     {showNameSyllables && (
-                      <textarea
-                        value={nameSyllableBank}
-                        onChange={(e) => setNameSyllableBank(e.target.value)}
-                        placeholder="Custom syllables to include (comma-separated): zen, kai, lun, vra, this, mar..."
-                        rows={2}
-                        className="name-syllable-input"
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                      />
+                      <div style={{ padding: "0.4rem", display: "flex", flexDirection: "column", gap: "0.35rem" }} onClick={e => e.stopPropagation()}>
+                        <textarea
+                          value={nameSyllableBank}
+                          onChange={(e) => setNameSyllableBank(e.target.value)}
+                          placeholder="Custom syllables (comma-separated): Ael, Thor, Cang, Tian, Yin..."
+                          rows={2}
+                          className="name-syllable-input"
+                          autoFocus
+                        />
+                        <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: 2 }}>Click matrix chips to toggle:</div>
+                        <div style={{ display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
+                          {["Ael", "Thor", "Zal", "Cang", "Tian", "Yin", "Yang", "Xian", "Luo", "Feng", "Astr", "Kael", "Mor", "xu", "zhen", "ling", "frost", "storm", "dragon", "star", "blade", "shadow", "flame", "core", "void", "yuan", "yue", "xuan", "qing", "Peak", "Realm", "Gate"].map(chip => (
+                            <button
+                              key={chip}
+                              type="button"
+                              className={`btn-ai-sub btn-sm ${nameSyllableBank.toLowerCase().includes(chip.toLowerCase()) ? "btn-ai-primary" : ""}`}
+                              style={{ fontSize: "0.6rem", padding: "0.1rem 0.35rem" }}
+                              onClick={() => {
+                                const parts = nameSyllableBank.split(",").map(s => s.trim()).filter(Boolean)
+                                if (parts.some(p => p.toLowerCase() === chip.toLowerCase())) {
+                                  setNameSyllableBank(parts.filter(p => p.toLowerCase() !== chip.toLowerCase()).join(", "))
+                                } else {
+                                  setNameSyllableBank([...parts, chip].join(", "))
+                                }
+                              }}
+                            >
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Secret Anagram Engine */}
+                  <div className="name-collapsible-card" onClick={() => setShowAnagramPanel(!showAnagramPanel)}>
+                    <div className="name-collapsible-header">
+                      <span>{showAnagramPanel ? "▾" : "▸"} Secret Anagram & Alias Engine</span>
+                    </div>
+                    {showAnagramPanel && (
+                      <div style={{ padding: "0.4rem", display: "flex", flexDirection: "column", gap: "0.35rem" }} onClick={e => e.stopPropagation()}>
+                        <div style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>Enter true character name to forge hidden anagram aliases:</div>
+                        <div style={{ display: "flex", gap: "0.3rem" }}>
+                          <input
+                            type="text"
+                            value={anagramInput}
+                            onChange={e => setAnagramInput(e.target.value)}
+                            placeholder="e.g. Kaelen Draven, Tom Riddle..."
+                            className="name-syllable-input"
+                            style={{ minHeight: 28, fontSize: "0.72rem", flex: 1 }}
+                            onKeyDown={e => { if (e.key === "Enter") forgeAnagramsForName(anagramInput) }}
+                          />
+                          <button
+                            type="button"
+                            className="btn-ai-sub btn-ai-primary btn-sm"
+                            onClick={() => forgeAnagramsForName(anagramInput)}
+                            disabled={!anagramInput.trim() || nameGenerateLoading}
+                          >
+                            <Key size={12} style={{ marginRight: 3 }} /> Anagram
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -14188,7 +14365,7 @@ ${navPoints}  </navMap>
                       style={{ minHeight: 30, fontSize: "0.72rem" }}
                     />
                     <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-                      {["all", "character", "beast", "world", "place", "item"].map(cat => (
+                      {["all", "character", "technique", "faction", "beast", "world", "place", "item", "treasure", "epithet", "anagram"].map(cat => (
                         <button
                           key={cat}
                           type="button"
@@ -14225,11 +14402,15 @@ ${navPoints}  </navMap>
                           <small style={{ color: CATEGORY_COLORS[option.category] || "#c084fc" }}>
                             <span style={{ marginRight: 4, verticalAlign: "middle" }}>
                               {option.category === "character" ? <User size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "technique" ? <Zap size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "faction" ? <Shield size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
                                option.category === "beast" ? <PawPrint size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
                                option.category === "world" ? <Globe size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
                                option.category === "place" ? <MapPin size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
                                option.category === "item" ? <Package size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
-                               option.category === "treasure" ? <Gem size={11} style={{ display: "inline", verticalAlign: "middle" }} /> : null}
+                               option.category === "treasure" ? <Gem size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "epithet" ? <Award size={11} style={{ display: "inline", verticalAlign: "middle" }} /> :
+                               option.category === "anagram" ? <Key size={11} style={{ display: "inline", verticalAlign: "middle" }} /> : null}
                             </span>
                             {option.category} - {option.structure || nameStructure}
                           </small>
@@ -14240,6 +14421,10 @@ ${navPoints}  </navMap>
                       <div className="name-result-meta">
                         {option.raceOrOrigin && <span>{option.raceOrOrigin}</span>}
                         {option.pronunciation && <span>{option.pronunciation}</span>}
+                        <span style={{ color: getManuscriptMentionCount(option.name) > 0 ? "#10b981" : "var(--text-dim)" }} title="Occurrences across manuscript notes">
+                          <FileText size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} />
+                          {getManuscriptMentionCount(option.name)} in text
+                        </span>
                       </div>
                       <div className="name-result-actions">
                         <button
@@ -14269,6 +14454,15 @@ ${navPoints}  </navMap>
                           title="Insert at cursor in editor"
                         >
                           <FileText size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ai-sub"
+                          onClick={() => forgeEpithetsForName(option.name)}
+                          disabled={nameGenerateLoading}
+                          title="Forge epithets & nicknames for this name"
+                        >
+                          <Award size={13} />
                         </button>
                         <button
                           type="button"
@@ -14569,11 +14763,21 @@ ${navPoints}  </navMap>
                     switch (activeNamePicker) {
                       case "category":
                         return { title: "Choose Generator", options: NAME_CATEGORY_OPTIONS }
-                      case "subtype":
+                      case "subtype": {
+                        const list = SUBTYPE_OPTIONS[nameCategory] || SUBTYPE_OPTIONS.character
                         return {
-                          title: "Choose Character Type",
-                          options: SUBTYPE_OPTIONS.character.map(s => ({ value: s.toLowerCase(), label: s, hint: `Names for ${s}s` }))
+                          title: nameCategory === "technique" ? "Choose Art Type" : nameCategory === "faction" ? "Choose Faction Type" : "Choose Character Type",
+                          options: list.map(s => ({ value: s.toLowerCase(), label: s, hint: `Names for ${s}` }))
                         }
+                      }
+                      case "techniqueStyle":
+                        return { title: "Choose Technique Style", options: TECHNIQUE_STYLE_OPTIONS }
+                      case "techniqueElement":
+                        return { title: "Choose Element / Intent", options: TECHNIQUE_ELEMENT_OPTIONS }
+                      case "factionType":
+                        return { title: "Choose Faction Type", options: FACTION_TYPE_OPTIONS }
+                      case "factionAlignment":
+                        return { title: "Choose Alignment", options: FACTION_ALIGNMENT_OPTIONS }
                       case "culture":
                         return { title: "Choose Culture/Origin", options: HUMANOID_CULTURE_OPTIONS }
                       case "gender":

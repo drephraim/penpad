@@ -2354,7 +2354,14 @@ export async function POST(req: NextRequest) {
         } else if (cat === "planet") {
           const planetTheme = nameGeneratorConfig?.planetTheme || "Fire"
           const planetCiv = nameGeneratorConfig?.planetCiv || "Futuristic"
-          subtypeGuidance += `Category is PLANET. Generate planet names of theme "${planetTheme}" and civilization level "${planetCiv}" (e.g. primitive, magical, futuristic, divine). Examples: Planet Sonox, Planet Vorthis, Planet Drakoria, Planet Nythara.\n`
+          if (["eastern_cultivation", "nine_heavens", "yin_yang", "grand_thousand", "beast_astral"].includes(planetTheme) || ["xianxia_cultivation", "ancient_gods"].includes(planetCiv)) {
+            subtypeGuidance += `Category is PLANET (Eastern Fantasy / Xianxia Cultivation Style). Theme "${planetTheme}", Civilization "${planetCiv}".\n` +
+              `Generate celestial world sphere & cultivation planet names matching Eastern Daoist and Xianxia cosmologies.\n` +
+              `Themes: Five Elements (Fire, Water, Wood, Metal, Earth), Nine Heavens, Yin-Yang Dual Star, Grand Thousand World Planes, Azure Dragon / White Tiger / Vermilion Bird Astral Spheres, Divine Dao Source Star.\n` +
+              `Examples: Azure Dragon Star Sphere, Nine Heavens Primordial World, Canglan Star, Tianyuan Planet, Yin-Yang Chaos Realm Planet, Grand Thousand Astral World, Vermilion Bird Peak Planet, Fiendgod Ancestral Star.\n`
+          } else {
+            subtypeGuidance += `Category is PLANET. Generate planet names of theme "${planetTheme}" and civilization level "${planetCiv}" (e.g. primitive, magical, futuristic, divine). Examples: Planet Sonox, Planet Vorthis, Planet Drakoria, Planet Nythara.\n`
+          }
         } else if (cat === "realm") {
           const realmType = nameGeneratorConfig?.realmType || "Immortal"
           subtypeGuidance += `Category is REALM. Generate mystical plane/realm names of type "${realmType}" (e.g., Mortal, Immortal, Divine, Demon, Beast, Void, Chaos). Examples: Eternal Frost Realm, Abyssal Demon Realm, Primordial Beast Realm.\n`
@@ -2366,6 +2373,24 @@ export async function POST(req: NextRequest) {
           const universeScale = nameGeneratorConfig?.universeScale || "Infinite"
           subtypeGuidance += `Category is UNIVERSE. Generate universe names of type "${universeType}" and scale "${universeScale}" (e.g., magical, cultivation, apocalypse, primordial). Examples: Universe of Endless Chaos, Eternal Astral Universe, Primordial Genesis Universe.\n`
         }
+      } else if (cat === "technique" || cat === "ability") {
+        const techStyle = nameGeneratorConfig?.techniqueStyle || "xianxia"
+        const techElement = nameGeneratorConfig?.techniqueElement || "sword"
+        subtypeGuidance += `Category is TECHNIQUE / SPELL (Type: ${nameSubType || "General"}, Style: "${techStyle}", Element: "${techElement}").\n` +
+          `Generate martial techniques, cultivation arts, sword skills, divine spells, or alchemical secrets.\n` +
+          `Include rank/tier (Yellow, Black, Earth, Heaven, Divine, God Rank) and short combat effect description in meaning/bibleContent. Examples: 'Nine Heavens Thunder Slash', 'Absolute Zero Frost Barrier', 'Great Solar Palm', 'Void Traversing Step', 'Blood Sea Soul Refinement Art'.\n`
+      } else if (cat === "faction") {
+        const facType = nameGeneratorConfig?.factionType || "sect"
+        const facAlign = nameGeneratorConfig?.factionAlignment || "righteous"
+        subtypeGuidance += `Category is FACTION / SECT (Type: "${facType}", Alignment: "${facAlign}").\n` +
+          `Generate names for cultivation sects, mage guilds, merchant pavilions, secret societies, or demon clans.\n` +
+          `Include faction hierarchy, emblem, and main cultivation law in meaning/bibleContent. Examples: 'Heavenly Sword Sect', 'Shadow Lotus Pavilion', 'Nine Stars Merchant Alliance', 'Abyssal Blood Sect', 'Starfall Mercenary Band'.\n`
+      } else if (cat === "epithet") {
+        subtypeGuidance += `Category is EPITHET / ALIAS. Generate grand honorific titles, nicknames, and epithets for the character or target "${customPrompt || "the character"}".\n` +
+          `Examples: 'The Unbroken', 'Sovereign of the Ash Peak', 'Blood-Handed Asura', 'Fairy of the Frost Lotus', 'The Star Devourer', 'Bane of the Nine Realms'.\n`
+      } else if (cat === "anagram") {
+        subtypeGuidance += `Category is ANAGRAM / SECRET ALIAS. Generate mysterious, phonetically plausible anagrams, cryptograms, and secret alias names derived from or rearranging letters/syllables of "${customPrompt || "the name"}".\n` +
+          `Provide the anagram name, its secretive vibe, and how it hides their true identity in meaning/bibleContent.\n`
       } else if (cat === "treasure") {
         subtypeGuidance += 
           "Category is TREASURE. Generate highly creative, fictional, and mythical names for treasures, rare items, mystical flora/fruits, celestial materials, legendary herbs, magical elixirs, or ancient relics based on the provided description/context.\n" +
