@@ -1172,11 +1172,20 @@ function verifyAndLockPromptDetails(
       if (dna.faceShape && !pLower.includes(String(dna.faceShape).toLowerCase())) {
         missingDnaPieces.push(`${dna.faceShape} face shape`)
       }
+      if (dna.forehead && !pLower.includes("forehead")) {
+        missingDnaPieces.push(`${dna.forehead} forehead`)
+      }
+      if (dna.browRidge && !pLower.includes("brow")) {
+        missingDnaPieces.push(`${dna.browRidge} brow ridge`)
+      }
       if (dna.nose && !pLower.includes("nose")) {
         missingDnaPieces.push(`${dna.nose} nose bridge`)
       }
       if (dna.jaw && !pLower.includes("jaw")) {
         missingDnaPieces.push(`${dna.jaw} jawline`)
+      }
+      if (dna.chin && !pLower.includes("chin")) {
+        missingDnaPieces.push(`${dna.chin} chin`)
       }
       if (dna.lips && !pLower.includes("lips")) {
         missingDnaPieces.push(`${dna.lips} lips`)
@@ -1187,12 +1196,21 @@ function verifyAndLockPromptDetails(
       if (dna.eyebrows && !pLower.includes("eyebrow") && !pLower.includes("brow")) {
         missingDnaPieces.push(`${dna.eyebrows} eyebrows`)
       }
+      if (dna.eyes && !pLower.includes("eye")) {
+        missingDnaPieces.push(`${dna.eyes} eyes`)
+      }
       if (dna.skinTexture && !pLower.includes("skin")) {
         missingDnaPieces.push(`${dna.skinTexture} skin texture`)
       }
+      if (dna.neck && !pLower.includes("neck")) {
+        missingDnaPieces.push(`${dna.neck} neck`)
+      }
+      if (dna.expression && !pLower.includes(String(dna.expression).toLowerCase())) {
+        missingDnaPieces.push(`${dna.expression} expression`)
+      }
 
       if (missingDnaPieces.length > 0) {
-        p = p + `, explicit facial anatomy featuring ${missingDnaPieces.join(", ")}`
+        p = p + `, explicit detailed facial anatomy featuring ${missingDnaPieces.join(", ")}`
         injectedNotes.push(`Wove structural Face DNA features directly into ${formKey} prompt string.`)
       }
     }
@@ -1494,7 +1512,13 @@ export async function POST(req: NextRequest) {
             "     • Heightened Scale: significantly larger, broader, and more intimidating than an average human\n" +
             "     • Attire & Gear: tribal leather wraps, battle-worn armor plates, or silk robes fitting a beast warrior, shaman, or chieftain, with an elemental aura matching the species.\n" +
             "     • ACCURATE GENERATION FROM SIMPLE DESCRIPTIONS: Even if the chapter description is minimal (e.g. 'a tiger man' or 'wolf warrior'), extrapolate a complete, majestic, high-detail hybrid image prompt combining all the anatomical rules above without hallucinating conflicting human armor or dropping the beast features.\n" : "") +
-          (formKeys.includes("humanForm") ? "   - Humanoid Form: Fully human silhouette. Retain tails, wings, horns, fur, scales, or other non-human traits **only if they are explicitly mentioned in the chapter or Story Bible for the humanoid form**. Do not add or default to them. The form must look human unless the input states otherwise.\n" +
+          (formKeys.includes("humanForm") ? "   - Humanoid Form: Rich, highly detailed humanoid appearance prompt. Capture complete head-to-toe appearance in vivid, high-resolution cinematic detail:\n" +
+            "     • COMPREHENSIVE FACIAL BLUEPRINT: Detail exact face shape (diamond, oval, gaunt, square, heart), forehead height, brow ridge depth, eyebrows (density, arch), eye spacing, depth, shape, iris color & luminosity, nose bridge & tip, philtrum, lip fullness & Cupid's bow, jawline angle & definition, chin projection, cheekbone height/prominence, ear shape & position, neck length & muscle cords.\n" +
+            "     • MICRO-SKIN TEXTURES & AGING: Describe skin tone, undertones, pore texture, weathering, freckles, age lines, wrinkles, scars, sunburn, or magical sheen.\n" +
+            "     • HAIR & FACIAL HAIR: Detail hairline, hair color gradients, exact length, cut, style (braided, loose, undercut, coiled), hair sheen/texture, and any facial hair (stubble, mustache, full beard, silver/white highlights, grooming).\n" +
+            "     • PHYSIQUE & BODY ANATOMY: Height, shoulder width, chest depth, waist taper, arm & leg musculature, posture (heroic, predatory, lanky, towering, frail, standing upright), skin blemishes, tattoos, markings, or scars.\n" +
+            "     • GARMENTS & FABRIC DETAILS: Layered attire breakdown (inner shirt, tunic, robes, coat, armor plating, pauldrons, vambraces), material textures (silk, leather, velvet, chainmail, plate, brocade), stitching, trims, belt/buckles, boots, gloves, jewelry, accessories, and written color fidelity.\n" +
+            "     • POSE, LIGHTING & SCENE CONTEXT: Dynamic pose, gaze direction, chapter background context/setting, lighting (volumetric, rim light, torch glow, ambient shadows), aura/power ambiance, color palette, and cinematic framing.\n" +
             "     • FACE DNA IN-PROMPT SYNTHESIS MANDATE (CRITICAL): You MUST explicitly write ALL structural facial anatomy details from Face DNA directly INSIDE the Humanoid Form image prompt text. The Humanoid Form prompt string itself MUST detail: face shape, forehead height, brow ridge, eyebrow style and density, eye depth/shape/color/expression, nose bridge and width, lip thickness and shape, jawline structure and angle, chin projection, cheekbone height, ear shape, neck structure, skin texture/age lines, and facial expression. Do NOT relegate Face DNA to a separate summary block only — the image generation prompt string MUST contain every single anatomical facial dimension so AI image generators produce the exact intended face.\n" : "")
         : entryCategory === "character"
           ? "This Story Bible entry is a PERSON/CHARACTER. You must create a humanoid appearance prompt. Do not invent beast or demi-human forms for a person entry unless the chapter explicitly says they transform.\n"
