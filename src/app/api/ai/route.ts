@@ -889,10 +889,11 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
-    "gemini-2.0-flash",
+    "gemini-3.6-flash",
+    "gemini-3.6-pro",
+    "gemini-2.5-flash",
     "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash-lite"
+    "gemini-1.5-pro"
   ].filter(Boolean))) as string[]
 
   const genAI = new GoogleGenerativeAI(apiKey)
