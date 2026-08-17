@@ -889,16 +889,18 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
+    "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro-002",
     "gemini-1.5-flash-002",
     "gemini-1.5-pro-latest",
-    "gemini-1.5-pro"
+    "gemini-1.5-flash-latest"
   ].filter(Boolean))) as string[]
 
   const genAI = new GoogleGenerativeAI(apiKey)
-  let lastError: unknown = null
+  const errors: Array<{ model: string; error: string }> = []
 
   for (const modelName of candidateModels) {
     try {
@@ -908,6 +910,7 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
         generationConfig: {
           temperature,
           maxOutputTokens: jsonMode ? 8192 : 4096,
+          ...(jsonMode ? { responseMimeType: "application/json" } : {})
         }
       })
 
@@ -917,13 +920,16 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
       if (text && typeof text === "string") {
         return text
       }
-    } catch (err) {
-      console.warn(`[Gemini] Model ${modelName} failed:`, err)
-      lastError = err
+    } catch (err: any) {
+      console.warn(`[Gemini] Model ${modelName} failed:`, err?.message || err)
+      errors.push({ model: modelName, error: err?.message || String(err) })
     }
   }
 
-  throw lastError || new Error("Gemini returned an empty response across all model candidates.")
+  const lastErr = errors.length > 0 ? errors[errors.length - 1].error : ""
+  const non404Err = errors.find(e => !e.error.includes("404"))?.error
+  const chosenMessage = non404Err || lastErr || "Gemini returned an empty response across all model candidates."
+  throw new Error(chosenMessage)
 }
 
 // Maps user-facing style labels to image-generator quality modifier tokens
