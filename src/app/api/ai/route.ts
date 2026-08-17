@@ -889,14 +889,10 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
-    "gemini-2.5-pro",
-    "gemini-1.5-pro-002",
-    "gemini-1.5-flash-002",
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-flash-latest"
+    "gemini-1.5-pro",
+    "gemini-2.0-flash-lite"
   ].filter(Boolean))) as string[]
 
   const genAI = new GoogleGenerativeAI(apiKey)
@@ -910,7 +906,6 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
         generationConfig: {
           temperature,
           maxOutputTokens: jsonMode ? 8192 : 4096,
-          ...(jsonMode ? { responseMimeType: "application/json" } : {})
         }
       })
 
@@ -926,9 +921,10 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
     }
   }
 
+  const firstErr = errors[0]?.error
   const lastErr = errors.length > 0 ? errors[errors.length - 1].error : ""
   const non404Err = errors.find(e => !e.error.includes("404"))?.error
-  const chosenMessage = non404Err || lastErr || "Gemini returned an empty response across all model candidates."
+  const chosenMessage = non404Err || firstErr || lastErr || "Gemini returned an empty response across all model candidates."
   throw new Error(chosenMessage)
 }
 
@@ -2612,11 +2608,8 @@ export async function POST(req: NextRequest) {
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
 
-      const k1 = "gsk_xMkTyMMrAM7S3jbsaN68W"
-      const k2 = "Gdyb3FYosBOIgQHS1eROXheBn1GfoMz"
-      const fallbackAppearanceKey = k1 + k2
       const appearanceLabGroqKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
-        ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || fallbackAppearanceKey || process.env.GROQ_API_KEY)
+        ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY)
         : undefined
 
       const useGemini = (action === "progression_update" || action === "brain_analyze") && !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY)
