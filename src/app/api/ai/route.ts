@@ -788,6 +788,98 @@ function parseCultivationSettingsFromText(rawText: string, currentSettings?: unk
   }
 }
 
+async function generateWithGrok(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number, customApiKey?: string) {
+  const apiKey = customApiKey || process.env.APPEARANCE_LAB_GROK_API_KEY || process.env.GROK_API_KEY || process.env.XAI_API_KEY
+  if (!apiKey) {
+    throw new Error("Grok API key is not configured on the server. Please add GROK_API_KEY, APPEARANCE_LAB_GROK_API_KEY, or XAI_API_KEY to your environment.")
+  }
+
+  const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.15 : 0.7)
+  const candidateModels = Array.from(new Set([
+    process.env.GROK_MODEL,
+    process.env.XAI_MODEL,
+    "grok-2-latest",
+    "grok-2",
+    "grok-beta"
+  ].filter(Boolean))) as string[]
+
+  let lastError: unknown = null
+
+  for (const modelName of candidateModels) {
+    try {
+      const response = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: userPrompt }
+          ],
+          temperature,
+          max_tokens: jsonMode ? 8192 : 4096,
+          ...(jsonMode ? { response_format: { type: "json_object" } } : {})
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error?.message || `Grok API error (${modelName}): ${response.status}`)
+      }
+
+      const text = data?.choices?.[0]?.message?.content
+      if (text && typeof text === "string") {
+        return text
+      }
+    } catch (err) {
+      console.warn(`[Grok] Model ${modelName} failed (jsonMode=${jsonMode}):`, err)
+      lastError = err
+    }
+  }
+
+  if (jsonMode) {
+    console.warn("[Grok] JSON mode failed across models. Retrying without server-side response_format constraint...")
+    for (const modelName of candidateModels) {
+      try {
+        const response = await fetch("https://api.x.ai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              { role: "system", content: systemInstruction + "\n\nIMPORTANT MANDATE: Your response MUST be valid JSON. Output ONLY raw JSON starting with { and ending with }." },
+              { role: "user", content: userPrompt }
+            ],
+            temperature: temperatureOverride ?? 0.3,
+            max_tokens: 8192
+          })
+        })
+
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data?.error?.message || `Grok API error (${modelName}): ${response.status}`)
+        }
+
+        const text = data?.choices?.[0]?.message?.content
+        if (text && typeof text === "string") {
+          return text
+        }
+      } catch (err) {
+        console.warn(`[Grok] Model ${modelName} fallback without response_format failed:`, err)
+        lastError = err
+      }
+    }
+  }
+
+  throw lastError || new Error("Grok returned an empty response across all candidate models.")
+}
+
 async function generateWithGroq(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number, customApiKey?: string) {
   const apiKey = customApiKey || process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY
   if (!apiKey) {
@@ -2609,51 +2701,119 @@ export async function POST(req: NextRequest) {
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
 
+      const appearanceLabGrokKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
+        ? (process.env.APPEARANCE_LAB_GROK_API_KEY || process.env.GROK_API_KEY || process.env.XAI_API_KEY)
+        : undefined
+
       const appearanceLabGroqKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
         ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY)
         : undefined
 
-      const useGemini = (action === "progression_update" || action === "brain_analyze") && !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY)
+      const grokApiKey = process.env.APPEARANCE_LAB_GROK_API_KEY || process.env.GROK_API_KEY || process.env.XAI_API_KEY
+      const groqApiKey = appearanceLabGroqKey || process.env.GROQ_API_KEY
       const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
+      const useGemini = (action === "progression_update" || action === "brain_analyze") && !!geminiApiKey
       const isAppearanceLabAction = action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire"
 
       if (isAppearanceLabAction) {
-        try {
-          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-        } catch (groqErr) {
-          console.warn("[Groq] Appearance Lab failed, trying fallback to Gemini:", groqErr)
-          if (geminiApiKey) {
-            text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-          } else {
-            throw groqErr
+        // Appearance Lab uses Grok API primarily
+        if (grokApiKey) {
+          try {
+            text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGrokKey)
+          } catch (grokErr) {
+            console.warn("[Grok] Appearance Lab failed, trying fallback to Groq/Gemini:", grokErr)
+            if (groqApiKey) {
+              try {
+                text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+              } catch (groqErr) {
+                console.warn("[Groq] Appearance Lab fallback failed, trying Gemini:", groqErr)
+                if (geminiApiKey) {
+                  text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+                } else {
+                  throw groqErr
+                }
+              }
+            } else if (geminiApiKey) {
+              text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+            } else {
+              throw grokErr
+            }
           }
+        } else if (groqApiKey) {
+          try {
+            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+          } catch (groqErr) {
+            console.warn("[Groq] Appearance Lab failed, trying fallback to Gemini:", groqErr)
+            if (geminiApiKey) {
+              text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+            } else {
+              throw groqErr
+            }
+          }
+        } else if (geminiApiKey) {
+          text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+        } else {
+          // No API key configured anywhere; call generateWithGrok to throw descriptive Grok error
+          text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
         }
       } else if (useGemini) {
         try {
           text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
         } catch (geminiErr) {
-          console.warn("[Gemini] Failed, falling back to Groq:", geminiErr)
-          try {
+          console.warn("[Gemini] Failed, falling back to Grok/Groq:", geminiErr)
+          if (grokApiKey) {
+            try {
+              text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, grokApiKey)
+            } catch (grokErr) {
+              if (groqApiKey) {
+                text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+              } else {
+                throw grokErr
+              }
+            }
+          } else if (groqApiKey) {
             text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-          } catch (groqErr) {
-            console.error("Both Gemini and Groq failed:", groqErr)
-            throw groqErr;
+          } else {
+            throw geminiErr
           }
         }
       } else {
-        try {
-          text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-        } catch (groqErr) {
-          console.warn("[Groq] Failed, trying fallback to Gemini:", groqErr)
-          if (geminiApiKey) {
-            try {
+        if (grokApiKey) {
+          try {
+            text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, grokApiKey)
+          } catch (grokErr) {
+            console.warn("[Grok] Failed, trying fallback to Groq:", grokErr)
+            if (groqApiKey) {
+              try {
+                text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+              } catch (groqErr) {
+                if (geminiApiKey) {
+                  text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+                } else {
+                  throw groqErr
+                }
+              }
+            } else if (geminiApiKey) {
               text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-            } catch (geminiErr) {
-              console.error("Both Groq and Gemini failed:", geminiErr)
-              throw geminiErr
+            } else {
+              throw grokErr
             }
-          } else {
-            throw groqErr
+          }
+        } else {
+          try {
+            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
+          } catch (groqErr) {
+            console.warn("[Groq] Failed, trying fallback to Gemini:", groqErr)
+            if (geminiApiKey) {
+              try {
+                text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+              } catch (geminiErr) {
+                console.error("Both Groq and Gemini failed:", geminiErr)
+                throw geminiErr
+              }
+            } else {
+              throw groqErr
+            }
           }
         }
       }
@@ -3106,7 +3266,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ text })
   } catch (error: unknown) {
-    console.error("Groq API error:", error)
+    console.error("AI Generation error:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json({ error: `AI Generation failed: ${message}` }, { status: 500 })
   }
