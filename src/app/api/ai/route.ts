@@ -2701,120 +2701,102 @@ export async function POST(req: NextRequest) {
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
 
-      const appearanceLabGrokKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
-        ? (process.env.APPEARANCE_LAB_GROK_API_KEY || process.env.GROK_API_KEY || process.env.XAI_API_KEY)
-        : undefined
-
-      const appearanceLabGroqKey = (action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire")
-        ? (process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.GROQ_API_KEY)
-        : undefined
-
-      const grokApiKey = process.env.APPEARANCE_LAB_GROK_API_KEY || process.env.GROK_API_KEY || process.env.XAI_API_KEY
-      const groqApiKey = appearanceLabGroqKey || process.env.GROQ_API_KEY
-      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
-      const useGemini = (action === "progression_update" || action === "brain_analyze") && !!geminiApiKey
       const isAppearanceLabAction = action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire"
 
+      // Dedicated Appearance Lab API keys take priority for Appearance Lab actions only
+      const dedicatedAppearanceLabKey = process.env.APPEARANCE_LAB_API_KEY || process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.APPEARANCE_LAB_GROK_API_KEY
+      const grokApiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY
+      const groqApiKey = process.env.GROQ_API_KEY
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
       if (isAppearanceLabAction) {
-        // Appearance Lab uses Grok API primarily
-        if (grokApiKey) {
-          try {
-            text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGrokKey)
-          } catch (grokErr) {
-            console.warn("[Grok] Appearance Lab failed, trying fallback to Groq/Gemini:", grokErr)
-            if (groqApiKey) {
-              try {
-                text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-              } catch (groqErr) {
-                console.warn("[Groq] Appearance Lab fallback failed, trying Gemini:", groqErr)
-                if (geminiApiKey) {
-                  text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-                } else {
-                  throw groqErr
-                }
+        // Resolve key for Appearance Lab: dedicated key first, then general keys
+        const labKey = dedicatedAppearanceLabKey || grokApiKey || groqApiKey
+
+        if (labKey) {
+          // Detect key format: Groq keys start with 'gsk_'
+          if (labKey.startsWith("gsk_")) {
+            try {
+              text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, labKey)
+            } catch (groqErr) {
+              console.warn("[Groq] Appearance Lab failed, trying Gemini fallback:", groqErr)
+              if (geminiApiKey) {
+                text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+              } else {
+                throw groqErr
               }
-            } else if (geminiApiKey) {
-              text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-            } else {
-              throw grokErr
             }
-          }
-        } else if (groqApiKey) {
-          try {
-            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-          } catch (groqErr) {
-            console.warn("[Groq] Appearance Lab failed, trying fallback to Gemini:", groqErr)
-            if (geminiApiKey) {
-              text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-            } else {
-              throw groqErr
+          } else {
+            // Non-gsk keys (e.g. xai- or custom Grok keys) use Grok endpoint
+            try {
+              text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, labKey)
+            } catch (grokErr) {
+              console.warn("[Grok] Appearance Lab failed, trying fallbacks:", grokErr)
+              if (groqApiKey && groqApiKey !== labKey) {
+                try {
+                  text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, groqApiKey)
+                } catch (groqErr) {
+                  if (geminiApiKey) {
+                    text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+                  } else {
+                    throw groqErr
+                  }
+                }
+              } else if (geminiApiKey) {
+                text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+              } else {
+                throw grokErr
+              }
             }
           }
         } else if (geminiApiKey) {
           text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
         } else {
-          // No API key configured anywhere; call generateWithGrok to throw descriptive Grok error
-          text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp)
-        }
-      } else if (useGemini) {
-        try {
-          text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-        } catch (geminiErr) {
-          console.warn("[Gemini] Failed, falling back to Grok/Groq:", geminiErr)
-          if (grokApiKey) {
-            try {
-              text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, grokApiKey)
-            } catch (grokErr) {
-              if (groqApiKey) {
-                text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-              } else {
-                throw grokErr
-              }
-            }
-          } else if (groqApiKey) {
-            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-          } else {
-            throw geminiErr
-          }
+          // No API key found for Appearance Lab
+          throw new Error("Appearance Lab API key is not configured. Please add APPEARANCE_LAB_GROQ_API_KEY or APPEARANCE_LAB_GROK_API_KEY to your environment.")
         }
       } else {
-        if (grokApiKey) {
+        // Non-Appearance Lab actions do NOT use dedicated Appearance Lab keys
+        const useGemini = (action === "progression_update" || action === "brain_analyze") && !!geminiApiKey
+        if (useGemini) {
+          try {
+            text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+          } catch (geminiErr) {
+            console.warn("[Gemini] Failed, falling back to Groq/Grok:", geminiErr)
+            if (groqApiKey) {
+              text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, groqApiKey)
+            } else if (grokApiKey) {
+              text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, grokApiKey)
+            } else {
+              throw geminiErr
+            }
+          }
+        } else if (groqApiKey) {
+          try {
+            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, groqApiKey)
+          } catch (groqErr) {
+            console.warn("[Groq] Failed, trying fallback to Gemini:", groqErr)
+            if (geminiApiKey) {
+              text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+            } else {
+              throw groqErr
+            }
+          }
+        } else if (grokApiKey) {
           try {
             text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, grokApiKey)
           } catch (grokErr) {
-            console.warn("[Grok] Failed, trying fallback to Groq:", grokErr)
-            if (groqApiKey) {
-              try {
-                text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-              } catch (groqErr) {
-                if (geminiApiKey) {
-                  text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-                } else {
-                  throw groqErr
-                }
-              }
-            } else if (geminiApiKey) {
+            console.warn("[Grok] Failed, trying fallback to Gemini:", grokErr)
+            if (geminiApiKey) {
               text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
             } else {
               throw grokErr
             }
           }
+        } else if (geminiApiKey) {
+          text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
         } else {
-          try {
-            text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, appearanceLabGroqKey)
-          } catch (groqErr) {
-            console.warn("[Groq] Failed, trying fallback to Gemini:", groqErr)
-            if (geminiApiKey) {
-              try {
-                text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
-              } catch (geminiErr) {
-                console.error("Both Groq and Gemini failed:", geminiErr)
-                throw geminiErr
-              }
-            } else {
-              throw groqErr
-            }
-          }
+          throw new Error("No API key configured for AI generation. Please set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY in environment.")
         }
       }
     }
