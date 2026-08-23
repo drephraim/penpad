@@ -3180,7 +3180,7 @@ function EditorContent() {
         .filter(entry => entry.id !== sourceEntry.id)
         .map(entry => {
           const sheetIndex = entry.content ? entry.content.indexOf("## Appearance Prompt Sheet") : -1
-          const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex) : ""
+          const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex, sheetIndex + 300) : ""
           return {
             characterName: entry.name,
             category: entry.category,
@@ -3189,6 +3189,7 @@ function EditorContent() {
           }
         })
         .filter(item => item.promptSheet || (item.characterDetails && Object.values(item.characterDetails).some(val => typeof val === "string" && val.trim().length > 0)))
+        .slice(0, 10)
 
       const res = await fetch("/api/ai", {
         method: "POST",
@@ -3302,7 +3303,7 @@ function EditorContent() {
         .filter(entry => entry.id !== sourceEntry.id)
         .map(entry => {
           const sheetIndex = entry.content ? entry.content.indexOf("## Appearance Prompt Sheet") : -1
-          const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex) : ""
+          const promptSheet = sheetIndex !== -1 ? entry.content.substring(sheetIndex, sheetIndex + 300) : ""
           return {
             characterName: entry.name,
             category: entry.category,
@@ -3311,6 +3312,7 @@ function EditorContent() {
           }
         })
         .filter(item => item.promptSheet || (item.characterDetails && Object.values(item.characterDetails).some(val => typeof val === "string" && val.trim().length > 0)))
+        .slice(0, 10)
 
       const res = await fetch("/api/ai", {
         method: "POST",

@@ -800,7 +800,7 @@ async function generateWithGrok(systemInstruction: string, userPrompt: string, j
     process.env.XAI_MODEL,
     "grok-2-latest",
     "grok-2",
-    "grok-beta"
+    "grok-2-1212"
   ].filter(Boolean))) as string[]
 
   let lastError: unknown = null
@@ -890,8 +890,8 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
   const candidateModels = Array.from(new Set([
     process.env.GROQ_MODEL,
     "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "llama-3.1-8b-instant"
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192"
   ].filter(Boolean))) as string[]
 
   let lastError: unknown = null
@@ -981,9 +981,8 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
-    "gemini-3.6-flash",
-    "gemini-3.6-pro",
     "gemini-2.5-flash",
+    "gemini-2.0-flash",
     "gemini-1.5-flash",
     "gemini-1.5-pro"
   ].filter(Boolean))) as string[]
@@ -1523,14 +1522,16 @@ export async function POST(req: NextRequest) {
       const rawExistingAppearances = Array.isArray(existingAppearances) ? existingAppearances : []
       let existingAppearancesBlock = ""
       if (rawExistingAppearances.length > 0) {
+        const cappedAppearances = rawExistingAppearances.slice(0, 8)
         existingAppearancesBlock = "\n\nEXISTING & LOCKED APPEARANCES / PROMPT SHEETS (do NOT reuse or duplicate any of these visual details, combinations of hair/eye colors, body build, attire concepts, or visual signatures for any other character or thing):\n" +
-          rawExistingAppearances.map((item: any) => {
+          cappedAppearances.map((item: any) => {
             const details = item.characterDetails || {}
             const detailsStr = Object.entries(details)
-              .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+              .filter(([, v]) => typeof v === "string" && (v as string).trim().length > 0)
               .map(([k, v]) => `${k}: ${v}`)
               .join(", ")
-            const promptStr = item.promptSheet ? `Locked Prompt Sheet:\n${item.promptSheet}` : ""
+            const sheetText = typeof item.promptSheet === "string" ? item.promptSheet : ""
+            const promptStr = sheetText ? `Locked Prompt Sheet:\n${sheetText.slice(0, 300)}...` : ""
             return `- Entry Name: ${item.characterName || "Unknown"} (Category: ${item.category || "General"})\n  Locked Details: ${detailsStr || "None"}\n  ${promptStr}`
           }).join("\n\n")
       }
@@ -1848,7 +1849,7 @@ export async function POST(req: NextRequest) {
         : ""
       // Expand chapter context scan window and prioritize target evidence
       const chapterContent = chapterText
-        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 25000)}`
+        ? `\nFull Active Chapter Context (required scan — extract all written visual details for this ${visualSubjectLabel} before inventing anything):\n${chapterText.slice(0, 8000)}`
         : ""
       const chapterEvidence = mergedTargetEvidence
         ? `\nTarget-Focused Chapter Evidence (UNTRUNCATED FULL CHAPTER SCAN — HIGHEST PRIORITY):\n${mergedTargetEvidence}`
