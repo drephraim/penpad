@@ -981,8 +981,8 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
     "gemini-1.5-pro"
   ].filter(Boolean))) as string[]
@@ -991,25 +991,35 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const errors: Array<{ model: string; error: string }> = []
 
   for (const modelName of candidateModels) {
-    try {
-      const model = genAI.getGenerativeModel({ 
-        model: modelName,
-        systemInstruction: systemInstruction,
-        generationConfig: {
-          temperature,
-          maxOutputTokens: jsonMode ? 8192 : 4096,
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ 
+          model: modelName,
+          systemInstruction: systemInstruction,
+          generationConfig: {
+            temperature,
+            maxOutputTokens: jsonMode ? 8192 : 4096,
+          }
+        })
+
+        const result = await model.generateContent(userPrompt)
+        const text = result.response.text()
+
+        if (text && typeof text === "string") {
+          return text
         }
-      })
-
-      const result = await model.generateContent(userPrompt)
-      const text = result.response.text()
-
-      if (text && typeof text === "string") {
-        return text
+      } catch (err: any) {
+        const errMsg = err?.message || String(err)
+        const isTransient = errMsg.includes("503") || errMsg.includes("429") || errMsg.toLowerCase().includes("high demand") || errMsg.toLowerCase().includes("overloaded")
+        if (isTransient && attempt === 0) {
+          console.warn(`[Gemini] Model ${modelName} transient error (attempt 1), retrying after delay:`, errMsg)
+          await new Promise(resolve => setTimeout(resolve, 600))
+          continue
+        }
+        console.warn(`[Gemini] Model ${modelName} failed:`, errMsg)
+        errors.push({ model: modelName, error: errMsg })
+        break
       }
-    } catch (err: any) {
-      console.warn(`[Gemini] Model ${modelName} failed:`, err?.message || err)
-      errors.push({ model: modelName, error: err?.message || String(err) })
     }
   }
 
@@ -1397,8 +1407,10 @@ function formatMemoryContext(memory: unknown) {
 }
 
 export async function POST(req: NextRequest) {
+  let requestBody: any = null
   try {
     const body = await req.json()
+    requestBody = body
     const { action, content, style, prompt, memory } = body
     const memoryContext = formatMemoryContext(memory)
 
@@ -2795,7 +2807,18 @@ export async function POST(req: NextRequest) {
             }
           }
         } else if (geminiApiKey) {
-          text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+          try {
+            text = await generateWithGemini(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp ?? 0.3)
+          } catch (geminiErr) {
+            console.warn("[Gemini] Failed, trying fallback to Groq/Grok:", geminiErr)
+            if (groqApiKey) {
+              text = await generateWithGroq(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, groqApiKey)
+            } else if (grokApiKey) {
+              text = await generateWithGrok(systemInstruction, userPrompt, jsonActions.has(action), creativeTemp, grokApiKey)
+            } else {
+              throw geminiErr
+            }
+          }
         } else {
           throw new Error("No API key configured for AI generation. Please set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY in environment.")
         }
@@ -3250,6 +3273,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ text })
   } catch (error: unknown) {
     console.error("AI Generation error:", error)
+    if (requestBody && typeof requestBody === "object" && requestBody.action === "name_generate") {
+      console.warn("[Name Forge] AI Generation failed completely. Returning local algorithmic fallback name options.")
+      return NextResponse.json({
+        names: buildFallbackNameOptions(requestBody)
+      })
+    }
     const message = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json({ error: `AI Generation failed: ${message}` }, { status: 500 })
   }
