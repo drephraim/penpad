@@ -889,9 +889,10 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.15 : 0.7)
   const candidateModels = Array.from(new Set([
     process.env.GROQ_MODEL,
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama3-8b-8192"
+    "qwen/qwen3.8-27b",
+    "qwen/qwen3.6-27b",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b"
   ].filter(Boolean))) as string[]
 
   let lastError: unknown = null
@@ -923,7 +924,7 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
 
       const text = data?.choices?.[0]?.message?.content
       if (text && typeof text === "string") {
-        return text
+        return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
       }
     } catch (err) {
       console.warn(`[Groq] Model ${modelName} failed (jsonMode=${jsonMode}):`, err)
@@ -960,7 +961,7 @@ async function generateWithGroq(systemInstruction: string, userPrompt: string, j
 
         const text = data?.choices?.[0]?.message?.content
         if (text && typeof text === "string") {
-          return text
+          return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
         }
       } catch (err) {
         console.warn(`[Groq] Model ${modelName} fallback without response_format failed:`, err)
@@ -981,10 +982,12 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
   const temperature = temperatureOverride !== undefined ? temperatureOverride : (jsonMode ? 0.2 : 0.8)
   const candidateModels = Array.from(new Set([
     process.env.GEMINI_MODEL,
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro"
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash"
   ].filter(Boolean))) as string[]
 
   const genAI = new GoogleGenerativeAI(apiKey)
@@ -1006,7 +1009,7 @@ async function generateWithGemini(systemInstruction: string, userPrompt: string,
         const text = result.response.text()
 
         if (text && typeof text === "string") {
-          return text
+          return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
         }
       } catch (err: any) {
         const errMsg = err?.message || String(err)
@@ -2716,11 +2719,16 @@ export async function POST(req: NextRequest) {
 
       const isAppearanceLabAction = action === "appearance_prompts" || action === "generate_pose" || action === "generate_attire"
 
-      // Dedicated Appearance Lab API keys take priority for Appearance Lab actions only
       const dedicatedAppearanceLabKey = process.env.APPEARANCE_LAB_API_KEY || process.env.APPEARANCE_LAB_GROQ_API_KEY || process.env.APPEARANCE_LAB_GROK_API_KEY
-      const grokApiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY
-      const groqApiKey = process.env.GROQ_API_KEY
+      let grokApiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY
+      let groqApiKey = process.env.GROQ_API_KEY
       const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+      // Auto-detect if user named a Groq key (starts with 'gsk_') as GROK_API_KEY
+      if (grokApiKey?.startsWith("gsk_") && !groqApiKey) {
+        groqApiKey = grokApiKey
+        grokApiKey = undefined
+      }
 
       if (isAppearanceLabAction) {
         // Resolve key for Appearance Lab: dedicated key first, then general keys
