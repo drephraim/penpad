@@ -1209,6 +1209,42 @@ const NAME_GEN_COUNT_OPTIONS = [
   { value: 20, label: "20", hint: "Maximum" }
 ]
 
+const NORMALIZE_NAME_REGEX = /[^a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF]+/g
+const normalizeNameCache = new Map<string, string>()
+
+const normalizeNameForCompare = (name: string): string => {
+  if (!name) return ""
+  const cached = normalizeNameCache.get(name)
+  if (cached !== undefined) return cached
+  let result = ""
+  try {
+    result = name.normalize("NFKC").toLocaleLowerCase().replace(NORMALIZE_NAME_REGEX, "")
+  } catch {
+    result = name.toLocaleLowerCase().replace(/\s+/g, "")
+  }
+  if (normalizeNameCache.size > 5000) normalizeNameCache.clear()
+  normalizeNameCache.set(name, result)
+  return result
+}
+
+const makePhoneticKey = (name: string): string => {
+  return name
+    .toLocaleLowerCase()
+    .replace(/[^a-z]/g, "")
+    .replace(/[aeiouy]/g, "")
+    .replace(/(.)\1+/g, "$1")
+    .slice(0, 8)
+}
+
+const isPhoneticDuplicate = (name: string, existing: string[] | Set<string>): boolean => {
+  const key = makePhoneticKey(name)
+  if (!key) return false
+  if (existing instanceof Set) {
+    return existing.has(key)
+  }
+  return existing.some(ex => makePhoneticKey(ex) === key)
+}
+
 type NameForgePicker = string
 
 interface NameForgePreset {
@@ -7206,28 +7242,59 @@ const fillEmptyCustomJsonData = (
     }
   }
 
-  const normalizeNameForCompare = (name: string) => {
-    try {
-      return name.normalize("NFKC").toLocaleLowerCase().replace(new RegExp("[^\\p{L}\\p{N}]+", "gu"), "")
-    } catch {
-      return name.toLocaleLowerCase().replace(/\s+/g, "")
+  const lowerNotesContentCache = useMemo(() => {
+    return notes.map(n => (n?.content || "").toLowerCase())
+  }, [notes])
+
+  const mentionsCacheRef = useRef<Map<string, number>>(new Map())
+
+  useEffect(() => {
+    mentionsCacheRef.current.clear()
+  }, [lowerNotesContentCache])
+
+  const getEntryManuscriptMentions = useCallback((entryName: string) => {
+    if (!entryName || !lowerNotesContentCache || lowerNotesContentCache.length === 0) return 0
+    const lowerName = entryName.toLowerCase()
+    if (mentionsCacheRef.current.has(lowerName)) {
+      return mentionsCacheRef.current.get(lowerName)!
     }
-  }
+    let total = 0
+    for (let i = 0; i < lowerNotesContentCache.length; i++) {
+      const lowerContent = lowerNotesContentCache[i]
+      if (!lowerContent) continue
+      let pos = 0
+      while ((pos = lowerContent.indexOf(lowerName, pos)) !== -1) {
+        total++
+        pos += lowerName.length
+      }
+    }
+    mentionsCacheRef.current.set(lowerName, total)
+    return total
+  }, [lowerNotesContentCache])
 
-  const makePhoneticKey = (name: string): string => {
-    return name
-      .toLocaleLowerCase()
-      .replace(/[^a-z]/g, "")
-      .replace(/[aeiouy]/g, "")
-      .replace(/(.)\1+/g, "$1")
-      .slice(0, 8)
-  }
+  const generatedNameMentions = useMemo(() => {
+    if (activeSidebarTab !== 'names' || generatedNames.length === 0) return {}
+    const map: Record<string, number> = {}
+    for (const option of generatedNames) {
+      if (option && option.name) {
+        map[option.name] = getEntryManuscriptMentions(option.name)
+      }
+    }
+    return map
+  }, [generatedNames, activeSidebarTab, getEntryManuscriptMentions])
 
-  const isPhoneticDuplicate = (name: string, existing: string[]): boolean => {
-    const key = makePhoneticKey(name)
-    if (!key) return false
-    return existing.some(ex => makePhoneticKey(ex) === key)
-  }
+  const nameShortlistSet = useMemo(() => {
+    return new Set(nameShortlist.map(n => normalizeNameForCompare(n.name)))
+  }, [nameShortlist])
+
+  const bibleEntryNamesSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const entry of bibleEntries) {
+      const norm = normalizeNameForCompare(entry.name)
+      if (norm) set.add(norm)
+    }
+    return set
+  }, [bibleEntries])
 
   const generateNameOptions = async (append = false) => {
     if (nameGenerateLoading) return
@@ -7236,8 +7303,26 @@ const fillEmptyCustomJsonData = (
     if (!append) setAcceptedNameId(null)
 
     try {
-      const existingNameSet = new Set(bibleEntries.map(entry => normalizeNameForCompare(entry.name)).filter(Boolean))
-      const existingPhoneticKeys = bibleEntries.map(entry => makePhoneticKey(entry.name)).filter(Boolean)
+      const existingNameSet = new Set<string>()
+      const existingPhoneticKeys: string[] = []
+
+      const registerExisting = (nameStr: unknown) => {
+        const str = String(nameStr || "").trim()
+        const norm = normalizeNameForCompare(str)
+        if (norm) {
+          existingNameSet.add(norm)
+          const pk = makePhoneticKey(str)
+          if (pk) existingPhoneticKeys.push(pk)
+        }
+      }
+
+      bibleEntries.forEach(entry => registerExisting(entry.name))
+      nameShortlist.forEach(entry => registerExisting(entry.name))
+      brainEntries.forEach(entry => registerExisting(entry.entityName || entry.highlightedText))
+      if (append) {
+        generatedNames.forEach(entry => registerExisting(entry.name))
+      }
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7254,6 +7339,7 @@ const fillEmptyCustomJsonData = (
           nameSyllableBank: nameSyllableBank || undefined,
           customPrompt: `${nameCustomPrompt || ""} ${nameDiversity === "extreme" ? "EXTREME DIVERSITY MODE: Make every name sound like it comes from a completely different world or language family." : nameDiversity === "high" ? "High variety requested." : ""}`.trim(),
           bibleEntries,
+          existingNames: Array.from(existingNameSet).slice(0, 300),
           count: nameGenCount,
           chapterTitle: activeNote?.title || "",
           chapterContent: activeNote?.content || ""
@@ -7263,17 +7349,20 @@ const fillEmptyCustomJsonData = (
       if (!res.ok) throw new Error(data.error || "Failed to generate names")
 
       const uniqueNames: GeneratedNameOption[] = []
+      const batchNormSet = new Set<string>()
+      const batchPhoneticKeys = [...existingPhoneticKeys]
+
       for (const option of Array.isArray(data.names) ? data.names : []) {
         const name = String(option.name || "").trim()
         const normalized = normalizeNameForCompare(name)
         if (!name || !normalized) continue
-        if (existingNameSet.has(normalized)) continue
-        if (isPhoneticDuplicate(name, existingPhoneticKeys)) continue
-        if (!append && uniqueNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
+        if (existingNameSet.has(normalized) || batchNormSet.has(normalized)) continue
         if (append && generatedNames.some(item => normalizeNameForCompare(item.name) === normalized)) continue
+        if (isPhoneticDuplicate(name, batchPhoneticKeys)) continue
+
         uniqueNames.push({
           name,
-          category: ["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact", "treasure", "technique", "epithet", "anagram"].includes(String(option.category)) ? option.category : nameCategory,
+          category: ["character", "technique", "faction", "bloodline", "title", "city", "planet", "realm", "galaxy", "universe", "treasure", "epithet", "anagram", "beast", "world", "place", "item", "cosmic", "artifact"].includes(String(option.category).toLowerCase()) ? String(option.category).toLowerCase() : nameCategory,
           style: String(option.style || nameStyle).trim(),
           raceOrOrigin: String(option.raceOrOrigin || "").trim(),
           structure: String(option.structure || nameStructure).trim(),
@@ -7282,6 +7371,9 @@ const fillEmptyCustomJsonData = (
           vibe: String(option.vibe || "").trim(),
           bibleContent: String(option.bibleContent || option.meaning || option.vibe || "").trim()
         })
+        batchNormSet.add(normalized)
+        const pk = makePhoneticKey(name)
+        if (pk) batchPhoneticKeys.push(pk)
       }
 
       const newBatch = uniqueNames.slice(0, nameGenCount)
@@ -7324,20 +7416,6 @@ const fillEmptyCustomJsonData = (
     return "character"
   }
 
-  const getManuscriptMentionCount = useCallback((name: string): number => {
-    if (!name || !name.trim()) return 0
-    const target = name.trim().toLowerCase()
-    if (target.length < 2) return 0
-    let count = 0
-    const fullText = notes.map(n => (n.title || "") + " " + (n.content || "")).join(" ").toLowerCase()
-    let pos = 0
-    while ((pos = fullText.indexOf(target, pos)) !== -1) {
-      count++
-      pos += target.length
-    }
-    return count
-  }, [notes])
-
   const forgeEpithetsForName = (targetName: string) => {
     setNameCategory("epithet")
     setNameCustomPrompt(`Epithets and nicknames for "${targetName}"`)
@@ -7353,12 +7431,12 @@ const fillEmptyCustomJsonData = (
     setTimeout(() => generateNameOptions(false), 50)
   }
 
-  const acceptGeneratedName = async (option: GeneratedNameOption) => {
-    if (!user || !projectId) return
+  const acceptGeneratedName = async (option: GeneratedNameOption): Promise<BibleEntry | null> => {
+    if (!user || !projectId) return null
     const normalized = normalizeNameForCompare(option.name)
     if (bibleEntries.some(entry => normalizeNameForCompare(entry.name) === normalized)) {
       setNameGenerateError(`${option.name} already exists in the World Bible.`)
-      return
+      return null
     }
 
     const now = Date.now()
@@ -7389,8 +7467,10 @@ const fillEmptyCustomJsonData = (
       await saveBibleEntryToCloud(user.uid, projectId, newEntry)
       setAcceptedNameId(normalized)
       setNameGenerateError("")
+      return newEntry
     } catch (err) {
       setNameGenerateError(err instanceof Error ? err.message : "Failed to add name to World Bible")
+      return null
     }
   }
 
@@ -7412,6 +7492,24 @@ const fillEmptyCustomJsonData = (
     if (nameVariantLoading) return
     setNameVariantLoading(true)
     try {
+      const existingNameSet = new Set<string>()
+      for (const entry of bibleEntries) {
+        const norm = normalizeNameForCompare(entry.name)
+        if (norm) existingNameSet.add(norm)
+      }
+      for (const item of generatedNames) {
+        const norm = normalizeNameForCompare(item.name)
+        if (norm) existingNameSet.add(norm)
+      }
+      for (const item of nameShortlist) {
+        const norm = normalizeNameForCompare(item.name)
+        if (norm) existingNameSet.add(norm)
+      }
+      brainEntries.forEach(entry => {
+        const norm = normalizeNameForCompare(entry.entityName || entry.highlightedText || "")
+        if (norm) existingNameSet.add(norm)
+      })
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7425,6 +7523,7 @@ const fillEmptyCustomJsonData = (
           nameGender,
           customPrompt: `Variants of "${base.name}": similar sound, same vibe, alternative spellings. ${nameCustomPrompt}`,
           bibleEntries,
+          existingNames: Array.from(existingNameSet).slice(0, 300),
           count: nameGenCount,
           chapterTitle: activeNote?.title || "",
           chapterContent: activeNote?.content || ""
@@ -7432,8 +7531,32 @@ const fillEmptyCustomJsonData = (
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to generate variants")
-      const names: GeneratedNameOption[] = (Array.isArray(data.names) ? data.names : []).slice(0, nameGenCount)
-      setGeneratedNames(prev => [...names, ...prev].slice(0, 100))
+
+      const uniqueNames: GeneratedNameOption[] = []
+      const batchNormSet = new Set<string>()
+
+      for (const option of Array.isArray(data.names) ? data.names : []) {
+        const name = String(option.name || "").trim()
+        const normalized = normalizeNameForCompare(name)
+        if (!name || !normalized) continue
+        if (existingNameSet.has(normalized) || batchNormSet.has(normalized)) continue
+
+        uniqueNames.push({
+          name,
+          category: option.category || base.category || nameCategory,
+          style: option.style || base.style || nameStyle,
+          raceOrOrigin: option.raceOrOrigin || base.raceOrOrigin || "",
+          structure: option.structure || base.structure || nameStructure,
+          meaning: option.meaning || "",
+          pronunciation: option.pronunciation || "",
+          vibe: option.vibe || base.vibe || "",
+          bibleContent: option.bibleContent || option.meaning || ""
+        })
+        batchNormSet.add(normalized)
+      }
+
+      const newBatch = uniqueNames.slice(0, nameGenCount)
+      setGeneratedNames(prev => [...newBatch, ...prev].slice(0, 100))
     } catch (err) {
       setNameGenerateError(err instanceof Error ? err.message : "Failed to generate variants")
     } finally {
@@ -7640,6 +7763,24 @@ const fillEmptyCustomJsonData = (
     setNameGenerateLoading(true)
     setNameGenerateError("")
     try {
+      const existingNameSet = new Set<string>()
+      for (const entry of bibleEntries) {
+        const norm = normalizeNameForCompare(entry.name)
+        if (norm) existingNameSet.add(norm)
+      }
+      for (const item of generatedNames) {
+        const norm = normalizeNameForCompare(item.name)
+        if (norm) existingNameSet.add(norm)
+      }
+      for (const item of nameShortlist) {
+        const norm = normalizeNameForCompare(item.name)
+        if (norm) existingNameSet.add(norm)
+      }
+      brainEntries.forEach(entry => {
+        const norm = normalizeNameForCompare(entry.entityName || entry.highlightedText || "")
+        if (norm) existingNameSet.add(norm)
+      })
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7653,6 +7794,7 @@ const fillEmptyCustomJsonData = (
           nameGender,
           customPrompt: `Generate a family/clan/dynasty set related to "${base.name}": siblings, clan members, house variants. ${nameCustomPrompt}`,
           bibleEntries,
+          existingNames: Array.from(existingNameSet).slice(0, 300),
           count: nameGenCount,
           chapterTitle: activeNote?.title || "",
           chapterContent: activeNote?.content || ""
@@ -7660,8 +7802,32 @@ const fillEmptyCustomJsonData = (
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to generate family names")
-      const names: GeneratedNameOption[] = (Array.isArray(data.names) ? data.names : []).slice(0, nameGenCount)
-      setGeneratedNames(prev => [...names, ...prev].slice(0, 100))
+
+      const uniqueNames: GeneratedNameOption[] = []
+      const batchNormSet = new Set<string>()
+
+      for (const option of Array.isArray(data.names) ? data.names : []) {
+        const name = String(option.name || "").trim()
+        const normalized = normalizeNameForCompare(name)
+        if (!name || !normalized) continue
+        if (existingNameSet.has(normalized) || batchNormSet.has(normalized)) continue
+
+        uniqueNames.push({
+          name,
+          category: option.category || base.category || nameCategory,
+          style: option.style || base.style || nameStyle,
+          raceOrOrigin: option.raceOrOrigin || base.raceOrOrigin || "",
+          structure: option.structure || base.structure || nameStructure,
+          meaning: option.meaning || "",
+          pronunciation: option.pronunciation || "",
+          vibe: option.vibe || base.vibe || "",
+          bibleContent: option.bibleContent || option.meaning || ""
+        })
+        batchNormSet.add(normalized)
+      }
+
+      const newBatch = uniqueNames.slice(0, nameGenCount)
+      setGeneratedNames(prev => [...newBatch, ...prev].slice(0, 100))
     } catch (err) {
       setNameGenerateError(err instanceof Error ? err.message : "Failed to generate family names")
     } finally {
@@ -7671,11 +7837,11 @@ const fillEmptyCustomJsonData = (
 
   const acceptGeneratedNameWithUndo = async (option: GeneratedNameOption) => {
     setNameUndoEntry(null)
-    await acceptGeneratedName(option)
-    const normalized = normalizeNameForCompare(option.name)
-    const added = bibleEntries.find(e => normalizeNameForCompare(e.name) === normalized)
-    if (added) setNameUndoEntry(added)
-    setTimeout(() => setNameUndoEntry(null), 10000)
+    const added = await acceptGeneratedName(option)
+    if (added) {
+      setNameUndoEntry(added)
+      setTimeout(() => setNameUndoEntry(null), 10000)
+    }
   }
 
   const deleteBibleEntry = async (entryId: string) => {
@@ -9230,19 +9396,32 @@ const fillEmptyCustomJsonData = (
     }
   }, [isBibleSelectionMode, selectedBibleIds.size])
 
+  const nameForgeShortcutsRef = useRef({
+    generate: () => generateNameOptions(false),
+    acceptFirst: () => generatedNames.length > 0 && acceptGeneratedNameWithUndo(generatedNames[0]),
+    shortlistFirst: () => generatedNames.length > 0 && addToShortlist(generatedNames[0]),
+    randomize: () => randomizeNameForgeParams()
+  })
+  nameForgeShortcutsRef.current = {
+    generate: () => generateNameOptions(false),
+    acceptFirst: () => generatedNames.length > 0 && acceptGeneratedNameWithUndo(generatedNames[0]),
+    shortlistFirst: () => generatedNames.length > 0 && addToShortlist(generatedNames[0]),
+    randomize: () => randomizeNameForgeParams()
+  }
+
   // Keyboard shortcuts for Name Forge
   useEffect(() => {
+    if (!isLeftSidebarOpen || activeSidebarTab !== 'names') return
     const handler = (e: KeyboardEvent) => {
-      if (!isLeftSidebarOpen || activeSidebarTab !== 'names') return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.altKey && e.key === 'g') { e.preventDefault(); generateNameOptions(false) }
-      if (e.altKey && e.key === 'a' && generatedNames.length > 0) { e.preventDefault(); acceptGeneratedNameWithUndo(generatedNames[0]) }
-      if (e.altKey && e.key === 's' && generatedNames.length > 0) { e.preventDefault(); addToShortlist(generatedNames[0]) }
-      if (e.altKey && e.key === 'r') { e.preventDefault(); randomizeNameForgeParams() }
+      if (e.altKey && e.key === 'g') { e.preventDefault(); nameForgeShortcutsRef.current.generate() }
+      if (e.altKey && e.key === 'a') { e.preventDefault(); nameForgeShortcutsRef.current.acceptFirst() }
+      if (e.altKey && e.key === 's') { e.preventDefault(); nameForgeShortcutsRef.current.shortlistFirst() }
+      if (e.altKey && e.key === 'r') { e.preventDefault(); nameForgeShortcutsRef.current.randomize() }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  })
+  }, [isLeftSidebarOpen, activeSidebarTab])
 
   // Reset lore editor fields when opening
   useEffect(() => {
@@ -9942,39 +10121,52 @@ ${navPoints}  </navMap>
           return words.some(w => w.startsWith(lowerClean)) || lowerName.startsWith(lowerClean)
         })
 
-        // 2. Compute scores ONCE per matching entry
-        const entryScores = new Map<string, number>()
-        matchingEntries.forEach(entry => {
-          const lowerName = entry.name.toLowerCase()
-          const selects = (bibleSelectCounts[entry.id] || 0) + (bibleSelectCounts[lowerName] || 0)
-          const mentions = getEntryManuscriptMentions(entry.name)
-          entryScores.set(entry.id, (selects * 100) + mentions)
-        })
+        let matches: string[] = []
 
-        // 3. Rank strictly based on pre-computed score
-        matchingEntries.sort((a, b) => {
-          const aScore = entryScores.get(a.id) || 0
-          const bScore = entryScores.get(b.id) || 0
+        if (matchingEntries.length > 0) {
+          // Pre-rank candidate pool before calculating manuscript mentions
+          matchingEntries.sort((a, b) => {
+            const aNameLower = a.name.toLowerCase()
+            const bNameLower = b.name.toLowerCase()
+            const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
+            const bExactPrefix = bNameLower.startsWith(lowerClean) ? 1 : 0
+            if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
 
-          if (aScore !== bScore) {
-            return bScore - aScore // Higher call count comes first!
-          }
+            const aSelects = (bibleSelectCounts[a.id] || 0) + (bibleSelectCounts[aNameLower] || 0)
+            const bSelects = (bibleSelectCounts[b.id] || 0) + (bibleSelectCounts[bNameLower] || 0)
+            if (aSelects !== bSelects) return bSelects - aSelects
 
-          const aNameLower = a.name.toLowerCase()
-          const bNameLower = b.name.toLowerCase()
+            return (b.updatedAt || 0) - (a.updatedAt || 0)
+          })
 
-          // Secondary sort: exact name prefix match first
-          const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
-          const bExactPrefix = bNameLower.startsWith(lowerClean) ? 1 : 0
-          if (aExactPrefix !== bExactPrefix) {
-            return bExactPrefix - aExactPrefix
-          }
+          const topCandidates = matchingEntries.slice(0, 10)
 
-          // Tertiary sort: recency / update order
-          return (b.updatedAt || 0) - (a.updatedAt || 0)
-        })
+          // 2. Compute scores ONCE only for top candidates
+          const entryScores = new Map<string, number>()
+          topCandidates.forEach(entry => {
+            const lowerName = entry.name.toLowerCase()
+            const selects = (bibleSelectCounts[entry.id] || 0) + (bibleSelectCounts[lowerName] || 0)
+            const mentions = getEntryManuscriptMentions(entry.name)
+            entryScores.set(entry.id, (selects * 100) + mentions)
+          })
 
-        const matches = matchingEntries.map(entry => entry.name)
+          // 3. Final rank top candidates
+          topCandidates.sort((a, b) => {
+            const aScore = entryScores.get(a.id) || 0
+            const bScore = entryScores.get(b.id) || 0
+            if (aScore !== bScore) return bScore - aScore
+
+            const aNameLower = a.name.toLowerCase()
+            const bNameLower = b.name.toLowerCase()
+            const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
+            const bExactPrefix = bNameLower.startsWith(lowerClean) ? 1 : 0
+            if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
+
+            return (b.updatedAt || 0) - (a.updatedAt || 0)
+          })
+
+          matches = topCandidates.map(entry => entry.name)
+        }
 
         if (matches.length > 0) {
           setAutocompleteSuggestions(matches)
@@ -10591,35 +10783,6 @@ ${navPoints}  </navMap>
     return getOrderedNotesList(filteredNotes)
   }, [filteredNotes, getOrderedNotesList])
 
-  const lowerNotesContentCache = useMemo(() => {
-    return notes.map(n => (n?.content || "").toLowerCase())
-  }, [notes])
-
-  const mentionsCacheRef = useRef<Map<string, number>>(new Map())
-
-  useEffect(() => {
-    mentionsCacheRef.current.clear()
-  }, [lowerNotesContentCache])
-
-  const getEntryManuscriptMentions = useCallback((entryName: string) => {
-    if (!entryName || !lowerNotesContentCache || lowerNotesContentCache.length === 0) return 0
-    const lowerName = entryName.toLowerCase()
-    if (mentionsCacheRef.current.has(lowerName)) {
-      return mentionsCacheRef.current.get(lowerName)!
-    }
-    let total = 0
-    for (let i = 0; i < lowerNotesContentCache.length; i++) {
-      const lowerContent = lowerNotesContentCache[i]
-      if (!lowerContent) continue
-      let pos = 0
-      while ((pos = lowerContent.indexOf(lowerName, pos)) !== -1) {
-        total++
-        pos += lowerName.length
-      }
-    }
-    mentionsCacheRef.current.set(lowerName, total)
-    return total
-  }, [lowerNotesContentCache])
 
   const sortedVolumes = useMemo(() => {
     return [...volumes].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -14444,7 +14607,14 @@ ${navPoints}  </navMap>
                     if (q && !o.name.toLowerCase().includes(q) && !(o.meaning || "").toLowerCase().includes(q) && !(o.raceOrOrigin || "").toLowerCase().includes(q)) return false
                     if (nameCategoryFilter && o.category !== nameCategoryFilter) return false
                     return true
-                  }) : generatedNames).map((option, idx) => (
+                  }) : generatedNames).map((option, idx) => {
+                    const normName = normalizeNameForCompare(option.name)
+                    const mentionCount = generatedNameMentions[option.name] ?? 0
+                    const isAdded = acceptedNameId === normName || bibleEntryNamesSet.has(normName)
+                    const isShortlisted = nameShortlistSet.has(normName)
+                    const userRating = nameRatings[normName]?.rating
+
+                    return (
                     <div key={`${option.name}-${idx}`} className="name-result-card">
                       <div className="name-result-card-header">
                         <label className="name-batch-checkbox" onClick={(e) => e.stopPropagation()}>
@@ -14477,9 +14647,9 @@ ${navPoints}  </navMap>
                       <div className="name-result-meta">
                         {option.raceOrOrigin && <span>{option.raceOrOrigin}</span>}
                         {option.pronunciation && <span>{option.pronunciation}</span>}
-                        <span style={{ color: getManuscriptMentionCount(option.name) > 0 ? "#10b981" : "var(--text-dim)" }} title="Occurrences across manuscript notes">
+                        <span style={{ color: mentionCount > 0 ? "#10b981" : "var(--text-dim)" }} title="Occurrences across manuscript notes">
                           <FileText size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} />
-                          {getManuscriptMentionCount(option.name)} in text
+                          {mentionCount} in text
                         </span>
                       </div>
                       <div className="name-result-actions">
@@ -14487,10 +14657,10 @@ ${navPoints}  </navMap>
                           type="button"
                           className="btn-ai-sub btn-ai-primary"
                           onClick={() => acceptGeneratedNameWithUndo(option)}
-                          disabled={acceptedNameId === normalizeNameForCompare(option.name)}
+                          disabled={isAdded}
                           title="Add to Bible (Alt+A)"
                         >
-                          {acceptedNameId === normalizeNameForCompare(option.name) ? "Added" : "Add"}
+                          {isAdded ? "Added" : "Add"}
                         </button>
                         <button
                           type="button"
@@ -14524,7 +14694,7 @@ ${navPoints}  </navMap>
                           type="button"
                           className="btn-ai-sub"
                           onClick={() => addToShortlist(option)}
-                          disabled={nameShortlist.some(n => normalizeNameForCompare(n.name) === normalizeNameForCompare(option.name))}
+                          disabled={isShortlisted}
                           title="Save to shortlist (Alt+S)"
                         >
                           <Bookmark size={13} />
@@ -14557,7 +14727,7 @@ ${navPoints}  </navMap>
                         </button>
                         <button
                           type="button"
-                          className={`btn-ai-sub ${nameRatings[normalizeNameForCompare(option.name)]?.rating === "up" ? "btn-ai-primary" : ""}`}
+                          className={`btn-ai-sub ${userRating === "up" ? "btn-ai-primary" : ""}`}
                           onClick={() => rateName(option, "up")}
                           title="Like"
                         >
@@ -14565,7 +14735,7 @@ ${navPoints}  </navMap>
                         </button>
                         <button
                           type="button"
-                          className={`btn-ai-sub ${nameRatings[normalizeNameForCompare(option.name)]?.rating === "down" ? "btn-ai-primary" : ""}`}
+                          className={`btn-ai-sub ${userRating === "down" ? "btn-ai-primary" : ""}`}
                           onClick={() => rateName(option, "down")}
                           title="Dislike"
                         >
@@ -14573,7 +14743,7 @@ ${navPoints}  </navMap>
                         </button>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
 
                 {/* Shortlist section */}

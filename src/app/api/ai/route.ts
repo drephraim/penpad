@@ -326,343 +326,389 @@ function parseJsonValue<T>(text: string): T | null {
   }
 }
 
+const NORMALIZE_NAME_REGEX = /[^a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF]+/g
+const normalizeNameCache = new Map<string, string>()
+
 function normalizeNameForCompare(name: string): string {
+  if (!name) return ""
+  const cached = normalizeNameCache.get(name)
+  if (cached !== undefined) return cached
+  let result = ""
   try {
-    return name.normalize("NFKC").toLocaleLowerCase().replace(new RegExp("[^\\p{L}\\p{N}]+", "gu"), "")
+    result = name.normalize("NFKC").toLocaleLowerCase().replace(NORMALIZE_NAME_REGEX, "")
   } catch {
-    return name.toLocaleLowerCase().replace(/\s+/g, "")
+    result = name.toLocaleLowerCase().replace(/\s+/g, "")
   }
+  if (normalizeNameCache.size > 5000) normalizeNameCache.clear()
+  normalizeNameCache.set(name, result)
+  return result
+}
+
+function makePhoneticKey(name: string): string {
+  return name
+    .toLocaleLowerCase()
+    .replace(/[^a-z]/g, "")
+    .replace(/[aeiouy]/g, "")
+    .replace(/(.)\1+/g, "$1")
+    .slice(0, 8)
 }
 
 function buildFallbackNameOptions(body: Record<string, any>) {
   const style = String(body.nameStyle || "fantasy").toLowerCase()
   const style2 = String(body.nameStyle2 || "").toLowerCase()
-  const category = ["character", "beast", "world", "place", "item"].includes(String(body.nameCategory)) ? String(body.nameCategory) : "character"
+  const rawCat = String(body.nameCategory || "character").toLowerCase()
+  const category = [
+    "character", "technique", "faction", "bloodline", "title",
+    "city", "planet", "realm", "galaxy", "universe", "treasure",
+    "epithet", "anagram", "beast", "world", "place", "item", "cosmic", "artifact"
+  ].includes(rawCat) ? rawCat : "character"
   const structure = String(body.nameStructure || "any").toLowerCase()
   const tone = String(body.nameTone || "memorable")
   const prompt = String(body.customPrompt || "")
   const requestedCount = Math.min(Math.max(1, Number(body.count) || 5), 20)
-  const existing = new Set(
-    Array.isArray(body.bibleEntries)
-      ? body.bibleEntries.map((entry: any) => normalizeNameForCompare(String(entry?.name || ""))).filter(Boolean)
-      : []
-  )
-  const seed = (Date.now() + style.length * 13 + category.length * 17 + structure.length * 19 + prompt.length * 23) % 997
+
+  const existing = new Set<string>()
+  const existingPhonetic = new Set<string>()
+
+  const registerName = (n: unknown) => {
+    const s = String(n || "").trim()
+    const norm = normalizeNameForCompare(s)
+    if (norm) {
+      existing.add(norm)
+      const pk = makePhoneticKey(s)
+      if (pk) existingPhonetic.add(pk)
+    }
+  }
+
+  if (Array.isArray(body.bibleEntries)) {
+    for (const entry of body.bibleEntries) registerName(entry?.name)
+  }
+  if (Array.isArray(body.nameShortlist)) {
+    for (const item of body.nameShortlist) registerName(item?.name)
+  }
+  if (Array.isArray(body.excludeNames)) {
+    for (const n of body.excludeNames) registerName(n)
+  }
+  if (Array.isArray(body.existingNames)) {
+    for (const n of body.existingNames) registerName(n)
+  }
+
+  const seed = (Date.now() + style.length * 13 + category.length * 17 + structure.length * 19 + prompt.length * 23 + Math.floor(Math.random() * 9999)) % 997
 
   const banks: Record<string, { family: string[]; given: string[]; middle: string[]; epithet: string[]; origin: string }> = {
     chinese: {
-      family: ["Shen", "Liang", "Wei", "Jiang", "Luo", "Yun", "Mo", "Han"],
-      given: ["Qingxuan", "Moye", "Zhenyu", "Lianhua", "Ruyin", "Xiaofeng", "Yueshen", "Ninghai"],
-      middle: ["Silent", "Cloud", "Jade", "Night", "Crimson", "Hidden"],
-      epithet: ["Shadow Lotus", "Moon Blade", "Silent Meridian", "Jade Warden"],
+      family: ["Shen", "Liang", "Wei", "Jiang", "Luo", "Yun", "Mo", "Han", "Xiao", "Gu", "Chu", "Ye", "Bai", "Lin", "Feng", "Su"],
+      given: ["Qingxuan", "Moye", "Zhenyu", "Lianhua", "Ruyin", "Xiaofeng", "Yueshen", "Ninghai", "Wuchen", "Changfeng", "Zixuan", "Hanyue", "Tianlan", "Bailin", "Yunfei", "Chuan"],
+      middle: ["Silent", "Cloud", "Jade", "Night", "Crimson", "Hidden", "Azure", "Frost", "Mystic"],
+      epithet: ["Shadow Lotus", "Moon Blade", "Silent Meridian", "Jade Warden", "Sky Severer", "Ninefold Daoist"],
       origin: "Chinese-inspired cultivation"
     },
     japanese: {
-      family: ["Kurogane", "Tsukihara", "Minazuki", "Akamori", "Shiranui", "Yorozu"],
-      given: ["Renka", "Mitsuo", "Sayori", "Kaito", "Hotaru", "Yukina", "Reiha"],
-      middle: ["Nocturne", "Ember", "Mist", "Iron", "Moon"],
-      epithet: ["Foxfire", "Moon-Edge", "Ashen Shrine", "Mist Oath"],
+      family: ["Kurogane", "Tsukihara", "Minazuki", "Akamori", "Shiranui", "Yorozu", "Kazama", "Rindo", "Hayabusa", "Mizuki", "Togawa", "Kagurazaka"],
+      given: ["Renka", "Mitsuo", "Sayori", "Kaito", "Hotaru", "Yukina", "Reiha", "Shinji", "Kazuki", "Ayame", "Tatsuo", "Kohaku"],
+      middle: ["Nocturne", "Ember", "Mist", "Iron", "Moon", "Spirit", "Blossom"],
+      epithet: ["Foxfire", "Moon-Edge", "Ashen Shrine", "Mist Oath", "Blade Saint", "Ghost Walker"],
       origin: "Japanese-inspired fantasy"
     },
     korean: {
-      family: ["Kim", "Park", "Choi", "Yoon", "Seo", "Jang", "Baek"],
-      given: ["Hyejin", "Minjun", "Sooyoung", "Jaehwan", "Eunji", "Donghyun", "Nayoung"],
-      middle: ["Morning", "Silk", "Crystal", "Autumn", "Star"],
-      epithet: ["Morning Lotus", "Silk Veil", "Autumn Frost", "Star Singer"],
+      family: ["Kim", "Park", "Choi", "Yoon", "Seo", "Jang", "Baek", "Kang", "Song", "Han", "Shin", "Ryu"],
+      given: ["Hyejin", "Minjun", "Sooyoung", "Jaehwan", "Eunji", "Donghyun", "Nayoung", "Taewon", "Suhyeon", "Jinwoo", "Chaewon", "Doyun"],
+      middle: ["Morning", "Silk", "Crystal", "Autumn", "Star", "Jade", "Lotus"],
+      epithet: ["Morning Lotus", "Silk Veil", "Autumn Frost", "Star Singer", "Dragon Sovereign", "Iron Blossom"],
       origin: "Korean-inspired fantasy"
     },
     elven: {
-      family: ["Aeltharyn", "Vaeloria", "Sylmareth", "Elarion", "Thalanis"],
-      given: ["Liora", "Faelith", "Aerendyl", "Nymeriel", "Caelion", "Vaelis"],
-      middle: ["Star", "Willow", "Dawn", "Silver", "Thorn"],
-      epithet: ["Starbloom", "Moonwoven", "Dusk Harp", "Silverleaf"],
+      family: ["Aeltharyn", "Vaeloria", "Sylmareth", "Elarion", "Thalanis", "Morvanyth", "Caeldor", "Quenari", "Feanorin", "Aerendyl"],
+      given: ["Liora", "Faelith", "Aerendyl", "Nymeriel", "Caelion", "Vaelis", "Ilyndra", "Theron", "Alassë", "Elentari", "Naeris", "Kaelen"],
+      middle: ["Star", "Willow", "Dawn", "Silver", "Thorn", "Mist", "Sun"],
+      epithet: ["Starbloom", "Moonwoven", "Dusk Harp", "Silverleaf", "Sunwarden", "Dewbringer"],
       origin: "Elven"
     },
     demonic: {
-      family: ["Varkhazar", "Maldrake", "Zorveth", "Ashkhael", "Drazhkul"],
-      given: ["Kaelrix", "Veyrath", "Nocthara", "Azrul", "Morvayne", "Xalreth"],
-      middle: ["Blood", "Abyss", "Cinder", "Ruin", "Horn"],
-      epithet: ["Oathbreaker", "Black Pyre", "Dread Crown", "Hellscar"],
+      family: ["Varkhazar", "Maldrake", "Zorveth", "Ashkhael", "Drazhkul", "Gorvath", "Xalvador", "Noxgath", "Baelgarr", "Mortivor"],
+      given: ["Kaelrix", "Veyrath", "Nocthara", "Azrul", "Morvayne", "Xalreth", "Balakor", "Skargoth", "Malzahar", "Venomfang", "Raum", "Belial"],
+      middle: ["Blood", "Abyss", "Cinder", "Ruin", "Horn", "Dread", "Shadow"],
+      epithet: ["Oathbreaker", "Black Pyre", "Dread Crown", "Hellscar", "Soul Eater", "Doom Herald"],
       origin: "Demonic"
     },
     beast: {
-      family: ["Ironmane", "Thunderclaw", "Voidscale", "Moonfang", "Ashhorn", "Stormhide"],
-      given: ["Ravok", "Kryll", "Zhara", "Mawren", "Skoruun", "Velk"],
-      middle: ["Feral", "Ancient", "Howling", "Scaled", "Dire"],
-      epithet: ["World-Eater", "Night Prowler", "Storm Tusker", "Sky Rend"],
+      family: ["Ironmane", "Thunderclaw", "Voidscale", "Moonfang", "Ashhorn", "Stormhide", "Grimwing", "Bloodtusk", "Dreadmaw", "Rimeclaw"],
+      given: ["Ravok", "Kryll", "Zhara", "Mawren", "Skoruun", "Velk", "Gorr", "Fangor", "Rend", "Savage", "Ursok", "Vorn"],
+      middle: ["Feral", "Ancient", "Howling", "Scaled", "Dire", "Primal", "Ravage"],
+      epithet: ["World-Eater", "Night Prowler", "Storm Tusker", "Sky Rend", "Bone Crusher", "Pack Father"],
       origin: "Beast or monster"
     },
     cultivation: {
-      family: ["Azure Peak", "Ninefold", "Crimson Crane", "Void Lotus", "Heaven-Severing"],
-      given: ["Sect", "Pavilion", "Palace", "Valley", "Hall", "Sanctum"],
-      middle: ["Inner", "Hidden", "Elder", "Celestial", "Forbidden"],
-      epithet: ["Sword Oath", "Dragon Meridian", "Soul Furnace", "Cloud Tribulation"],
+      family: ["Azure Peak", "Ninefold", "Crimson Crane", "Void Lotus", "Heaven-Severing", "Taiyi", "Purple Cloud", "Golden Crow", "Star River"],
+      given: ["Sect", "Pavilion", "Palace", "Valley", "Hall", "Sanctum", "Abode", "Summit", "Shrine", "Gate"],
+      middle: ["Inner", "Hidden", "Elder", "Celestial", "Forbidden", "Primordial", "Grand"],
+      epithet: ["Sword Oath", "Dragon Meridian", "Soul Furnace", "Cloud Tribulation", "Dao Sovereign", "Immortal Ascension"],
       origin: "Cultivation world"
     },
     noble: {
-      family: ["Vance", "Ashwick", "Montgrave", "Sterling", "Fairwyn", "Highmere"],
-      given: ["Alistair", "Seraphina", "Julian", "Cordelia", "Percival", "Lavinia"],
-      middle: ["Duke", "Lord", "Lady", "Baron", "Count", "Sir"],
-      epithet: ["Iron Duke", "Crimson Baron", "Silver Lady", "High Warden"],
+      family: ["Vance", "Ashwick", "Montgrave", "Sterling", "Fairwyn", "Highmere", "Valois", "Kensington", "Lancaster", "Somerset"],
+      given: ["Alistair", "Seraphina", "Julian", "Cordelia", "Percival", "Lavinia", "Roderick", "Genevieve", "Gideon", "Beatrix"],
+      middle: ["Duke", "Lord", "Lady", "Baron", "Count", "Sir", "Marquess"],
+      epithet: ["Iron Duke", "Crimson Baron", "Silver Lady", "High Warden", "Golden Lion", "Gilded Falcon"],
       origin: "Noble house"
     },
     divine: {
-      family: ["Seraphyne", "Aurelion", "Solmara", "Elyndra", "Vauntiel"],
-      given: ["Orison", "Celest", "Halo", "Lumin", "Astrael", "Vespera"],
-      middle: ["Radiant", "Dawn", "Oracle", "Crown", "Star"],
-      epithet: ["Sun-Crowned", "Heaven's Witness", "Dawn Herald", "Star Vow"],
+      family: ["Seraphyne", "Aurelion", "Solmara", "Elyndra", "Vauntiel", "Luminis", "Astraea", "Celestis", "Helios"],
+      given: ["Orison", "Celest", "Halo", "Lumin", "Astrael", "Vespera", "Solarius", "Aethelgard", "Uriel", "Elysia"],
+      middle: ["Radiant", "Dawn", "Oracle", "Crown", "Star", "Sacred", "Eternal"],
+      epithet: ["Sun-Crowned", "Heaven's Witness", "Dawn Herald", "Star Vow", "Golden Pillar", "Holy Eye"],
       origin: "Divine or celestial"
     },
     grimdark: {
-      family: ["Graves", "Blackthorn", "Murkwood", "Ravencroft", "Sorrowfeld"],
-      given: ["Malek", "Vorlag", "Grenda", "Threx", "Morrik", "Sable"],
-      middle: ["Rust", "Ash", "Bone", "Slag", "Grief"],
-      epithet: ["Bone Carver", "Ash Lord", "Rust Prince", "Grief Walker"],
+      family: ["Graves", "Blackthorn", "Murkwood", "Ravencroft", "Sorrowfeld", "Gallows", "Corpsevale", "Dredge", "Blight"],
+      given: ["Malek", "Vorlag", "Grenda", "Threx", "Morrik", "Sable", "Vesper", "Grimm", "Bane", "Ruin"],
+      middle: ["Rust", "Ash", "Bone", "Slag", "Grief", "Spite", "Carrion"],
+      epithet: ["Bone Carver", "Ash Lord", "Rust Prince", "Grief Walker", "Crow Feeder", "Hangman"],
       origin: "Grimdark"
     },
     fantasy: {
-      family: ["Veylan", "Draven", "Mireholt", "Sablemere", "Asterion", "Kyr Vale"],
-      given: ["Kaelen", "Mirae", "Thorne", "Seren", "Vael", "Nyra", "Corvin"],
-      middle: ["Ash", "Rune", "Storm", "Vale", "Night", "Ember"],
-      epithet: ["Glass Blade", "Runebound", "Storm-Touched", "Ashen Star"],
+      family: ["Veylan", "Draven", "Mireholt", "Sablemere", "Asterion", "Kyr Vale", "Silverfall", "Stormwatch", "Hearthstone", "Evergreen"],
+      given: ["Kaelen", "Mirae", "Thorne", "Seren", "Vael", "Nyra", "Corvin", "Rowan", "Elowen", "Cassian", "Orin", "Bryn"],
+      middle: ["Ash", "Rune", "Storm", "Vale", "Night", "Ember", "Frost"],
+      epithet: ["Glass Blade", "Runebound", "Storm-Touched", "Ashen Star", "Moon Walker", "Wanderer"],
       origin: "Invented fantasy"
     },
     viking: {
-      family: ["Ironsson", "Stormveig", "Bjornolf", "Hildebrand", "Ragnarsen"],
-      given: ["Eirik", "Sigrid", "Ulfgar", "Freydis", "Bjorn", "Astrid", "Rollo"],
-      middle: ["Ice", "Sea", "Wolf", "Thunder", "Shield"],
-      epithet: ["Sea Wolf", "Ice Cleaver", "Thunder Helm", "Shield Maiden"],
+      family: ["Ironsson", "Stormveig", "Bjornolf", "Hildebrand", "Ragnarsen", "Wolfsbane", "Bloodaxe", "Skallagrim"],
+      given: ["Eirik", "Sigrid", "Ulfgar", "Freydis", "Bjorn", "Astrid", "Rollo", "Torstein", "Gunnar", "Hilda"],
+      middle: ["Ice", "Sea", "Wolf", "Thunder", "Shield", "Frost"],
+      epithet: ["Sea Wolf", "Ice Cleaver", "Thunder Helm", "Shield Maiden", "Bear Heart", "Rune Carver"],
       origin: "Viking / Norse saga"
     },
     slavic: {
-      family: ["Zarubin", "Morozov", "Kovalenko", "Sokoloff", "Dragomir"],
-      given: ["Dobromir", "Vesna", "Zoran", "Mila", "Radovan", "Svetlana", "Boris"],
+      family: ["Zarubin", "Morozov", "Kovalenko", "Sokoloff", "Dragomir", "Volkov", "Chernov", "Radovan"],
+      given: ["Dobromir", "Vesna", "Zoran", "Mila", "Radovan", "Svetlana", "Boris", "Yaroslav", "Bogdan", "Nadezhda"],
       middle: ["Winter", "Forest", "Mountain", "Sun", "Star"],
-      epithet: ["Night Watch", "Winter Wolf", "Forest Tsar", "Sun Dancer"],
+      epithet: ["Night Watch", "Winter Wolf", "Forest Tsar", "Sun Dancer", "Iron Bear"],
       origin: "Slavic fairy-tale"
     },
     celtic: {
-      family: ["O'Morain", "MacBride", "Driscoll", "Kavanagh", "O'Shea"],
-      given: ["Aisling", "Cormac", "Saoirse", "Finnian", "Brigid", "Torin", "Niamh"],
+      family: ["O'Morain", "MacBride", "Driscoll", "Kavanagh", "O'Shea", "MacCullough", "MacLir"],
+      given: ["Aisling", "Cormac", "Saoirse", "Finnian", "Brigid", "Torin", "Niamh", "Ciaran", "Maeve", "Rory"],
       middle: ["Mist", "Oak", "Stone", "Dew", "Raven"],
-      epithet: ["Mist Walker", "Oak Heart", "Stone Singer", "Raven Call"],
+      epithet: ["Mist Walker", "Oak Heart", "Stone Singer", "Raven Call", "Song of Eriu"],
       origin: "Celtic druidic"
     },
     egyptian: {
-      family: ["Amun-Ra", "Nebtnet", "Setepka", "Ankhu", "Meresger"],
-      given: ["Khenemet", "Neferu", "Senmut", "Hatshepsut", "Amenhotep", "Isis"],
+      family: ["Amun-Ra", "Nebtnet", "Setepka", "Ankhu", "Meresger", "Khem", "Menes"],
+      given: ["Khenemet", "Neferu", "Senmut", "Hatshepsut", "Amenhotep", "Isis", "Ramses", "Thutmose", "Sobek"],
       middle: ["Sun", "Nile", "Gold", "Scarab", "Lotus"],
-      epithet: ["Sun of Ra", "Nile Guardian", "Golden Mask", "Lotus Crown"],
+      epithet: ["Sun of Ra", "Nile Guardian", "Golden Mask", "Lotus Crown", "Eye of Horus"],
       origin: "Ancient Egyptian"
     },
     mesoamerican: {
-      family: ["Chimal", "Coyotl", "Quetzal", "Ichtaca", "Xochitl"],
-      given: ["Cuauhtli", "Xochitl", "Tlalli", "Citlali", "Yolotli", "Ollin"],
+      family: ["Chimal", "Coyotl", "Quetzal", "Ichtaca", "Xochitl", "Tenoch", "Moctezuma"],
+      given: ["Cuauhtli", "Xochitl", "Tlalli", "Citlali", "Yolotli", "Ollin", "Itzcoatl", "Nahuatl"],
       middle: ["Jaguar", "Feather", "Sun", "Rain", "Flower"],
-      epithet: ["Jaguar Claw", "Feather Serpent", "Sun Priest", "Flower Warrior"],
+      epithet: ["Jaguar Claw", "Feather Serpent", "Sun Priest", "Flower Warrior", "Obsidian Heart"],
       origin: "Mesoamerican empire"
     },
     arabian: {
-      family: ["Al-Rashid", "Ibn Khalid", "Al-Nassar", "Qadir", "Zahiri"],
-      given: ["Farid", "Jasmina", "Tariq", "Layla", "Samir", "Zahra", "Nasir"],
+      family: ["Al-Rashid", "Ibn Khalid", "Al-Nassar", "Qadir", "Zahiri", "Al-Hassan", "Al-Mansoor"],
+      given: ["Farid", "Jasmina", "Tariq", "Layla", "Samir", "Zahra", "Nasir", "Karim", "Soraya", "Bilal"],
       middle: ["Sand", "Silk", "Star", "Moon", "Rose"],
-      epithet: ["Sand Dancer", "Silk Voice", "Star Seeker", "Moon Knight"],
+      epithet: ["Sand Dancer", "Silk Voice", "Star Seeker", "Moon Knight", "Dune Mirage"],
       origin: "Arabian / Persian nights"
     },
     hindi: {
-      family: ["Devaraja", "Mahajan", "Chandran", "Rathore", "Sharma"],
-      given: ["Arjun", "Priya", "Vikram", "Ananya", "Rohan", "Kavya", "Dhruv"],
+      family: ["Devaraja", "Mahajan", "Chandran", "Rathore", "Sharma", "Bhatt", "Chakraborty"],
+      given: ["Arjun", "Priya", "Vikram", "Ananya", "Rohan", "Kavya", "Dhruv", "Indrajit", "Devika"],
       middle: ["Golden", "Lotus", "Thunder", "Peacock", "Diamond"],
-      epithet: ["Golden Lotus", "Thunder Bolt", "Peacock Prince", "Diamond Soul"],
+      epithet: ["Golden Lotus", "Thunder Bolt", "Peacock Prince", "Diamond Soul", "Fire Ascetic"],
       origin: "Indian epic mythology"
     },
     greek: {
-      family: ["Aetos", "Damianos", "Kypris", "Theron", "Kallistratos"],
-      given: ["Cassandra", "Leonidas", "Thalia", "Damon", "Iris", "Orion", "Phaedra"],
+      family: ["Aetos", "Damianos", "Kypris", "Theron", "Kallistratos", "Thessalon", "Argos"],
+      given: ["Cassandra", "Leonidas", "Thalia", "Damon", "Iris", "Orion", "Phaedra", "Perseus", "Demetrius"],
       middle: ["Bronze", "Marble", "Ivory", "Laurel", "Oracle"],
-      epithet: ["Bronze Spear", "Oracle Voice", "Laurel Crown", "Marble Gaze"],
+      epithet: ["Bronze Spear", "Oracle Voice", "Laurel Crown", "Marble Gaze", "Thunder Helm"],
       origin: "Greco-Roman myth"
     },
     steampunk: {
-      family: ["Brasswick", "Gearson", "Copperfield", "Steamlock", "Piston"],
-      given: ["Cogsworth", "Ember", "Tankard", "Pipette", "Ratchet", "Meridian"],
+      family: ["Brasswick", "Gearson", "Copperfield", "Steamlock", "Piston", "Cogwell", "Clockford"],
+      given: ["Cogsworth", "Ember", "Tankard", "Pipette", "Ratchet", "Meridian", "Alastair", "Evelyn"],
       middle: ["Brass", "Iron", "Steam", "Copper", "Gear"],
-      epithet: ["Steam Baron", "Brass Cog", "Copper Knight", "Gear Master"],
+      epithet: ["Steam Baron", "Brass Cog", "Copper Knight", "Gear Master", "Pressure Saint"],
       origin: "Steampunk world"
     },
     cyberpunk: {
-      family: ["Neon", "Ox-Gen", "Zero-Code", "Amphere", "Circuit"],
-      given: ["Kai-7", "Ryn", "Nyx", "Vex", "Glitch", "Pixel", "Data"],
+      family: ["Neon", "Ox-Gen", "Zero-Code", "Amphere", "Circuit", "Byte", "Matrix", "Overdrive"],
+      given: ["Kai-7", "Ryn", "Nyx", "Vex", "Glitch", "Pixel", "Data", "Zero", "Flux", "Cipher"],
       middle: ["Neon", "Chrome", "Shadow", "Digital", "Void"],
-      epithet: ["Neon Runner", "Chrome Ghost", "Data Warden", "Shadow Hacker"],
+      epithet: ["Neon Runner", "Chrome Ghost", "Data Warden", "Shadow Hacker", "Synapse King"],
       origin: "Cyberpunk future"
     },
     celestial: {
-      family: ["Stardust", "Nebula", "Cosmos", "Orion", "Lunaris"],
-      given: ["Nova", "Astrid", "Sol", "Luna", "Orion", "Vega", "Cygnus"],
+      family: ["Stardust", "Nebula", "Cosmos", "Orion", "Lunaris", "Solstice", "Astralis"],
+      given: ["Nova", "Astrid", "Sol", "Luna", "Orion", "Vega", "Cygnus", "Sirius", "Lyra", "Celeste"],
       middle: ["Star", "Moon", "Solar", "Void", "Nebula"],
-      epithet: ["Star Forge", "Moon Walker", "Nebula Heart", "Solar Flame"],
+      epithet: ["Star Forge", "Moon Walker", "Nebula Heart", "Solar Flame", "Cosmic Weaver"],
       origin: "Celestial / cosmic"
     },
     elemental: {
-      family: ["Flamestrike", "Deepwell", "Stoneheart", "Stormborn", "Ashfall"],
-      given: ["Ignis", "Aqua", "Terra", "Ventus", "Cinder", "Glacier", "Zephyr"],
+      family: ["Flamestrike", "Deepwell", "Stoneheart", "Stormborn", "Ashfall", "Frostbite", "Gale"],
+      given: ["Ignis", "Aqua", "Terra", "Ventus", "Cinder", "Glacier", "Zephyr", "Torrent", "Pyra"],
       middle: ["Fire", "Water", "Earth", "Wind", "Storm"],
-      epithet: ["Flame Tongue", "Tide Lord", "Earth Shaker", "Storm Eye"],
+      epithet: ["Flame Tongue", "Tide Lord", "Earth Shaker", "Storm Eye", "Cinder Heart"],
       origin: "Elemental force"
     },
     fey: {
-      family: ["Glimmerdew", "Thistlewhim", "Moonshade", "Brightfern", "Dustwillow"],
-      given: ["Twilight", "Fizzle", "Mimosa", "Thorn", "Petal", "Riddle", "Wisp"],
+      family: ["Glimmerdew", "Thistlewhim", "Moonshade", "Brightfern", "Dustwillow", "Fernhollow"],
+      given: ["Twilight", "Fizzle", "Mimosa", "Thorn", "Petal", "Riddle", "Wisp", "Briar", "Sylph"],
       middle: ["Dew", "Gossamer", "Trick", "Moss", "Bloom"],
-      epithet: ["Dew Drinker", "Trick Weaver", "Gossamer Wing", "Bloom Dancer"],
+      epithet: ["Dew Drinker", "Trick Weaver", "Gossamer Wing", "Bloom Dancer", "Moon Singer"],
       origin: "Fey / Faerie realm"
     },
     undead: {
-      family: ["Gravebone", "Blackwood", "Cryptheart", "Fellmoss", "Skullfen"],
-      given: ["Marrow", "Barrow", "Lich", "Wraith", "Bane", "Sorrow", "Dirge"],
+      family: ["Gravebone", "Blackwood", "Cryptheart", "Fellmoss", "Skullfen", "Mournvale"],
+      given: ["Marrow", "Barrow", "Lich", "Wraith", "Bane", "Sorrow", "Dirge", "Grave", "Shade"],
       middle: ["Bone", "Frost", "Barrow", "Grave", "Soul"],
-      epithet: ["Bone Lord", "Grave Whisper", "Frost Lich", "Soul Reaper"],
+      epithet: ["Bone Lord", "Grave Whisper", "Frost Lich", "Soul Reaper", "Crypt Warden"],
       origin: "Undead / Lich"
     },
     dwarf: {
-      family: ["Stonehelm", "Ironbeard", "Deepforged", "Hammerfell", "Goldvein"],
-      given: ["Durin", "Borin", "Thrain", "Gimla", "Morga", "Torvi", "Balin"],
+      family: ["Stonehelm", "Ironbeard", "Deepforged", "Hammerfell", "Goldvein", "Anvilbreak"],
+      given: ["Durin", "Borin", "Thrain", "Gimla", "Morga", "Torvi", "Balin", "Dwalin", "Gloin"],
       middle: ["Stone", "Gold", "Iron", "Deep", "Anvil"],
-      epithet: ["Stone Hammer", "Gold Seeker", "Iron Lord", "Deep Miner"],
+      epithet: ["Stone Hammer", "Gold Seeker", "Iron Lord", "Deep Miner", "Shield of the Peak"],
       origin: "Dwarven mountain"
     },
     void: {
-      family: ["Abyssal", "Nullvoid", "Eldritch", "Beyond", "Unspoken"],
-      given: ["Xul", "Vor", "Nyarl", "C'thon", "Yog", "Azath", "Mog"],
+      family: ["Abyssal", "Nullvoid", "Eldritch", "Beyond", "Unspoken", "Oblivion", "Deepspace"],
+      given: ["Xul", "Vor", "Nyarl", "C'thon", "Yog", "Azath", "Mog", "Khor", "Zul", "Obliv"],
       middle: ["Void", "Abyss", "Elder", "Alien", "Dark"],
-      epithet: ["Void Speaker", "Elder Whisper", "Abyss Gate", "Dark Star"],
+      epithet: ["Void Speaker", "Elder Whisper", "Abyss Gate", "Dark Star", "Devourer"],
       origin: "Void / Abyss / Eldritch"
     },
     african: {
-      family: ["Mwangi", "Okonkwo", "Nkosi", "Diallo", "Kenyatta", "Okafor", "Mensah"],
+      family: ["Mwangi", "Okonkwo", "Nkosi", "Diallo", "Kenyatta", "Okafor", "Mensah", "Abebe"],
       given: ["Zuri", "Kwame", "Amara", "Chidi", "Nala", "Kofi", "Sefu", "Ayana", "Jabari", "Zola"],
       middle: ["Lion", "Drum", "Savanna", "River", "Gold"],
-      epithet: ["Lion Heart", "Drum Keeper", "Savanna Walker", "River Spirit"],
+      epithet: ["Lion Heart", "Drum Keeper", "Savanna Walker", "River Spirit", "Sun Shield"],
       origin: "African-inspired"
     },
     polynesian: {
-      family: ["Tane", "Moana", "Atea", "Tangaroa", "Rongo", "Hina"],
-      given: ["Maui", "Lani", "Keala", "Nalani", "Kanoa", "Leilani", "Ikaika", "Makani"],
+      family: ["Tane", "Moana", "Atea", "Tangaroa", "Rongo", "Hina", "Kahanamoku"],
+      given: ["Maui", "Lani", "Keala", "Nalani", "Kanoa", "Leilani", "Ikaika", "Makani", "Koa"],
       middle: ["Wave", "Star", "Coral", "Tide", "Breeze"],
-      epithet: ["Wave Rider", "Star Navigator", "Coral Dancer", "Tide Caller"],
+      epithet: ["Wave Rider", "Star Navigator", "Coral Dancer", "Tide Caller", "Island Flame"],
       origin: "Polynesian / Oceanic"
     },
     mongolian: {
-      family: ["Khatun", "Batu", "Temur", "Altan", "Khoshuud", "Borjigin"],
-      given: ["Temujin", "Sukh", "Altan", "Sarnai", "Borte", "Toghrul", "Khasar"],
+      family: ["Khatun", "Batu", "Temur", "Altan", "Khoshuud", "Borjigin", "Yesun"],
+      given: ["Temujin", "Sukh", "Altan", "Sarnai", "Borte", "Toghrul", "Khasar", "Subutai", "Chormaqan"],
       middle: ["Steppe", "Sky", "Iron", "Gold", "Wind"],
-      epithet: ["Steppe Wolf", "Sky Rider", "Iron Bow", "Golden Horde"],
+      epithet: ["Steppe Wolf", "Sky Rider", "Iron Bow", "Golden Horde", "Eagle Hunter"],
       origin: "Mongolian / Steppe"
     },
     tibetan: {
       family: ["Lhamo", "Tenzin", "Dorje", "Norbu", "Tsering", "Wangmo", "Gyatso"],
-      given: ["Tenzin", "Kelsang", "Yangchen", "Sonam", "Chodak", "Pema", "Jigme"],
+      given: ["Tenzin", "Kelsang", "Yangchen", "Sonam", "Chodak", "Pema", "Jigme", "Dawa"],
       middle: ["Snow", "Lotus", "Diamond", "Silk", "Coral"],
-      epithet: ["Snow Lion", "Lotus Heart", "Diamond Crown", "Silk Prayer"],
+      epithet: ["Snow Lion", "Lotus Heart", "Diamond Crown", "Silk Prayer", "Himalayan Saint"],
       origin: "Tibetan / Himalayan"
     },
     roman: {
-      family: ["Aurelius", "Cassius", "Julius", "Flavius", "Claudius", "Cornelius"],
-      given: ["Marcus", "Octavia", "Lucius", "Cassia", "Tiberius", "Livia", "Gaius"],
+      family: ["Aurelius", "Cassius", "Julius", "Flavius", "Claudius", "Cornelius", "Scipio", "Valerius"],
+      given: ["Marcus", "Octavia", "Lucius", "Cassia", "Tiberius", "Livia", "Gaius", "Felix", "Maximilian"],
       middle: ["Maximus", "Augustus", "Felix", "Primus", "Magnus"],
-      epithet: ["Iron Eagle", "Golden Shield", "Silver Spear", "Bronze Helm"],
+      epithet: ["Iron Eagle", "Golden Shield", "Silver Spear", "Bronze Helm", "Legion Master"],
       origin: "Roman / Latin"
     },
     lovecraftian: {
-      family: ["Yuggoth", "R'lyeh", "Carcosa", "Kadath", "Ulthar"],
-      given: ["Nyarl", "C'thon", "Yog", "Azath", "Mog", "Dagon", "Hastur"],
+      family: ["Yuggoth", "R'lyeh", "Carcosa", "Kadath", "Ulthar", "Innsmouth", "Arkham"],
+      given: ["Nyarl", "C'thon", "Yog", "Azath", "Mog", "Dagon", "Hastur", "Shub", "Ithaqua"],
       middle: ["Void", "Elder", "Ward", "Star", "Gate"],
-      epithet: ["Void Whisperer", "Elder Dream", "Star Spawn", "Gate Opener"],
+      epithet: ["Void Whisperer", "Elder Dream", "Star Spawn", "Gate Opener", "Lurker at Threshold"],
       origin: "Lovecraftian / Cosmic Horror"
     },
     gothic: {
-      family: ["Von Hellsing", "Darkmoor", "Ravencroft", "Blackwood", "Morthrain"],
-      given: ["Victor", "Isabella", "Mortimer", "Lilith", "Sebastian", "Ophelia", "Caspian"],
+      family: ["Von Hellsing", "Darkmoor", "Ravencroft", "Blackwood", "Morthrain", "Vampyre", "Karnstein"],
+      given: ["Victor", "Isabella", "Mortimer", "Lilith", "Sebastian", "Ophelia", "Caspian", "Lucien", "Carmilla"],
       middle: ["Dark", "Crimson", "Ivory", "Shadow", "Fallen"],
-      epithet: ["Crimson Duke", "Shadow Count", "Ivory Lady", "Dark Prince"],
+      epithet: ["Crimson Duke", "Shadow Count", "Ivory Lady", "Dark Prince", "Nocturnal Baron"],
       origin: "Gothic / Dark Romantic"
     },
     pirate: {
-      family: ["Blackthorn", "Silverfin", "Ravensail", "Ironhook", "Seaborne", "Dreadwater"],
-      given: ["Captain", "Morgan", "Isla", "Redbeard", "Calico", "Anne", "Bartholomew"],
+      family: ["Blackthorn", "Silverfin", "Ravensail", "Ironhook", "Seaborne", "Dreadwater", "Vane"],
+      given: ["Captain", "Morgan", "Isla", "Redbeard", "Calico", "Anne", "Bartholomew", "Edward", "Kidd"],
       middle: ["Sea", "Crow", "Gold", "Storm", "Salt"],
-      epithet: ["Dread Captain", "Sea Wolf", "Gold Tooth", "Storm Chaser"],
+      epithet: ["Dread Captain", "Sea Wolf", "Gold Tooth", "Storm Chaser", "Kraken Bane"],
       origin: "Pirate / Swashbuckler"
     },
     western: {
-      family: ["Cassidy", "Dalton", "Wilder", "McCready", "Hickok", "James"],
-      given: ["Wyatt", "Daisy", "Jesse", "Annie", "Doc", "Belle", "Sundance"],
+      family: ["Cassidy", "Dalton", "Wilder", "McCready", "Hickok", "James", "Holliday", "Earp"],
+      given: ["Wyatt", "Daisy", "Jesse", "Annie", "Doc", "Belle", "Sundance", "Colt", "Clayton"],
       middle: ["Dust", "Iron", "Silver", "Rust", "Canyon"],
-      epithet: ["Silver Sheriff", "Dust Rider", "Iron Marshal", "Canyon Ghost"],
+      epithet: ["Silver Sheriff", "Dust Rider", "Iron Marshal", "Canyon Ghost", "Quick Draw"],
       origin: "Western / Frontier"
     },
     postapocalyptic: {
-      family: ["Ashford", "Wasteland", "Rust", "Survival", "Broken", "Cinder"],
-      given: ["Wren", "Rex", "Nova", "Tank", "Ash", "Rust", "Vega", "Kestrel"],
+      family: ["Ashford", "Wasteland", "Rust", "Survival", "Broken", "Cinder", "Slag", "Barren"],
+      given: ["Wren", "Rex", "Nova", "Tank", "Ash", "Rust", "Vega", "Kestrel", "Diesel", "Spark"],
       middle: ["Rust", "Bone", "Scrap", "Ash", "Waste"],
-      epithet: ["Ash Walker", "Rust Lord", "Scrap Merchant", "Waste Warden"],
+      epithet: ["Ash Walker", "Rust Lord", "Scrap Merchant", "Waste Warden", "Road Warrior"],
       origin: "Post-Apocalyptic wasteland"
     },
     biopunk: {
-      family: ["Gen-7", "Helix", "Chimera", "Splice", "Cortex", "Mycelia"],
-      given: ["Xyla", "Kai", "Vira", "Nyx", "Echo", "Zyme", "Clade", "Rune"],
+      family: ["Gen-7", "Helix", "Chimera", "Splice", "Cortex", "Mycelia", "Polymer", "Chitin"],
+      given: ["Xyla", "Kai", "Vira", "Nyx", "Echo", "Zyme", "Clade", "Rune", "Vector", "Synthia"],
       middle: ["Gene", "Spine", "Toxin", "Spore", "Synth"],
-      epithet: ["Gene Weaver", "Spine Drifter", "Toxin Bloom", "Synth Soul"],
+      epithet: ["Gene Weaver", "Spine Drifter", "Toxin Bloom", "Synth Soul", "Biomorph"],
       origin: "Bio-Punk genetic future"
     },
     clockwork: {
-      family: ["Brassheart", "Cogsworth", "Pendulum", "Gearspring", "Mainspring"],
-      given: ["Tick", "Tock", "Gearhart", "Copper", "Ratchet", "Piston", "Meridian"],
+      family: ["Brassheart", "Cogsworth", "Pendulum", "Gearspring", "Mainspring", "Tickwell"],
+      given: ["Tick", "Tock", "Gearhart", "Copper", "Ratchet", "Piston", "Meridian", "Chronos"],
       middle: ["Brass", "Cog", "Steam", "Gear", "Spring"],
-      epithet: ["Brass Sentinel", "Cog Master", "Steam Prophet", "Gear Saint"],
+      epithet: ["Brass Sentinel", "Cog Master", "Steam Prophet", "Gear Saint", "Clockmaker"],
       origin: "Clockwork / Automaton"
     },
     tropical: {
-      family: ["Lani", "Moana", "Kahuna", "Nalu", "Makani", "Aina"],
-      given: ["Kai", "Leilani", "Koa", "Nalani", "Ikaika", "Mana", "Lono", "Pua"],
+      family: ["Lani", "Moana", "Kahuna", "Nalu", "Makani", "Aina", "Pualani"],
+      given: ["Kai", "Leilani", "Koa", "Nalani", "Ikaika", "Mana", "Lono", "Pua", "Malia"],
       middle: ["Sun", "Wave", "Tide", "Coral", "Palm"],
-      epithet: ["Sun Dancer", "Wave Rider", "Tide Walker", "Coral Heart"],
+      epithet: ["Sun Dancer", "Wave Rider", "Tide Walker", "Coral Heart", "Reef Guardian"],
       origin: "Tropical / Island"
     },
     arctic: {
-      family: ["Icevein", "Frostheart", "Snowfeld", "Glacier", "Winterborn", "Hoarfrost"],
-      given: ["Bjorn", "Yuki", "Lumi", "Frost", "Eira", "Ulf", "Neve", "Tundra"],
+      family: ["Icevein", "Frostheart", "Snowfeld", "Glacier", "Winterborn", "Hoarfrost", "Blizzard"],
+      given: ["Bjorn", "Yuki", "Lumi", "Frost", "Eira", "Ulf", "Neve", "Tundra", "Kori"],
       middle: ["Ice", "Snow", "Frost", "Glacier", "Winter"],
-      epithet: ["Ice Walker", "Snow Hunter", "Frost Giant", "Glacier King"],
+      epithet: ["Ice Walker", "Snow Hunter", "Frost Giant", "Glacier King", "Rime Lord"],
       origin: "Arctic / Frozen"
     },
     desert: {
-      family: ["Dustwalker", "Sandstorm", "Oasis", "Scorch", "Mirage", "Sahara"],
-      given: ["Zephyr", "Sirocco", "Amber", "Dune", "Sahara", "Oasis", "Ember", "Khamsin"],
+      family: ["Dustwalker", "Sandstorm", "Oasis", "Scorch", "Mirage", "Sahara", "Dunecrest"],
+      given: ["Zephyr", "Sirocco", "Amber", "Dune", "Sahara", "Oasis", "Ember", "Khamsin", "Zahir"],
       middle: ["Sand", "Sun", "Dust", "Mirage", "Heat"],
-      epithet: ["Sand Viper", "Sun Scarab", "Dust Prophet", "Mirage Walker"],
+      epithet: ["Sand Viper", "Sun Scarab", "Dust Prophet", "Mirage Walker", "Scorpion Prince"],
       origin: "Desert / Sand"
     },
     forest: {
-      family: ["Mossheart", "Greenwood", "Fernshade", "Oakenshield", "Thornwood", "Wildfern"],
-      given: ["Bramble", "Rowan", "Hazel", "Sylvan", "Ivy", "Oakley", "Fern", "Hawthorn"],
+      family: ["Mossheart", "Greenwood", "Fernshade", "Oakenshield", "Thornwood", "Wildfern", "Barkley"],
+      given: ["Bramble", "Rowan", "Hazel", "Sylvan", "Ivy", "Oakley", "Fern", "Hawthorn", "Silas"],
       middle: ["Leaf", "Root", "Moss", "Bark", "Petal"],
-      epithet: ["Leaf Walker", "Root Keeper", "Moss Crown", "Bark Guardian"],
+      epithet: ["Leaf Walker", "Root Keeper", "Moss Crown", "Bark Guardian", "Grove Sentinel"],
       origin: "Forest / Woodland"
     },
     swamp: {
-      family: ["Grimwater", "Blackmire", "Fogbottom", "Rotwood", "Bogfeld"],
-      given: ["Mire", "Fen", "Slough", "Marsh", "Tanner", "Wisp", "Bayou"],
+      family: ["Grimwater", "Blackmire", "Fogbottom", "Rotwood", "Bogfeld", "Muckridge"],
+      given: ["Mire", "Fen", "Slough", "Marsh", "Tanner", "Wisp", "Bayou", "Voodoo", "Cane"],
       middle: ["Mud", "Bog", "Mist", "Rot", "Fen"],
-      epithet: ["Mud Crawler", "Bog Witch", "Mist Hermit", "Fen Serpent"],
+      epithet: ["Mud Crawler", "Bog Witch", "Mist Hermit", "Fen Serpent", "Stagnant King"],
       origin: "Swamp / Bog"
     },
     angelic: {
-      family: ["Seraphyne", "Aurelion", "Celestine", "Luminara", "Virtue"],
-      given: ["Raphael", "Cassiel", "Uriel", "Seraphina", "Michael", "Gabriel", "Ariel"],
+      family: ["Seraphyne", "Aurelion", "Celestine", "Luminara", "Virtue", "Sanctiel", "Soliel"],
+      given: ["Raphael", "Cassiel", "Uriel", "Seraphina", "Michael", "Gabriel", "Ariel", "Azrael"],
       middle: ["Light", "Wing", "Halo", "Grace", "Glory"],
-      epithet: ["Light Bringer", "Winged Guardian", "Halo Bearer", "Graceful Dawn"],
+      epithet: ["Light Bringer", "Winged Guardian", "Halo Bearer", "Graceful Dawn", "Seraph's Word"],
       origin: "Angelic / Seraphic"
     }
   }
@@ -671,26 +717,121 @@ function buildFallbackNameOptions(body: Record<string, any>) {
   const secondaryBank = style2 && banks[style2] ? banks[style2] : null
   const selected = secondaryBank
     ? {
-        family: [...primaryBank.family.slice(0, 4), ...secondaryBank.family.slice(0, 4)],
-        given: [...primaryBank.given.slice(0, 4), ...secondaryBank.given.slice(0, 4)],
-        middle: [...primaryBank.middle.slice(0, 3), ...secondaryBank.middle.slice(0, 3)],
-        epithet: [...primaryBank.epithet.slice(0, 2), ...secondaryBank.epithet.slice(0, 2)],
+        family: Array.from(new Set([...primaryBank.family, ...secondaryBank.family])),
+        given: Array.from(new Set([...primaryBank.given, ...secondaryBank.given])),
+        middle: Array.from(new Set([...primaryBank.middle, ...secondaryBank.middle])),
+        epithet: Array.from(new Set([...primaryBank.epithet, ...secondaryBank.epithet])),
         origin: `${primaryBank.origin} blended with ${secondaryBank.origin}`
       }
     : primaryBank
 
-  const pick = (items: string[], offset: number) => items[(seed + offset) % items.length]
-  const makeBase = (offset: number) => {
-    if (category === "beast") return `${pick(banks.beast.family, offset)} ${pick(banks.beast.given, offset + 3)}`
-    if (category === "world") return `${pick(selected.family, offset)} ${pick(["Sect", "Clan", "Court", "Pavilion", "Order", "Dominion"], offset + 2)}`
-    if (category === "place") return `${pick(selected.epithet, offset)} ${pick(["Vale", "Citadel", "Sanctum", "Grove", "Pass", "Harbor"], offset + 4)}`
-    if (category === "item") return `${pick(selected.epithet, offset)} ${pick(["Blade", "Mirror", "Crown", "Seal", "Talisman", "Codex"], offset + 5)}`
-    if (structure === "single") return pick(selected.given, offset)
-    if (structure === "triple") return `${pick(selected.family, offset)} ${pick(selected.middle, offset + 2)} ${pick(selected.given, offset + 4)}`
-    if (structure === "clan") return `${pick(selected.family, offset)} Clan`
-    if (structure === "title") return `The ${pick(selected.epithet, offset)}`
-    if (structure === "epithet") return `${pick(selected.given, offset)}, ${pick(selected.epithet, offset + 2)}`
-    return `${pick(selected.family, offset)} ${pick(selected.given, offset + 3)}`
+  const singlePrefixes = ["Ael", "Cael", "Dra", "Elys", "Fael", "Kael", "Lyr", "Mor", "Ny", "Ryn", "Syl", "Thal", "Val", "Zar", "Ze", "Xan", "Vael", "Cor", "Ren", "Ther", "Astr", "Bryn", "Darr", "Gwen", "Kall", "Mal", "Or", "Sar", "Tor", "Var"]
+  const singleSuffixes = ["ion", "iel", "wyn", "dor", "mar", "ryn", "mir", "thas", "reth", "lorn", "vane", "khor", "morn", "or", "is", "en", "ar", "eth", "el", "yn", "us", "ia", "a", "os", "an", "ix", "ur", "ys", "on", "ik"]
+
+  const pick = (items: string[], idx: number) => items[Math.abs(seed * 3 + idx) % items.length]
+
+  const makeBase = (offset: number): string => {
+    // Specialized category handlers
+    if (category === "technique") {
+      const prefixes = ["Ninefold", "Heavenly", "Void", "Solar", "Frost", "Shadow", "Thunder", "Dragon", "Phoenix", "Celestial", "Divine", "Abyssal", "Primordial", "Astral", "Chaos", "Ghost", "Iron", "Blood", "Jade", "Star"]
+      const nouns = ["Sword", "Blade", "Palm", "Fist", "Step", "Strike", "Art", "Sutra", "Scripture", "Domain", "Intent", "Hex", "Seal", "Incantation", "Method", "Transformation", "Slash", "Breaker"]
+      const modifiers = ["of the Nine Heavens", "of Absolute Zero", "Severing the Void", "Devouring the Sun", "of the True Dragon", "Ascending the Dao", "of Starfall", "of Chaos", "Soul-rending"]
+      const p = pick(prefixes, offset * 7)
+      const n = pick(nouns, offset * 11 + Math.floor(offset / 3))
+      if (structure === "title" || offset % 3 === 0) {
+        return `${p} ${n} ${pick(modifiers, offset * 13)}`
+      }
+      return `${p} ${n}`
+    }
+
+    if (category === "faction") {
+      const sectPrefixes = ["Azure Cloud", "Nine Heavens", "Shadow Moon", "Crimson Lotus", "Void Emperor", "Iron Blood", "Mystic Star", "Golden Dragon", "Immortal Sword", "Dark Abyss", "Phoenix Flame", "Spirit Mountain", "Jade Pavilion", "Thunder Valley"]
+      const sectTypes = ["Sect", "Pavilion", "Clan", "Hall", "Order", "Valley", "Alliance", "Guild", "Palace", "Sanctum", "Temple", "Society"]
+      return `${pick(sectPrefixes, offset * 7)} ${pick(sectTypes, offset * 11 + Math.floor(offset / 4))}`
+    }
+
+    if (category === "bloodline") {
+      const bloodPrefixes = ["Primordial Chaos", "Solar Divine", "Frost Phoenix", "Azure Dragon", "Void Leviathan", "Star Qilin", "Ancient Asura", "True God", "Nine-Tailed", "Thunder Kirin", "Celestial Titan", "Dark Abyss"]
+      const bloodNouns = ["Bloodline", "Physique", "Heritage", "Core", "Vein", "Legacy", "Soul Mark", "Lineage"]
+      return `${pick(bloodPrefixes, offset * 7)} ${pick(bloodNouns, offset * 11 + Math.floor(offset / 5))}`
+    }
+
+    if (category === "title") {
+      const titleRanks = ["Emperor", "Sovereign", "Lord", "Venerable", "Monarch", "Tyrant", "Asura", "Saint", "Grandmaster", "Conqueror", "Overlord", "Immortal"]
+      const realms = ["of the Nine Heavens", "of the Void", "of the Broken Blade", "of Silver Mist", "of Absolute Chaos", "of Starfall", "of the Endless Sea", "of the Underworld", "of the Sun"]
+      return `${pick(selected.given, offset * 5)}, ${pick(titleRanks, offset * 7)} ${pick(realms, offset * 11)}`
+    }
+
+    if (category === "city" || category === "place") {
+      const cityPrefix = ["Verdant", "Cloud", "Iron", "Mist", "Obsidian", "Sun", "Dragon", "Pearl", "Star", "Shadow", "Amber", "Frost", "Silver", "Storm", "Golden"]
+      const citySuffix = ["Port", "Haven", "Citadel", "Reach", "Crossing", "Spire", "Bastion", "Gate", "Deep", "Hold", "Vale", "Pass", "Sanctum", "Harbor"]
+      return `${pick(cityPrefix, offset * 7)} ${pick(citySuffix, offset * 11 + Math.floor(offset / 3))}`
+    }
+
+    if (category === "planet" || category === "realm") {
+      const realmBases = ["Aethelgard", "Solaris", "Vorash", "Kaelum", "Zephyria", "Lunara", "Drakonia", "Nyxos", "Thalassia", "Ignis", "Astralis", "Chao-V", "Eldoria", "Valerius", "Tartaros"]
+      const realmTypes = ["Realm", "Domain", "Prime", "Locus", "Sphere", "Major", "Sector"]
+      if (structure === "single" || offset % 2 === 0) {
+        return `${pick(realmBases, offset * 7)}${pick([" Prime", " Major", " Minor", " IX", " IV", " VII", " Alpha", " Omega", " Beta"], offset)}`
+      }
+      return `${pick(realmBases, offset * 7)} ${pick(realmTypes, offset * 11)}`
+    }
+
+    if (category === "galaxy" || category === "universe") {
+      const cosmicPrefix = ["Andromeda", "Silver", "Void", "Celestial", "Orion", "Sovereign", "Primordial", "Eternity", "Dark Matter", "Helix", "Spiral"]
+      const cosmicTypes = ["Galaxy", "Cluster", "Nebula", "Expanse", "Cosmos", "Universe", "Domain", "Arm"]
+      return `${pick(cosmicPrefix, offset * 7)} ${pick(cosmicTypes, offset * 11 + Math.floor(offset / 3))}`
+    }
+
+    if (category === "treasure" || category === "item") {
+      const treasPrefix = ["Nine-Leaf", "Crimson Dragon", "Soul-Condensing", "Heaven-Cleansing", "Star-Forged", "Jade", "Chaos", "Immortal", "Solar", "Frost", "Thunder", "Blood-Refined"]
+      const treasNouns = ["Ginseng", "Lotus", "Fruit", "Pill", "Spatial Ring", "Cauldron", "Pendant", "Mirror", "Blade", "Codex", "Talisman", "Bell", "Crown"]
+      return `${pick(treasPrefix, offset * 7)} ${pick(treasNouns, offset * 11 + Math.floor(offset / 4))}`
+    }
+
+    if (category === "beast") {
+      return `${pick(banks.beast.family, offset * 7)} ${pick(banks.beast.given, offset * 11 + 3)}`
+    }
+
+    if (category === "world") {
+      return `${pick(selected.family, offset * 7)} ${pick(["Sect", "Clan", "Court", "Pavilion", "Order", "Dominion", "Realm", "Dynasty"], offset * 11 + 2)}`
+    }
+
+    // Character naming with specific structures
+    if (structure === "single") {
+      if (offset < selected.given.length) {
+        return selected.given[offset]
+      }
+      // Synthesize unique single names past bank bounds using affixes
+      const p = pick(singlePrefixes, offset * 7)
+      const s = pick(singleSuffixes, offset * 11)
+      const baseGiven = pick(selected.given, offset)
+      if (offset % 2 === 0) {
+        return `${p}${s}`
+      }
+      return `${baseGiven.slice(0, Math.max(3, Math.floor(baseGiven.length * 0.7)))}${s}`
+    }
+
+    if (structure === "triple") {
+      return `${pick(selected.family, offset * 7)} ${pick(selected.middle, offset * 11 + 2)} ${pick(selected.given, offset * 13 + 4)}`
+    }
+
+    if (structure === "clan") {
+      return `${pick(selected.family, offset * 7)} Clan`
+    }
+
+    if (structure === "title") {
+      return `The ${pick(selected.epithet, offset * 7)}`
+    }
+
+    if (structure === "epithet") {
+      return `${pick(selected.given, offset * 7)}, ${pick(selected.epithet, offset * 11 + 2)}`
+    }
+
+    // Default double name with independent coprime stepping
+    const fam = pick(selected.family, offset * 7 + Math.floor(offset / 5))
+    const giv = pick(selected.given, offset * 11 + Math.floor(offset / 3))
+    return `${fam} ${giv}`
   }
 
   const options: Array<{
@@ -704,10 +845,21 @@ function buildFallbackNameOptions(body: Record<string, any>) {
     vibe: string
     bibleContent: string
   }> = []
-  for (let offset = 0; options.length < requestedCount && offset < 200; offset += 1) {
+
+  const seenBatchNorm = new Set<string>()
+  const seenBatchPhonetic = new Set<string>()
+
+  for (let offset = 0; options.length < requestedCount && offset < 600; offset += 1) {
     const name = makeBase(offset)
     const normalized = normalizeNameForCompare(name)
-    if (!normalized || existing.has(normalized) || options.some(option => normalizeNameForCompare(option.name) === normalized)) continue
+    if (!normalized || existing.has(normalized) || seenBatchNorm.has(normalized)) continue
+
+    const pk = makePhoneticKey(name)
+    if (pk && (existingPhonetic.has(pk) || seenBatchPhonetic.has(pk))) continue
+
+    seenBatchNorm.add(normalized)
+    if (pk) seenBatchPhonetic.add(pk)
+
     options.push({
       name,
       category,
@@ -720,6 +872,7 @@ function buildFallbackNameOptions(body: Record<string, any>) {
       bibleContent: `${name} is a generated ${category} name from Name Forge. It was created in a ${style || "fantasy"} style with a ${tone} tone.`
     })
   }
+
   return options
 }
 
@@ -2565,12 +2718,15 @@ export async function POST(req: NextRequest) {
           "- Goal: the ${requestedCount} names should feel like they could come from  ${requestedCount} entirely separate fictional worlds or real-world linguistic families.\n"
 
       systemInstruction =
-        "You are an expert fantasy novel naming specialist specializing in highly original, versatile names.\n" +
+        "You are an expert fantasy novel naming specialist specializing in highly original, strictly unique, versatile names.\n" +
         `Available styles: ${allStyles.join(", ")}.\n` +
+        "CRITICAL UNIQUENESS MANDATE:\n" +
+        "- EVERY SINGLE NAME in your output array MUST be 100% unique and distinct from every other name in this batch.\n" +
+        "- Do NOT repeat identical names, identical given names, identical family surnames, identical root words, or near-duplicate spellings.\n" +
+        "- You MUST completely avoid names already present in the Story Bible, manuscript context, or existing names list below. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
         "DIVERSITY MANDATE:\n" +
         `${diversityMandate}\n` +
-        "You MUST avoid names already present in the Story Bible. Avoid exact matches, spelling variants, same-sounding variants, and obvious derivatives of existing names.\n" +
-        `Generate exactly ${requestedCount} highly distinct, versatile options.\n` +
+        `Generate exactly ${requestedCount} strictly unique, highly distinct options.\n` +
         "Respect the requested name structure: single, double, triple, title-style, clan-style, or any.\n" +
         `${subtypeGuidance ? subtypeGuidance + "\n" : ""}` +
         `${mashupLine ? mashupLine + "\n" : ""}` +
@@ -2578,14 +2734,26 @@ export async function POST(req: NextRequest) {
         `${syllableLine ? syllableLine + "\n" : ""}` +
         "Output ONLY valid JSON as an array of objects. Each item must include name, category, style, raceOrOrigin, structure, meaning, pronunciation, vibe, and bibleContent."
 
-      const existingNames = bibleEntries
-        .slice(0, 300)
-        .map((entry: any) => `- ${entry.name || "Unknown"} (${entry.category || "character"}): ${String(entry.content || "").slice(0, 180)}`)
-        .join("\n")
+      const existingNamesList: string[] = []
+      if (Array.isArray(bibleEntries)) {
+        bibleEntries.slice(0, 300).forEach((entry: any) => {
+          if (entry?.name) existingNamesList.push(`- ${entry.name} (${entry.category || "character"}): ${String(entry.content || "").slice(0, 100)}`)
+        })
+      }
+      if (Array.isArray(body?.nameShortlist)) {
+        body.nameShortlist.slice(0, 50).forEach((entry: any) => {
+          if (entry?.name) existingNamesList.push(`- [Shortlist] ${entry.name}`)
+        })
+      }
+      if (Array.isArray(body?.existingNames)) {
+        body.existingNames.slice(0, 150).forEach((n: any) => {
+          if (typeof n === "string" && n) existingNamesList.push(`- ${n}`)
+        })
+      }
 
       const userPromptDiversity = isSpecificCulture
-        ? `DIVERSITY REQUIREMENT: The ${requestedCount} names MUST all belong to the selected culture/origin/race, but be distinct in sound and structure from each other within that naming style.`
-        : `DIVERSITY REQUIREMENT: The ${requestedCount} names MUST be radically different from each other in sound, length, and style. Force extreme variety.`
+        ? `DIVERSITY & UNIQUENESS REQUIREMENT: The ${requestedCount} names MUST all be 100% unique from each other, belong to the selected culture/origin/race, and have completely distinct starting sounds, syllables, and meanings.`
+        : `DIVERSITY & UNIQUENESS REQUIREMENT: Every single one of the ${requestedCount} names MUST be radically distinct and unique from each other in sound, root words, length, and style. Absolute zero duplicate names or root repetition.`
 
       userPrompt =
         `Requested Style: ${nameStyle || "wild fantasy mix"}\n` +
@@ -2598,7 +2766,7 @@ export async function POST(req: NextRequest) {
         `${nameSyllableBank ? `Preferred Syllables: ${nameSyllableBank}\n` : ""}` +
         `Number of names to generate: ${requestedCount}\n` +
         `Extra Direction: ${customPrompt || "Surprise me with useful fantasy novel names."}\n\n` +
-        `Existing Story Bible Names To Avoid:\n${existingNames || "No Story Bible names yet."}\n\n` +
+        `Existing Story Bible & Known Names To Avoid:\n${existingNamesList.join("\n") || "No existing names yet."}\n\n` +
         `Active Chapter Context (${chapterTitle || "Untitled"}):\n${String(chapterContent || "").slice(0, 6000)}\n\n` +
         `${userPromptDiversity}`
     } else if (action === "timeline_consistency_check") {
@@ -3240,7 +3408,11 @@ export async function POST(req: NextRequest) {
 
     if (action === "name_generate") {
       const result = parseJsonValue<NameGenerateResponse | unknown[]>(text)
-      const allowedCategories = new Set(["character", "beast", "world", "place", "item", "cosmic", "bloodline", "faction", "artifact", "treasure"])
+      const allowedCategories = new Set([
+        "character", "technique", "faction", "bloodline", "title",
+        "city", "planet", "realm", "galaxy", "universe", "treasure",
+        "epithet", "anagram", "beast", "world", "place", "item", "cosmic", "artifact"
+      ])
       const rawNames: unknown[] = Array.isArray(result)
         ? result
         : Array.isArray((result as any)?.names)
@@ -3252,29 +3424,107 @@ export async function POST(req: NextRequest) {
               : []
       const requestedCount = typeof body?.count === "number" && body.count > 0 && body.count <= 20 ? body.count : 5
       const fallbackCat = String(body?.nameCategory || "character")
-      const sanitizedNames = rawNames
-        .map((option: unknown) => {
-          const record = typeof option === "string" ? { name: option } : (option || {}) as Record<string, unknown>
-          const category = allowedCategories.has(String(record.category)) ? String(record.category) : fallbackCat
-          const meaning = String(record.meaning || record.description || record.reason || "").trim()
-          const vibe = String(record.vibe || record.tone || record.feel || "").trim()
-          return {
-            name: String(record.name || record.fullName || record.title || "").trim(),
-            category,
-            style: String(record.style || record.culture || "").trim(),
-            raceOrOrigin: String(record.raceOrOrigin || record.origin || record.race || "").trim(),
-            structure: String(record.structure || record.nameStructure || "").trim(),
-            meaning,
-            pronunciation: String(record.pronunciation || record.pronounce || "").trim(),
-            vibe,
-            bibleContent: String(record.bibleContent || record.content || meaning || vibe || "").trim()
-          }
+
+      const existingNameSet = new Set<string>()
+      const existingPhoneticSet = new Set<string>()
+
+      const registerExisting = (n: unknown) => {
+        const s = String(n || "").trim()
+        const norm = normalizeNameForCompare(s)
+        if (norm) {
+          existingNameSet.add(norm)
+          const pk = makePhoneticKey(s)
+          if (pk) existingPhoneticSet.add(pk)
+        }
+      }
+
+      if (Array.isArray(body?.bibleEntries)) {
+        for (const entry of body.bibleEntries) registerExisting(entry?.name)
+      }
+      if (Array.isArray(body?.nameShortlist)) {
+        for (const item of body.nameShortlist) registerExisting(item?.name)
+      }
+      if (Array.isArray(body?.existingNames)) {
+        for (const item of body.existingNames) registerExisting(item)
+      }
+
+      const uniqueNames: Array<{
+        name: string
+        category: string
+        style: string
+        raceOrOrigin: string
+        structure: string
+        meaning: string
+        pronunciation: string
+        vibe: string
+        bibleContent: string
+      }> = []
+
+      const batchNormSet = new Set<string>()
+      const batchPhoneticSet = new Set<string>()
+
+      for (const option of rawNames) {
+        if (uniqueNames.length >= requestedCount) break
+        const record = typeof option === "string" ? { name: option } : (option || {}) as Record<string, unknown>
+        const name = String(record.name || record.fullName || record.title || "").trim()
+        const norm = normalizeNameForCompare(name)
+        if (!name || !norm) continue
+
+        // Check against existing names and current batch
+        if (existingNameSet.has(norm) || batchNormSet.has(norm)) continue
+
+        // Check phonetic duplicate
+        const pk = makePhoneticKey(name)
+        if (pk && (existingPhoneticSet.has(pk) || batchPhoneticSet.has(pk))) continue
+
+        const cat = String(record.category || fallbackCat).toLowerCase()
+        const category = allowedCategories.has(cat) ? cat : fallbackCat
+        const meaning = String(record.meaning || record.description || record.reason || "").trim()
+        const vibe = String(record.vibe || record.tone || record.feel || "").trim()
+
+        uniqueNames.push({
+          name,
+          category,
+          style: String(record.style || record.culture || body?.nameStyle || "fantasy").trim(),
+          raceOrOrigin: String(record.raceOrOrigin || record.origin || record.race || "").trim(),
+          structure: String(record.structure || record.nameStructure || body?.nameStructure || "any").trim(),
+          meaning,
+          pronunciation: String(record.pronunciation || record.pronounce || "").trim(),
+          vibe,
+          bibleContent: String(record.bibleContent || record.content || meaning || vibe || "").trim()
         })
-        .filter((option: { name: string }) => option.name)
-        .slice(0, requestedCount)
+
+        batchNormSet.add(norm)
+        if (pk) batchPhoneticSet.add(pk)
+      }
+
+      // If AI didn't return enough unique names, fill with guaranteed unique fallback names
+      if (uniqueNames.length < requestedCount) {
+        const needed = requestedCount - uniqueNames.length
+        const combinedExisting = new Set<string>()
+        existingNameSet.forEach(n => combinedExisting.add(n))
+        batchNormSet.forEach(n => combinedExisting.add(n))
+        const excludeNamesList: string[] = []
+        combinedExisting.forEach(n => excludeNamesList.push(n))
+        const fallbacks = buildFallbackNameOptions({
+          ...body,
+          count: needed,
+          excludeNames: excludeNamesList
+        })
+        for (const fb of fallbacks) {
+          if (uniqueNames.length >= requestedCount) break
+          const norm = normalizeNameForCompare(fb.name)
+          if (!norm || combinedExisting.has(norm)) continue
+          const pk = makePhoneticKey(fb.name)
+          if (pk && (existingPhoneticSet.has(pk) || batchPhoneticSet.has(pk))) continue
+          uniqueNames.push(fb)
+          combinedExisting.add(norm)
+          if (pk) batchPhoneticSet.add(pk)
+        }
+      }
 
       return NextResponse.json({
-        names: sanitizedNames.length > 0 ? sanitizedNames : buildFallbackNameOptions(body)
+        names: uniqueNames
       })
     }
 
