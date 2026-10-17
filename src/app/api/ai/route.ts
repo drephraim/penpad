@@ -36,85 +36,6 @@ type AppearancePromptResult = {
   formLabels?: Record<string, string>
 }
 
-type ProgressionAiResponse = {
-  targetLoreEntryId?: string
-  targetProfileId?: string
-  profile?: Record<string, unknown>
-  update?: {
-    shouldApply?: boolean
-    summary?: string
-    levelBefore?: number
-    levelAfter?: number
-    realmBefore?: string
-    realmAfter?: string
-    stageBefore?: string
-    stageAfter?: string
-    statChanges?: Record<string, number>
-    abilityChanges?: string[]
-    rewards?: string[]
-    evidence?: string[]
-  }
-}
-
-type CultivationImportResponse = {
-  settings?: {
-    realms?: string[]
-    stageLabels?: string[]
-    showLevels?: boolean
-    showExp?: boolean
-    showStats?: boolean
-    statKeys?: string[]
-    customFields?: string[]
-    notes?: string
-    cultivationSourceText?: string
-    cultivationGuide?: string
-  }
-}
-
-type ProgressionTemplateDesignResponse = {
-  settings?: ProgressionTemplateDesignSettings
-  profileTemplate?: ProgressionTemplateDesignSettings["profileTemplate"]
-  realms?: string[]
-  stageLabels?: string[]
-  showLevels?: boolean
-  showExp?: boolean
-  showStats?: boolean
-  statKeys?: string[]
-  customFields?: string[]
-  notes?: string
-}
-
-type ProgressionTemplateDesignSettings = {
-  realms?: string[]
-  stageLabels?: string[]
-  showLevels?: boolean
-  showExp?: boolean
-  showStats?: boolean
-  statKeys?: string[]
-  customFields?: string[]
-  notes?: string
-  cultivationSourceText?: string
-  cultivationGuide?: string
-  profileTemplate?: {
-    enabled?: boolean
-    name?: string
-    defaultRealm?: string
-    defaultStage?: string
-    defaultRank?: string
-    defaultClassName?: string
-    defaultCultivationPath?: string
-    baseLevel?: number
-    baseExp?: number
-    nextLevelExp?: number
-    defaultStats?: Record<string, number>
-    defaultTraits?: string[]
-    defaultAbilities?: unknown[]
-    defaultCustomFields?: Record<string, string>
-    cards?: unknown[]
-    notes?: string
-  }
-}
-
 type BibleConsistencyResponse = {
   conflicts?: Array<{
     entryName?: string
@@ -876,70 +797,6 @@ function buildFallbackNameOptions(body: Record<string, any>) {
   return options
 }
 
-function buildCultivationGuide(rawText: string, realms: string[], stageLabels: string[]): string {
-  const sampleRealms = realms.slice(0, 24).join(" -> ")
-  const sampleStages = stageLabels.join(" / ")
-  const rawPreview = rawText
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .slice(0, 18)
-    .join("; ")
-  return [
-    realms.length > 0 ? `Uploaded cultivation realms, weakest to strongest: ${sampleRealms}${realms.length > 24 ? " -> ..." : ""}.` : "",
-    stageLabels.length > 0 ? `Cultivation sub-stages/stage labels: ${sampleStages}.` : "",
-    "When a term appears in this cultivation ladder, treat it as cultivation: profile.realm for the major realm and profile.stage for the sub-stage.",
-    "Do not store cultivation realms or stages in profile.className. Only use profile.className for explicit jobs/classes/roles such as Warrior, Mage, Necromancer, Hunter, or System Class.",
-    rawPreview ? `Uploaded text sample: ${rawPreview.slice(0, 1200)}` : ""
-  ].filter(Boolean).join(" ")
-}
-
-function parseCultivationSettingsFromText(rawText: string, currentSettings?: unknown): CultivationImportResponse {
-  const current = currentSettings && typeof currentSettings === "object"
-    ? currentSettings as { stageLabels?: string[]; statKeys?: string[]; customFields?: string[] }
-    : {}
-  const rawLines = rawText
-    .split(/\r?\n/)
-    .map(line => line.replace(/^\s*[-*•\d.)]+/, "").replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-
-  const knownStageOrder = ["Low", "Medium", "Middle", "High", "Peak", "Early", "Mid", "Late", "Initial", "Perfected", "Half-step"]
-  const explicitStageLine = rawLines.find(line => /\b(stage|rank|sub[-\s]?realm|minor realm)\b/i.test(line))
-  const parsedStages = explicitStageLine
-    ? knownStageOrder.filter(stage => new RegExp(`\\b${stage}\\b`, "i").test(explicitStageLine))
-    : []
-  const stageLabels = Array.from(new Set((parsedStages.length > 0 ? parsedStages : current.stageLabels || ["Low", "Medium", "High", "Peak"])
-    .map(stage => stage === "Middle" || stage === "Mid" ? "Medium" : stage)))
-
-  const splitRealmTokens = rawLines.flatMap(line => {
-    const withoutHeading = line.replace(/^(realm|realms|stage|stages|rank|ranks|cultivation|cultivation stages?)\s*[:：-]\s*/i, "")
-    return withoutHeading.split(/\s*(?:,|->|→|>|;|\|)\s*/).map(item => item.trim()).filter(Boolean)
-  })
-
-  const stageSet = new Set(stageLabels.map(item => item.toLowerCase()))
-  const realms = Array.from(new Set(splitRealmTokens
-    .map(item => item.replace(/\s*\([^)]*\)\s*/g, "").trim())
-    .filter(item => item.length > 1)
-    .filter(item => !/^(stage|stages|rank|ranks|realm|realms|weakest|strongest)$/i.test(item))
-    .filter(item => !stageSet.has(item.toLowerCase()))))
-    .slice(0, 120)
-  const cultivationGuide = buildCultivationGuide(rawText, realms, stageLabels)
-
-  return {
-    settings: {
-      realms,
-      stageLabels,
-      showLevels: false,
-      showExp: false,
-      showStats: true,
-      statKeys: current.statKeys || ["strength", "agility", "endurance", "vitality", "intelligence", "sense", "mana"],
-      customFields: Array.from(new Set([...(current.customFields || []), "Race", "Affiliation"])),
-      cultivationSourceText: rawText.slice(0, 20000),
-      cultivationGuide,
-      notes: `Imported ${realms.length} cultivation realms. Realm names such as Demigod belong in profile.realm; sub-ranks such as Medium belong in profile.stage. Class/job names stay in profile.className.`
-    }
-  }
-}
 
 async function generateWithGrok(systemInstruction: string, userPrompt: string, jsonMode: boolean, temperatureOverride?: number, customApiKey?: string) {
   const apiKey = customApiKey || process.env.APPEARANCE_LAB_GROK_API_KEY || process.env.GROK_API_KEY || process.env.XAI_API_KEY
@@ -2077,132 +1934,15 @@ export async function POST(req: NextRequest) {
         existingAppearancesBlock +
         `${memoryContext}`
     } else if (action === "progression_update") {
-      const { selectedText, loreEntry, chapter, existingProfile, progressionSystem, candidateProfiles, candidateLoreEntries } = body
-      const safeLoreEntry = loreEntry && typeof loreEntry === "object"
-        ? loreEntry as { id?: string; name?: string; category?: string; content?: string; groups?: string[] }
-        : null
-      const chapterContext = chapter && typeof chapter === "object"
-        ? chapter as { id?: string; title?: string; chapterNumber?: number; content?: string; targetEvidence?: string }
-        : null
-
-      if (!chapterContext?.content || (!safeLoreEntry?.name && !Array.isArray(candidateProfiles))) {
-        return NextResponse.json({ error: "A Story Bible entry or candidate profiles and chapter content are required for progression_update." }, { status: 400 })
-      }
-
-      const useCustomJsonTemplate = (progressionSystem as any)?.useCustomJsonTemplate === true
-      const customJsonTemplate = (progressionSystem as any)?.customJsonTemplate || ""
-      let customJsonTemplateStr = ""
-      if (useCustomJsonTemplate && customJsonTemplate) {
-        try {
-          JSON.parse(customJsonTemplate)
-          customJsonTemplateStr = customJsonTemplate
-        } catch (e) {
-          console.error("Invalid customJsonTemplate in progressionSystem:", e)
-        }
-      }
-
-      let customJsonInstruction = ""
-      if (customJsonTemplateStr) {
-        customJsonInstruction = `\n16. CRITICAL: The user has enabled a custom JSON status template. The returned 'profile' object MUST contain a 'customJsonData' property. This 'customJsonData' property MUST be a valid JSON object matching the exact structure, keys, nesting, and value types of this template:\n${customJsonTemplateStr}\nAnalyze the chapter and fill in the values for the keys inside 'customJsonData' based on the chapter details. Preserve any existing values from the candidate/existing profile when no new details are found in the chapter.`
-      }
-
-      systemInstruction =
-        "You are a web-novel character progression tracker for a novelist. " +
-        "The writer wants a simple profile that can be refreshed whenever a chapter or chapters are scanned.\n" +
-        "Guidelines:\n" +
-        "1. Use the Story Bible entry, current chapter, target-specific chapter evidence, existing profile, and candidate profiles to create or update exactly one character profile.\n" +
-        "2. If an explicit Story Bible entry is provided, that entry is the only target. Do not copy cultivation, powers, titles, bloodlines, skills, or lore from nearby characters. If no explicit Story Bible entry is provided, select the best candidate profile/lore entry based on names, aliases, actions, viewpoint, and progression evidence in the chapter.\n" +
-        "3. MULTI-CHARACTER DIFFERENTIATION (CRITICAL): When multiple characters appear in the chapter:\n" +
-        "   - Attribute EVERY detail (class, skills, realm, stage, relationships, appearance, actions, dialogue) ONLY to the character it belongs to.\n" +
-        "   - Use: exact name/alias matches, speaker tags, pronouns in context, unique descriptors, who is acting/speaking.\n" +
-        "   - Explicitly ignore or skip details for non-target characters.\n" +
-        "   - If a detail cannot be confidently attributed to the target, do not include it in the profile update.\n" +
-        "4. Read in this order: target-specific evidence first, Story Bible notes second, full chapter third, existing profile last for preservation. Do not stop after the first mention; scan the full chapter for later corrections, reveals, awakenings, status screens, dialogue labels, and narration.\n" +
-        "4. The profile schema includes: name, title, additional titles, cultivation realm (profile.realm), cultivation stage/sub-rank (profile.stage), rank (profile.rank), bloodline name, bloodline rank, affinity names/ranks, main class, secondary class or extra classes, weapons, skills, and lore.\n" +
-        "5. Put the character's main class/job/role in profile.className only when the text explicitly presents it as a class, job, occupation, system class, or combat role. If the chapter gives a second class, subclass, job, or secondary role, put it in profile.customFields['Secondary Class']; if there are more classes, use distinct custom fields such as profile.customFields['Class 2'], profile.customFields['Class 3'], and matching rank fields when known. Put extra titles beyond profile.title in custom fields such as profile.customFields['Title 2']. Put weapons or equipment in custom fields such as profile.customFields['Weapon'] or profile.customFields['Weapon 2']. Do not put classes, titles, or weapons in abilities or lore unless the chapter explicitly says they are skills/techniques.\n" +
-        "6. Put the bloodline name in profile.customFields['Bloodline'] and its rank/grade/tier/quality such as Supreme or Celestial in profile.customFields['Bloodline Rank']. Do not put bloodlines in affinities or skills.\n" +
-        "7. Put affinity names in profile.customFields['Affinity Names'] as a comma-separated list, such as Fire, Ice, Void. Put paired affinity ranks in profile.customFields['Affinity Rank'], such as Fire (High), Ice (Celestial), Void (Supreme). Preserve pairings when multiple affinities have different ranks. Do not put affinities in bloodline or class.\n" +
-        "8. Put the character's cultivation realm (such as Demigod, God) in profile.realm. Put their cultivation stage/sub-rank (such as Low, Medium, High, Peak) in profile.stage. If the system uses a non-cultivation rank (or if realm is not applicable), put it in profile.rank. Use the Configured Cultivation Realms, Configured Stage Labels, and Uploaded Cultivation Guide when available to match and normalize these values. Any term that appears in the uploaded cultivation ladder is cultivation, not className, unless the chapter explicitly says it is a class/job. Be extremely smart and precise to pick up on even the smallest error or detail in character growth and cultivation advancements.\n" +
-        "9. SKILLS, TECHNIQUES & ABILITIES (critical):\n" +
-        "   - Scan the chapter (especially status screens, system notifications, character activation, narration of effects, and learning moments) for any skills, techniques, powers, spells, arts, or signature abilities used by or granted to the target.\n" +
-        "   - For every ability: \n" +
-        "     • name: Use the exact name as displayed in the chapter.\n" +
-        "     • rank: Include rank/tier/layer if shown (e.g. 'Tier 2', '3rd Layer', 'Peak').\n" +
-        "     • level: Use 1 if no explicit numeric level is stated.\n" +
-        "     • description: This is the most important part. Carefully read exactly how the skill/technique/ability was DISPLAYED or described in the chapter (system message text, popup, character explanation, effect narration). Write a concise, flavorful description that captures the presentation style and core effect as revealed. Do not use generic summaries — ground it in the actual wording and context from the text.\n" +
-        "       Example: Chapter shows system text '[Phantom Mirage Step] (Earth Rank) — Steps blur into afterimages, confusing foes for several breaths.' → Good description: 'Momentarily creates afterimages of the user to misdirect enemy attacks. Duration and effectiveness increase with rank.'\n" +
-        "     • evidence: Include a short direct quote or snippet from the chapter showing where it appeared.\n" +
-        "   - Only include abilities that are explicitly shown or used in this chapter or were already in the existing profile. Never invent new ones.\n" +
-        "   - Do NOT put class names, bloodlines, or affinities into abilities unless the chapter explicitly presents them as skills/techniques.\n" +
-        "10. Extract and return ONLY new, interesting reusable lore details discovered in this chapter in profile.notes (such as reputation, prophecy, rumor, weakness, relationship, hidden identity, origin, temperament, or an unusual detail). Do not return existing/past lore notes. If no new details exist in the chapter, return \"\" (an empty string) in profile.notes.\n" +
-        "11. Preserve existing values when the current chapter gives no direct evidence. If the chapter has no meaningful progression or new character detail, keep the profile stable and set update.shouldApply to false. Still summarize that it was reviewed.\n" +
-        "12. Never double-count previous profile history. Use the existing profile and processed chapter history as current truth.\n" +
-        "13. In update.evidence, include short exact snippets that justify every changed card field, especially class, secondary class, cultivation realm (realm), stage, bloodline, bloodline rank, affinity names, affinity rank, and abilities/skills.\n" +
-        "    For abilityChanges, you can return either simple strings or rich objects like { name: 'Flame Slash', rank: 'Tier 2', description: '...' } so the history can display the new description.\n" +
-        "14. Output ONLY valid JSON with keys: targetLoreEntryId, targetProfileId, profile, and update. No markdown fences. profile must include name, title, className, rank, realm, stage, abilities, customFields, notes, level, exp, nextLevelExp, stats, traits, nicknames, uniqueTrait, cultivationPath, and optionally customJsonData. customFields must include Bloodline, Bloodline Rank, Affinity Names, Affinity Rank, Secondary Class, and any observed extra title/class/weapon fields. abilities must be an array where each has name, rank?, level, description (fitting text based on chapter display), evidence?. update must include shouldApply, summary, levelBefore, levelAfter, realmBefore, realmAfter, stageBefore, stageAfter, statChanges, abilityChanges (strings or objects containing name, rank, description), rewards, and evidence." +
-        customJsonInstruction
-
-      const existing = existingProfile ? `\nExisting Profile JSON:\n${JSON.stringify(existingProfile).slice(0, 5000)}` : "\nExisting Profile JSON:\nNone yet."
-      const configuredRealms = Array.isArray((progressionSystem as { realms?: unknown[] } | undefined)?.realms)
-        ? (progressionSystem as { realms?: unknown[] }).realms?.map(item => String(item)).filter(Boolean).join(" -> ")
-        : ""
-      const configuredStages = Array.isArray((progressionSystem as { stageLabels?: unknown[] } | undefined)?.stageLabels)
-        ? (progressionSystem as { stageLabels?: unknown[] }).stageLabels?.map(item => String(item)).filter(Boolean).join(" / ")
-        : ""
-      const cultivationGuide = typeof (progressionSystem as { cultivationGuide?: unknown } | undefined)?.cultivationGuide === "string"
-        ? String((progressionSystem as { cultivationGuide?: unknown }).cultivationGuide).slice(0, 3000)
-        : ""
-      const cultivationSourceText = typeof (progressionSystem as { cultivationSourceText?: unknown } | undefined)?.cultivationSourceText === "string"
-        ? String((progressionSystem as { cultivationSourceText?: unknown }).cultivationSourceText).slice(0, 5000)
-        : ""
-      const groups = Array.isArray(safeLoreEntry?.groups) && safeLoreEntry.groups.length > 0 ? safeLoreEntry.groups.join(", ") : "none"
-      const explicitTarget = safeLoreEntry?.name
-        ? `Target: ${safeLoreEntry.name}\nTarget lore id: ${safeLoreEntry.id || ""}\nHighlighted text: ${selectedText || ""}\nType: ${safeLoreEntry.category || "character"}\nGroups: ${groups}\nStory Bible Notes:\n${safeLoreEntry.content || ""}\n\n`
-        : "Target: Auto-detect from candidate profiles and chapter content.\n"
-
-      let customJsonPrompt = ""
-      if (customJsonTemplateStr) {
-        customJsonPrompt = `Custom JSON Template Fields Required:\n- Fill in the values for the custom JSON template inside 'profile.customJsonData':\n${customJsonTemplateStr}\nEnsure you match the structure and key names exactly.\n\n`
-      }
-
-      userPrompt =
-        explicitTarget +
-        `Simple Profile Fields Required:\n` +
-        `- Name\n- Title\n- Cultivation Realm (profile.realm; e.g. Demigod, God; match against the configured cultivation realms list when possible)\n- Cultivation Stage (profile.stage; e.g. Low, Medium, High, Peak; match against the configured stage labels when possible)\n- Rank (profile.rank; e.g. Tier 1, Rank 4)\n- Bloodline (profile.customFields.Bloodline)\n- Bloodline Rank (profile.customFields['Bloodline Rank']; examples: Supreme, Celestial)\n- Affinity Names (profile.customFields['Affinity Names']; comma-separated for multiple affinities)\n- Affinity Rank (profile.customFields['Affinity Rank']; preserve pairings like Fire (High), Void (Supreme))\n- Main Class (profile.className)\n- Secondary Class (profile.customFields['Secondary Class'])\n- Skills/Techniques/Abilities (profile.abilities) — each entry MUST include: name, rank (if shown), level, description (write a fitting description by closely reading how the skill/technique/ability was DISPLAYED in the chapter — system text, activation, effects, etc.), evidence\n- Lore (profile.notes)\n\n` +
-        customJsonPrompt +
-        `Extraction Checklist:\n` +
-        `1. Identify ONLY the target character. When multiple characters appear in the chapter, use names, aliases, speaker attribution, pronouns, context, and actions to attribute details correctly — NEVER mix details from other characters into the target's profile.\n` +
-        `2. Search target evidence and full chapter for explicit status-like details, especially any displayed skills, techniques, or abilities (system messages, use descriptions, learning notifications).\n` +
-        `3. Fill exact fields: Bloodline != Affinity != Class != Skills/Abilities.\n` +
-        `4. For abilities: base the 'description' directly on the chapter's display text of that skill/technique.\n` +
-        `5. Keep existing values when no new evidence appears.\n` +
-        `6. Put supporting snippets in update.evidence.\n\n` +
-        `Configured Cultivation Realms, weakest to strongest:\n${configuredRealms || "No realm ladder uploaded."}\nConfigured Stage Labels:\n${configuredStages || "Low / Medium / High / Peak"}\n\n` +
-        `Uploaded Cultivation Guide:\n${cultivationGuide || "No uploaded cultivation guide saved."}\n\n` +
-        `Uploaded Cultivation Source Text:\n${cultivationSourceText || "No cultivation source text saved."}\n\n` +
-        `Class vs Cultivation Decision Rules:\n- If a term is in the uploaded realm ladder, place it in profile.realm.\n- If a term is in the uploaded stage labels, place it in profile.stage.\n- Only place a term in profile.className when the chapter labels it as class, job, profession, role, or system class.\n- If the status screen has both Class and Cultivation, fill both separately and never copy one into the other.\n\n` +
-        `Candidate Profiles JSON:\n${JSON.stringify(Array.isArray(candidateProfiles) ? candidateProfiles : []).slice(0, 6000)}\n\n` +
-        `Candidate Lore Entries JSON:\n${JSON.stringify(Array.isArray(candidateLoreEntries) ? candidateLoreEntries : []).slice(0, 8000)}\n\n` +
-        `Active Chapter: ${chapterContext.chapterNumber ? `Chapter ${chapterContext.chapterNumber} - ` : ""}${chapterContext.title || "Untitled"}\n` +
-        `Target-Specific Chapter Evidence:\n${chapterContext.targetEvidence || "No target-specific excerpt found. Use the full chapter carefully and only update the target."}\n\n` +
-        `Chapter Content:\n${chapterContext.content}${existing}${memoryContext}`
+      return NextResponse.json({
+        progression: null,
+        message: "Character Progression feature has been wiped and is awaiting new parameter configuration."
+      })
     } else if (action === "cultivation_realm_import") {
-      const { rawText, currentSettings } = body
-      if (!rawText || typeof rawText !== "string") {
-        return NextResponse.json({ error: "rawText is required for cultivation_realm_import." }, { status: 400 })
-      }
-
-      systemInstruction =
-        "You organize cultivation, realm, rank, and progression-stage lists for web novel writing tools. " +
-        "The writer uploaded plain text that may contain messy headings, numbering, notes, duplicate stages, or mixed realm/stage terms.\n" +
-        "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, notes, and cultivationGuide.\n" +
-        "Realms should be ordered weakest to strongest. stageLabels should include repeated sub-stages such as Low, Middle, High, Peak when present. " +
-        "If the text is cultivation-focused, set showLevels and showExp to false unless numeric levels are clearly part of the system. Keep useful custom fields like Sect, Bloodline, Race, Affiliation, Dao, Core, Physique, or Legion. " +
-        "cultivationGuide must explain that uploaded realm/stage terms belong in profile.realm/profile.stage and must not be confused with profile.className."
-
-      userPrompt =
-        `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
-        `Uploaded progression text:\n${rawText.slice(0, 12000)}`
+      return NextResponse.json({
+        imported: null,
+        message: "Cultivation realm import has been wiped and is awaiting new parameter configuration."
+      })
     } else if (action === "brain_analyze") {
       const { highlightedText, chapterContent, chapterTitle, chapterNumber, existingBrainEntries } = body
       if (!highlightedText || !chapterContent) {
@@ -2305,24 +2045,10 @@ export async function POST(req: NextRequest) {
 
       userPrompt = `Existing Brain Map entries:\n${existingContext}\n\nChapters to Scan:\n${chaptersContext}`
     } else if (action === "progression_template_design") {
-      const { prompt, currentSettings } = body
-      if (!prompt || typeof prompt !== "string") {
-        return NextResponse.json({ error: "Prompt is required for progression_template_design." }, { status: 400 })
-      }
-
-      systemInstruction =
-        "You are a professional LitRPG, xianxia, and web-novel progression system designer.\n" +
-        "The user is describing their novel's character status screen / progression structure (e.g. realms, stats, affinities, levels, class, rank).\n" +
-        "Your task is to generate a comprehensive profile template matching their requirements.\n" +
-        "Return ONLY valid JSON with key settings. settings must include realms, stageLabels, showLevels, showExp, showStats, statKeys, customFields, notes, and profileTemplate.\n" +
-        "profileTemplate must contain: enabled (true), name, defaultRealm, defaultStage, defaultRank, defaultClassName, defaultCultivationPath, baseLevel, baseExp, nextLevelExp, defaultStats, defaultTraits, defaultAbilities, defaultCustomFields, cards, and notes.\n" +
-        "Each card in profileTemplate.cards must have id (starts with 'template-'), label, type ('text' | 'rank' | 'progress' | 'resource' | 'stat' | 'ability' | 'compound' | 'counter'), sourceKey (the variable name like 'name', 'cultivation', 'abilities', 'exp', or a custom field name like 'Affinity'), fields (array of sub-field names displayed in the card), color (rose, violet, cyan, amber, emerald, blue, fuchsia, or lime), and enabled (true).\n" +
-        "Use type 'progress' for values like EXP that render as current/max timelines, with values such as 120/300. Use type 'counter' for simple numeric counters such as Level Ups or available points.\n" +
-        "Ensure all requested categories (like Name, Cultivation, Levels, Attributes, Affinity/Element, Titles, Classes, and Weapons) are mapped to appropriate template cards. For attributes, create a 'stat' or 'compound' card and ensure the used stats are in settings.statKeys and set defaults in profileTemplate.defaultStats. For elemental affinity or bloodline cards, create a compound card with companion fields for ranks/grades, such as ['Affinity Names', 'Rank'] (card name: 'Affinity') or ['Bloodline', 'Bloodline Grade'], and include those fields in settings.customFields. When the user wants more than one title, class, or weapon, create separate compound cards with distinct custom field names such as ['Title 2', 'Title 2 Effect'], ['Class 2', 'Class 2 Rank'], or ['Weapon', 'Weapon Grade', 'Weapon Status']; include those fields in settings.customFields. Always include all non-direct card source fields and fields in settings.customFields."
-
-      userPrompt =
-        `Current settings JSON:\n${JSON.stringify(currentSettings || {}).slice(0, 4000)}\n\n` +
-        `User Prompt for Template Design:\n${prompt}`
+      return NextResponse.json({
+        settings: null,
+        message: "Progression template designer has been wiped and is awaiting new parameter configuration."
+      })
     } else if (action === "brain_consistency_check") {
       const { chapterContent, chapterTitle, existingBrainEntries } = body
       if (!chapterContent) {
@@ -2877,10 +2603,7 @@ export async function POST(req: NextRequest) {
       "brain_scan_updates"
     ])
     let text = ""
-    if (action === "cultivation_realm_import" && !process.env.GROQ_API_KEY) {
-      text = JSON.stringify({ settings: parseCultivationSettingsFromText(body.rawText, body.currentSettings).settings })
-    } else {
-      // appearance_prompts and name_generate need creative temperature — higher than standard JSON extraction
+    // appearance_prompts and name_generate need creative temperature — higher than standard JSON extraction
       const appearanceTemp = action === "appearance_prompts" ? 0.60 : undefined
       const nameTemp = action === "name_generate" ? 0.92 : undefined
       const creativeTemp = appearanceTemp ?? nameTemp
@@ -2999,7 +2722,6 @@ export async function POST(req: NextRequest) {
           throw new Error("No API key configured for AI generation. Please set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY in environment.")
         }
       }
-    }
 
     if (action === "brain_consistency_check") {
       const result = parseJsonObject<any>(text)
@@ -3180,109 +2902,12 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    if (action === "progression_update") {
-      const progression = parseJsonObject<ProgressionAiResponse>(text)
-      if (!progression) {
-        return NextResponse.json({
-          progression: {
-            targetLoreEntryId: "",
-            targetProfileId: "",
-            profile: {
-              notes: text
-            },
-            update: {
-              shouldApply: false,
-              summary: "Could not parse a structured progression update.",
-              levelBefore: 1,
-              levelAfter: 1,
-              realmBefore: "",
-              realmAfter: "",
-              stageBefore: "",
-              stageAfter: "",
-              statChanges: {},
-              abilityChanges: [],
-              rewards: [],
-              evidence: []
-            }
-          }
-        })
-      }
-
-      return NextResponse.json({
-        progression: {
-          targetLoreEntryId: progression.targetLoreEntryId || "",
-          targetProfileId: progression.targetProfileId || "",
-          profile: progression.profile || {},
-          update: {
-            shouldApply: progression.update?.shouldApply !== false,
-            summary: progression.update?.summary || "Progression reviewed.",
-            levelBefore: Number(progression.update?.levelBefore || 1),
-            levelAfter: Number(progression.update?.levelAfter || progression.update?.levelBefore || 1),
-            realmBefore: progression.update?.realmBefore || "",
-            realmAfter: progression.update?.realmAfter || "",
-            stageBefore: progression.update?.stageBefore || "",
-            stageAfter: progression.update?.stageAfter || "",
-            statChanges: progression.update?.statChanges || {},
-            abilityChanges: Array.isArray(progression.update?.abilityChanges) ? progression.update.abilityChanges : [],
-            rewards: Array.isArray(progression.update?.rewards) ? progression.update.rewards : [],
-            evidence: Array.isArray(progression.update?.evidence) ? progression.update.evidence : []
-          }
-        }
-      })
-    }
-
     if (action === "format_references") {
       const parsed = parseJsonObject<Record<string, unknown>>(text)
       if (!parsed) {
         return NextResponse.json({ error: "AI returned unparseable JSON. Please try again with different input." }, { status: 500 })
       }
       return NextResponse.json({ text: parsed })
-    }
-
-    if (action === "cultivation_realm_import") {
-      const imported = parseJsonObject<CultivationImportResponse>(text)
-      const fallback = parseCultivationSettingsFromText(body.rawText, body.currentSettings)
-      if (!imported) {
-        return NextResponse.json({ imported: fallback })
-      }
-      const settings = imported.settings && Array.isArray(imported.settings.realms) && imported.settings.realms.length > 0
-        ? {
-          ...fallback.settings,
-          ...imported.settings,
-          cultivationSourceText: String(body.rawText || "").slice(0, 20000),
-          cultivationGuide: imported.settings.cultivationGuide || fallback.settings?.cultivationGuide || "",
-          notes: imported.settings.notes || fallback.settings?.notes || ""
-        }
-        : fallback.settings
-
-      return NextResponse.json({
-        imported: {
-          settings
-        }
-      })
-    }
-
-    if (action === "progression_template_design") {
-      const design = parseJsonObject<ProgressionTemplateDesignResponse>(text)
-      const settings = design?.settings || (design?.profileTemplate ? {
-        realms: design.realms,
-        stageLabels: design.stageLabels,
-        showLevels: design.showLevels,
-        showExp: design.showExp,
-        showStats: design.showStats,
-        statKeys: design.statKeys,
-        customFields: design.customFields,
-        notes: design.notes,
-        profileTemplate: design.profileTemplate
-      } : null)
-      if (!settings?.profileTemplate || !Array.isArray(settings.profileTemplate.cards) || settings.profileTemplate.cards.length === 0) {
-        return NextResponse.json({ error: "Could not parse a complete profile template from the AI response. Please include the cards you want in the prompt." }, { status: 500 })
-      }
-      return NextResponse.json({
-        imported: {
-          settings
-        }
-      })
     }
 
     if (action === "bible_consistency_check") {

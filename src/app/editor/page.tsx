@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client"
 
 import { useAuth } from "@/components/Providers"
@@ -1942,7 +1942,24 @@ class AudioFocusSynthesizer {
   }
 }
 
-const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+const countWords = (text: string): number => {
+  if (!text) return 0
+  let count = 0
+  let inWord = false
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    const isSpace = code === 32 || (code >= 9 && code <= 13) || code === 160
+    if (!isSpace) {
+      if (!inWord) {
+        count++
+        inWord = true
+      }
+    } else {
+      inWord = false
+    }
+  }
+  return count
+}
 
 function EditorContent() {
   const { user, loading } = useAuth()
@@ -1952,7 +1969,10 @@ function EditorContent() {
 
   const [projectName, setProjectName] = useState("Loading...")
   const [notes, setNotes] = useState<Note[]>([])
+  const notesRef = useRef<Note[]>([])
+  notesRef.current = notes
   const noteWordCountCacheRef = useRef<Record<string, { content: string; count: number }>>({})
+  const noteExportFingerprintCacheRef = useRef<Record<string, { title: string; content: string; fingerprint: string }>>({})
   const getNoteWordCount = useCallback((note: Note) => {
     if (!note) return 0
     const cache = noteWordCountCacheRef.current[note.id]
@@ -2035,7 +2055,7 @@ function EditorContent() {
             )
           )
         }
-      }, 500)
+      }, 800)
     }
   }, [])
 
@@ -2097,7 +2117,8 @@ function EditorContent() {
   }, [activeNote?.content, activeNoteId])
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [sessionTime, setSessionTime] = useState(0)
+  const sessionTimeRef = useRef(0)
+  const timerDisplayRef = useRef<HTMLSpanElement | null>(null)
   const [isTimerRunning, setIsTimerRunning] = useState(true)
 
   const [isSelectionMode, setIsSelectionMode] = useState(false)
@@ -2404,32 +2425,45 @@ function EditorContent() {
     }
   }, [currentTotalWords, sprintStartTotalWords, sprintActive])
 
+  const loadedDailyProjectRef = useRef<string | null>(null)
+  const seededMilestonesProjectRef = useRef<string | null>(null)
+  const dailyStartCacheRef = useRef<{ projectId: string; dateString: string; count: number } | null>(null)
+
   // Initial load daily word log and milestones
   useEffect(() => {
     if (!projectId) return
     
-    const storedLog = localStorage.getItem(`penpad_daily_word_log_${projectId}`)
-    if (storedLog) {
-      try {
-        setDailyWordLog(JSON.parse(storedLog))
-      } catch {}
+    if (loadedDailyProjectRef.current !== projectId) {
+      loadedDailyProjectRef.current = projectId
+      const storedLog = localStorage.getItem(`penpad_daily_word_log_${projectId}`)
+      if (storedLog) {
+        try {
+          setDailyWordLog(JSON.parse(storedLog))
+        } catch {}
+      }
+      const storedMilestones = localStorage.getItem(`penpad_unlocked_milestones_${projectId}`)
+      if (storedMilestones) {
+        try {
+          setUnlockedMilestones(new Set(JSON.parse(storedMilestones)))
+          seededMilestonesProjectRef.current = projectId
+        } catch {}
+      }
     }
-    
-    const storedMilestones = localStorage.getItem(`penpad_unlocked_milestones_${projectId}`)
-    if (storedMilestones) {
-      try {
-        setUnlockedMilestones(new Set(JSON.parse(storedMilestones)))
-      } catch {}
-    } else if (notes.length > 0) {
-      const initialUnlocked = new Set<string>()
-      MILESTONES.forEach(m => {
-        if (currentTotalWords >= m.reqWords) {
-          initialUnlocked.add(m.id)
+
+    if (seededMilestonesProjectRef.current !== projectId && notes.length > 0) {
+      seededMilestonesProjectRef.current = projectId
+      const storedMilestones = localStorage.getItem(`penpad_unlocked_milestones_${projectId}`)
+      if (!storedMilestones) {
+        const initialUnlocked = new Set<string>()
+        MILESTONES.forEach(m => {
+          if (currentTotalWords >= m.reqWords) {
+            initialUnlocked.add(m.id)
+          }
+        })
+        if (initialUnlocked.size > 0) {
+          setUnlockedMilestones(initialUnlocked)
+          localStorage.setItem(`penpad_unlocked_milestones_${projectId}`, JSON.stringify(Array.from(initialUnlocked)))
         }
-      })
-      if (initialUnlocked.size > 0) {
-        setUnlockedMilestones(initialUnlocked)
-        localStorage.setItem(`penpad_unlocked_milestones_${projectId}`, JSON.stringify(Array.from(initialUnlocked)))
       }
     }
   }, [projectId, notes.length, currentTotalWords])
@@ -2438,26 +2472,32 @@ function EditorContent() {
   useEffect(() => {
     if (!projectId || notes.length === 0) return
     const todayStr = new Date().toLocaleDateString('en-CA')
-    const storedStartMeta = localStorage.getItem(`penpad_daily_start_words_${projectId}`)
     
     let dailyStart = currentTotalWords
-    if (storedStartMeta) {
-      try {
-        const parsed = JSON.parse(storedStartMeta)
-        if (parsed.dateString === todayStr) {
-          dailyStart = parsed.count
-        } else {
-          localStorage.setItem(`penpad_daily_start_words_${projectId}`, JSON.stringify({
-            dateString: todayStr,
-            count: currentTotalWords
-          }))
-        }
-      } catch {}
+    const cachedStart = dailyStartCacheRef.current
+    if (cachedStart && cachedStart.projectId === projectId && cachedStart.dateString === todayStr) {
+      dailyStart = cachedStart.count
     } else {
-      localStorage.setItem(`penpad_daily_start_words_${projectId}`, JSON.stringify({
-        dateString: todayStr,
-        count: currentTotalWords
-      }))
+      const storedStartMeta = localStorage.getItem(`penpad_daily_start_words_${projectId}`)
+      if (storedStartMeta) {
+        try {
+          const parsed = JSON.parse(storedStartMeta)
+          if (parsed.dateString === todayStr) {
+            dailyStart = parsed.count
+          } else {
+            localStorage.setItem(`penpad_daily_start_words_${projectId}`, JSON.stringify({
+              dateString: todayStr,
+              count: currentTotalWords
+            }))
+          }
+        } catch {}
+      } else {
+        localStorage.setItem(`penpad_daily_start_words_${projectId}`, JSON.stringify({
+          dateString: todayStr,
+          count: currentTotalWords
+        }))
+      }
+      dailyStartCacheRef.current = { projectId, dateString: todayStr, count: dailyStart }
     }
     
     const writtenToday = Math.max(0, currentTotalWords - dailyStart)
@@ -5846,24 +5886,36 @@ const fillEmptyCustomJsonData = (
     return regex.test(chapterContent)
   }, [bibleEntries, getLoreAliases])
 
-  const highlightBibleEntries = (text: string) => {
-    if (!bibleEntries.length || !text) return text
-    
+  const loreHighlightMatcher = useMemo(() => {
+    if (!bibleEntries.length) return null
     const aliasEntries = bibleEntries.flatMap(entry =>
       getLoreAliases(entry).map(alias => ({ entry, alias }))
     ).sort((a, b) => b.alias.length - a.alias.length)
 
-    if (aliasEntries.length === 0) return text
+    if (aliasEntries.length === 0) return null
+
+    const lookup = new Map<string, BibleEntry>()
+    for (const item of aliasEntries) {
+      const lower = item.alias.toLowerCase()
+      if (!lookup.has(lower)) {
+        lookup.set(lower, item.entry)
+      }
+    }
 
     const escapedNames = aliasEntries.map(item => item.alias.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
     const regex = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'gi')
+    return { regex, lookup }
+  }, [bibleEntries, getLoreAliases])
 
-    const parts = text.split(regex)
+  const highlightBibleEntries = (text: string) => {
+    if (!loreHighlightMatcher || !text) return text
+
+    const parts = text.split(loreHighlightMatcher.regex)
     if (parts.length === 1) return text
 
     return parts.map((part, index) => {
-      const match = aliasEntries.find(item => item.alias.toLowerCase() === part.toLowerCase())
-      if (match) {
+      const matchedEntry = loreHighlightMatcher.lookup.get(part.toLowerCase())
+      if (matchedEntry) {
         return (
           <span 
             key={index} 
@@ -5871,7 +5923,7 @@ const fillEmptyCustomJsonData = (
             onClick={(e) => {
               e.stopPropagation()
               const rect = e.currentTarget.getBoundingClientRect()
-              setHoveredLore(match.entry)
+              setHoveredLore(matchedEntry)
               setHoveredLorePosition({
                 top: rect.top + window.scrollY - 10,
                 left: rect.left + window.scrollX + rect.width / 2
@@ -6079,8 +6131,11 @@ const fillEmptyCustomJsonData = (
     if (!textarea) return
 
     const start = textarea.selectionStart
-    const textBeforeCursor = textarea.value.substring(0, start)
-    const lines = textBeforeCursor.split('\r\n').length - 1
+    const val = textarea.value
+    let lines = 0
+    for (let i = 0; i < start; i++) {
+      if (val.charCodeAt(i) === 10) lines++
+    }
     
     const computedStyle = window.getComputedStyle(textarea)
     const lineHeight = parseInt(computedStyle.lineHeight) || 28
@@ -6103,19 +6158,7 @@ const fillEmptyCustomJsonData = (
     }
   }, [isTypewriterMode, centerActiveLine, activeNoteId])
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-    if (isTimerRunning && activeNoteId) {
-      interval = setInterval(() => {
-        setSessionTime(prev => prev + 1)
-      }, 1000)
-    }
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isTimerRunning, activeNoteId])
-
-  const formatSessionTime = (totalSeconds: number): string => {
+  const formatSessionTime = useCallback((totalSeconds: number): string => {
     const hrs = Math.floor(totalSeconds / 3600)
     const mins = Math.floor((totalSeconds % 3600) / 60)
     const secs = totalSeconds % 60
@@ -6124,7 +6167,22 @@ const fillEmptyCustomJsonData = (
       mins.toString().padStart(2, '0'),
       secs.toString().padStart(2, '0')
     ].join(':')
-  }
+  }, [])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    if (isTimerRunning && activeNoteId) {
+      interval = setInterval(() => {
+        sessionTimeRef.current += 1
+        if (timerDisplayRef.current) {
+          timerDisplayRef.current.textContent = `⏱️ ${formatSessionTime(sessionTimeRef.current)}`
+        }
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isTimerRunning, activeNoteId, formatSessionTime])
 
   const changeWordGoal = () => {
     if (!activeNote) return
@@ -7242,33 +7300,57 @@ const fillEmptyCustomJsonData = (
     }
   }
 
+  const lowerNoteCacheRef = useRef<Record<string, { raw: string; lower: string }>>({})
   const lowerNotesContentCache = useMemo(() => {
-    return notes.map(n => (n?.content || "").toLowerCase())
+    return notes.map(n => {
+      if (!n) return { id: "", lower: "" }
+      const raw = n.content || ""
+      const cached = lowerNoteCacheRef.current[n.id]
+      if (cached && cached.raw === raw) {
+        return { id: n.id, lower: cached.lower }
+      }
+      const lower = raw.toLowerCase()
+      lowerNoteCacheRef.current[n.id] = { raw, lower }
+      return { id: n.id, lower }
+    })
   }, [notes])
 
-  const mentionsCacheRef = useRef<Map<string, number>>(new Map())
-
-  useEffect(() => {
-    mentionsCacheRef.current.clear()
-  }, [lowerNotesContentCache])
+  const mentionsByNoteCacheRef = useRef<Map<string, Map<string, { lower: string; count: number }>>>(new Map())
+  const mentionsTotalCacheRef = useRef<Map<string, { listRef: unknown; total: number }>>(new Map())
 
   const getEntryManuscriptMentions = useCallback((entryName: string) => {
     if (!entryName || !lowerNotesContentCache || lowerNotesContentCache.length === 0) return 0
     const lowerName = entryName.toLowerCase()
-    if (mentionsCacheRef.current.has(lowerName)) {
-      return mentionsCacheRef.current.get(lowerName)!
+    const cachedTotal = mentionsTotalCacheRef.current.get(lowerName)
+    if (cachedTotal && cachedTotal.listRef === lowerNotesContentCache) {
+      return cachedTotal.total
     }
+
+    let perNoteMap = mentionsByNoteCacheRef.current.get(lowerName)
+    if (!perNoteMap) {
+      perNoteMap = new Map()
+      mentionsByNoteCacheRef.current.set(lowerName, perNoteMap)
+    }
+
     let total = 0
     for (let i = 0; i < lowerNotesContentCache.length; i++) {
-      const lowerContent = lowerNotesContentCache[i]
-      if (!lowerContent) continue
+      const item = lowerNotesContentCache[i]
+      if (!item || !item.lower) continue
+      const prev = perNoteMap.get(item.id)
+      if (prev && prev.lower === item.lower) {
+        total += prev.count
+        continue
+      }
+      let count = 0
       let pos = 0
-      while ((pos = lowerContent.indexOf(lowerName, pos)) !== -1) {
-        total++
+      while ((pos = item.lower.indexOf(lowerName, pos)) !== -1) {
+        count++
         pos += lowerName.length
       }
+      perNoteMap.set(item.id, { lower: item.lower, count })
+      total += count
     }
-    mentionsCacheRef.current.set(lowerName, total)
+    mentionsTotalCacheRef.current.set(lowerName, { listRef: lowerNotesContentCache, total })
     return total
   }, [lowerNotesContentCache])
 
@@ -9177,20 +9259,41 @@ const fillEmptyCustomJsonData = (
     setShowVersionsModal(false)
   }
 
+  const lastProjectMetaSaveRef = useRef<number>(0)
+
+  const getChapterExportFingerprint = useCallback((note: Note) => {
+    if (!note) return "0:0"
+    const title = note.title || ""
+    const content = note.content || ""
+    const cached = noteExportFingerprintCacheRef.current[note.id]
+    if (cached && cached.title === title && cached.content === content) {
+      return cached.fingerprint
+    }
+    const raw = `${title}\r\n${content}`
+    let hash = 0
+    for (let i = 0; i < raw.length; i++) {
+      hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0
+    }
+    const fingerprint = `${raw.length}:${hash}`
+    noteExportFingerprintCacheRef.current[note.id] = { title, content, fingerprint }
+    return fingerprint
+  }, [])
+
   const saveNote = useCallback(async (note: Note) => {
     if (!user || !projectId) return
     setSyncStatus('saving')
     try {
       flushEditorContentSync()
       
-      let noteList = await getManuscriptLocal(projectId)
-      if (!noteList) noteList = []
+      const noteList = notesRef.current.length > 0
+        ? [...notesRef.current]
+        : ((await getManuscriptLocal(projectId)) || [])
       
       const latestContent = lastEditorContentRef.current
       const now = Date.now()
       const updatedNote = { ...note, content: latestContent, updatedAt: now }
       
-      const existingIdx = noteList.findIndex(n => n.id === note.id)
+      const existingIdx = noteList.findIndex(n => n && n.id === note.id)
       if (existingIdx >= 0) {
         noteList[existingIdx] = updatedNote
       } else {
@@ -9199,13 +9302,16 @@ const fillEmptyCustomJsonData = (
       
       await saveManuscriptLocal(projectId, noteList)
       
-      const storedProjects = localStorage.getItem(`penpad_projects_${user.uid}`)
-      if (storedProjects) {
-        const projects = JSON.parse(storedProjects)
-        const projIdx = projects.findIndex((p: { id: string }) => p.id === projectId)
-        if (projIdx >= 0) {
-          projects[projIdx].lastUpdated = now
-          localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
+      if (now - lastProjectMetaSaveRef.current > 10000) {
+        lastProjectMetaSaveRef.current = now
+        const storedProjects = localStorage.getItem(`penpad_projects_${user.uid}`)
+        if (storedProjects) {
+          const projects = JSON.parse(storedProjects)
+          const projIdx = projects.findIndex((p: { id: string }) => p.id === projectId)
+          if (projIdx >= 0) {
+            projects[projIdx].lastUpdated = now
+            localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
+          }
         }
       }
 
@@ -9285,14 +9391,8 @@ const fillEmptyCustomJsonData = (
     }
   }, [projectId, nameShortlist, namePresets, nameGenHistory, nameRatings, user])
 
-  const getNoteAutoSaveFingerprint = (note: Note) => JSON.stringify({
-    id: note.id,
-    title: note.title || "",
-    content: note.content || "",
-    wordGoal: note.wordGoal ?? null,
-    volumeId: note.volumeId ?? null,
-    sortOrder: note.sortOrder ?? null
-  })
+  const getNoteAutoSaveFingerprint = (note: Note) =>
+    `${note.id}:${note.wordGoal ?? ''}:${note.volumeId ?? ''}:${note.sortOrder ?? ''}:${getChapterExportFingerprint(note)}`
 
   const getBibleAutoSaveFingerprint = (entry: BibleEntry) => JSON.stringify({
     id: entry.id,
@@ -9435,15 +9535,6 @@ const fillEmptyCustomJsonData = (
 
   const sanitizeFilename = (name: string): string => {
     return (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled'
-  }
-
-  const getChapterExportFingerprint = (note: Note) => {
-    const raw = `${note.title || ""}\r\n${note.content || ""}`
-    let hash = 0
-    for (let i = 0; i < raw.length; i++) {
-      hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0
-    }
-    return `${raw.length}:${hash}`
   }
   const persistExportHistory = useCallback((nextHistory: Record<string, ExportHistoryRecord>) => {
     const key = getExportHistoryStorageKey()
@@ -9869,10 +9960,36 @@ ${navPoints}  </navMap>
     { name: "NaNoWriMo", cmd: "/nano", desc: "NaNoWriMo 2026", action: () => { setActiveSidebarTab('insights'); setIsLeftSidebarOpen(true) } }
   ]
 
-  const filteredCommands = slashCommands.filter(c => 
-    c.name.toLowerCase().includes(slashMenuQuery.toLowerCase()) ||
-    c.cmd.toLowerCase().includes(slashMenuQuery.toLowerCase())
-  )
+  const filteredCommands = useMemo(() => {
+    if (!showSlashMenu) return slashCommands
+    const q = slashMenuQuery.toLowerCase()
+    if (!q) return slashCommands
+    return slashCommands.filter(c => 
+      c.name.toLowerCase().includes(q) ||
+      c.cmd.toLowerCase().includes(q)
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSlashMenu, slashMenuQuery])
+
+  const indexedBibleEntries = useMemo(() => {
+    return bibleEntries
+      .filter(entry => entry && entry.name)
+      .map(entry => {
+        const lowerName = entry.name.toLowerCase()
+        const words = lowerName.split(/\s+/)
+        return { entry, lowerName, words }
+      })
+  }, [bibleEntries])
+
+  const bibleEntryByLowerName = useMemo(() => {
+    const map = new Map<string, BibleEntry>()
+    for (const item of indexedBibleEntries) {
+      if (!map.has(item.lowerName)) {
+        map.set(item.lowerName, item.entry)
+      }
+    }
+    return map
+  }, [indexedBibleEntries])
 
   const handleSlashSelect = (action: () => void) => {
     const textarea = textareaRef.current
@@ -9904,7 +10021,7 @@ ${navPoints}  </navMap>
     const textarea = textareaRef.current
     if (!textarea || !activeNote) return
 
-    const matchedEntry = bibleEntries.find(e => e.name.toLowerCase() === suggestion.toLowerCase())
+    const matchedEntry = bibleEntryByLowerName.get(suggestion.toLowerCase())
     if (matchedEntry) {
       setBibleSelectCounts(prev => {
         const next = {
@@ -10079,23 +10196,32 @@ ${navPoints}  </navMap>
     const cursor = target.selectionStart
     const text = target.value
     
-    const textBeforeCursor = text.substring(0, cursor)
-    const lastWordIdx = textBeforeCursor.lastIndexOf(" ")
+    // Inspect only the last 80 characters before cursor instead of slicing the entire chapter
+    const textBeforeCursor = text.slice(Math.max(0, cursor - 80), cursor)
+    const lastLineIdx = Math.max(textBeforeCursor.lastIndexOf("\n"), textBeforeCursor.lastIndexOf("\r"))
+    const lastWordIdx = Math.max(textBeforeCursor.lastIndexOf(" "), textBeforeCursor.lastIndexOf("\t"), lastLineIdx)
     const lastWord = textBeforeCursor.substring(lastWordIdx + 1)
 
     if (lastWord.startsWith("/")) {
       setShowSlashMenu(true)
       setSlashMenuQuery(lastWord.substring(1))
       setSlashMenuIndex(0)
-      setShowAutocomplete(false)
+      if (showAutocomplete) setShowAutocomplete(false)
     } else {
       if (showSlashMenu) {
         setShowSlashMenu(false)
         setSlashMenuQuery("")
       }
 
+      if (indexedBibleEntries.length === 0) {
+        if (showAutocomplete) {
+          setShowAutocomplete(false)
+          setAutocompleteSuggestions([])
+        }
+        return
+      }
+
       // Autocomplete check
-      const lastLineIdx = textBeforeCursor.lastIndexOf("\r\n")
       const lastPunctuationIdx = Math.max(
         textBeforeCursor.lastIndexOf(","),
         textBeforeCursor.lastIndexOf("."),
@@ -10106,71 +10232,62 @@ ${navPoints}  </navMap>
         textBeforeCursor.lastIndexOf("("),
         textBeforeCursor.lastIndexOf("[")
       )
-      const splitIdx = Math.max(lastWordIdx, lastLineIdx, lastPunctuationIdx)
+      const splitIdx = Math.max(lastWordIdx, lastPunctuationIdx)
       const currentWord = textBeforeCursor.substring(splitIdx + 1)
       
       const cleanWord = currentWord.replace(/[^A-Za-z]/g, "")
       if (cleanWord.length >= 2) {
         const lowerClean = cleanWord.toLowerCase()
 
-        // 1. Filter matching entries from Story Bible
-        const matchingEntries = bibleEntries.filter(entry => {
-          if (!entry || !entry.name) return false
-          const lowerName = entry.name.toLowerCase()
-          const words = lowerName.split(/\s+/)
-          return words.some(w => w.startsWith(lowerClean)) || lowerName.startsWith(lowerClean)
-        })
+        // 1. Filter matching entries from pre-indexed Story Bible
+        const matchingItems = indexedBibleEntries.filter(item =>
+          item.lowerName.startsWith(lowerClean) || item.words.some(w => w.startsWith(lowerClean))
+        )
 
         let matches: string[] = []
 
-        if (matchingEntries.length > 0) {
+        if (matchingItems.length > 0) {
           // Pre-rank candidate pool before calculating manuscript mentions
-          matchingEntries.sort((a, b) => {
-            const aNameLower = a.name.toLowerCase()
-            const bNameLower = b.name.toLowerCase()
-            const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
-            const bExactPrefix = bNameLower.startsWith(lowerClean) ? 1 : 0
+          matchingItems.sort((a, b) => {
+            const aExactPrefix = a.lowerName.startsWith(lowerClean) ? 1 : 0
+            const bExactPrefix = b.lowerName.startsWith(lowerClean) ? 1 : 0
             if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
 
-            const aSelects = (bibleSelectCounts[a.id] || 0) + (bibleSelectCounts[aNameLower] || 0)
-            const bSelects = (bibleSelectCounts[b.id] || 0) + (bibleSelectCounts[bNameLower] || 0)
+            const aSelects = (bibleSelectCounts[a.entry.id] || 0) + (bibleSelectCounts[a.lowerName] || 0)
+            const bSelects = (bibleSelectCounts[b.entry.id] || 0) + (bibleSelectCounts[b.lowerName] || 0)
             if (aSelects !== bSelects) return bSelects - aSelects
 
-            return (b.updatedAt || 0) - (a.updatedAt || 0)
+            return (b.entry.updatedAt || 0) - (a.entry.updatedAt || 0)
           })
 
-          const topCandidates = matchingEntries.slice(0, 10)
+          const topCandidates = matchingItems.slice(0, 10)
 
           // 2. Compute scores ONCE only for top candidates
           const entryScores = new Map<string, number>()
-          topCandidates.forEach(entry => {
-            const lowerName = entry.name.toLowerCase()
-            const selects = (bibleSelectCounts[entry.id] || 0) + (bibleSelectCounts[lowerName] || 0)
-            const mentions = getEntryManuscriptMentions(entry.name)
-            entryScores.set(entry.id, (selects * 100) + mentions)
+          topCandidates.forEach(item => {
+            const selects = (bibleSelectCounts[item.entry.id] || 0) + (bibleSelectCounts[item.lowerName] || 0)
+            const mentions = getEntryManuscriptMentions(item.entry.name)
+            entryScores.set(item.entry.id, (selects * 100) + mentions)
           })
 
           // 3. Final rank top candidates
           topCandidates.sort((a, b) => {
-            const aScore = entryScores.get(a.id) || 0
-            const bScore = entryScores.get(b.id) || 0
+            const aScore = entryScores.get(a.entry.id) || 0
+            const bScore = entryScores.get(b.entry.id) || 0
             if (aScore !== bScore) return bScore - aScore
 
-            const aNameLower = a.name.toLowerCase()
-            const bNameLower = b.name.toLowerCase()
-            const aExactPrefix = aNameLower.startsWith(lowerClean) ? 1 : 0
-            const bExactPrefix = bNameLower.startsWith(lowerClean) ? 1 : 0
+            const aExactPrefix = a.lowerName.startsWith(lowerClean) ? 1 : 0
+            const bExactPrefix = b.lowerName.startsWith(lowerClean) ? 1 : 0
             if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
 
-            return (b.updatedAt || 0) - (a.updatedAt || 0)
+            return (b.entry.updatedAt || 0) - (a.entry.updatedAt || 0)
           })
 
-          matches = topCandidates.map(entry => entry.name)
+          matches = topCandidates.map(item => item.entry.name)
         }
 
         if (matches.length > 0) {
           setAutocompleteSuggestions(matches)
-
           setAutocompleteTriggerPos(cursor - cleanWord.length)
           setShowAutocomplete(true)
           setAutocompleteIndex(0)
@@ -10854,7 +10971,8 @@ ${navPoints}  </navMap>
     }
   }, [notes, currentTotalWords, brainEntries, arcSeeds, bibleEntries])
 
-  const globalSearchResults: GlobalSearchResult[] = (() => {
+  const globalSearchResults: GlobalSearchResult[] = useMemo(() => {
+    if (!showGlobalSearch) return []
     const query = globalSearchQuery.trim().toLowerCase()
     if (!query) return []
 
@@ -10922,7 +11040,8 @@ ${navPoints}  </navMap>
       }))
 
     return [...chapterResults, ...brainResults, ...arcResults, ...loreResults].slice(0, 18)
-  })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGlobalSearch, globalSearchQuery, notes, brainEntries, bibleEntries, arcSeeds])
 
   const openGlobalSearchResult = (result: GlobalSearchResult) => {
     if (result.source === 'chapter' && result.chapterId) {
@@ -10999,39 +11118,52 @@ ${navPoints}  </navMap>
     }).filter((s): s is { id: string; title: string; content: string } => s !== null);
   };
 
-  const filteredBrainEntries = brainEntries.filter(e => {
+  const filteredBrainEntries = useMemo(() => {
     const query = brainSearchQuery.toLowerCase()
-    const matchesSearch = !query ||
-      e.highlightedText.toLowerCase().includes(query) ||
-      e.aiSummary.toLowerCase().includes(query) ||
-      e.chapterTitle.toLowerCase().includes(query) ||
-      (e.entityName || "").toLowerCase().includes(query) ||
-      (e.connections || []).some(connection => connection.toLowerCase().includes(query))
-    const matchesType = brainTypeFilter === 'all' || getBrainEntryType(e) === brainTypeFilter
-    return matchesSearch && matchesType
-  })
+    return brainEntries.filter(e => {
+      const matchesSearch = !query ||
+        e.highlightedText.toLowerCase().includes(query) ||
+        e.aiSummary.toLowerCase().includes(query) ||
+        e.chapterTitle.toLowerCase().includes(query) ||
+        (e.entityName || "").toLowerCase().includes(query) ||
+        (e.connections || []).some(connection => connection.toLowerCase().includes(query))
+      const matchesType = brainTypeFilter === 'all' || getBrainEntryType(e) === brainTypeFilter
+      return matchesSearch && matchesType
+    })
+  }, [brainEntries, brainSearchQuery, brainTypeFilter])
 
-  const selectedBrainEntry = selectedBrainEntryId 
-    ? brainEntries.find(e => e.id === selectedBrainEntryId) || null
-    : null
-  const selectedArcSeed = selectedArcSeedId
-    ? arcSeeds.find(seed => seed.id === selectedArcSeedId) || null
-    : null
-  const openArcSeedCount = arcSeeds.filter(seed => seed.status === "open").length
-  const filteredArcSeeds = arcSeeds.filter(seed => {
+  const selectedBrainEntry = useMemo(() => {
+    return selectedBrainEntryId 
+      ? brainEntries.find(e => e.id === selectedBrainEntryId) || null
+      : null
+  }, [brainEntries, selectedBrainEntryId])
+
+  const selectedArcSeed = useMemo(() => {
+    return selectedArcSeedId
+      ? arcSeeds.find(seed => seed.id === selectedArcSeedId) || null
+      : null
+  }, [arcSeeds, selectedArcSeedId])
+
+  const openArcSeedCount = useMemo(() => {
+    return arcSeeds.filter(seed => seed.status === "open").length
+  }, [arcSeeds])
+
+  const filteredArcSeeds = useMemo(() => {
     const query = arcSeedSearchQuery.trim().toLowerCase()
-    const matchesStatus = arcSeedStatusFilter === 'all' || seed.status === arcSeedStatusFilter
-    const matchesSearch = !query ||
-      seed.title.toLowerCase().includes(query) ||
-      seed.summary.toLowerCase().includes(query) ||
-      seed.whyItMatters.toLowerCase().includes(query) ||
-      seed.futurePayoff.toLowerCase().includes(query) ||
-      seed.evidence.toLowerCase().includes(query) ||
-      seed.chapterTitle.toLowerCase().includes(query) ||
-      (seed.relatedCharacters || []).some(name => name.toLowerCase().includes(query)) ||
-      (seed.relatedEntities || []).some(name => name.toLowerCase().includes(query))
-    return matchesStatus && matchesSearch
-  })
+    return arcSeeds.filter(seed => {
+      const matchesStatus = arcSeedStatusFilter === 'all' || seed.status === arcSeedStatusFilter
+      const matchesSearch = !query ||
+        seed.title.toLowerCase().includes(query) ||
+        seed.summary.toLowerCase().includes(query) ||
+        seed.whyItMatters.toLowerCase().includes(query) ||
+        seed.futurePayoff.toLowerCase().includes(query) ||
+        seed.evidence.toLowerCase().includes(query) ||
+        seed.chapterTitle.toLowerCase().includes(query) ||
+        (seed.relatedCharacters || []).some(name => name.toLowerCase().includes(query)) ||
+        (seed.relatedEntities || []).some(name => name.toLowerCase().includes(query))
+      return matchesStatus && matchesSearch
+    })
+  }, [arcSeeds, arcSeedSearchQuery, arcSeedStatusFilter])
 
   const getBrainEntryChapterNumber = (entry: BrainEntry) => {
     if (entry.chapterNumber) return entry.chapterNumber
@@ -11088,7 +11220,7 @@ ${navPoints}  </navMap>
     }
   }
 
-  const getBrainEntityGroups = () => {
+  const brainEntityGroups = useMemo(() => {
     const groups = new Map<string, { name: string; type: BrainEntityType; entries: BrainEntry[]; criticalCount: number }>()
 
     for (const entry of brainEntries) {
@@ -11111,21 +11243,26 @@ ${navPoints}  </navMap>
 
     return Array.from(groups.values())
       .sort((a, b) => b.criticalCount - a.criticalCount || b.entries.length - a.entries.length || a.name.localeCompare(b.name))
-  }
+  }, [brainEntries])
 
-  const brainEntityGroups = getBrainEntityGroups()
-  const selectedBrainEntity = selectedBrainEntityName
-    ? brainEntityGroups.find(group => group.name.toLowerCase() === selectedBrainEntityName.toLowerCase()) || null
-    : null
+  const selectedBrainEntity = useMemo(() => {
+    return selectedBrainEntityName
+      ? brainEntityGroups.find(group => group.name.toLowerCase() === selectedBrainEntityName.toLowerCase()) || null
+      : null
+  }, [brainEntityGroups, selectedBrainEntityName])
 
-  const filteredBibleEntries = bibleEntries.filter(e => {
-    const matchesSearch = e.name.toLowerCase().includes(bibleSearchQuery.toLowerCase()) ||
-                          e.content.toLowerCase().includes(bibleSearchQuery.toLowerCase())
-    const matchesFilter = bibleCategoryFilter === 'all' || e.category === bibleCategoryFilter
-    const matchesGroup = activeBibleGroupId === 'all'
-      || (activeBibleGroupId === 'ungrouped' ? !(e.groupIds || []).length : (e.groupIds || []).includes(activeBibleGroupId))
-    return matchesSearch && matchesFilter && matchesGroup
-  })
+  const filteredBibleEntries = useMemo(() => {
+    const query = bibleSearchQuery.toLowerCase()
+    return bibleEntries.filter(e => {
+      const matchesSearch = !query ||
+        e.name.toLowerCase().includes(query) ||
+        e.content.toLowerCase().includes(query)
+      const matchesFilter = bibleCategoryFilter === 'all' || e.category === bibleCategoryFilter
+      const matchesGroup = activeBibleGroupId === 'all'
+        || (activeBibleGroupId === 'ungrouped' ? !(e.groupIds || []).length : (e.groupIds || []).includes(activeBibleGroupId))
+      return matchesSearch && matchesFilter && matchesGroup
+    })
+  }, [bibleEntries, bibleSearchQuery, bibleCategoryFilter, activeBibleGroupId])
 
   const toggleBibleEntrySelection = (entryId: string) => {
     setSelectedBibleIds(prev => {
@@ -13293,674 +13430,101 @@ ${navPoints}  </navMap>
             {/* TAB 4: CHARACTER PROGRESSION */}
             {activeSidebarTab === 'progression' && (
               <div className="sidebar-tab-content progression-panel fade-in">
-                <div className="progression-toolbar">
-                  <div className="ai-form-field">
-                    <label>Character Profile</label>
-                    <select
-                      className="ai-select progression-profile-select"
-                      value={selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || ""}
-                      onChange={(e) => {
-                        const existing = progressionProfiles.find(profile => profile.loreEntryId === e.target.value)
-                        setProgressionSelectedEntryId(e.target.value || null)
-                        setSelectedProgressionProfileId(existing?.id || null)
-                        setProgressionError("")
-                        setProgressionNotice("")
-                      }}
-                      disabled={progressionLoading}
-                    >
-                      <option value="">Choose a Story Bible entry...</option>
-                      {bibleEntries.map(entry => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.name} - {entry.category}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {progressionError && (
-                    <div className="ai-error-box">
-                      <AlertCircle size={16} />
-                      <span>{progressionError}</span>
-                    </div>
-                  )}
-                  {progressionNotice && (
-                    <div className="progression-notice">
-                      <Check size={14} />
-                      <span>{progressionNotice}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="progression-library-actions">
-                  <button className="progression-library-card" onClick={() => setShowProgressionCharactersModal(true)}>
-                    <div>
-                      <User size={15} />
-                      <span>Characters</span>
-                    </div>
-                    <strong>{progressionProfiles.length}</strong>
-                    <p>{selectedProgressionProfile ? selectedProgressionProfile.name : "Open all progression profiles"}</p>
-                  </button>
-                  <button className="progression-library-card template" onClick={() => setShowProgressionTemplateModal(true)}>
-                    <div>
-                      <Layers size={15} />
-                      <span>Template</span>
-                    </div>
-                    <strong>{normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).filter(card => card.enabled).length}</strong>
-                    <p>Set the reusable status screen for this novel</p>
-                  </button>
-                  <button
-                    className="progression-library-card"
-                    onClick={() => {
-                      setShowProgressionTemplateModal(true)
-                      setIsProgressionCultivationImportOpen(true)
-                    }}
-                  >
-                    <div>
-                      <FileText size={15} />
-                      <span>Cultivation</span>
-                    </div>
-                    <strong>{progressionSystem.realms.length}</strong>
-                    <p>{progressionSystem.cultivationGuide ? "Stage guide saved for AI updates" : "Upload TXT stages for AI updates"}</p>
-                  </button>
-                  <button className="progression-library-card" onClick={() => checkTimelineConsistency()} disabled={timelineCheckLoading}>
-                    <div>
-                      {timelineCheckLoading ? <Loader2 className="spin" size={15} /> : <ShieldAlert size={15} />}
-                      <span>Timeline</span>
-                    </div>
-                    <strong>{timelineIssues.length}</strong>
-                    <p>{timelineCheckLoading ? "Analyzing..." : timelineIssues.length > 0 ? `${timelineIssues.length} issue${timelineIssues.length > 1 ? "s" : ""} found` : "Check timeline for plot holes"}</p>
-                  </button>
-                </div>
-
-                <button 
-                  className={`progression-action-banner ${progressionBulkUpdating ? 'scanning' : ''}`}
-                  onClick={handleProgressionBulkUpdate} 
-                  disabled={progressionBulkUpdating || progressionLoading}
-                  title="Scan 2 recent chapters and update character profiles"
-                >
-                  <div className="progression-banner-icon-container">
-                    {progressionBulkUpdating ? (
-                      <Loader2 className="progression-banner-icon spin" size={20} />
-                    ) : (
-                      <RefreshCw className="progression-banner-icon" size={20} />
-                    )}
-                  </div>
-                  <div className="progression-banner-content">
-                    <h4>Update Character Profiles</h4>
-                    <p>{progressionBulkUpdating ? progressionBulkUpdateStatus : "Scan the 2 recent chapters to detect and apply character growth automatically."}</p>
-                  </div>
-                  {!progressionBulkUpdating && <span className="progression-banner-badge">Scan</span>}
-                </button>
-                <datalist id="progression-realms">
-                  {progressionSystem.realms.map(realm => <option key={realm} value={realm} />)}
-                </datalist>
-                <datalist id="progression-stages">
-                  {progressionSystem.stageLabels.map(stage => <option key={stage} value={stage} />)}
-                </datalist>
-
-                {selectedProgressionProfile ? (
-                  <div className="progression-detail">
-                    <div className="progression-profile-showcase">
-                      <div className="progression-showcase-head">
-                        <div>
-                          <span>{selectedProgressionProfile.realm || selectedProgressionProfile.rank || "Progression Profile"}</span>
-                          <h3>{selectedProgressionProfile.name}</h3>
-                          <p>{selectedProgressionProfile.title || selectedProgressionProfile.className || selectedProgressionProfile.cultivationPath || "No class/title yet"}</p>
-                        </div>
-                        <strong>{selectedProgressionProfile.stage || (progressionSystem.showLevels ? `Level ${selectedProgressionProfile.level}` : selectedProgressionProfile.rank || "")}</strong>
+                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <TrendingUp size={18} className="text-accent" />
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Character Progression</h3>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>System Ready to Rebuild</span>
                       </div>
-
-                      {progressionSystem.useCustomJsonTemplate && (
-                        <div className="json-subtabs" style={{ display: "flex", gap: "0.5rem", padding: "0.25rem 0.5rem", background: "rgba(255, 255, 255, 0.03)", borderRadius: "var(--radius-md)", marginBottom: "1rem" }}>
-                          <button
-                            type="button"
-                            className={`json-subtab-btn ${characterProfileSubTab === 'cards' ? 'active' : ''}`}
-                            onClick={() => setCharacterProfileSubTab('cards')}
-                            style={{
-                              flex: 1,
-                              padding: "0.3rem",
-                              borderRadius: "4px",
-                              border: "none",
-                              cursor: "pointer",
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              background: characterProfileSubTab === 'cards' ? 'var(--indigo-600)' : 'transparent',
-                              color: characterProfileSubTab === 'cards' ? '#fff' : 'var(--text-dim)',
-                              transition: "all 0.15s ease"
-                            }}
-                          >
-                            Status Cards
-                          </button>
-                          <button
-                            type="button"
-                            className={`json-subtab-btn ${characterProfileSubTab === 'json' ? 'active' : ''}`}
-                            onClick={() => {
-                              setCharacterProfileSubTab('json')
-                              setCharacterJsonText(JSON.stringify(selectedProgressionProfile.customJsonData || {}, null, 2))
-                            }}
-                            style={{
-                              flex: 1,
-                              padding: "0.3rem",
-                              borderRadius: "4px",
-                              border: "none",
-                              cursor: "pointer",
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              background: characterProfileSubTab === 'json' ? 'var(--indigo-600)' : 'transparent',
-                              color: characterProfileSubTab === 'json' ? '#fff' : 'var(--text-dim)',
-                              transition: "all 0.15s ease"
-                            }}
-                          >
-                            JSON Editor
-                          </button>
-                        </div>
-                      )}
-
-                      {progressionSystem.useCustomJsonTemplate && characterProfileSubTab === 'json' ? (
-                        <div className="json-profile-raw-editor" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "1.2rem" }}>
-                          <textarea
-                            className="ai-textarea font-mono text-xs scrollbar"
-                            value={characterJsonText}
-                            onChange={(e) => setCharacterJsonText(e.target.value)}
-                            placeholder="{}"
-                            rows={15}
-                            style={{ width: "100%", padding: "0.6rem", background: "rgba(0,0,0,0.2)", border: "1px solid var(--surface-border)", borderRadius: "var(--radius-sm)", color: "#fff" }}
-                          />
-                          <button
-                            type="button"
-                            className="btn-ai-sub btn-ai-primary"
-                            onClick={saveCharacterJsonData}
-                            style={{ alignSelf: "flex-end" }}
-                          >
-                            Save JSON Status
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="progression-showcase-grid">
-                          {progressionSystem.useCustomJsonTemplate ? (
-                            (() => {
-                              const customJsonData = selectedProgressionProfile.customJsonData || {}
-                              const templateKeys = Object.keys(customJsonData)
-                              const cardOrder = progressionSystem.jsonCardOrder || []
-                              
-                              const sortedKeys = [...templateKeys].sort((a, b) => {
-                                const aIdx = cardOrder.indexOf(a)
-                                const bIdx = cardOrder.indexOf(b)
-                                if (aIdx === -1 && bIdx === -1) return 0
-                                if (aIdx === -1) return 1
-                                if (bIdx === -1) return -1
-                                return aIdx - bIdx
-                              })
-                              
-                              if (sortedKeys.length === 0) {
-                                return (
-                                  <div className="progression-growth-empty" style={{ gridColumn: "span 2" }}>
-                                    <p>No JSON data defined yet.</p>
-                                    <small>Switch to JSON Editor tab to define the status attributes or run Profile Update.</small>
-                                  </div>
-                                )
-                              }
-                              
-                              return sortedKeys.map((key, index) => {
-                                const value = customJsonData[key]
-                                const colorClass = getProgressionCardColor(index, "compound")
-                                
-                                return (
-                                  <div key={key} className={`progression-template-display-card color-${colorClass}`} style={{ position: "relative" }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-                                      <span style={{ textTransform: "uppercase", fontSize: "0.7rem", fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>{key}</span>
-                                      <div style={{ display: "flex", gap: "2px" }}>
-                                        <button
-                                          type="button"
-                                          className="btn-icon-mini"
-                                          onClick={() => moveJsonCard(key, 'up')}
-                                          disabled={index === 0}
-                                          style={{ background: "transparent", border: "none", color: "var(--text-dim)", padding: "1px", cursor: index === 0 ? "not-allowed" : "pointer" }}
-                                          title="Move Up"
-                                        >
-                                          <ChevronDown size={12} style={{ transform: "rotate(180deg)" }} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="btn-icon-mini"
-                                          onClick={() => moveJsonCard(key, 'down')}
-                                          disabled={index === sortedKeys.length - 1}
-                                          style={{ background: "transparent", border: "none", color: "var(--text-dim)", padding: "1px", cursor: index === sortedKeys.length - 1 ? "not-allowed" : "pointer" }}
-                                          title="Move Down"
-                                        >
-                                          <ChevronDown size={12} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="json-card-body">
-                                      {renderCustomJsonValue(value)}
-                                    </div>
-                                  </div>
-                                )
-                              })
-                            })()
-                          ) : (
-                            getProgressionTemplateCardsForProfile().map((templateCard, cardIndex) => {
-                              const cardValue = getProgressionTemplateCardValue(selectedProgressionProfile, templateCard)
-                              const cardFields = getProgressionTemplateCardFields(selectedProgressionProfile, templateCard)
-                              const ratio = templateCard.type === "progress" || templateCard.type === "resource"
-                                ? parseProgressionRatio(cardValue)
-                                : null
-                              const progressPercent = ratio ? Math.max(0, Math.min(100, Math.round((ratio.current / ratio.max) * 100))) : 0
-
-                              if (templateCard.type === "ability") {
-                                return (
-                                  <div key={templateCard.id} className={`progression-template-display-card wide color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
-                                    <span>{templateCard.label}</span>
-                                    <div className="progression-template-ability-list">
-                                      {selectedProgressionProfile.abilities.length === 0 ? (
-                                        <p>No abilities tracked yet.</p>
-                                      ) : selectedProgressionProfile.abilities.map(ability => (
-                                        <div key={ability.id}>
-                                          <strong>{ability.name}</strong>
-                                          <em>{ability.rank || `Lv ${ability.level}`}</em>
-                                          <p>{ability.description}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )
-                              }
-
-                              const isAffinityCard = templateCard.label.toLowerCase() === "affinity" || templateCard.sourceKey.toLowerCase() === "affinity";
-                              const namesField = cardFields.find(f => f.label === "Affinity Names");
-                              const rankField = cardFields.find(f => f.label === "Rank");
-                              const namesVal = (namesField && namesField.value) ? String(namesField.value) : "";
-                              const rankVal = (rankField && rankField.value) ? String(rankField.value) : "";
-                              const affinitiesList = isAffinityCard ? getAffinitiesList(namesVal, rankVal) : [];
-
-                              if (isAffinityCard && affinitiesList.length > 0) {
-                                return (
-                                  <div key={templateCard.id} className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)}`}>
-                                    <span>{templateCard.label}</span>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
-                                      {affinitiesList.map((aff, affIdx) => (
-                                        <div className="progression-template-field-list" key={affIdx}>
-                                          <div>
-                                            <small>Affinity</small>
-                                            <strong>{aff.name}</strong>
-                                          </div>
-                                          <div>
-                                            <small>Rank</small>
-                                            <strong>{aff.rank}</strong>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {ratio && (
-                                      <div className="progression-template-progress">
-                                        <div><i style={{ width: `${progressPercent}%` }} /></div>
-                                        <small>{progressPercent}%</small>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                            }
-
-                            const isLoreCard = templateCard.id === "template-lore" || templateCard.label.toLowerCase() === "lore" || templateCard.sourceKey.toLowerCase() === "notes" || templateCard.sourceKey.toLowerCase() === "lore";
-
-                            return (
-                              <div 
-                                key={templateCard.id} 
-                                className={`progression-template-display-card color-${templateCard.color || getProgressionCardColor(cardIndex, templateCard.type)} ${isLoreCard ? 'clickable' : ''}`}
-                                onClick={isLoreCard ? () => setShowLoreHistoryModal(true) : undefined}
-                              >
-                                <span>{templateCard.label}</span>
-                                {templateCard.fields.length > 1 || templateCard.type === "compound" || templateCard.type === "stat" || templateCard.type === "rank" ? (
-                                  <div className="progression-template-field-list">
-                                    {cardFields.map(field => (
-                                      <div key={field.label}>
-                                        <small>{field.label}</small>
-                                        <strong>{typeof field.value === "object" ? JSON.stringify(field.value) : (field.value || "Not set")}</strong>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <strong>{typeof cardValue === "object" ? JSON.stringify(cardValue) : (cardValue || "Not set")}</strong>
-                                )}
-                                {ratio && (
-                                  <div className="progression-template-progress">
-                                    <div><i style={{ width: `${progressPercent}%` }} /></div>
-                                    <small>{progressPercent}%</small>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                            })
-                          )}
-                        </div>
-                      )}
                     </div>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      color: 'var(--indigo-400)',
+                      fontWeight: 600,
+                      border: '1px solid rgba(99, 102, 241, 0.3)'
+                    }}>
+                      Reset Complete
+                    </span>
+                  </div>
 
-                    <div className="progression-profile-footer-actions">
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={() => {
-                          const entryId = selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId || null
-                          handleProgressionUpdate(entryId, aiSelectionText)
-                        }}
-                        disabled={progressionLoading}
-                      >
-                        {progressionLoading ? <Loader2 size={13} className="spin" /> : <TrendingUp size={13} />}
-                        Update Profile
-                      </button>
-                      <button className="btn-ai-sub btn-ai-primary" onClick={() => openProgressionEditModal(selectedProgressionProfile)}>
-                        <Edit3 size={13} />
-                        Edit Profile
-                      </button>
-                      <button className="btn-ai-sub btn-ai-secondary progression-auto-btn" onClick={() => handleProgressionUpdate(null, "")} disabled={progressionLoading || progressionProfiles.length === 0}>
-                        <BrainCircuit size={13} />
-                        Auto Match
-                      </button>
-                      <button className="btn-ai-sub btn-ai-secondary danger-text" onClick={() => deleteProgressionProfile(selectedProgressionProfile.id)}>
-                        <Trash2 size={13} />
-                        Delete
-                      </button>
-                    </div>
-
-                    <div className="progression-growth-timeline">
-                      <div className="progression-growth-header">
-                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                          <History size={14} />
-                          <strong>Recent Growth</strong>
-                        </div>
-                        <div className="growth-toggle-buttons">
-                          <button
-                            className={`btn-toggle-growth ${!showStatsChart ? 'active' : ''}`}
-                            onClick={() => setShowStatsChart(false)}
-                          >
-                            Timeline
-                          </button>
-                          <button
-                            className={`btn-toggle-growth ${showStatsChart ? 'active' : ''}`}
-                            onClick={() => setShowStatsChart(true)}
-                          >
-                            Chart
-                          </button>
-                        </div>
-                      </div>
-
-                      {showStatsChart ? (
-                        <div className="growth-chart-container" style={{ position: "relative" }}>
-                          <div className="growth-chart-selector" style={{ margin: "0.5rem 0 0.75rem 0", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                            <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>Stat to plot:</span>
-                            <select
-                              className="ai-select"
-                              style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", width: "auto", height: "auto" }}
-                              value={selectedGraphStat}
-                              onChange={(e) => {
-                                setSelectedGraphStat(e.target.value)
-                                setHoveredGraphPoint(null)
-                              }}
-                            >
-                              {progressionSystem.useCustomJsonTemplate ? (
-                                (() => {
-                                  const numericKeys = getNumericKeysOfJson(selectedProgressionProfile?.customJsonData || {})
-                                  if (numericKeys.length === 0) {
-                                    return <option value="">No numeric attributes</option>
-                                  }
-                                  return numericKeys.map(key => (
-                                    <option key={key} value={key}>{key.replace(/\./g, " > ")}</option>
-                                  ))
-                                })()
-                              ) : (
-                                <>
-                                  <option value="level">Level</option>
-                                  {progressionSystem.realms.length > 0 && <option value="cultivation">Cultivation Rank</option>}
-                                  {progressionSystem.statKeys.map(key => (
-                                    <option key={key} value={key}>{formatProgressionStatLabel(key)}</option>
-                                  ))}
-                                </>
-                              )}
-                            </select>
-                          </div>
-
-                          {growthChartData.length < 2 ? (
-                            <div className="progression-growth-empty" style={{ minHeight: "150px" }}>
-                              <p>Not enough points to plot a chart.</p>
-                              <small>You need at least 2 updates in character history to render a growth graph.</small>
-                            </div>
-                          ) : (
-                            <div style={{ position: "relative", width: "100%" }}>
-                              {/* SVG Chart */}
-                              {(() => {
-                                const width = 300
-                                const height = 150
-                                const paddingX = 35
-                                const paddingY = 20
-                                const values = growthChartData.map(d => d.value)
-                                const minVal = Math.min(...values)
-                                const maxVal = Math.max(...values)
-                                const yMin = minVal === maxVal ? minVal - 1 : minVal
-                                const yMax = minVal === maxVal ? maxVal + 1 : maxVal
-                                const yRange = yMax - yMin
-
-                                const points = growthChartData.map((d, idx) => {
-                                  const x = paddingX + (idx / (growthChartData.length - 1)) * (width - 2 * paddingX)
-                                  const y = (height - paddingY) - ((d.value - yMin) / yRange) * (height - 2 * paddingY)
-                                  return { x, y, ...d }
-                                })
-
-                                const pathD = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-                                const areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`
-
-                                return (
-                                  <>
-                                    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} style={{ overflow: "visible" }}>
-                                      <defs>
-                                        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                                          <stop offset="0%" stopColor="var(--color-primary, #6366f1)" stopOpacity="0.3"/>
-                                          <stop offset="100%" stopColor="var(--color-primary, #6366f1)" stopOpacity="0.0"/>
-                                        </linearGradient>
-                                      </defs>
-                                      
-                                      {/* Grid Lines */}
-                                      <line x1={paddingX} y1={paddingY} x2={width - paddingX} y2={paddingY} stroke="var(--color-border, #313244)" strokeDasharray="3,3" />
-                                      <line x1={paddingX} y1={height / 2} x2={width - paddingX} y2={height / 2} stroke="var(--color-border, #313244)" strokeDasharray="3,3" />
-                                      <line x1={paddingX} y1={height - paddingY} x2={width - paddingX} y2={height - paddingY} stroke="var(--color-border, #313244)" strokeDasharray="3,3" />
-
-                                      {/* Y-Axis Label Indicators */}
-                                      <text x={paddingX - 5} y={paddingY + 3} textAnchor="end" fill="var(--color-text-muted, #a6adc8)" fontSize="8px">
-                                        {selectedGraphStat === "cultivation" ? "Max" : yMax}
-                                      </text>
-                                      <text x={paddingX - 5} y={height - paddingY + 3} textAnchor="end" fill="var(--color-text-muted, #a6adc8)" fontSize="8px">
-                                        {selectedGraphStat === "cultivation" ? "Min" : yMin}
-                                      </text>
-
-                                      {/* Area Fill */}
-                                      <path d={areaD} fill="url(#chartGradient)" />
-
-                                      {/* Line */}
-                                      <path d={pathD} fill="none" stroke="var(--color-primary, #6366f1)" strokeWidth={2} />
-
-                                      {/* Points */}
-                                      {points.map((p, idx) => (
-                                        <g key={idx}>
-                                          <circle
-                                            cx={p.x}
-                                            cy={p.y}
-                                            r={hoveredGraphPoint?.index === idx ? 5 : 3}
-                                            fill="var(--color-primary, #6366f1)"
-                                            stroke="var(--color-bg, #1e1e2e)"
-                                            strokeWidth={1.5}
-                                            style={{ transition: "all 0.15s ease" }}
-                                          />
-                                          {/* Invisible larger hover circle */}
-                                          <circle
-                                            cx={p.x}
-                                            cy={p.y}
-                                            r={12}
-                                            fill="transparent"
-                                            style={{ cursor: "pointer" }}
-                                            onMouseEnter={() => setHoveredGraphPoint({ x: p.x, y: p.y, value: p.value, label: p.label, index: idx })}
-                                            onMouseLeave={() => setHoveredGraphPoint(null)}
-                                          />
-                                        </g>
-                                      ))}
-                                    </svg>
-
-                                    {/* Tooltip */}
-                                    {hoveredGraphPoint && (
-                                      <div
-                                        className="growth-chart-tooltip"
-                                        style={{
-                                          position: "absolute",
-                                          left: `${(hoveredGraphPoint.x / width) * 100}%`,
-                                          top: `${hoveredGraphPoint.y - 12}px`,
-                                          transform: "translate(-50%, -100%)",
-                                          pointerEvents: "none",
-                                          zIndex: 100
-                                        }}
-                                      >
-                                        <div className="growth-tooltip-content">
-                                          <strong>{hoveredGraphPoint.label}</strong>
-                                          <span>Ch {growthChartData[hoveredGraphPoint.index]?.chapterNumber ?? "?"}: {growthChartData[hoveredGraphPoint.index]?.chapterTitle}</span>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </>
-                                )
-                              })()}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <>
-                          {selectedProgressionProfile.history.length === 0 ? (
-                            <div className="progression-growth-empty">
-                              <p>No chapter updates recorded yet.</p>
-                              <small>Run Update Profile from a chapter to build a canon-backed trail of changes.</small>
-                            </div>
-                          ) : (
-                            <div className="progression-growth-list">
-                              {[...selectedProgressionProfile.history]
-                                .sort((a, b) => (b.appliedAt || 0) - (a.appliedAt || 0))
-                                .slice(0, 6)
-                                .map(historyEntry => {
-                                  const statEntries = Object.entries(historyEntry.statChanges || {})
-                                    .filter(([, value]) => typeof value === "number" && value !== 0)
-                                  const levelChanged = historyEntry.levelBefore !== historyEntry.levelAfter
-                                  const realmChanged = Boolean(historyEntry.realmBefore || historyEntry.realmAfter)
-                                    && (historyEntry.realmBefore || "") !== (historyEntry.realmAfter || "")
-                                  const stageChanged = Boolean(historyEntry.stageBefore || historyEntry.stageAfter)
-                                    && (historyEntry.stageBefore || "") !== (historyEntry.stageAfter || "")
-                                  const abilityChanges = historyEntry.abilityChanges || []
-                                  const rewards = historyEntry.rewards || []
-                                  const evidence = historyEntry.evidence || []
-
-                                  return (
-                                    <details className="progression-growth-item" key={historyEntry.id}>
-                                      <summary>
-                                        <div className="progression-growth-summary-main">
-                                          <span>Chapter {historyEntry.chapterNumber ?? "?"}</span>
-                                          <strong>{historyEntry.chapterTitle || "Untitled chapter"}</strong>
-                                          {formatProgressionDate(historyEntry.appliedAt) && (
-                                            <small>{formatProgressionDate(historyEntry.appliedAt)}</small>
-                                          )}
-                                        </div>
-                                        <div className="progression-growth-deltas">
-                                          {levelChanged && <em>Lv {historyEntry.levelBefore} -&gt; {historyEntry.levelAfter}</em>}
-                                          {realmChanged && <em>{historyEntry.realmBefore || "Unknown"} -&gt; {historyEntry.realmAfter || "Unknown"}</em>}
-                                          {stageChanged && <em>{historyEntry.stageBefore || "Unknown"} -&gt; {historyEntry.stageAfter || "Unknown"}</em>}
-                                          {!levelChanged && !realmChanged && !stageChanged && <em>Reviewed</em>}
-                                        </div>
-                                      </summary>
-
-                                      <div className="progression-growth-body">
-                                        <p>{historyEntry.summary || "Progression reviewed for this chapter."}</p>
-
-                                        {statEntries.length > 0 && (
-                                          <div className="progression-growth-detail-block">
-                                            <span>Stat Changes</span>
-                                            <div className="progression-growth-chip-list">
-                                              {statEntries.map(([key, value]) => (
-                                                <em key={key}>{formatProgressionStatLabel(key)} {Number(value) > 0 ? "+" : ""}{value}</em>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {abilityChanges.length > 0 && (
-                                          <div className="progression-growth-detail-block">
-                                            <span>Abilities</span>
-                                            <ul>
-                                              {abilityChanges.map((item, index) => {
-                                                if (!item) return null
-                                                if (typeof item === "object") {
-                                                  const obj = item as { name?: string; level?: string | number; rank?: string; description?: string }
-                                                  const levelStr = obj.rank || (obj.level ? `Lv ${obj.level}` : "")
-                                                  return (
-                                                    <li key={`${historyEntry.id}-ability-${index}`}>
-                                                      <strong>{obj.name || "Ability"}</strong> {levelStr && `(${levelStr})`}
-                                                      {obj.description && ` - ${obj.description}`}
-                                                    </li>
-                                                  )
-                                                }
-                                                return <li key={`${historyEntry.id}-ability-${index}`}>{String(item)}</li>
-                                              })}
-                                            </ul>
-                                          </div>
-                                        )}
-
-                                        {rewards.length > 0 && (
-                                          <div className="progression-growth-detail-block">
-                                            <span>Rewards</span>
-                                            <ul>
-                                              {rewards.map((item, index) => (
-                                                <li key={`${historyEntry.id}-reward-${index}`}>
-                                                  {typeof item === "object" ? JSON.stringify(item) : String(item)}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        )}
-
-                                        {evidence.length > 0 && (
-                                          <div className="progression-growth-detail-block evidence">
-                                            <span>Canon Evidence</span>
-                                            <ul>
-                                              {evidence.map((item, index) => (
-                                                <li key={`${historyEntry.id}-evidence-${index}`}>
-                                                  {typeof item === "object" ? JSON.stringify(item) : String(item)}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </details>
-                                  )
-                                })}
-                            </div>
-                          )}
-                        </>
-                      )}
+                  <div style={{
+                    padding: '0.75rem 0.9rem',
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    borderRadius: 'var(--radius-md)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.6rem'
+                  }}>
+                    <CheckCircle2 size={16} style={{ color: 'var(--green-500)', flexShrink: 0, marginTop: '2px' }} />
+                    <div style={{ fontSize: '0.75rem', lineHeight: 1.4 }}>
+                      <strong style={{ color: 'var(--green-400)', display: 'block', marginBottom: '2px' }}>
+                        Data Backup Preserved
+                      </strong>
+                      <span style={{ color: 'var(--text-dim)' }}>
+                        {progressionProfiles.length} character profile(s) remain safely preserved in storage and database.
+                      </span>
                     </div>
                   </div>
-                ) : selectedProgressionBibleEntry ? (
-                  <div className="progression-create-card">
+
+                  <div style={{
+                    padding: '1.25rem 1rem',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px dashed var(--surface-border)',
+                    borderRadius: 'var(--radius-lg)',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.75rem'
+                  }}>
+                    <div style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '50%',
+                      background: 'rgba(99, 102, 241, 0.1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--indigo-400)'
+                    }}>
+                      <Layers size={20} />
+                    </div>
                     <div>
-                      <span>Selected Story Bible Entry</span>
-                      <strong>{selectedProgressionBibleEntry.name}</strong>
-                      <p>{selectedProgressionBibleEntry.category} - create a progression profile from this entry, then update it from the active chapter.</p>
+                      <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '0.88rem', fontWeight: 600 }}>
+                        Awaiting New Parameters
+                      </h4>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
+                        The previous cultivation and RPG status systems have been wiped. Tell the assistant what parameters you want to track to begin Step 1 of the rebuild.
+                      </p>
                     </div>
-                    <button
-                      className="btn-ai-sub btn-ai-primary"
-                      onClick={() => handleProgressionUpdate(selectedProgressionBibleEntry.id, aiSelectionText)}
-                      disabled={progressionLoading}
-                    >
-                      {progressionLoading ? <Loader2 size={13} className="spin" /> : <TrendingUp size={13} />}
-                      Create / Update Profile
-                    </button>
+
+                    <div style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      marginTop: '0.5rem',
+                      background: 'rgba(0, 0, 0, 0.15)',
+                      padding: '0.75rem',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.72rem',
+                      color: 'var(--text-dim)'
+                    }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
+                        Rebuild Roadmap:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span>• <strong>Step 1:</strong> Define new character parameter schema</span>
+                        <span>• <strong>Step 2:</strong> Build modern profile cards & tracking UI</span>
+                        <span>• <strong>Step 3:</strong> Configure AI extraction prompt & chapter analysis</span>
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <div className="empty-state-text">Highlight a character name and click Progress to create their profile.</div>
-                )}
+                </div>
               </div>
             )}
 
@@ -16445,7 +16009,7 @@ ${navPoints}  </navMap>
                         </div>
                         <div className="autocomplete-list">
                           {autocompleteSuggestions.slice(0, 5).map((suggestion, idx) => {
-                            const matchedEntry = bibleEntries.find(e => e.name.toLowerCase() === suggestion.toLowerCase())
+                            const matchedEntry = bibleEntryByLowerName.get(suggestion.toLowerCase())
                             return (
                               <div 
                                 key={suggestion} 
@@ -16517,7 +16081,7 @@ ${navPoints}  </navMap>
                       🎯 Goal: {wordGoal} words
                     </button>
                     <div className="status-timer-container">
-                      <span className="timer-display">⏱️ {formatSessionTime(sessionTime)}</span>
+                      <span ref={timerDisplayRef} className="timer-display">⏱️ {formatSessionTime(sessionTimeRef.current)}</span>
                       <div className="timer-controls">
                         <button 
                           className="timer-btn" 
@@ -16528,7 +16092,12 @@ ${navPoints}  </navMap>
                         </button>
                         <button 
                           className="timer-btn" 
-                          onClick={() => setSessionTime(0)} 
+                          onClick={() => {
+                            sessionTimeRef.current = 0
+                            if (timerDisplayRef.current) {
+                              timerDisplayRef.current.textContent = `⏱️ ${formatSessionTime(0)}`
+                            }
+                          }} 
                           title="Reset Timer"
                         >
                           <RotateCcw size={12} />
@@ -18246,340 +17815,6 @@ ${navPoints}  </navMap>
           </div>
         )}
 
-        {isProgressionEditMode && progressionEditProfileDraft && (
-          <div className="modal-overlay" onClick={closeProgressionEditModal}>
-            <div className="modal progression-edit-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title">Edit Progression Profile</h2>
-                <p className="modal-description">Change anything here. New fields are learned by this novel and can appear on other character profiles too.</p>
-              </div>
-
-              <div className="progression-edit-modal-body">
-                <div className="progression-card-editor-section">
-                  <div className="progression-editor-section-title">
-                    <strong>Profile Cards</strong>
-                    <span>Only active profile details are shown. Add anything else as a custom card.</span>
-                  </div>
-                  <div className="progression-edit-card-grid">
-                    <div className="progression-profile-edit-card">
-                      <span>Name</span>
-                      <input className="ai-input" value={progressionEditProfileDraft.name} onChange={(e) => setProgressionDraftField("name", e.target.value)} />
-                    </div>
-                    <div className="progression-profile-edit-card">
-                      <span>Title</span>
-                      <input className="ai-input" value={progressionEditProfileDraft.title || ""} onChange={(e) => setProgressionDraftField("title", e.target.value)} placeholder="Dao Lord, Saintess, Tyrant..." />
-                    </div>
-                    <div className="progression-profile-edit-card">
-                      <span>Bloodline</span>
-                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Bloodline || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline", e.target.value)} placeholder="Ancient Phoenix Bloodline" />
-                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Bloodline Rank"] || ""} onChange={(e) => setProgressionDraftCustomField("Bloodline Rank", e.target.value)} placeholder="Supreme / Celestial" />
-                    </div>
-                    <div className="progression-profile-edit-card">
-                      <span>Affinity</span>
-                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Affinity Names"] || ""} onChange={(e) => setProgressionDraftCustomField("Affinity Names", e.target.value)} placeholder="Fire, Ice, Void" />
-                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Affinity Rank"] || ""} onChange={(e) => setProgressionDraftCustomField("Affinity Rank", e.target.value)} placeholder="Fire (High), Ice (Celestial), Void (Supreme)" />
-                    </div>
-                    <div className="progression-profile-edit-card">
-                      <span>Class</span>
-                      <input className="ai-input" value={progressionEditProfileDraft.className || ""} onChange={(e) => setProgressionDraftField("className", e.target.value)} placeholder="Main class" />
-                      <input className="ai-input" value={(progressionEditProfileDraft.customFields || {})["Secondary Class"] || ""} onChange={(e) => setProgressionDraftCustomField("Secondary Class", e.target.value)} placeholder="Secondary class" />
-                    </div>
-                    {(progressionEditProfileDraft.customFields || {}).Affiliation && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Affiliation")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Affiliation</span>
-                        <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Affiliation || ""} onChange={(e) => setProgressionDraftCustomField("Affiliation", e.target.value)} />
-                      </div>
-                    )}
-                    {(progressionEditProfileDraft.nicknames || []).length > 0 && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("nicknames", [])} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Nicknames</span>
-                        <input className="ai-input" value={(progressionEditProfileDraft.nicknames || []).join(", ")} onChange={(e) => setProgressionDraftField("nicknames", e.target.value.split(",").map(item => item.trim()).filter(Boolean))} />
-                      </div>
-                    )}
-                    {(progressionEditProfileDraft.customFields || {}).Race && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField("Race")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Race</span>
-                        <input className="ai-input" value={(progressionEditProfileDraft.customFields || {}).Race || ""} onChange={(e) => setProgressionDraftCustomField("Race", e.target.value)} />
-                      </div>
-                    )}
-                    {progressionEditProfileDraft.cultivationPath && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("cultivationPath", "")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Path</span>
-                        <input className="ai-input" value={progressionEditProfileDraft.cultivationPath || ""} onChange={(e) => setProgressionDraftField("cultivationPath", e.target.value)} />
-                      </div>
-                    )}
-                    {progressionEditProfileDraft.uniqueTrait && (
-                      <div className="progression-profile-edit-card wide">
-                        <button className="btn-icon-mini danger" onClick={() => setProgressionDraftField("uniqueTrait", "")} title="Remove card"><Trash2 size={12} /></button>
-                        <span>Unique Trait</span>
-                        <textarea
-                          className="ai-textarea compact"
-                          value={progressionEditProfileDraft.uniqueTrait || ""}
-                          onChange={(e) => setProgressionDraftField("uniqueTrait", e.target.value)}
-                          placeholder="Summoned beasts, rare physique, contracted legion, forbidden art..."
-                        />
-                      </div>
-                    )}
-                    {progressionSystem.showExp && (progressionEditProfileDraft.exp > 0 || progressionEditProfileDraft.nextLevelExp > 0) && (
-                      <div className="progression-profile-edit-card">
-                        <button className="btn-icon-mini danger" onClick={() => { setProgressionDraftField("exp", 0); setProgressionDraftField("nextLevelExp", 0) }} title="Remove card"><Trash2 size={12} /></button>
-                        <span>EXP</span>
-                        <input className="ai-input" type="number" value={progressionEditProfileDraft.exp} onChange={(e) => setProgressionDraftField("exp", Number(e.target.value))} />
-                        <input className="ai-input" type="number" value={progressionEditProfileDraft.nextLevelExp} onChange={(e) => setProgressionDraftField("nextLevelExp", Number(e.target.value))} placeholder="Next EXP" />
-                      </div>
-                    )}
-                    {Array.from(new Set([...progressionSystem.customFields, ...Object.keys(progressionEditProfileDraft.customFields || {})]))
-                      .filter(fieldName => !["Affiliation", "Bloodline", "Bloodline Rank", "Bloodline Grade", "Affinity", "Affinity Names", "Affinity Rank", "Affinity Grade", "Rank", "Secondary Class", "Race", "Incarnation / Past Lives", "Incarnation / Past Lives Identity/Name", "Incarnation / Past Lives Era", "Incarnation / Past Lives Fate/Legacy"].includes(fieldName) && (progressionEditProfileDraft.customFields || {})[fieldName])
-                      .map(fieldName => (
-                        <div className="progression-profile-edit-card" key={fieldName}>
-                          <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftCustomField(fieldName)} title="Remove card"><Trash2 size={12} /></button>
-                          <span>{fieldName}</span>
-                          <input
-                            className="ai-input"
-                            value={(progressionEditProfileDraft.customFields || {})[fieldName] || ""}
-                            onChange={(e) => setProgressionDraftCustomField(fieldName, e.target.value)}
-                          />
-                        </div>
-                      ))}
-                  </div>
-                  <div className="progression-add-field-row">
-                    <input className="ai-input" value={progressionNewFieldName} onChange={(e) => setProgressionNewFieldName(e.target.value)} placeholder="Card name, e.g. EXP, Sect, Weapon" />
-                    <select className="ai-select" value={progressionNewFieldType} onChange={(e) => setProgressionNewFieldType(e.target.value as ProgressionTemplateCardType)}>
-                      <option value="text">Text</option>
-                      <option value="rank">Realm / Rank</option>
-                      <option value="compound">Multi-field Card</option>
-                      <option value="progress">EXP / Progress</option>
-                      <option value="resource">HP / Mana / Qi</option>
-                      <option value="counter">Counter</option>
-                      <option value="stat">Stat</option>
-                      <option value="ability">Ability</option>
-                    </select>
-                    <input
-                      className="ai-input"
-                      value={progressionNewFieldValue}
-                      onChange={(e) => setProgressionNewFieldValue(e.target.value)}
-                      placeholder={progressionNewFieldType === "progress" || progressionNewFieldType === "resource" ? "100/1000" : progressionNewFieldType === "counter" ? "0" : "Value"}
-                    />
-                    <button className="btn-ai-sub btn-ai-primary" onClick={addProgressionDraftCustomField}>
-                      <Plus size={12} />
-                      Add Card
-                    </button>
-                  </div>
-                </div>
-
-                <div className="progression-card-editor-section">
-                  <div className="progression-editor-section-title">
-                    <strong>Template Values</strong>
-                    <span>Assign values for the cards in this novel&apos;s profile template. EXP and resource cards accept values like 100/1000.</span>
-                  </div>
-                  <div className="progression-template-value-grid">
-                    {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
-                      .filter(templateCard => templateCard.enabled && templateCard.type !== "ability")
-                      .map(templateCard => {
-                        const fields = templateCard.fields.length > 0 ? templateCard.fields : [templateCard.label]
-
-
-
-                        return (
-                          <div className={`progression-profile-edit-card wide color-${templateCard.color}`} key={templateCard.id}>
-                            <button className="btn-icon-mini danger" onClick={() => removeProgressionTemplateCard(templateCard.id)} title="Remove card from template"><Trash2 size={12} /></button>
-                            <span>{templateCard.label}</span>
-                            <div className="progression-template-value-fields">
-                              {fields.map(fieldName => (
-                                <label key={fieldName}>
-                                  <small>{fieldName}</small>
-                                  <input
-                                    className="ai-input"
-                                    type={templateCard.type === "counter" ? "number" : "text"}
-                                    value={getProgressionTemplateFieldValue(progressionEditProfileDraft, templateCard, fieldName) || ""}
-                                    onChange={(e) => setProgressionDraftTemplateField(templateCard, fieldName, e.target.value)}
-                                    placeholder={templateCard.type === "progress" || templateCard.type === "resource" ? "100/1000" : templateCard.type === "counter" ? "0" : "Saint, Sage, 100+"}
-                                  />
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                  </div>
-                </div>
-
-                <div className="progression-card-editor-section">
-                  <div className="progression-editor-section-title">
-                    <strong>Ability Cards</strong>
-                    <span>Add techniques, powers, summons, and skills individually.</span>
-                  </div>
-                  <div className="progression-ability-card-editor-list">
-                    {progressionEditProfileDraft.abilities.map(ability => (
-                      <div className="progression-ability-edit-card" key={ability.id}>
-                        <button className="btn-icon-mini danger" onClick={() => removeProgressionDraftAbility(ability.id)} title="Remove ability"><Trash2 size={12} /></button>
-                        <input className="ai-input" value={ability.name} onChange={(e) => setProgressionDraftAbility(ability.id, { name: e.target.value })} placeholder="Ability name" />
-                        <input className="ai-input" value={ability.rank || `Level ${ability.level}`} onChange={(e) => setProgressionDraftAbility(ability.id, { rank: e.target.value, level: Number(e.target.value.replace(/\D/g, "")) || ability.level || 1 })} placeholder="Rank or level" />
-                        <textarea className="ai-textarea compact" value={ability.description} onChange={(e) => setProgressionDraftAbility(ability.id, { description: e.target.value })} placeholder="Description based on how it appears in chapters (effects, display text, etc.)" />
-                      </div>
-                    ))}
-                  </div>
-                  <button className="btn-ai-sub btn-ai-secondary progression-auto-btn" onClick={addProgressionDraftAbility}>
-                    <Plus size={12} />
-                    Add Ability Card
-                  </button>
-                </div>
-
-                {progressionEditProfileDraft.notes && (
-                  <div className="ai-form-field">
-                    <label>Lore</label>
-                    <textarea className="ai-textarea compact" value={progressionEditProfileDraft.notes} onChange={(e) => setProgressionDraftField("notes", e.target.value)} />
-                  </div>
-                )}
-                {!progressionEditProfileDraft.notes && (
-                  <div className="ai-form-field">
-                    <label>Lore</label>
-                    <textarea className="ai-textarea compact" value={progressionEditProfileDraft.notes || ""} onChange={(e) => setProgressionDraftField("notes", e.target.value)} placeholder="A memorable detail, rumor, reputation, prophecy, weakness, or relationship to reference later." />
-                  </div>
-                )}
-              </div>
-
-              <div className="modal-actions">
-                <button className="btn btn-ghost" onClick={closeProgressionEditModal}>Cancel</button>
-                <button className="btn btn-primary" onClick={saveProgressionProfileDraft}>Update Profile</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showProgressionCharactersModal && (
-          <div className="modal-overlay" onClick={() => setShowProgressionCharactersModal(false)}>
-            <div className="modal progression-characters-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title">Characters</h2>
-                <p className="modal-description">Open a progression profile without filling the sidebar with every character.</p>
-              </div>
-              <div className="progression-character-search">
-                <Search size={15} />
-                <input
-                  className="ai-input"
-                  value={progressionCharacterSearch}
-                  onChange={(e) => setProgressionCharacterSearch(e.target.value)}
-                  placeholder="Search by name, title, class, realm, past life..."
-                  autoFocus
-                />
-                {progressionCharacterSearch.trim() && (
-                  <button
-                    type="button"
-                    className="btn-icon-mini"
-                    onClick={() => setProgressionCharacterSearch("")}
-                    title="Clear search"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-              <div className="progression-character-modal-list">
-                {progressionProfiles.length === 0 ? (
-                  <div className="empty-state-text">No progression profiles yet.</div>
-                ) : filteredProgressionProfiles.length === 0 ? (
-                  <div className="empty-state-text">No characters match this search.</div>
-                ) : filteredProgressionProfiles.map(profile => (
-                  <button
-                    key={profile.id}
-                    className={`progression-character-row ${selectedProgressionProfileId === profile.id ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedProgressionProfileId(profile.id)
-                      setProgressionSelectedEntryId(profile.loreEntryId)
-                      setShowProgressionCharactersModal(false)
-                    }}
-                  >
-                    <div>
-                      <strong>{profile.name}</strong>
-                      <span>{profile.title || profile.className || profile.cultivationPath || "No title yet"}</span>
-                    </div>
-                    <em>{formatProgressionStage(profile)}</em>
-                  </button>
-                ))}
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-ghost" onClick={() => setShowProgressionCharactersModal(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showLoreHistoryModal && selectedProgressionProfile && (
-          <div className="modal-overlay" onClick={() => setShowLoreHistoryModal(false)}>
-            <div className="modal progression-lore-history-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "550px" }}>
-              <div className="modal-header">
-                <h2 className="modal-title">Lore History</h2>
-                <p className="modal-description">Captured timeline of growth and events for <strong>{selectedProgressionProfile.name}</strong>.</p>
-              </div>
-              <div className="progression-lore-modal-list scrollbar" style={{ maxHeight: "350px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem", margin: "1rem 0", paddingRight: "0.25rem" }}>
-                {(() => {
-                  const loreEntries = selectedProgressionProfile.loreEntries || []
-                  const listToShow = loreEntries.length > 0
-                    ? [...loreEntries].sort((a, b) => b.timestamp - a.timestamp)
-                    : []
-
-                  if (listToShow.length === 0) {
-                    return <div className="empty-state-text">No lore notes recorded yet.</div>
-                  }
-
-                  return listToShow.map((entry) => (
-                    <div 
-                      key={entry.id} 
-                      className="progression-lore-history-entry" 
-                      style={{ 
-                        padding: "0.85rem", 
-                        background: "rgba(255, 255, 255, 0.03)", 
-                        border: "1px solid rgba(255, 255, 255, 0.06)", 
-                        borderRadius: "var(--radius-md)" 
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.4rem" }}>
-                        <span style={{ fontSize: "0.72rem", color: "var(--indigo-400)", fontWeight: 600 }}>
-                          {entry.chapterNumber !== undefined && entry.chapterNumber !== null
-                            ? `Chapter ${entry.chapterNumber}${entry.chapterTitle ? `: ${entry.chapterTitle}` : ""}`
-                            : entry.chapterTitle
-                            ? entry.chapterTitle
-                            : "Manual Profile Entry"}
-                        </span>
-                        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                          <span style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>
-                            {new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <button
-                            className="btn-icon btn-icon-sm"
-                            onClick={() => {
-                              if (!window.confirm("Delete this lore entry?")) return
-                              updateProgressionProfile(selectedProgressionProfile.id, (profile) => ({
-                                ...profile,
-                                loreEntries: (profile.loreEntries || []).filter(e => e.id !== entry.id),
-                                updatedAt: Date.now()
-                              }))
-                            }}
-                            title="Delete lore entry"
-                            style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", padding: "2px", fontSize: "0.85rem", lineHeight: 1, opacity: 0.5, transition: "opacity 0.15s" }}
-                            onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-                            onMouseLeave={e => (e.currentTarget.style.opacity = "0.5")}
-                          >✕</button>
-                        </div>
-                      </div>
-                      <p style={{ fontSize: "0.82rem", lineHeight: "1.4", color: "var(--text-main)", whiteSpace: "pre-wrap", margin: 0 }}>
-                        {entry.text}
-                      </p>
-                    </div>
-                  ))
-                })()}
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-ghost" onClick={() => setShowLoreHistoryModal(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {showTimelineCheckModal && (
           <div className="modal-overlay" onClick={() => setShowTimelineCheckModal(false)}>
             <div className="modal progression-template-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px" }}>
@@ -18953,656 +18188,6 @@ ${navPoints}  </navMap>
               </div>
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setShowRefViewModal(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showProgressionTemplateModal && (
-          <div className="modal-overlay" onClick={() => setShowProgressionTemplateModal(false)}>
-            <div className="modal progression-template-modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title">Profile Template</h2>
-                <p className="modal-description">Design the reusable status card for this novel. New and updated characters follow this shape.</p>
-              </div>
-              <div className="progression-template-modal-body">
-                <div className="progression-template-mode-switch">
-                  <button
-                    type="button"
-                    className={!progressionSystem.useCustomJsonTemplate ? "active" : ""}
-                    onClick={() => persistProgressionSystem({
-                      ...progressionSystem,
-                      useCustomJsonTemplate: false
-                    })}
-                  >
-                    <Layers size={13} />
-                    Visual Cards
-                  </button>
-                  <button
-                    type="button"
-                    className={progressionSystem.useCustomJsonTemplate ? "active" : ""}
-                    onClick={() => persistProgressionSystem({
-                      ...progressionSystem,
-                      useCustomJsonTemplate: true
-                    })}
-                  >
-                    <Code size={13} />
-                    JSON Builder
-                  </button>
-                </div>
-
-                {progressionSystem.useCustomJsonTemplate ? (
-                  <div className="json-template-editor-section">
-                    {(() => {
-                      let parsedTemplate: Record<string, any> = {}
-                      let parseError = ""
-                      try {
-                        const parsed = progressionSystem.customJsonTemplate ? JSON.parse(progressionSystem.customJsonTemplate) : {}
-                        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                          parsedTemplate = parsed
-                        } else {
-                          parseError = "Template must be a JSON object."
-                        }
-                      } catch (err) {
-                        parseError = (err as Error).message
-                      }
-                      const orderedKeys = getOrderedJsonTemplateKeys(parsedTemplate)
-
-                      return (
-                        <>
-                          <div className="progression-json-builder-panel">
-                            <div className="progression-template-header">
-                              <div>
-                                <strong>Guided JSON Status Builder</strong>
-                                <span>Add status cards and fields visually. PenPad keeps the starter JSON and card order in sync.</span>
-                              </div>
-                              <button
-                                type="button"
-                                className="btn-ai-sub btn-ai-primary"
-                                onClick={convertProgressionCardsToJsonTemplate}
-                              >
-                                <RefreshCw size={12} />
-                                Build From Current Cards
-                              </button>
-                            </div>
-
-                            {parseError ? (
-                              <div className="json-validation-error progression-json-builder-warning">
-                                <AlertCircle size={13} />
-                                Invalid JSON preview: {parseError}
-                              </div>
-                            ) : (
-                              <div className="json-validation-success progression-json-builder-warning">
-                                <Check size={13} />
-                                {orderedKeys.length} JSON status cards ready: {orderedKeys.join(", ") || "none yet"}
-                              </div>
-                            )}
-
-                            <div className="progression-json-builder-list">
-                              {orderedKeys.length === 0 ? (
-                                <div className="empty-state-text compact">No JSON cards yet. Add one below or convert the current visual template.</div>
-                              ) : orderedKeys.map((key, index) => {
-                                const value = parsedTemplate[key]
-                                const fieldKind = getJsonTemplateFieldKind(value)
-                                const objectValue = fieldKind === "object" ? value as Record<string, any> : {}
-                                const listValue = fieldKind === "list" ? value as any[] : []
-
-                                return (
-                                  <div className="progression-json-builder-card" key={key}>
-                                    <div className="progression-json-builder-row">
-                                      <label>
-                                        <span>Card Key</span>
-                                        <input
-                                          className="ai-input"
-                                          defaultValue={key}
-                                          onBlur={(e) => renameJsonTemplateField(key, e.target.value)}
-                                          placeholder="cultivationRealm"
-                                        />
-                                      </label>
-                                      <label>
-                                        <span>Value Type</span>
-                                        <select
-                                          className="ai-select"
-                                          value={fieldKind}
-                                          onChange={(e) => updateJsonTemplateFieldKind(key, e.target.value as ProgressionJsonTemplateFieldKind)}
-                                        >
-                                          <option value="text">Text</option>
-                                          <option value="number">Number</option>
-                                          <option value="boolean">Toggle</option>
-                                          <option value="list">List</option>
-                                          <option value="object">Grouped Fields</option>
-                                        </select>
-                                      </label>
-                                      <div className="progression-json-card-actions">
-                                        <button type="button" className="btn-icon-mini" onClick={() => reorderJsonTemplateField(key, "up")} disabled={index === 0} title="Move up">
-                                          <ChevronDown size={12} style={{ transform: "rotate(180deg)" }} />
-                                        </button>
-                                        <button type="button" className="btn-icon-mini" onClick={() => reorderJsonTemplateField(key, "down")} disabled={index === orderedKeys.length - 1} title="Move down">
-                                          <ChevronDown size={12} />
-                                        </button>
-                                        <button type="button" className="btn-icon-mini danger" onClick={() => removeJsonTemplateField(key)} title="Remove JSON card">
-                                          <Trash2 size={12} />
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    {fieldKind === "text" && (
-                                      <label className="progression-json-wide-input">
-                                        <span>Starter Value</span>
-                                        <input
-                                          className="ai-input"
-                                          value={String(value || "")}
-                                          onChange={(e) => updateJsonTemplatePrimitiveValue(key, e.target.value, "text")}
-                                          placeholder="Mortal, Warrior, Human..."
-                                        />
-                                      </label>
-                                    )}
-
-                                    {fieldKind === "number" && (
-                                      <label className="progression-json-wide-input">
-                                        <span>Starter Number</span>
-                                        <input
-                                          className="ai-input"
-                                          type="number"
-                                          value={Number(value) || 0}
-                                          onChange={(e) => updateJsonTemplatePrimitiveValue(key, e.target.value, "number")}
-                                        />
-                                      </label>
-                                    )}
-
-                                    {fieldKind === "boolean" && (
-                                      <label className="progression-json-toggle-row">
-                                        <input
-                                          type="checkbox"
-                                          checked={Boolean(value)}
-                                          onChange={(e) => updateJsonTemplatePrimitiveValue(key, e.target.checked, "boolean")}
-                                        />
-                                        <span>Default to enabled/true</span>
-                                      </label>
-                                    )}
-
-                                    {fieldKind === "object" && (
-                                      <div className="progression-json-nested-editor">
-                                        {Object.keys(objectValue).length === 0 ? (
-                                          <div className="empty-state-text compact">No grouped fields yet.</div>
-                                        ) : Object.keys(objectValue).map(fieldKey => (
-                                          <div className="progression-json-nested-row" key={`${key}-${fieldKey}`}>
-                                            <input
-                                              className="ai-input"
-                                              defaultValue={fieldKey}
-                                              onBlur={(e) => renameJsonTemplateObjectField(key, fieldKey, e.target.value)}
-                                              placeholder="realm"
-                                            />
-                                            <input
-                                              className="ai-input"
-                                              value={typeof objectValue[fieldKey] === "object" ? JSON.stringify(objectValue[fieldKey]) : String(objectValue[fieldKey] ?? "")}
-                                              onChange={(e) => updateJsonTemplateObjectValue(key, fieldKey, e.target.value)}
-                                              placeholder="Body Tempering"
-                                            />
-                                            <button type="button" className="btn-icon-mini danger" onClick={() => removeJsonTemplateObjectField(key, fieldKey)} title="Remove grouped field">
-                                              <Trash2 size={12} />
-                                            </button>
-                                          </div>
-                                        ))}
-                                        <button type="button" className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addJsonTemplateObjectField(key)}>
-                                          <Plus size={12} />
-                                          Add Grouped Field
-                                        </button>
-                                      </div>
-                                    )}
-
-                                    {fieldKind === "list" && (
-                                      <div className="progression-json-nested-editor">
-                                        {listValue.length === 0 ? (
-                                          <div className="empty-state-text compact">No list items yet.</div>
-                                        ) : listValue.map((item, itemIndex) => (
-                                          <div className="progression-json-list-row" key={`${key}-${itemIndex}`}>
-                                            <input
-                                              className="ai-input"
-                                              value={typeof item === "object" ? JSON.stringify(item) : String(item ?? "")}
-                                              onChange={(e) => updateJsonTemplateListItem(key, itemIndex, e.target.value)}
-                                              placeholder="Slash, Fire affinity, Seven Stars Sect..."
-                                            />
-                                            <button type="button" className="btn-icon-mini danger" onClick={() => removeJsonTemplateListItem(key, itemIndex)} title="Remove list item">
-                                              <Trash2 size={12} />
-                                            </button>
-                                          </div>
-                                        ))}
-                                        <button type="button" className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addJsonTemplateListItem(key)}>
-                                          <Plus size={12} />
-                                          Add List Item
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-
-                            <div className="progression-json-add-row">
-                              <input
-                                className="ai-input"
-                                value={progressionJsonNewKey}
-                                onChange={(e) => setProgressionJsonNewKey(e.target.value)}
-                                placeholder="New card key, e.g. weapon, cultivation, resources"
-                              />
-                              <select
-                                className="ai-select"
-                                value={progressionJsonNewKind}
-                                onChange={(e) => setProgressionJsonNewKind(e.target.value as ProgressionJsonTemplateFieldKind)}
-                              >
-                                <option value="text">Text</option>
-                                <option value="number">Number</option>
-                                <option value="boolean">Toggle</option>
-                                <option value="list">List</option>
-                                <option value="object">Grouped Fields</option>
-                              </select>
-                              <button type="button" className="btn-ai-sub btn-ai-primary" onClick={addJsonTemplateField}>
-                                <Plus size={12} />
-                                Add JSON Card
-                              </button>
-                            </div>
-                          </div>
-
-                          <details className="progression-json-raw-preview">
-                            <summary>Raw JSON preview</summary>
-                            <textarea
-                              className="ai-textarea progression-json-template-textarea font-mono text-sm scrollbar"
-                              value={progressionSystem.customJsonTemplate || ""}
-                              onChange={(e) => {
-                                const nextVal = e.target.value
-                                let parsedKeys: string[] = []
-                                try {
-                                  const parsed = JSON.parse(nextVal)
-                                  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                                    parsedKeys = Object.keys(parsed)
-                                  }
-                                } catch {}
-                                persistProgressionSystem({
-                                  ...progressionSystem,
-                                  customJsonTemplate: nextVal,
-                                  jsonCardOrder: parsedKeys.length > 0 ? parsedKeys : progressionSystem.jsonCardOrder
-                                })
-                              }}
-                              placeholder={`{\r\n  "class": "Warrior",\r\n  "cultivation": {\r\n    "realm": "Body Tempering"\r\n  }\r\n}`}
-                              rows={8}
-                            />
-                          </details>
-                        </>
-                      )
-                    })()}
-
-                    {renderCultivationImportPanel()}
-
-                    <div className="progression-theme-library" style={{ marginTop: "1.5rem" }}>
-                      <div className="progression-template-header">
-                        <div>
-                          <strong>Import / Export Template settings</strong>
-                          <span>Share your JSON layout settings across different novels.</span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-                        <button
-                          type="button"
-                          className="btn-ai-sub btn-ai-secondary"
-                          onClick={copyProgressionTemplateToClipboard}
-                        >
-                          <Copy size={12} />
-                          Copy Template settings
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ai-sub btn-ai-secondary"
-                          onClick={pasteProgressionTemplateFromClipboard}
-                        >
-                          <Clipboard size={12} />
-                          Paste & Import Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="progression-template-tool-row">
-                      {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields)
-                        .filter(card => card.enabled)
-                        .map(card => (
-                          <span key={card.id}>{card.label}</span>
-                        ))}
-                      <button
-                        className="btn-ai-sub btn-ai-secondary"
-                        onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        type="button"
-                      >
-                        <RotateCcw size={12} />
-                        Load Simple Template
-                      </button>
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={convertProgressionCardsToJsonTemplate}
-                        type="button"
-                      >
-                        <RefreshCw size={12} />
-                        Convert Cards to JSON
-                      </button>
-                      <button
-                        className="btn-ai-sub btn-ai-secondary danger-text"
-                        onClick={() => {
-                          const confirmed = window.confirm("Are you sure you want to clear all template cards? This will reset your status screen layout.");
-                          if (confirmed) {
-                            setProgressionTemplateCards(() => []);
-                          }
-                        }}
-                        type="button"
-                      >
-                        <Trash2 size={12} />
-                        Clear Template
-                      </button>
-                      <button
-                        className="btn-ai-sub btn-ai-secondary danger-text"
-                        onClick={() => {
-                          const confirmed = window.confirm("Are you sure you want to delete the entire template? This will completely clear all realms, stats, custom fields, and reset the template to a blank slate.");
-                          if (confirmed) {
-                            deleteEntireTemplate();
-                          }
-                        }}
-                        type="button"
-                      >
-                        <Trash2 size={12} />
-                        Delete Entire Template
-                      </button>
-                    </div>
-                    <div className="progression-theme-library">
-                      <div className="progression-template-header">
-                        <div>
-                          <strong>Novel Status Themes</strong>
-                          <span>Instantly load a specialized status card preset for your genre.</span>
-                        </div>
-                      </div>
-                      <div className="progression-theme-grid">
-                        <button
-                          type="button"
-                          className="theme-btn-premium"
-                          onClick={() => setProgressionTemplateCards(() => LITRPG_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        >
-                          🛡️ LitRPG / System
-                        </button>
-                        <button
-                          type="button"
-                          className="theme-btn-premium"
-                          onClick={() => setProgressionTemplateCards(() => XIANXIA_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        >
-                          ☯️ Xianxia / Cultivation
-                        </button>
-                        <button
-                          type="button"
-                          className="theme-btn-premium"
-                          onClick={() => setProgressionTemplateCards(() => SHADOW_SLAVE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        >
-                          🖤 Shadow Slave Style
-                        </button>
-                        <button
-                          type="button"
-                          className="theme-btn-premium"
-                          onClick={() => setProgressionTemplateCards(() => TALENT_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        >
-                          ✨ Supreme Talent
-                        </button>
-                        <button
-                          type="button"
-                          className="theme-btn-premium"
-                          onClick={() => setProgressionTemplateCards(() => SOLO_LEVELING_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        >
-                          ⚡ Solo Leveling Style
-                        </button>
-                        <button
-                          type="button"
-                          className="theme-btn-premium"
-                          onClick={() => setProgressionTemplateCards(() => DEFAULT_PROFILE_TEMPLATE_CARDS.map(card => ({ ...card, id: `${card.id}-${crypto.randomUUID()}` })))}
-                        >
-                          📄 Simple Baseline
-                        </button>
-                      </div>
-                    </div>
-                    <div className="progression-theme-library" style={{ marginTop: "1rem" }}>
-                      <div className="progression-template-header">
-                        <div>
-                          <strong>Import / Export Template</strong>
-                          <span>Share your progression status card layout across novels.</span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-                        <button
-                          type="button"
-                          className="btn-ai-sub btn-ai-secondary"
-                          onClick={copyProgressionTemplateToClipboard}
-                        >
-                          <Copy size={12} />
-                          Copy Template settings
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ai-sub btn-ai-secondary"
-                          onClick={pasteProgressionTemplateFromClipboard}
-                        >
-                          <Clipboard size={12} />
-                          Paste & Import Template
-                        </button>
-                      </div>
-                    </div>
-                    <div className="progression-preset-library">
-                      <div className="progression-template-header">
-                        <div>
-                          <strong>Preset Cards</strong>
-                          <span>Add optional status cards, then drag them into the order you want.</span>
-                        </div>
-                      </div>
-                      <div className="progression-preset-grid">
-                        {PROGRESSION_PRESET_TEMPLATE_CARDS.map(preset => (
-                          <button
-                            key={preset.id}
-                            className={`progression-preset-card color-${preset.color}`}
-                            onClick={() => addProgressionPresetCard(preset)}
-                            type="button"
-                          >
-                            <strong>{preset.label}</strong>
-                            <span>{preset.fields.join(" / ")}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="progression-cultivation-import-box" style={{ marginBottom: "1rem" }}>
-                      <div className="progression-template-header">
-                        <div>
-                          <strong>AI Prompt Designer</strong>
-                          <span>Describe the status screen structure to design a custom template.</span>
-                        </div>
-                        <button type="button" className="btn-ai-sub btn-ai-secondary" onClick={() => setIsProgressionPromptDesignerOpen(prev => !prev)}>
-                          <ChevronDown size={12} className={isProgressionPromptDesignerOpen ? "rotate" : ""} />
-                          {isProgressionPromptDesignerOpen ? "Hide" : "Design"}
-                        </button>
-                      </div>
-                      {isProgressionPromptDesignerOpen && (
-                        <div className="progression-cultivation-import-body" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
-                          <textarea
-                            className="ai-textarea compact"
-                            value={progressionTemplatePrompt}
-                            onChange={(e) => setProgressionTemplatePrompt(e.target.value)}
-                            placeholder="Describe what cards, stats, affinities, or ranks you want. Example: I want a profile template with name, Cultivation (stage and rank), levels, attributes (Strength, Agility, Endurance), and Affinity (Fire, Ice, Void)..."
-                            rows={3}
-                            disabled={progressionTemplatePromptLoading}
-                          />
-                          {progressionTemplatePromptError && (
-                            <div style={{ color: "var(--error)", fontSize: "0.8rem" }}>
-                              {progressionTemplatePromptError}
-                            </div>
-                          )}
-                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                            <button
-                              type="button"
-                              className="btn-ai-sub btn-ai-primary"
-                              onClick={handleDesignTemplateWithAi}
-                              disabled={!progressionTemplatePrompt.trim() || progressionTemplatePromptLoading}
-                            >
-                              {progressionTemplatePromptLoading ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                              Generate Template
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {renderCultivationImportPanel()}
-                    <div className="progression-template-builder-list">
-                      {normalizeProgressionTemplateCards(progressionSystem.profileTemplate.cards, progressionSystem.customFields).map(templateCard => (
-                        <div
-                          className={`progression-template-builder-card color-${templateCard.color} ${draggedProgressionTemplateCardId === templateCard.id ? "dragging" : ""} ${!templateCard.enabled ? "disabled-card" : ""}`}
-                          key={templateCard.id}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            if (draggedProgressionTemplateCardId) {
-                              reorderProgressionTemplateCard(draggedProgressionTemplateCardId, templateCard.id)
-                            }
-                            setDraggedProgressionTemplateCardId(null)
-                          }}
-                        >
-                        <div
-                          className="progression-template-drag-handle"
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.effectAllowed = "move"
-                            setDraggedProgressionTemplateCardId(templateCard.id)
-                          }}
-                          onDragEnd={() => setDraggedProgressionTemplateCardId(null)}
-                          title="Drag to reorder card"
-                        >
-                          <GripVertical size={15} />
-                          <span>Drag to reorder</span>
-                        </div>
-                        <label>
-                          <span>Card Name</span>
-                          <input
-                            className="ai-input"
-                            value={templateCard.label}
-                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? {
-                              ...card,
-                              label: e.target.value,
-                              sourceKey: card.sourceKey === card.label ? e.target.value : card.sourceKey
-                            } : card))}
-                          />
-                        </label>
-                        <label>
-                          <span>Type</span>
-                          <select
-                            className="ai-select"
-                            value={templateCard.type}
-                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, type: e.target.value as ProgressionTemplateCardType } : card))}
-                          >
-                            <option value="text">Text</option>
-                            <option value="rank">Realm / Rank</option>
-                            <option value="compound">Multi-field Card</option>
-                            <option value="progress">EXP / Progress</option>
-                            <option value="resource">HP / Mana / Qi</option>
-                            <option value="counter">Counter</option>
-                            <option value="stat">Stat</option>
-                            <option value="ability">Abilities</option>
-                          </select>
-                        </label>
-                        <label>
-                          <span>Source Field</span>
-                          <input
-                            className="ai-input"
-                            value={templateCard.sourceKey}
-                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, sourceKey: e.target.value } : card))}
-                            placeholder="EXP, Race, Bloodline, strength..."
-                          />
-                        </label>
-                        <label>
-                          <span>Color</span>
-                          <select
-                            className="ai-select"
-                            value={templateCard.color}
-                            onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, color: e.target.value } : card))}
-                          >
-                            {PROGRESSION_CARD_COLORS.map(color => <option key={color} value={color}>{color}</option>)}
-                          </select>
-                        </label>
-                        <label className="progression-template-fields-editor">
-                          <span>Fields</span>
-                          <div className="progression-template-field-editor-list">
-                            {templateCard.fields.length === 0 ? (
-                              <div className="empty-state-text compact">No fields yet.</div>
-                            ) : templateCard.fields.map((fieldName, fieldIndex) => (
-                              <div className="progression-template-field-editor-row" key={`${templateCard.id}-${fieldIndex}`}>
-                                <input
-                                  className="ai-input"
-                                  value={fieldName}
-                                  onChange={(e) => updateProgressionTemplateField(templateCard.id, fieldIndex, e.target.value)}
-                                  placeholder="Field name"
-                                />
-                                <button
-                                  className="btn-icon-mini danger"
-                                  onClick={() => removeProgressionTemplateField(templateCard.id, fieldIndex)}
-                                  title="Remove field"
-                                  type="button"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <button type="button" className="btn-ai-sub btn-ai-secondary progression-add-field-inline" onClick={() => addProgressionTemplateField(templateCard.id)}>
-                            <Plus size={12} />
-                            Add Field
-                          </button>
-                        </label>
-                        <div className="progression-template-card-actions">
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={templateCard.enabled}
-                              onChange={(e) => setProgressionTemplateCards(cards => cards.map(card => card.id === templateCard.id ? { ...card, enabled: e.target.checked } : card))}
-                            />
-                            Show
-                          </label>
-                          <button
-                            className="btn-ai-sub btn-ai-secondary danger-text"
-                            onClick={() => removeProgressionTemplateCard(templateCard.id)}
-                            type="button"
-                          >
-                            <Trash2 size={12} />
-                            Remove
-                          </button>
-                        </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="progression-template-add-row">
-                      <button
-                        className="btn-ai-sub btn-ai-primary"
-                        onClick={() => setProgressionTemplateCards(cards => [
-                          ...cards,
-                          {
-                            id: `template-${crypto.randomUUID()}`,
-                            label: "Unnamed Card",
-                            type: "compound",
-                            sourceKey: "custom",
-                            fields: ["Field"],
-                            color: getProgressionCardColor(cards.length, "compound"),
-                            enabled: true
-                          }
-                        ])}
-                        type="button"
-                      >
-                        <Plus size={12} />
-                        Add Template Card
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-primary" onClick={() => setShowProgressionTemplateModal(false)}>Done</button>
               </div>
             </div>
           </div>
