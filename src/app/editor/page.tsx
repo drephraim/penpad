@@ -1297,7 +1297,36 @@ interface ProgressionProfileTemplate {
   notes: string
 }
 
+export type NovelProgressionStyle = 'eastern_fantasy'
+
+export interface EasternFantasyOptionalConfig {
+  enableCharisma: boolean
+  enableCharmProgressBar: boolean
+  enableCharmPoints: boolean
+  enableSpiritStones: boolean
+  enableTechniques: boolean
+  enableTreasures: boolean
+}
+
+export interface EasternFantasyTechnique {
+  id: string
+  name: string
+  rank?: string
+  mastery?: string
+  description?: string
+}
+
+export interface EasternFantasyTreasure {
+  id: string
+  name: string
+  rank?: string
+  category?: string
+  description?: string
+}
+
 interface ProgressionSystemSettings {
+  novelStyle?: NovelProgressionStyle
+  easternFantasyOptions?: EasternFantasyOptionalConfig
   realms: string[]
   stageLabels: string[]
   showLevels: boolean
@@ -1343,6 +1372,8 @@ interface CharacterProgressionProfile {
   name: string
   title?: string
   className?: string
+  classRank?: string
+  secondaryClass?: string
   rank?: string
   nicknames?: string[]
   uniqueTrait?: string
@@ -1352,6 +1383,20 @@ interface CharacterProgressionProfile {
   level: number
   exp: number
   nextLevelExp: number
+  bloodline?: string
+  bloodlineRank?: string
+  constitution?: string
+  constitutionRank?: string
+  elementalAffinity?: string
+  elementalAffinityRank?: string
+  charisma?: string
+  charismaTier?: string
+  charmCurrent?: number
+  charmMax?: number
+  charmPoints?: number
+  spiritStones?: string
+  techniques?: EasternFantasyTechnique[]
+  treasures?: EasternFantasyTreasure[]
   stats: Record<ProgressionStatKey, number>
   abilities: ProgressionAbility[]
   traits: string[]
@@ -1451,12 +1496,29 @@ const DEFAULT_PROFILE_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
   { id: "template-class", label: "Class", type: "compound", sourceKey: "className", fields: ["Main Class", "Secondary Class"], color: "fuchsia", enabled: true },
   { id: "template-skills", label: "Skills", type: "ability", sourceKey: "abilities", fields: ["Skill", "Rank", "Description"], color: "amber", enabled: true }
 ]
+const DEFAULT_EASTERN_FANTASY_OPTIONS: EasternFantasyOptionalConfig = {
+  enableCharisma: true,
+  enableCharmProgressBar: true,
+  enableCharmPoints: true,
+  enableSpiritStones: true,
+  enableTechniques: true,
+  enableTreasures: true
+}
+
 const SIMPLE_PROGRESSION_CUSTOM_FIELDS = [
   "Bloodline",
   "Bloodline Rank",
+  "Constitution",
+  "Constitution Rank",
+  "Class Rank",
+  "Secondary Class",
   "Affinity Names",
   "Affinity Rank",
-  "Secondary Class",
+  "Charisma",
+  "Charisma Tier",
+  "Charm",
+  "Charm Points",
+  "Spirit Stones",
   "Race",
   "Affiliation"
 ]
@@ -1469,11 +1531,26 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "bloodline tier": "Bloodline Rank",
   "main bloodline": "Bloodline",
   "bloodline name/rank": "Bloodline",
+  constitution: "Constitution",
+  "constitution name": "Constitution",
+  physique: "Constitution",
+  "innate physique": "Constitution",
+  "special constitution": "Constitution",
+  "divine body": "Constitution",
+  "constitution rank": "Constitution Rank",
+  "constitution grade": "Constitution Rank",
+  "constitution tier": "Constitution Rank",
+  "physique rank": "Constitution Rank",
+  "physique grade": "Constitution Rank",
+  "class rank": "Class Rank",
+  "class grade": "Class Rank",
+  "class tier": "Class Rank",
   affinity: "Affinity Names",
   affinities: "Affinity Names",
   "affinity name": "Affinity Names",
   "affinity names": "Affinity Names",
   "elemental affinity": "Affinity Names",
+  "elemental affinities": "Affinity Names",
   "elemental affinity names": "Affinity Names",
   "spirit affinity": "Affinity Names",
   "spirit affinity names": "Affinity Names",
@@ -1494,6 +1571,22 @@ const SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES: Record<string, string> = {
   "sub class": "Secondary Class",
   "secondary job": "Secondary Class",
   "second job": "Secondary Class",
+  charisma: "Charisma",
+  "charisma realm": "Charisma",
+  "charisma rank": "Charisma",
+  "charisma level": "Charisma",
+  "charisma tier": "Charisma Tier",
+  "charm tier": "Charisma Tier",
+  tier: "Charisma Tier",
+  charm: "Charm",
+  "charm progress": "Charm",
+  "charm bar": "Charm",
+  "charm points": "Charm Points",
+  "charm point": "Charm Points",
+  "accumulated charm points": "Charm Points",
+  "spirit stones": "Spirit Stones",
+  "spirit stone": "Spirit Stones",
+  wealth: "Spirit Stones",
   race: "Race",
   affiliation: "Affiliation"
 }
@@ -1557,9 +1650,22 @@ const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   notes: ""
 }
 const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
-  realms: [],
+  novelStyle: "eastern_fantasy",
+  easternFantasyOptions: DEFAULT_EASTERN_FANTASY_OPTIONS,
+  realms: [
+    "Body Tempering",
+    "Qi Condensation",
+    "Foundation Establishment",
+    "Core Formation",
+    "Nascent Soul",
+    "Soul Transformation",
+    "Void Refinement",
+    "Tribulation Transcendence",
+    "Mahayana",
+    "Immortal Ascension"
+  ],
   stageLabels: ["Low", "Medium", "High", "Peak"],
-  showLevels: false,
+  showLevels: true,
   showExp: false,
   showStats: false,
   statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
@@ -1666,8 +1772,9 @@ const serializeMarkdownIncarnations = (content: string, entries: Array<{ identit
 const sanitizeSimpleProgressionCustomFields = (fields?: Record<string, unknown>) => {
   const cleaned: Record<string, string> = {}
   Object.entries(fields || {}).forEach(([key, value]) => {
-    const canonicalKey = SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES[key.trim().toLowerCase()]
-    if (!canonicalKey) return
+    const rawKey = key.trim()
+    if (!rawKey) return
+    const canonicalKey = SIMPLE_PROGRESSION_CUSTOM_FIELD_ALIASES[rawKey.toLowerCase()] || rawKey
     const cleanValue = formatSimpleProgressionFieldValue(value, canonicalKey)
     if (cleanValue || !cleaned[canonicalKey]) {
       cleaned[canonicalKey] = cleanValue
@@ -5000,12 +5107,93 @@ const fillEmptyCustomJsonData = (
       ""
     ).trim()
 
+    const bloodline = String(aiProfile?.bloodline || customFields["Bloodline"] || existingProfile?.bloodline || "").trim()
+    const bloodlineRank = String(aiProfile?.bloodlineRank || customFields["Bloodline Rank"] || existingProfile?.bloodlineRank || "").trim()
+    const constitution = String(aiProfile?.constitution || customFields["Constitution"] || existingProfile?.constitution || "").trim()
+    const constitutionRank = String(aiProfile?.constitutionRank || customFields["Constitution Rank"] || existingProfile?.constitutionRank || "").trim()
+    const classRank = String(aiProfile?.classRank || customFields["Class Rank"] || existingProfile?.classRank || "").trim()
+    const secondaryClass = String(aiProfile?.secondaryClass || customFields["Secondary Class"] || existingProfile?.secondaryClass || "").trim()
+    const elementalAffinity = String(aiProfile?.elementalAffinity || customFields["Affinity Names"] || existingProfile?.elementalAffinity || "").trim()
+    const elementalAffinityRank = String(aiProfile?.elementalAffinityRank || customFields["Affinity Rank"] || existingProfile?.elementalAffinityRank || "").trim()
+    const charisma = String(aiProfile?.charisma || customFields["Charisma"] || existingProfile?.charisma || "Mortal").trim()
+    const charismaTier = String(aiProfile?.charismaTier || customFields["Charisma Tier"] || existingProfile?.charismaTier || "Low").trim()
+
+    const charmRatioFromCustom = parseProgressionRatio(customFields["Charm"])
+    const charmCurrent = Number.isFinite(Number(aiProfile?.charmCurrent))
+      ? Number(aiProfile?.charmCurrent)
+      : charmRatioFromCustom
+      ? charmRatioFromCustom.current
+      : Number.isFinite(Number(existingProfile?.charmCurrent))
+      ? Number(existingProfile?.charmCurrent)
+      : 0
+    const charmMax = Number.isFinite(Number(aiProfile?.charmMax)) && Number(aiProfile?.charmMax) > 0
+      ? Number(aiProfile?.charmMax)
+      : charmRatioFromCustom
+      ? charmRatioFromCustom.max
+      : Number.isFinite(Number(existingProfile?.charmMax)) && Number(existingProfile?.charmMax) > 0
+      ? Number(existingProfile?.charmMax)
+      : 1000
+    const charmPoints = Number.isFinite(Number(aiProfile?.charmPoints))
+      ? Number(aiProfile?.charmPoints)
+      : Number.isFinite(Number(customFields["Charm Points"])) && String(customFields["Charm Points"] || "").trim() !== ""
+      ? Number(customFields["Charm Points"])
+      : Number.isFinite(Number(existingProfile?.charmPoints))
+      ? Number(existingProfile?.charmPoints)
+      : 0
+    const spiritStones = String(aiProfile?.spiritStones || customFields["Spirit Stones"] || existingProfile?.spiritStones || "0").trim()
+
+    if (bloodline) customFields["Bloodline"] = bloodline
+    if (bloodlineRank) customFields["Bloodline Rank"] = bloodlineRank
+    if (constitution) customFields["Constitution"] = constitution
+    if (constitutionRank) customFields["Constitution Rank"] = constitutionRank
+    if (classRank) customFields["Class Rank"] = classRank
+    if (secondaryClass) customFields["Secondary Class"] = secondaryClass
+    if (elementalAffinity) customFields["Affinity Names"] = elementalAffinity
+    if (elementalAffinityRank) customFields["Affinity Rank"] = elementalAffinityRank
+    if (charisma) customFields["Charisma"] = charisma
+    if (charismaTier) customFields["Charisma Tier"] = charismaTier
+    customFields["Charm"] = `${charmCurrent}/${charmMax}`
+    customFields["Charm Points"] = String(charmPoints)
+    if (spiritStones) customFields["Spirit Stones"] = spiritStones
+
+    const techniques: EasternFantasyTechnique[] = Array.isArray(aiProfile?.techniques) && aiProfile!.techniques!.length > 0
+      ? aiProfile!.techniques!.map((t, idx) => ({
+          id: String(t.id || `tech-${idx}-${Date.now()}`),
+          name: String(t.name || `Technique ${idx + 1}`),
+          rank: String(t.rank || ""),
+          mastery: String(t.mastery || ""),
+          description: String(t.description || "")
+        }))
+      : Array.isArray(existingProfile?.techniques) && existingProfile!.techniques!.length > 0
+      ? existingProfile!.techniques!
+      : abilities.map((a, idx) => ({
+          id: a.id || `tech-${idx}`,
+          name: a.name,
+          rank: a.rank || "",
+          mastery: a.level ? `Lv. ${a.level}` : "",
+          description: a.description || ""
+        }))
+
+    const treasures: EasternFantasyTreasure[] = Array.isArray(aiProfile?.treasures) && aiProfile!.treasures!.length > 0
+      ? aiProfile!.treasures!.map((item, idx) => ({
+          id: String(item.id || `item-${idx}-${Date.now()}`),
+          name: String(item.name || `Treasure ${idx + 1}`),
+          rank: String(item.rank || ""),
+          category: String(item.category || "Artifact"),
+          description: String(item.description || "")
+        }))
+      : Array.isArray(existingProfile?.treasures)
+      ? existingProfile!.treasures!
+      : []
+
     return {
       id: existingProfile?.id || crypto.randomUUID(),
       loreEntryId: sourceEntry.id,
       name: aiProfile?.name || existingProfile?.name || sourceEntry.name,
       title: aiProfile?.title || existingProfile?.title || "",
       className: inferredClassName || existingProfile?.className || sharedTemplate.defaultClassName || "",
+      classRank,
+      secondaryClass,
       rank: aiProfile?.rank || existingProfile?.rank || sharedTemplate.defaultRank || "",
       nicknames: Array.isArray(aiProfile?.nicknames) ? aiProfile.nicknames : existingProfile?.nicknames || [],
       uniqueTrait: aiProfile?.uniqueTrait || existingProfile?.uniqueTrait || "",
@@ -5015,6 +5203,20 @@ const fillEmptyCustomJsonData = (
       level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || sharedTemplate.baseLevel || 1,
       exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || sharedTemplate.baseExp || 0,
       nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+      bloodline,
+      bloodlineRank,
+      constitution,
+      constitutionRank,
+      elementalAffinity,
+      elementalAffinityRank,
+      charisma,
+      charismaTier,
+      charmCurrent,
+      charmMax,
+      charmPoints,
+      spiritStones,
+      techniques,
+      treasures,
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}), ...(aiProfile?.stats || {}) },
       abilities,
       traits: Array.isArray(aiProfile?.traits) ? aiProfile?.traits || [] : existingProfile?.traits || sharedTemplate.defaultTraits || [],
@@ -5096,6 +5298,8 @@ const fillEmptyCustomJsonData = (
       name: existingProfile?.name || sourceEntry.name,
       title: existingProfile?.title || "",
       className: existingProfile?.className || sharedTemplate.defaultClassName || "",
+      classRank: existingProfile?.classRank || customFields["Class Rank"] || "",
+      secondaryClass: existingProfile?.secondaryClass || customFields["Secondary Class"] || "",
       rank: existingProfile?.rank || sharedTemplate.defaultRank || "",
       nicknames: existingProfile?.nicknames || [],
       uniqueTrait: existingProfile?.uniqueTrait || "",
@@ -5105,6 +5309,20 @@ const fillEmptyCustomJsonData = (
       level: existingProfile?.level || sharedTemplate.baseLevel || 1,
       exp: existingProfile?.exp || sharedTemplate.baseExp || 0,
       nextLevelExp: existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+      bloodline: existingProfile?.bloodline || customFields["Bloodline"] || "",
+      bloodlineRank: existingProfile?.bloodlineRank || customFields["Bloodline Rank"] || "",
+      constitution: existingProfile?.constitution || customFields["Constitution"] || "",
+      constitutionRank: existingProfile?.constitutionRank || customFields["Constitution Rank"] || "",
+      elementalAffinity: existingProfile?.elementalAffinity || customFields["Affinity Names"] || "",
+      elementalAffinityRank: existingProfile?.elementalAffinityRank || customFields["Affinity Rank"] || "",
+      charisma: existingProfile?.charisma || customFields["Charisma"] || "Mortal",
+      charismaTier: existingProfile?.charismaTier || customFields["Charisma Tier"] || "Low",
+      charmCurrent: existingProfile?.charmCurrent ?? 0,
+      charmMax: existingProfile?.charmMax ?? 1000,
+      charmPoints: existingProfile?.charmPoints ?? 0,
+      spiritStones: existingProfile?.spiritStones || customFields["Spirit Stones"] || "0",
+      techniques: existingProfile?.techniques || [],
+      treasures: existingProfile?.treasures || [],
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}) },
       abilities: existingProfile?.abilities || sharedTemplate.defaultAbilities || [],
       traits: existingProfile?.traits || sharedTemplate.defaultTraits || [],
@@ -5588,13 +5806,44 @@ const fillEmptyCustomJsonData = (
   }
 
   const openProgressionEditModal = (profile: CharacterProgressionProfile) => {
+    const cf = sanitizeSimpleProgressionCustomFields(profile.customFields || {})
+    const charmRatio = parseProgressionRatio(cf["Charm"])
+    const syncedTechniques: EasternFantasyTechnique[] = Array.isArray(profile.techniques) && profile.techniques.length > 0
+      ? profile.techniques.map(t => ({ ...t }))
+      : (profile.abilities || []).map((a, idx) => ({
+          id: a.id || `tech-${idx}`,
+          name: a.name,
+          rank: a.rank || "",
+          mastery: a.level ? `Lv. ${a.level}` : "",
+          description: a.description || ""
+        }))
+    const syncedTreasures: EasternFantasyTreasure[] = Array.isArray(profile.treasures)
+      ? profile.treasures.map(item => ({ ...item }))
+      : []
+
     setProgressionEditProfileDraft({
       ...profile,
+      classRank: profile.classRank || cf["Class Rank"] || "",
+      secondaryClass: profile.secondaryClass || cf["Secondary Class"] || "",
+      bloodline: profile.bloodline || cf["Bloodline"] || "",
+      bloodlineRank: profile.bloodlineRank || cf["Bloodline Rank"] || "",
+      constitution: profile.constitution || cf["Constitution"] || "",
+      constitutionRank: profile.constitutionRank || cf["Constitution Rank"] || "",
+      elementalAffinity: profile.elementalAffinity || cf["Affinity Names"] || "",
+      elementalAffinityRank: profile.elementalAffinityRank || cf["Affinity Rank"] || "",
+      charisma: profile.charisma || cf["Charisma"] || "Mortal",
+      charismaTier: profile.charismaTier || cf["Charisma Tier"] || "High",
+      charmCurrent: profile.charmCurrent ?? (charmRatio ? charmRatio.current : 100),
+      charmMax: profile.charmMax ?? (charmRatio ? charmRatio.max : 1000),
+      charmPoints: profile.charmPoints ?? (Number.isFinite(Number(cf["Charm Points"])) && cf["Charm Points"] ? Number(cf["Charm Points"]) : 10),
+      spiritStones: profile.spiritStones || cf["Spirit Stones"] || "0",
+      techniques: syncedTechniques,
+      treasures: syncedTreasures,
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
       abilities: [...profile.abilities],
       traits: [...profile.traits],
       nicknames: [...(profile.nicknames || [])],
-      customFields: sanitizeSimpleProgressionCustomFields(profile.customFields || {}),
+      customFields: cf,
       processedChapterIds: [...profile.processedChapterIds],
       history: [...profile.history]
     })
@@ -5814,27 +6063,106 @@ const fillEmptyCustomJsonData = (
       })
     }
 
+    const draftCf = sanitizeSimpleProgressionCustomFields(progressionEditProfileDraft.customFields || {})
+    const bloodline = String(progressionEditProfileDraft.bloodline ?? draftCf["Bloodline"] ?? "").trim()
+    const bloodlineRank = String(progressionEditProfileDraft.bloodlineRank ?? draftCf["Bloodline Rank"] ?? "").trim()
+    const constitution = String(progressionEditProfileDraft.constitution ?? draftCf["Constitution"] ?? "").trim()
+    const constitutionRank = String(progressionEditProfileDraft.constitutionRank ?? draftCf["Constitution Rank"] ?? "").trim()
+    const classRank = String(progressionEditProfileDraft.classRank ?? draftCf["Class Rank"] ?? "").trim()
+    const secondaryClass = String(progressionEditProfileDraft.secondaryClass ?? draftCf["Secondary Class"] ?? "").trim()
+    const elementalAffinity = String(progressionEditProfileDraft.elementalAffinity ?? draftCf["Affinity Names"] ?? "").trim()
+    const elementalAffinityRank = String(progressionEditProfileDraft.elementalAffinityRank ?? draftCf["Affinity Rank"] ?? "").trim()
+    const charisma = String(progressionEditProfileDraft.charisma ?? draftCf["Charisma"] ?? "Mortal").trim()
+    const charismaTier = String(progressionEditProfileDraft.charismaTier ?? draftCf["Charisma Tier"] ?? "High").trim()
+    const charmCurrent = Number.isFinite(Number(progressionEditProfileDraft.charmCurrent)) ? Number(progressionEditProfileDraft.charmCurrent) : 0
+    const charmMax = Number.isFinite(Number(progressionEditProfileDraft.charmMax)) && Number(progressionEditProfileDraft.charmMax) > 0 ? Number(progressionEditProfileDraft.charmMax) : 1000
+    const charmPoints = Number.isFinite(Number(progressionEditProfileDraft.charmPoints)) ? Number(progressionEditProfileDraft.charmPoints) : 0
+    const spiritStones = String(progressionEditProfileDraft.spiritStones ?? draftCf["Spirit Stones"] ?? "0").trim()
+
+    draftCf["Bloodline"] = bloodline
+    draftCf["Bloodline Rank"] = bloodlineRank
+    draftCf["Constitution"] = constitution
+    draftCf["Constitution Rank"] = constitutionRank
+    draftCf["Class Rank"] = classRank
+    draftCf["Secondary Class"] = secondaryClass
+    draftCf["Affinity Names"] = elementalAffinity
+    draftCf["Affinity Rank"] = elementalAffinityRank
+    draftCf["Charisma"] = charisma
+    draftCf["Charisma Tier"] = charismaTier
+    draftCf["Charm"] = `${charmCurrent}/${charmMax}`
+    draftCf["Charm Points"] = String(charmPoints)
+    draftCf["Spirit Stones"] = spiritStones
+
+    const techniques = (progressionEditProfileDraft.techniques || []).map((t, index) => ({
+      id: t.id || crypto.randomUUID(),
+      name: (t.name || `Technique ${index + 1}`).trim(),
+      rank: (t.rank || "").trim(),
+      mastery: (t.mastery || "").trim(),
+      description: (t.description || "").trim()
+    }))
+
+    const treasures = (progressionEditProfileDraft.treasures || []).map((item, index) => ({
+      id: item.id || crypto.randomUUID(),
+      name: (item.name || `Treasure ${index + 1}`).trim(),
+      rank: (item.rank || "").trim(),
+      category: (item.category || "Treasure").trim(),
+      description: (item.description || "").trim()
+    }))
+
+    const syncedAbilities: ProgressionAbility[] = techniques.map((t, index) => ({
+      id: t.id || crypto.randomUUID(),
+      name: t.name || `Technique ${index + 1}`,
+      level: 1,
+      rank: [t.rank, t.mastery].filter(Boolean).join(" • "),
+      description: t.description || ""
+    }))
+
     const updatedProfile: CharacterProgressionProfile = {
       ...progressionEditProfileDraft,
-      abilities: progressionEditProfileDraft.abilities.map((ability, index) => ({
-        ...ability,
-        id: ability.id || crypto.randomUUID(),
-        name: ability.name || `Ability ${index + 1}`,
-        level: Number.isFinite(Number(ability.level)) ? Number(ability.level) : 1,
-        rank: ability.rank || (Number.isFinite(Number(ability.level)) ? `Level ${ability.level}` : ""),
-        description: ability.description || ""
-      })),
+      bloodline,
+      bloodlineRank,
+      constitution,
+      constitutionRank,
+      classRank,
+      secondaryClass,
+      elementalAffinity,
+      elementalAffinityRank,
+      charisma,
+      charismaTier,
+      charmCurrent,
+      charmMax,
+      charmPoints,
+      spiritStones,
+      techniques,
+      treasures,
+      abilities: syncedAbilities,
       traits: Array.isArray(progressionEditProfileDraft.traits) ? progressionEditProfileDraft.traits : [],
       nicknames: Array.isArray(progressionEditProfileDraft.nicknames) ? progressionEditProfileDraft.nicknames : [],
-      customFields: sanitizeSimpleProgressionCustomFields(progressionEditProfileDraft.customFields || {}),
+      customFields: draftCf,
       loreEntries: nextLoreEntries,
       updatedAt: now
     }
     updateProgressionProfile(updatedProfile.id, () => updatedProfile)
-    learnProgressionProfileShape(updatedProfile)
     setSelectedProgressionProfileId(updatedProfile.id)
-    setProgressionNotice("Profile updated. This novel's shared progression template learned the new profile shape.")
+    setProgressionNotice(`Saved ${updatedProfile.name}'s Eastern Fantasy progression profile.`)
     closeProgressionEditModal()
+  }
+
+  const easternFantasyOptions: EasternFantasyOptionalConfig = {
+    ...DEFAULT_EASTERN_FANTASY_OPTIONS,
+    ...(progressionSystem.easternFantasyOptions || {})
+  }
+
+  const toggleEasternFantasyOption = (key: keyof EasternFantasyOptionalConfig) => {
+    const nextOptions: EasternFantasyOptionalConfig = {
+      ...easternFantasyOptions,
+      [key]: !easternFantasyOptions[key]
+    }
+    persistProgressionSystem({
+      ...progressionSystem,
+      novelStyle: "eastern_fantasy",
+      easternFantasyOptions: nextOptions
+    })
   }
 
   const formatProgressionStage = (profile: CharacterProgressionProfile) => {
@@ -6419,7 +6747,14 @@ const fillEmptyCustomJsonData = (
     return {
       ...DEFAULT_PROGRESSION_SYSTEM,
       ...(settings || {}),
-      realms: Array.isArray(settings?.realms) ? settings.realms.map(item => String(item).trim()).filter(Boolean) : DEFAULT_PROGRESSION_SYSTEM.realms,
+      novelStyle: settings?.novelStyle || "eastern_fantasy",
+      easternFantasyOptions: {
+        ...DEFAULT_EASTERN_FANTASY_OPTIONS,
+        ...(settings?.easternFantasyOptions || {})
+      },
+      realms: Array.isArray(settings?.realms) && settings.realms.length > 0
+        ? settings.realms.map(item => String(item).trim()).filter(Boolean)
+        : DEFAULT_PROGRESSION_SYSTEM.realms,
       stageLabels: Array.isArray(settings?.stageLabels) && settings.stageLabels.length > 0
         ? settings.stageLabels.map(item => String(item).trim()).filter(Boolean)
         : DEFAULT_PROGRESSION_SYSTEM.stageLabels,
@@ -6435,7 +6770,7 @@ const fillEmptyCustomJsonData = (
       cultivationSourceText: typeof settings?.cultivationSourceText === "string" ? settings.cultivationSourceText.slice(0, 20000) : "",
       cultivationGuide: typeof settings?.cultivationGuide === "string" ? settings.cultivationGuide.slice(0, 4000) : "",
       allowEmptyTemplate,
-      showLevels: false,
+      showLevels: true,
       showExp: false,
       showStats: false
     }
@@ -13427,104 +13762,951 @@ ${navPoints}  </navMap>
               </div>
             )}
 
-            {/* TAB 4: CHARACTER PROGRESSION */}
+            {/* TAB 4: CHARACTER PROGRESSION (EASTERN FANTASY) */}
             {activeSidebarTab === 'progression' && (
               <div className="sidebar-tab-content progression-panel fade-in">
-                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <TrendingUp size={18} className="text-accent" />
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Character Progression</h3>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>System Ready to Rebuild</span>
+                <div className="progression-toolbar">
+                  {/* Novel Progression Style Header */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    padding: '0.55rem 0.7rem',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(245, 158, 11, 0.08))',
+                    border: '1px solid rgba(167, 139, 250, 0.28)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Sparkles size={15} style={{ color: '#c4b5fd', flexShrink: 0 }} />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', fontWeight: 700 }}>
+                          Novel Progression Style
+                        </span>
+                        <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                          Eastern Fantasy
+                        </strong>
                       </div>
                     </div>
-                    <span style={{
-                      fontSize: '0.65rem',
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      color: 'var(--indigo-400)',
-                      fontWeight: 600,
-                      border: '1px solid rgba(99, 102, 241, 0.3)'
-                    }}>
-                      Reset Complete
-                    </span>
+                    <select
+                      className="input"
+                      value={progressionSystem.novelStyle || 'eastern_fantasy'}
+                      onChange={(e) => {
+                        persistProgressionSystem({
+                          ...progressionSystem,
+                          novelStyle: e.target.value as NovelProgressionStyle
+                        })
+                      }}
+                      style={{
+                        width: 'auto',
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        height: '28px',
+                        borderRadius: '6px'
+                      }}
+                    >
+                      <option value="eastern_fantasy">Eastern Fantasy</option>
+                    </select>
                   </div>
 
-                  <div style={{
-                    padding: '0.75rem 0.9rem',
-                    background: 'rgba(16, 185, 129, 0.08)',
-                    border: '1px solid rgba(16, 185, 129, 0.25)',
-                    borderRadius: 'var(--radius-md)',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.6rem'
-                  }}>
-                    <CheckCircle2 size={16} style={{ color: 'var(--green-500)', flexShrink: 0, marginTop: '2px' }} />
-                    <div style={{ fontSize: '0.75rem', lineHeight: 1.4 }}>
-                      <strong style={{ color: 'var(--green-400)', display: 'block', marginBottom: '2px' }}>
-                        Data Backup Preserved
-                      </strong>
-                      <span style={{ color: 'var(--text-dim)' }}>
-                        {progressionProfiles.length} character profile(s) remain safely preserved in storage and database.
-                      </span>
-                    </div>
+                  {/* Quick Library Actions */}
+                  <div className="progression-library-actions" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                    <button
+                      type="button"
+                      className="progression-library-card"
+                      onClick={() => setShowProgressionCharactersModal(true)}
+                    >
+                      <div>
+                        <span>Characters</span>
+                        <strong>{selectedProgressionProfile ? selectedProgressionProfile.name : `${progressionProfiles.length} saved`}</strong>
+                      </div>
+                      <small>{progressionProfiles.length} profile{progressionProfiles.length === 1 ? '' : 's'}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className="progression-library-card"
+                      onClick={() => setShowProgressionTemplateModal(true)}
+                    >
+                      <div>
+                        <span>Cards & Realms</span>
+                        <strong>Configure</strong>
+                      </div>
+                      <small>Optional & stages</small>
+                    </button>
+                    <button
+                      type="button"
+                      className="progression-library-card"
+                      onClick={() => checkTimelineConsistency()}
+                      disabled={timelineCheckLoading}
+                    >
+                      <div>
+                        <span>Timeline</span>
+                        <strong>{timelineCheckLoading ? 'Checking...' : 'Audit'}</strong>
+                      </div>
+                      <small>{timelineIssues.length > 0 ? `${timelineIssues.length} issue(s)` : 'Power check'}</small>
+                    </button>
                   </div>
 
+                  {/* AI Chapter Update & Scan Controls */}
+                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                    <button
+                      type="button"
+                      className="btn-ai-sub btn-ai-primary"
+                      style={{ flex: 1, justifyContent: 'center', padding: '0.5rem 0.65rem', fontSize: '0.75rem' }}
+                      onClick={() => handleProgressionUpdate(selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId)}
+                      disabled={progressionLoading || progressionBulkUpdating}
+                      title="Extract Eastern Fantasy progression updates from the active chapter"
+                    >
+                      {progressionLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                      {progressionLoading ? 'Updating...' : 'Update from Chapter'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ai-sub btn-ai-secondary"
+                      style={{ padding: '0.5rem 0.65rem', fontSize: '0.75rem' }}
+                      onClick={handleProgressionBulkUpdate}
+                      disabled={progressionBulkUpdating || progressionLoading}
+                      title="Scan the 2 most recent chapters for character progression updates"
+                    >
+                      {progressionBulkUpdating ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                      {progressionBulkUpdating ? 'Scanning...' : 'Scan Recent'}
+                    </button>
+                  </div>
+
+                  {/* Optional Cards Quick Toggle Bar */}
                   <div style={{
-                    padding: '1.25rem 1rem',
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    border: '1px dashed var(--surface-border)',
-                    borderRadius: 'var(--radius-lg)',
-                    textAlign: 'center',
+                    padding: '0.6rem 0.7rem',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.025)',
+                    border: '1px solid var(--surface-border)',
                     display: 'flex',
                     flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '0.75rem'
+                    gap: '0.45rem'
                   }}>
-                    <div style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '50%',
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--indigo-400)'
-                    }}>
-                      <Layers size={20} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-dim)' }}>
+                        Optional Cards (Click to Add / Remove)
+                      </span>
+                      <span style={{ fontSize: '0.64rem', color: 'var(--text-dim)' }}>
+                        7 Mandatory Locked
+                      </span>
                     </div>
-                    <div>
-                      <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '0.88rem', fontWeight: 600 }}>
-                        Awaiting New Parameters
-                      </h4>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
-                        The previous cultivation and RPG status systems have been wiped. Tell the assistant what parameters you want to track to begin Step 1 of the rebuild.
-                      </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {([
+                        { key: 'enableCharisma' as const, label: 'Charisma' },
+                        { key: 'enableSpiritStones' as const, label: 'Spirit Stones' },
+                        { key: 'enableTechniques' as const, label: 'Techniques' },
+                        { key: 'enableTreasures' as const, label: 'Items (Treasures)' }
+                      ]).map(opt => {
+                        const active = easternFantasyOptions[opt.key]
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => toggleEasternFantasyOption(opt.key)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.28rem',
+                              padding: '0.22rem 0.55rem',
+                              borderRadius: '999px',
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: active ? '1px solid rgba(167, 139, 250, 0.55)' : '1px dashed var(--surface-border)',
+                              background: active ? 'rgba(139, 92, 246, 0.18)' : 'rgba(255, 255, 255, 0.02)',
+                              color: active ? '#ddd6fe' : 'var(--text-dim)'
+                            }}
+                          >
+                            {active ? <Check size={11} /> : <Plus size={11} />}
+                            {opt.label}
+                          </button>
+                        )
+                      })}
                     </div>
 
-                    <div style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      marginTop: '0.5rem',
-                      background: 'rgba(0, 0, 0, 0.15)',
-                      padding: '0.75rem',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.72rem',
-                      color: 'var(--text-dim)'
-                    }}>
-                      <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
-                        Rebuild Roadmap:
+                    {/* Charisma Sub-Options when Charisma is enabled */}
+                    {easternFantasyOptions.enableCharisma && (
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        paddingTop: '0.35rem',
+                        borderTop: '1px dashed rgba(255, 255, 255, 0.08)'
+                      }}>
+                        <span style={{ fontSize: '0.64rem', color: '#f9a8d4', fontWeight: 600 }}>
+                          Charisma Options:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleEasternFantasyOption('enableCharmProgressBar')}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.18rem 0.5rem',
+                            borderRadius: '999px',
+                            fontSize: '0.65rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            border: easternFantasyOptions.enableCharmProgressBar ? '1px solid rgba(244, 114, 182, 0.5)' : '1px dashed var(--surface-border)',
+                            background: easternFantasyOptions.enableCharmProgressBar ? 'rgba(244, 114, 182, 0.16)' : 'transparent',
+                            color: easternFantasyOptions.enableCharmProgressBar ? '#fbcfe8' : 'var(--text-dim)'
+                          }}
+                        >
+                          {easternFantasyOptions.enableCharmProgressBar ? <Check size={10} /> : <Plus size={10} />}
+                          Charm Progress Bar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleEasternFantasyOption('enableCharmPoints')}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.18rem 0.5rem',
+                            borderRadius: '999px',
+                            fontSize: '0.65rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            border: easternFantasyOptions.enableCharmPoints ? '1px solid rgba(244, 114, 182, 0.5)' : '1px dashed var(--surface-border)',
+                            background: easternFantasyOptions.enableCharmPoints ? 'rgba(244, 114, 182, 0.16)' : 'transparent',
+                            color: easternFantasyOptions.enableCharmPoints ? '#fbcfe8' : 'var(--text-dim)'
+                          }}
+                        >
+                          {easternFantasyOptions.enableCharmPoints ? <Check size={10} /> : <Plus size={10} />}
+                          Charm Points Card
+                        </button>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <span>• <strong>Step 1:</strong> Define new character parameter schema</span>
-                        <span>• <strong>Step 2:</strong> Build modern profile cards & tracking UI</span>
-                        <span>• <strong>Step 3:</strong> Configure AI extraction prompt & chapter analysis</span>
-                      </div>
+                    )}
+                  </div>
+
+                  {progressionBulkUpdating && progressionBulkUpdateStatus && (
+                    <div className="progression-notice">{progressionBulkUpdateStatus}</div>
+                  )}
+                  {progressionError && <div className="appearance-error">{progressionError}</div>}
+                  {progressionNotice && <div className="progression-notice">{progressionNotice}</div>}
+                </div>
+
+                {/* Character Profile Content or Empty State */}
+                {!selectedProgressionProfile ? (
+                  <div className="progression-empty">
+                    <TrendingUp size={24} className="text-accent" />
+                    <strong>No Eastern Fantasy character selected</strong>
+                    <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-dim)' }}>
+                      Select an existing character profile or create one from your Story Bible characters.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-primary"
+                        onClick={() => setShowProgressionCharactersModal(true)}
+                      >
+                        <Plus size={12} />
+                        Select / Create Character
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={() => setShowProgressionTemplateModal(true)}
+                      >
+                        <Layers size={12} />
+                        Configure Optional Cards
+                      </button>
                     </div>
                   </div>
-                </div>
+                ) : (() => {
+                  const p = selectedProgressionProfile
+                  const cf = p.customFields || {}
+                  const cultivationRealm = p.realm || cf["Cultivation Stage"] || "Mortal"
+                  const cultivationStage = p.stage || p.rank || cf["Stage"] || ""
+                  const bloodlineName = p.bloodline || cf["Bloodline"] || "None"
+                  const bloodlineRank = p.bloodlineRank || cf["Bloodline Rank"] || ""
+                  const constitutionName = p.constitution || cf["Constitution"] || "Mortal Body"
+                  const constitutionRank = p.constitutionRank || cf["Constitution Rank"] || ""
+                  const mainClass = p.className || cf["Main Class"] || "None"
+                  const classRank = p.classRank || cf["Class Rank"] || ""
+                  const secondaryClass = p.secondaryClass || cf["Secondary Class"] || ""
+                  const affinityNames = p.elementalAffinity || cf["Affinity Names"] || ""
+                  const affinityRanks = p.elementalAffinityRank || cf["Affinity Rank"] || ""
+                  const parsedAffinities = getAffinitiesList(affinityNames, affinityRanks)
+
+                  const charismaVal = p.charisma || cf["Charisma"] || "Mortal"
+                  const charismaTierVal = p.charismaTier || cf["Charisma Tier"] || "High"
+                  const charmRatio = parseProgressionRatio(cf["Charm"])
+                  const charmCurr = p.charmCurrent ?? (charmRatio ? charmRatio.current : 100)
+                  const charmMax = p.charmMax ?? (charmRatio ? charmRatio.max : 1000)
+                  const charmPct = charmMax > 0 ? Math.min(100, Math.max(0, Math.round((charmCurr / charmMax) * 100))) : 0
+                  const charmPts = p.charmPoints ?? (Number.isFinite(Number(cf["Charm Points"])) && cf["Charm Points"] ? Number(cf["Charm Points"]) : 10)
+                  const spiritStonesVal = p.spiritStones || cf["Spirit Stones"] || "0"
+
+                  const techniquesList: EasternFantasyTechnique[] = Array.isArray(p.techniques) && p.techniques.length > 0
+                    ? p.techniques
+                    : (p.abilities || []).map((a, idx) => ({
+                        id: a.id || `tech-${idx}`,
+                        name: a.name,
+                        rank: a.rank || "",
+                        mastery: a.level ? `Lv. ${a.level}` : "",
+                        description: a.description || ""
+                      }))
+                  const treasuresList: EasternFantasyTreasure[] = Array.isArray(p.treasures) ? p.treasures : []
+
+                  return (
+                    <div className="progression-sheet">
+                      {/* Character Switcher + Edit Action Bar */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.5rem',
+                        padding: '0.55rem 0.7rem',
+                        borderRadius: '10px',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        border: '1px solid var(--surface-border)'
+                      }}>
+                        <select
+                          className="input"
+                          value={p.id}
+                          onChange={(e) => {
+                            const nextProfile = progressionProfiles.find(item => item.id === e.target.value)
+                            if (nextProfile) {
+                              setSelectedProgressionProfileId(nextProfile.id)
+                              setProgressionSelectedEntryId(nextProfile.loreEntryId)
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            height: '30px',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.78rem',
+                            fontWeight: 700
+                          }}
+                        >
+                          {progressionProfiles.map(prof => (
+                            <option key={prof.id} value={prof.id}>
+                              {prof.name}{prof.realm ? ` • ${prof.realm}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={() => openProgressionEditModal(p)}
+                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.72rem' }}
+                        >
+                          <Edit3 size={12} />
+                          Edit Cards
+                        </button>
+                      </div>
+
+                      {/* SECTION 1: MANDATORY EASTERN FANTASY CARDS (7 CARDS) */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.15rem' }}>
+                        <span style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-dim)' }}>
+                          Mandatory Cards (Eastern Fantasy)
+                        </span>
+                        <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)' }}>
+                          7 Core Cards
+                        </span>
+                      </div>
+
+                      <div className="progression-showcase-grid">
+                        {/* 1. NAME CARD */}
+                        <div className="progression-template-display-card color-rose is-wide">
+                          <div className="progression-template-card-top">
+                            <span>Name</span>
+                            {p.title && <small>{p.title}</small>}
+                          </div>
+                          <strong>{p.name}</strong>
+                          {p.title && (
+                            <p style={{ marginTop: '0.25rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                              Title / Alias: {p.title}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* 2. CULTIVATION CARD */}
+                        <div className="progression-template-display-card color-violet">
+                          <div className="progression-template-card-top">
+                            <span>Cultivation</span>
+                            {cultivationStage && (
+                              <small style={{
+                                padding: '1px 7px',
+                                borderRadius: '999px',
+                                background: 'rgba(139, 92, 246, 0.2)',
+                                color: '#ddd6fe',
+                                border: '1px solid rgba(167, 139, 250, 0.35)'
+                              }}>
+                                {cultivationStage}
+                              </small>
+                            )}
+                          </div>
+                          <strong>{cultivationRealm}</strong>
+                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                            {cultivationStage ? `Stage: ${cultivationStage}` : 'Stage: Unspecified'}
+                          </p>
+                        </div>
+
+                        {/* 3. LEVEL CARD */}
+                        <div className="progression-template-display-card color-lime">
+                          <div className="progression-template-card-top">
+                            <span>Level</span>
+                            <div style={{ display: 'inline-flex', gap: '0.25rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: Math.max(1, (cur.level || 1) - 1), updatedAt: Date.now() }))}
+                                style={{
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--surface-border)',
+                                  background: 'rgba(255,255,255,0.04)',
+                                  color: 'var(--text-main)',
+                                  fontSize: '0.72rem',
+                                  cursor: 'pointer'
+                                }}
+                                title="Decrease Level"
+                              >
+                                -
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: (cur.level || 1) + 1, updatedAt: Date.now() }))}
+                                style={{
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--surface-border)',
+                                  background: 'rgba(255,255,255,0.04)',
+                                  color: 'var(--text-main)',
+                                  fontSize: '0.72rem',
+                                  cursor: 'pointer'
+                                }}
+                                title="Increase Level"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                          <strong>Lv. {p.level || 1}</strong>
+                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                            Character Level
+                          </p>
+                        </div>
+
+                        {/* 4. BLOODLINE CARD */}
+                        <div className="progression-template-display-card color-emerald">
+                          <div className="progression-template-card-top">
+                            <span>Bloodline</span>
+                            {bloodlineRank && (
+                              <small style={{
+                                padding: '1px 7px',
+                                borderRadius: '999px',
+                                background: 'rgba(16, 185, 129, 0.18)',
+                                color: '#a7f3d0',
+                                border: '1px solid rgba(52, 211, 153, 0.35)'
+                              }}>
+                                {bloodlineRank}
+                              </small>
+                            )}
+                          </div>
+                          <strong>{bloodlineName || 'None'}</strong>
+                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                            {bloodlineRank ? `Rank: ${bloodlineRank}` : 'Rank: Unranked'}
+                          </p>
+                        </div>
+
+                        {/* 5. CONSTITUTION CARD */}
+                        <div className="progression-template-display-card color-amber">
+                          <div className="progression-template-card-top">
+                            <span>Constitution</span>
+                            {constitutionRank && (
+                              <small style={{
+                                padding: '1px 7px',
+                                borderRadius: '999px',
+                                background: 'rgba(245, 158, 11, 0.18)',
+                                color: '#fde68a',
+                                border: '1px solid rgba(251, 191, 36, 0.35)'
+                              }}>
+                                {constitutionRank}
+                              </small>
+                            )}
+                          </div>
+                          <strong>{constitutionName || 'Mortal Body'}</strong>
+                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                            {constitutionRank ? `Grade: ${constitutionRank}` : 'Innate Physique'}
+                          </p>
+                        </div>
+
+                        {/* 6. CLASS CARD */}
+                        <div className="progression-template-display-card color-fuchsia is-wide">
+                          <div className="progression-template-card-top">
+                            <span>Class</span>
+                            {classRank && (
+                              <small style={{
+                                padding: '1px 7px',
+                                borderRadius: '999px',
+                                background: 'rgba(217, 70, 239, 0.18)',
+                                color: '#f5d0fe',
+                                border: '1px solid rgba(232, 121, 249, 0.35)'
+                              }}>
+                                {classRank}
+                              </small>
+                            )}
+                          </div>
+                          <strong>{mainClass || 'None'}</strong>
+                          {secondaryClass && (
+                            <p style={{ marginTop: '0.25rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                              Secondary Class: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{secondaryClass}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* 7. ELEMENTAL AFFINITY CARD */}
+                        <div className="progression-template-display-card color-cyan is-wide">
+                          <div className="progression-template-card-top">
+                            <span>Elemental Affinity</span>
+                            {affinityRanks && parsedAffinities.length <= 1 && (
+                              <small>{affinityRanks}</small>
+                            )}
+                          </div>
+                          {parsedAffinities.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.25rem' }}>
+                              {parsedAffinities.map((aff, idx) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    padding: '0.22rem 0.55rem',
+                                    borderRadius: '8px',
+                                    background: 'rgba(6, 182, 212, 0.14)',
+                                    border: '1px solid rgba(34, 211, 238, 0.3)',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    color: '#cffafe'
+                                  }}
+                                >
+                                  <span>{aff.name}</span>
+                                  {aff.rank && aff.rank !== 'Not set' && (
+                                    <small style={{
+                                      fontSize: '0.65rem',
+                                      padding: '0 5px',
+                                      borderRadius: '999px',
+                                      background: 'rgba(0,0,0,0.28)',
+                                      color: '#67e8f9'
+                                    }}>
+                                      {aff.rank}
+                                    </small>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <strong>None</strong>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* SECTION 2: OPTIONAL CARDS */}
+                      {(easternFantasyOptions.enableCharisma ||
+                        easternFantasyOptions.enableSpiritStones ||
+                        easternFantasyOptions.enableTechniques ||
+                        easternFantasyOptions.enableTreasures) && (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                            <span style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-dim)' }}>
+                              Optional Cards
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowProgressionTemplateModal(true)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--indigo-400)',
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                            >
+                              Customize Cards
+                            </button>
+                          </div>
+
+                          <div className="progression-showcase-grid">
+                            {/* CHARISMA MODULE (4 SEPARATE CARDS) */}
+                            {easternFantasyOptions.enableCharisma && (
+                              <>
+                                {/* Card A: Charisma */}
+                                <div className="progression-template-display-card color-rose">
+                                  <div className="progression-template-card-top">
+                                    <span>Charisma</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleEasternFantasyOption('enableCharisma')}
+                                      style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                      title="Remove Charisma cards"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                  <strong>{charismaVal}</strong>
+                                  <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                                    Charisma: {charismaVal}
+                                  </p>
+                                </div>
+
+                                {/* Card B: Tier */}
+                                <div className="progression-template-display-card color-violet">
+                                  <div className="progression-template-card-top">
+                                    <span>Tier</span>
+                                    <small>{charismaVal}</small>
+                                  </div>
+                                  <strong>{charismaTierVal}</strong>
+                                  <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                                    Tier: {charismaTierVal}
+                                  </p>
+                                </div>
+
+                                {/* Card C: Charm Progress Bar (e.g. Charm: 100/1000) */}
+                                {easternFantasyOptions.enableCharmProgressBar && (
+                                  <div className="progression-template-display-card color-fuchsia is-wide">
+                                    <div className="progression-template-card-top">
+                                      <span>Charm</span>
+                                      <small style={{ fontWeight: 700, color: '#f5d0fe' }}>
+                                        {charmCurr} / {charmMax} ({charmPct}%)
+                                      </small>
+                                    </div>
+                                    <strong>Charm: {charmCurr}/{charmMax}</strong>
+                                    <div className="progression-template-progress" style={{ marginTop: '0.4rem' }}>
+                                      <div className="progression-exp-bar" style={{ height: '8px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                        <span style={{
+                                          display: 'block',
+                                          height: '100%',
+                                          width: `${charmPct}%`,
+                                          background: 'linear-gradient(90deg, #ec4899, #a855f7)',
+                                          borderRadius: '999px',
+                                          transition: 'width 0.25s ease'
+                                        }} />
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.4rem', gap: '0.35rem' }}>
+                                      <span style={{ fontSize: '0.67rem', color: 'var(--text-dim)' }}>
+                                        Progress before Charisma levels up
+                                      </span>
+                                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => updateProgressionProfile(p.id, cur => {
+                                            const max = cur.charmMax || 1000
+                                            const nextCurr = Math.min(max, (cur.charmCurrent || 0) + 10)
+                                            return {
+                                              ...cur,
+                                              charmCurrent: nextCurr,
+                                              customFields: { ...(cur.customFields || {}), Charm: `${nextCurr}/${max}` },
+                                              updatedAt: Date.now()
+                                            }
+                                          })}
+                                          style={{
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            border: '1px solid var(--surface-border)',
+                                            background: 'rgba(255,255,255,0.04)',
+                                            color: 'var(--text-main)',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          +10
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => updateProgressionProfile(p.id, cur => {
+                                            const max = cur.charmMax || 1000
+                                            const nextCurr = Math.min(max, (cur.charmCurrent || 0) + 100)
+                                            return {
+                                              ...cur,
+                                              charmCurrent: nextCurr,
+                                              customFields: { ...(cur.customFields || {}), Charm: `${nextCurr}/${max}` },
+                                              updatedAt: Date.now()
+                                            }
+                                          })}
+                                          style={{
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            border: '1px solid var(--surface-border)',
+                                            background: 'rgba(255,255,255,0.04)',
+                                            color: 'var(--text-main)',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          +100
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Card D: Charm Points Accumulated (e.g. Charm Points: 10) */}
+                                {easternFantasyOptions.enableCharmPoints && (
+                                  <div className="progression-template-display-card color-amber is-wide">
+                                    <div className="progression-template-card-top">
+                                      <span>Charm Points</span>
+                                      <div style={{ display: 'inline-flex', gap: '0.25rem' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => updateProgressionProfile(p.id, cur => {
+                                            const nextPts = Math.max(0, (cur.charmPoints ?? charmPts) - 1)
+                                            return {
+                                              ...cur,
+                                              charmPoints: nextPts,
+                                              customFields: { ...(cur.customFields || {}), "Charm Points": String(nextPts) },
+                                              updatedAt: Date.now()
+                                            }
+                                          })}
+                                          style={{
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            border: '1px solid var(--surface-border)',
+                                            background: 'rgba(255,255,255,0.04)',
+                                            color: 'var(--text-main)',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          -1
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => updateProgressionProfile(p.id, cur => {
+                                            const nextPts = (cur.charmPoints ?? charmPts) + 1
+                                            return {
+                                              ...cur,
+                                              charmPoints: nextPts,
+                                              customFields: { ...(cur.customFields || {}), "Charm Points": String(nextPts) },
+                                              updatedAt: Date.now()
+                                            }
+                                          })}
+                                          style={{
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            border: '1px solid var(--surface-border)',
+                                            background: 'rgba(255,255,255,0.04)',
+                                            color: 'var(--text-main)',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          +1
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <strong>Charm Points: {charmPts}</strong>
+                                    <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                                      Charm Points accumulated
+                                    </p>
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {/* SPIRIT STONES CARD */}
+                            {easternFantasyOptions.enableSpiritStones && (
+                              <div className="progression-template-display-card color-blue is-wide">
+                                <div className="progression-template-card-top">
+                                  <span>Spirit Stones</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleEasternFantasyOption('enableSpiritStones')}
+                                    style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                    title="Remove Spirit Stones card"
+                                  >
+                                    <X size={11} />
+                                  </button>
+                                </div>
+                                <strong>{spiritStonesVal || '0'}</strong>
+                                <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                                  Cultivation currency & spirit stone reserves
+                                </p>
+                              </div>
+                            )}
+
+                            {/* TECHNIQUES CARD */}
+                            {easternFantasyOptions.enableTechniques && (
+                              <div className="progression-template-display-card color-amber is-wide">
+                                <div className="progression-template-card-top">
+                                  <span>Techniques ({techniquesList.length})</span>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => openProgressionEditModal(p)}
+                                      style={{ background: 'none', border: 'none', color: '#fcd34d', fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                                    >
+                                      + Add
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleEasternFantasyOption('enableTechniques')}
+                                      style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                      title="Remove Techniques card"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                </div>
+                                {techniquesList.length === 0 ? (
+                                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                                    No techniques recorded yet.
+                                  </p>
+                                ) : (
+                                  <div className="progression-ability-list" style={{ marginTop: '0.35rem' }}>
+                                    {techniquesList.map((tech, idx) => (
+                                      <div key={tech.id || idx} className="progression-ability-card" style={{ padding: '0.5rem 0.65rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                          <strong style={{ fontSize: '0.8rem' }}>{tech.name}</strong>
+                                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                            {tech.rank && (
+                                              <span style={{
+                                                fontSize: '0.63rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '999px',
+                                                background: 'rgba(245, 158, 11, 0.18)',
+                                                color: '#fde68a'
+                                              }}>
+                                                {tech.rank}
+                                              </span>
+                                            )}
+                                            {tech.mastery && (
+                                              <span style={{
+                                                fontSize: '0.63rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '999px',
+                                                background: 'rgba(139, 92, 246, 0.18)',
+                                                color: '#ddd6fe'
+                                              }}>
+                                                {tech.mastery}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {tech.description && (
+                                          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                                            {tech.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* ITEMS (TREASURES) CARD */}
+                            {easternFantasyOptions.enableTreasures && (
+                              <div className="progression-template-display-card color-emerald is-wide">
+                                <div className="progression-template-card-top">
+                                  <span>Items (Treasures) ({treasuresList.length})</span>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => openProgressionEditModal(p)}
+                                      style={{ background: 'none', border: 'none', color: '#6ee7b7', fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                                    >
+                                      + Add
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleEasternFantasyOption('enableTreasures')}
+                                      style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                      title="Remove Items (Treasures) card"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                </div>
+                                {treasuresList.length === 0 ? (
+                                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                                    No treasures or items recorded yet.
+                                  </p>
+                                ) : (
+                                  <div className="progression-ability-list" style={{ marginTop: '0.35rem' }}>
+                                    {treasuresList.map((item, idx) => (
+                                      <div key={item.id || idx} className="progression-ability-card" style={{ padding: '0.5rem 0.65rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                          <strong style={{ fontSize: '0.8rem' }}>{item.name}</strong>
+                                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                            {item.rank && (
+                                              <span style={{
+                                                fontSize: '0.63rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '999px',
+                                                background: 'rgba(16, 185, 129, 0.18)',
+                                                color: '#a7f3d0'
+                                              }}>
+                                                {item.rank}
+                                              </span>
+                                            )}
+                                            {item.category && (
+                                              <span style={{
+                                                fontSize: '0.63rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '999px',
+                                                background: 'rgba(255, 255, 255, 0.08)',
+                                                color: 'var(--text-dim)'
+                                              }}>
+                                                {item.category}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {item.description && (
+                                          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                                            {item.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {/* RECENT CHAPTER PROGRESSION LOG */}
+                      {p.history && p.history.length > 0 && (
+                        <div className="progression-section" style={{ marginTop: '0.35rem' }}>
+                          <div className="progression-section-title">
+                            <span>Chapter Progression Log</span>
+                            <small>{p.history.length} update{p.history.length === 1 ? '' : 's'}</small>
+                          </div>
+                          <div className="progression-history-list">
+                            {p.history.slice(0, 6).map(entry => (
+                              <div key={entry.id} className="progression-history-card">
+                                <div className="progression-history-top">
+                                  <strong>{entry.chapterNumber ? `Ch. ${entry.chapterNumber}: ` : ''}{entry.chapterTitle}</strong>
+                                  <span>{formatProgressionDate(entry.appliedAt)}</span>
+                                </div>
+                                <p>{entry.summary}</p>
+                                {(entry.realmAfter && entry.realmBefore !== entry.realmAfter) && (
+                                  <div className="progression-history-tags">
+                                    <span>Cultivation: {entry.realmBefore || 'Mortal'} &rarr; {entry.realmAfter} {entry.stageAfter ? `(${entry.stageAfter})` : ''}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
@@ -17727,6 +18909,732 @@ ${navPoints}  </navMap>
 
               <div className="modal-actions" style={{ marginTop: "1rem" }}>
                 <button className="btn btn-ghost" onClick={() => setShowBatchMoveVolumeModal(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EASTERN FANTASY: EDIT CHARACTER PROGRESSION MODAL */}
+        {isProgressionEditMode && progressionEditProfileDraft && (
+          <div className="modal-overlay" onClick={closeProgressionEditModal} style={{ zIndex: 130 }}>
+            <div className="modal glass" style={{ maxWidth: '720px', width: '94vw', maxHeight: '88vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Edit Eastern Fantasy Progression — {progressionEditProfileDraft.name}</h2>
+                  <p className="modal-description">Update mandatory cultivation cards and enabled optional cards.</p>
+                </div>
+                <button className="btn-close-ai" onClick={closeProgressionEditModal} title="Close"><X size={16} /></button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', marginTop: '0.5rem' }}>
+                {/* 1. Mandatory Cards Section */}
+                <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(255,255,255,0.025)', border: '1px solid var(--surface-border)' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#c4b5fd', marginBottom: '0.75rem' }}>
+                    Mandatory Cards (Eastern Fantasy)
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.65rem' }}>
+                    <div className="ai-form-field">
+                      <label>1. Name</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.name || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, name: e.target.value } : prev)}
+                        placeholder="Character Name"
+                      />
+                    </div>
+                    <div className="ai-form-field">
+                      <label>Title / Epithet</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.title || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, title: e.target.value } : prev)}
+                        placeholder="e.g. Sword Sovereign"
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>2. Cultivation Realm</label>
+                      <input
+                        className="input"
+                        list="ef-cultivation-realms-list"
+                        value={progressionEditProfileDraft.realm || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, realm: e.target.value } : prev)}
+                        placeholder="e.g. Qi Condensation"
+                      />
+                      <datalist id="ef-cultivation-realms-list">
+                        {(progressionSystem.realms || []).map(r => (
+                          <option key={r} value={r} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div className="ai-form-field">
+                      <label>Cultivation Stage / Tier</label>
+                      <input
+                        className="input"
+                        list="ef-cultivation-stages-list"
+                        value={progressionEditProfileDraft.stage || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, stage: e.target.value, rank: e.target.value } : prev)}
+                        placeholder="e.g. Low / Medium / High / Peak"
+                      />
+                      <datalist id="ef-cultivation-stages-list">
+                        {(progressionSystem.stageLabels || []).map(s => (
+                          <option key={s} value={s} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>3. Level</label>
+                      <input
+                        type="number"
+                        className="input"
+                        value={progressionEditProfileDraft.level ?? 1}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, level: Math.max(1, Number(e.target.value) || 1) } : prev)}
+                      />
+                    </div>
+                    <div className="ai-form-field">
+                      <label>6. Class (Main Class)</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.className || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, className: e.target.value } : prev)}
+                        placeholder="e.g. Sword Cultivator, Alchemist"
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Class Rank / Grade</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.classRank || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, classRank: e.target.value } : prev)}
+                        placeholder="e.g. Tier 3 Grandmaster"
+                      />
+                    </div>
+                    <div className="ai-form-field">
+                      <label>Secondary Class</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.secondaryClass || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, secondaryClass: e.target.value } : prev)}
+                        placeholder="e.g. Formation Master"
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>4. Bloodline</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.bloodline || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, bloodline: e.target.value } : prev)}
+                        placeholder="e.g. Ancient Phoenix Bloodline"
+                      />
+                    </div>
+                    <div className="ai-form-field">
+                      <label>Bloodline Rank / Grade</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.bloodlineRank || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, bloodlineRank: e.target.value } : prev)}
+                        placeholder="e.g. Heaven Grade, Supreme"
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>5. Constitution (Innate Physique)</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.constitution || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, constitution: e.target.value } : prev)}
+                        placeholder="e.g. Chaotic Immortal Physique"
+                      />
+                    </div>
+                    <div className="ai-form-field">
+                      <label>Constitution Rank / Grade</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.constitutionRank || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, constitutionRank: e.target.value } : prev)}
+                        placeholder="e.g. Divine Grade, Mortal"
+                      />
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>7. Elemental Affinity (Comma-separated)</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.elementalAffinity || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, elementalAffinity: e.target.value } : prev)}
+                        placeholder="e.g. Fire, Lightning, Space"
+                      />
+                    </div>
+                    <div className="ai-form-field">
+                      <label>Elemental Affinity Ranks</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.elementalAffinityRank || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, elementalAffinityRank: e.target.value } : prev)}
+                        placeholder="e.g. Fire (Heaven), Lightning (Supreme)"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Charisma Optional Module */}
+                {easternFantasyOptions.enableCharisma && (
+                  <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(244, 114, 182, 0.05)', border: '1px solid rgba(244, 114, 182, 0.25)' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#f9a8d4', marginBottom: '0.75rem' }}>
+                      Optional Card Group: Charisma System (4 Cards)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.65rem' }}>
+                      <div className="ai-form-field">
+                        <label>Charisma Card (Realm / Rank)</label>
+                        <input
+                          className="input"
+                          value={progressionEditProfileDraft.charisma || ''}
+                          onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charisma: e.target.value } : prev)}
+                          placeholder="e.g. Mortal, Earth, Heaven, Immortal"
+                        />
+                      </div>
+                      <div className="ai-form-field">
+                        <label>Tier Card</label>
+                        <input
+                          className="input"
+                          value={progressionEditProfileDraft.charismaTier || ''}
+                          onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charismaTier: e.target.value } : prev)}
+                          placeholder="e.g. Low, Medium, High, Peak"
+                        />
+                      </div>
+                      {easternFantasyOptions.enableCharmProgressBar && (
+                        <>
+                          <div className="ai-form-field">
+                            <label>Charm (Current Progress)</label>
+                            <input
+                              type="number"
+                              className="input"
+                              value={progressionEditProfileDraft.charmCurrent ?? 100}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmCurrent: Math.max(0, Number(e.target.value) || 0) } : prev)}
+                            />
+                          </div>
+                          <div className="ai-form-field">
+                            <label>Charm Required for Level Up (Max)</label>
+                            <input
+                              type="number"
+                              className="input"
+                              value={progressionEditProfileDraft.charmMax ?? 1000}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmMax: Math.max(1, Number(e.target.value) || 1000) } : prev)}
+                            />
+                          </div>
+                        </>
+                      )}
+                      {easternFantasyOptions.enableCharmPoints && (
+                        <div className="ai-form-field" style={{ gridColumn: '1 / -1' }}>
+                          <label>Charm Points Card (Accumulated Charm Points)</label>
+                          <input
+                            type="number"
+                            className="input"
+                            value={progressionEditProfileDraft.charmPoints ?? 10}
+                            onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmPoints: Number(e.target.value) || 0 } : prev)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Spirit Stones Optional Card */}
+                {easternFantasyOptions.enableSpiritStones && (
+                  <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+                    <div className="ai-form-field">
+                      <label style={{ color: '#93c5fd', fontWeight: 700 }}>Optional Card: Spirit Stones</label>
+                      <input
+                        className="input"
+                        value={progressionEditProfileDraft.spiritStones || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, spiritStones: e.target.value } : prev)}
+                        placeholder="e.g. 5,000 Low-Grade, 120 Mid-Grade Spirit Stones"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Techniques Optional Card */}
+                {easternFantasyOptions.enableTechniques && (
+                  <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#fcd34d' }}>
+                        Optional Card: Techniques ({(progressionEditProfileDraft.techniques || []).length})
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={() => setProgressionEditProfileDraft(prev => prev ? {
+                          ...prev,
+                          techniques: [
+                            ...(prev.techniques || []),
+                            { id: crypto.randomUUID(), name: '', rank: '', mastery: '', description: '' }
+                          ]
+                        } : prev)}
+                      >
+                        <Plus size={12} />
+                        Add Technique
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                      {(progressionEditProfileDraft.techniques || []).map((tech, idx) => (
+                        <div key={tech.id || idx} style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.4rem', alignItems: 'center' }}>
+                            <input
+                              className="input"
+                              placeholder="Technique Name"
+                              value={tech.name}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                techniques: (prev.techniques || []).map((t, i) => i === idx ? { ...t, name: e.target.value } : t)
+                              } : prev)}
+                            />
+                            <input
+                              className="input"
+                              placeholder="Rank / Grade"
+                              value={tech.rank || ''}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                techniques: (prev.techniques || []).map((t, i) => i === idx ? { ...t, rank: e.target.value } : t)
+                              } : prev)}
+                            />
+                            <input
+                              className="input"
+                              placeholder="Mastery (e.g. Minor)"
+                              value={tech.mastery || ''}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                techniques: (prev.techniques || []).map((t, i) => i === idx ? { ...t, mastery: e.target.value } : t)
+                              } : prev)}
+                            />
+                            <button
+                              type="button"
+                              className="btn-close-ai"
+                              onClick={() => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                techniques: (prev.techniques || []).filter((_, i) => i !== idx)
+                              } : prev)}
+                              title="Remove Technique"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <input
+                            className="input"
+                            placeholder="Description / Effect"
+                            value={tech.description || ''}
+                            onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                              ...prev,
+                              techniques: (prev.techniques || []).map((t, i) => i === idx ? { ...t, description: e.target.value } : t)
+                            } : prev)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Items (Treasures) Optional Card */}
+                {easternFantasyOptions.enableTreasures && (
+                  <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6ee7b7' }}>
+                        Optional Card: Items (Treasures) ({(progressionEditProfileDraft.treasures || []).length})
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={() => setProgressionEditProfileDraft(prev => prev ? {
+                          ...prev,
+                          treasures: [
+                            ...(prev.treasures || []),
+                            { id: crypto.randomUUID(), name: '', rank: '', category: 'Artifact', description: '' }
+                          ]
+                        } : prev)}
+                      >
+                        <Plus size={12} />
+                        Add Treasure / Item
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                      {(progressionEditProfileDraft.treasures || []).map((item, idx) => (
+                        <div key={item.id || idx} style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.4rem', alignItems: 'center' }}>
+                            <input
+                              className="input"
+                              placeholder="Item / Treasure Name"
+                              value={item.name}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                treasures: (prev.treasures || []).map((t, i) => i === idx ? { ...t, name: e.target.value } : t)
+                              } : prev)}
+                            />
+                            <input
+                              className="input"
+                              placeholder="Rank / Grade"
+                              value={item.rank || ''}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                treasures: (prev.treasures || []).map((t, i) => i === idx ? { ...t, rank: e.target.value } : t)
+                              } : prev)}
+                            />
+                            <input
+                              className="input"
+                              placeholder="Category (Weapon, Pill...)"
+                              value={item.category || ''}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                treasures: (prev.treasures || []).map((t, i) => i === idx ? { ...t, category: e.target.value } : t)
+                              } : prev)}
+                            />
+                            <button
+                              type="button"
+                              className="btn-close-ai"
+                              onClick={() => setProgressionEditProfileDraft(prev => prev ? {
+                                ...prev,
+                                treasures: (prev.treasures || []).filter((_, i) => i !== idx)
+                              } : prev)}
+                              title="Remove Item"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <input
+                            className="input"
+                            placeholder="Description / Effect"
+                            value={item.description || ''}
+                            onChange={e => setProgressionEditProfileDraft(prev => prev ? {
+                              ...prev,
+                              treasures: (prev.treasures || []).map((t, i) => i === idx ? { ...t, description: e.target.value } : t)
+                            } : prev)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '1.1rem' }}>
+                <button className="btn btn-ghost" onClick={closeProgressionEditModal}>Cancel</button>
+                <button className="btn btn-primary" onClick={saveProgressionProfileDraft}>
+                  <Check size={15} />
+                  Save Eastern Fantasy Profile
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EASTERN FANTASY: CHARACTERS SELECTION & CREATION MODAL */}
+        {showProgressionCharactersModal && (
+          <div className="modal-overlay" onClick={() => setShowProgressionCharactersModal(false)} style={{ zIndex: 125 }}>
+            <div className="modal glass" style={{ maxWidth: '580px', width: '92vw', maxHeight: '84vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Eastern Fantasy Character Profiles</h2>
+                  <p className="modal-description">Select an existing character profile or initialize one from your Story Bible.</p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setShowProgressionCharactersModal(false)} title="Close"><X size={16} /></button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.5rem' }}>
+                <div className="sidebar-search" style={{ margin: 0 }}>
+                  <Search size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search character profiles..."
+                    value={progressionCharacterSearch}
+                    onChange={e => setProgressionCharacterSearch(e.target.value)}
+                  />
+                </div>
+
+                {/* Existing Profiles */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+                    Saved Profiles ({filteredProgressionProfiles.length})
+                  </span>
+                  {filteredProgressionProfiles.length === 0 ? (
+                    <div className="empty-state-text" style={{ padding: '0.75rem' }}>
+                      No character profiles match your search. Create one below from your Story Bible characters.
+                    </div>
+                  ) : (
+                    filteredProgressionProfiles.map(prof => {
+                      const isSelected = prof.id === selectedProgressionProfileId
+                      return (
+                        <div
+                          key={prof.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '0.6rem',
+                            padding: '0.65rem 0.8rem',
+                            borderRadius: '10px',
+                            background: isSelected ? 'rgba(139, 92, 246, 0.16)' : 'rgba(255,255,255,0.03)',
+                            border: isSelected ? '1px solid rgba(167, 139, 250, 0.45)' : '1px solid var(--surface-border)'
+                          }}
+                        >
+                          <div
+                            style={{ flex: 1, cursor: 'pointer' }}
+                            onClick={() => {
+                              setSelectedProgressionProfileId(prof.id)
+                              setProgressionSelectedEntryId(prof.loreEntryId)
+                              setShowProgressionCharactersModal(false)
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                              <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{prof.name}</strong>
+                              <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '999px', background: 'rgba(139, 92, 246, 0.2)', color: '#ddd6fe' }}>
+                                Lv. {prof.level || 1}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                              {[prof.realm || 'Mortal', prof.stage, prof.className].filter(Boolean).join(' • ')}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button
+                              type="button"
+                              className="btn-ai-sub btn-ai-secondary"
+                              onClick={() => {
+                                setSelectedProgressionProfileId(prof.id)
+                                setProgressionSelectedEntryId(prof.loreEntryId)
+                                setShowProgressionCharactersModal(false)
+                                openProgressionEditModal(prof)
+                              }}
+                            >
+                              <Edit3 size={12} />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-close-ai"
+                              onClick={() => deleteProgressionProfile(prof.id)}
+                              title="Delete profile"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* Create Profile from Story Bible Character */}
+                <div style={{ borderTop: '1px solid var(--surface-border)', paddingTop: '0.8rem' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '0.45rem' }}>
+                    Create / Initialize from Story Bible Characters
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '220px', overflowY: 'auto' }}>
+                    {bibleEntries.filter(e => e.category === 'character' || e.category === 'beast').length === 0 ? (
+                      <div className="empty-state-text" style={{ padding: '0.6rem' }}>
+                        No character entries in Story Bible yet. Add a character in the World Bible tab first.
+                      </div>
+                    ) : (
+                      bibleEntries
+                        .filter(e => e.category === 'character' || e.category === 'beast')
+                        .map(entry => {
+                          const existing = progressionProfiles.find(p => p.loreEntryId === entry.id)
+                          return (
+                            <div
+                              key={entry.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '0.5rem 0.7rem',
+                                borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid var(--surface-border)'
+                              }}
+                            >
+                              <div>
+                                <strong style={{ fontSize: '0.8rem', display: 'block' }}>{entry.name}</strong>
+                                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>{entry.category}</span>
+                              </div>
+                              {existing ? (
+                                <button
+                                  type="button"
+                                  className="btn-ai-sub btn-ai-secondary"
+                                  onClick={() => {
+                                    setSelectedProgressionProfileId(existing.id)
+                                    setProgressionSelectedEntryId(entry.id)
+                                    setShowProgressionCharactersModal(false)
+                                  }}
+                                >
+                                  Open Profile
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn-ai-sub btn-ai-primary"
+                                  onClick={() => {
+                                    const now = Date.now()
+                                    const newProf = createFallbackProgressionProfile(entry, undefined, null, 'Initialized Eastern Fantasy progression profile.', now)
+                                    persistProgressionProfiles([newProf, ...progressionProfiles])
+                                    setSelectedProgressionProfileId(newProf.id)
+                                    setProgressionSelectedEntryId(entry.id)
+                                    setShowProgressionCharactersModal(false)
+                                  }}
+                                >
+                                  <Plus size={12} />
+                                  Create Profile
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EASTERN FANTASY: OPTIONAL CARDS & CULTIVATION REALMS CONFIGURATION MODAL */}
+        {showProgressionTemplateModal && (
+          <div className="modal-overlay" onClick={() => setShowProgressionTemplateModal(false)} style={{ zIndex: 125 }}>
+            <div className="modal glass" style={{ maxWidth: '640px', width: '92vw', maxHeight: '86vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title">Eastern Fantasy Cards & Cultivation Realms</h2>
+                  <p className="modal-description">
+                    Mandatory cards (Name, Cultivation, Level, Bloodline, Constitution, Class, Elemental Affinity) are always active. Choose which optional cards to display below.
+                  </p>
+                </div>
+                <button className="btn-close-ai" onClick={() => setShowProgressionTemplateModal(false)} title="Close"><X size={16} /></button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                {/* Mandatory Cards Summary */}
+                <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(167, 139, 250, 0.25)' }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#c4b5fd', marginBottom: '0.4rem' }}>
+                    7 Mandatory Cards (Always Active)
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {['Name', 'Cultivation', 'Level', 'Bloodline', 'Constitution', 'Class', 'Elemental Affinity'].map(cardName => (
+                      <span
+                        key={cardName}
+                        style={{
+                          fontSize: '0.7rem',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '999px',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: 'var(--text-primary)',
+                          fontWeight: 600
+                        }}
+                      >
+                        ✓ {cardName}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Optional Cards Toggles */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-dim)' }}>
+                    Optional Cards (Toggle On / Off)
+                  </div>
+
+                  {/* Charisma System Toggle */}
+                  <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--surface-border)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.84rem', display: 'block', color: 'var(--text-primary)' }}>Charisma System</strong>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                          Displays dedicated cards for Charisma (e.g. Mortal), Tier (e.g. High), Charm progress bar (e.g. 100/1000), and Charm Points (e.g. 10).
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={easternFantasyOptions.enableCharisma}
+                        onChange={() => toggleEasternFantasyOption('enableCharisma')}
+                      />
+                    </label>
+
+                    {easternFantasyOptions.enableCharisma && (
+                      <div style={{ marginTop: '0.65rem', paddingTop: '0.65rem', borderTop: '1px dashed var(--surface-border)', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingLeft: '0.75rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                          <div>
+                            <strong style={{ fontSize: '0.78rem', display: 'block' }}>Progress bar for Charm points before Charisma levels up</strong>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Shows Charm card (e.g. Charm: 100/1000) with progress bar</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={easternFantasyOptions.enableCharmProgressBar}
+                            onChange={() => toggleEasternFantasyOption('enableCharmProgressBar')}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                          <div>
+                            <strong style={{ fontSize: '0.78rem', display: 'block' }}>Charm Points accumulated card</strong>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Shows Charm Points card (e.g. Charm Points: 10)</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={easternFantasyOptions.enableCharmPoints}
+                            onChange={() => toggleEasternFantasyOption('enableCharmPoints')}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Spirit Stones Toggle */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--surface-border)', cursor: 'pointer' }}>
+                    <div>
+                      <strong style={{ fontSize: '0.84rem', display: 'block', color: 'var(--text-primary)' }}>Spirit Stones</strong>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Track spirit stone wealth and grade reserves.</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={easternFantasyOptions.enableSpiritStones}
+                      onChange={() => toggleEasternFantasyOption('enableSpiritStones')}
+                    />
+                  </label>
+
+                  {/* Techniques Toggle */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--surface-border)', cursor: 'pointer' }}>
+                    <div>
+                      <strong style={{ fontSize: '0.84rem', display: 'block', color: 'var(--text-primary)' }}>Techniques</strong>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Track cultivation arts, martial techniques, ranks, and mastery stages.</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={easternFantasyOptions.enableTechniques}
+                      onChange={() => toggleEasternFantasyOption('enableTechniques')}
+                    />
+                  </label>
+
+                  {/* Items (Treasures) Toggle */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--surface-border)', cursor: 'pointer' }}>
+                    <div>
+                      <strong style={{ fontSize: '0.84rem', display: 'block', color: 'var(--text-primary)' }}>Items (Treasures)</strong>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Track spiritual treasures, artifacts, weapons, pills, and relics.</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={easternFantasyOptions.enableTreasures}
+                      onChange={() => toggleEasternFantasyOption('enableTreasures')}
+                    />
+                  </label>
+                </div>
+
+                {/* Cultivation Realm Ladder Importer */}
+                {renderCultivationImportPanel()}
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '1rem' }}>
+                <button className="btn btn-primary" onClick={() => setShowProgressionTemplateModal(false)}>
+                  Done
+                </button>
               </div>
             </div>
           </div>
