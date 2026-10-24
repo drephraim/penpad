@@ -13795,32 +13795,17 @@ ${navPoints}  </navMap>
 
             {/* TAB 4: CHARACTER PROGRESSION (EASTERN FANTASY) */}
             {activeSidebarTab === 'progression' && (
-              <div className="sidebar-tab-content progression-panel fade-in">
-                <div className="progression-toolbar">
-                  {/* Novel Progression Style Header */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.5rem',
-                    padding: '0.55rem 0.7rem',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(245, 158, 11, 0.08))',
-                    border: '1px solid rgba(167, 139, 250, 0.28)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Sparkles size={15} style={{ color: '#c4b5fd', flexShrink: 0 }} />
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', fontWeight: 700 }}>
-                          Novel Progression Style
-                        </span>
-                        <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                          Eastern Fantasy
-                        </strong>
-                      </div>
+              <div className="sidebar-tab-content prog-panel fade-in">
+                {/* Top Control Strip */}
+                <div className="prog-top-controls">
+                  {/* Style Selector Row */}
+                  <div className="prog-style-row">
+                    <div className="prog-style-title">
+                      <Sparkles size={13} className="prog-style-icon" />
+                      <span>Progression Style</span>
                     </div>
                     <select
-                      className="input"
+                      className="prog-style-select"
                       value={progressionSystem.novelStyle || 'eastern_fantasy'}
                       onChange={(e) => {
                         persistProgressionSystem({
@@ -13828,223 +13813,155 @@ ${navPoints}  </navMap>
                           novelStyle: e.target.value as NovelProgressionStyle
                         })
                       }}
-                      style={{
-                        width: 'auto',
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        height: '28px',
-                        borderRadius: '6px'
-                      }}
                     >
                       <option value="eastern_fantasy">Eastern Fantasy</option>
                     </select>
                   </div>
 
-                  {/* Quick Library Actions */}
-                  <div className="progression-library-actions" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                  {/* 3-Button Compact Tool Strip (Characters | Cards | Audit) */}
+                  <div className="prog-tool-strip">
                     <button
                       type="button"
-                      className="progression-library-card"
+                      className="prog-tool-btn"
                       onClick={() => setShowProgressionCharactersModal(true)}
+                      title="Manage character progression profiles"
                     >
-                      <div>
-                        <span>Characters</span>
-                        <strong>{selectedProgressionProfile ? selectedProgressionProfile.name : `${progressionProfiles.length} saved`}</strong>
-                      </div>
-                      <small>{progressionProfiles.length} profile{progressionProfiles.length === 1 ? '' : 's'}</small>
+                      <Users size={12} />
+                      <span>Characters</span>
+                      <strong>{progressionProfiles.length}</strong>
                     </button>
                     <button
                       type="button"
-                      className="progression-library-card"
+                      className="prog-tool-btn"
                       onClick={() => setShowProgressionTemplateModal(true)}
+                      title="Configure optional cards and cultivation realms"
                     >
-                      <div>
-                        <span>Cards & Realms</span>
-                        <strong>Configure</strong>
-                      </div>
-                      <small>Optional & stages</small>
+                      <Layers size={12} />
+                      <span>Cards</span>
                     </button>
                     <button
                       type="button"
-                      className="progression-library-card"
+                      className="prog-tool-btn"
                       onClick={() => checkTimelineConsistency()}
                       disabled={timelineCheckLoading}
+                      title="Audit progression timeline consistency"
                     >
-                      <div>
-                        <span>Timeline</span>
-                        <strong>{timelineCheckLoading ? 'Checking...' : 'Audit'}</strong>
-                      </div>
-                      <small>{timelineIssues.length > 0 ? `${timelineIssues.length} issue(s)` : 'Power check'}</small>
+                      {timelineCheckLoading ? <Loader2 size={12} className="spin" /> : <ShieldAlert size={12} />}
+                      <span>{timelineCheckLoading ? 'Wait' : 'Audit'}</span>
+                      {timelineIssues.length > 0 && <strong className="warn">{timelineIssues.length}</strong>}
                     </button>
                   </div>
 
-                  {/* AI Chapter Update & Scan Controls */}
-                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                  {/* Primary AI Action Row */}
+                  <div className="prog-ai-actions">
                     <button
                       type="button"
-                      className="btn-ai-sub btn-ai-primary"
-                      style={{ flex: 1, justifyContent: 'center', padding: '0.5rem 0.65rem', fontSize: '0.75rem' }}
+                      className="prog-ai-btn primary"
                       onClick={() => handleProgressionUpdate(selectedProgressionProfile?.loreEntryId || progressionSelectedEntryId)}
                       disabled={progressionLoading || progressionBulkUpdating}
                       title="Extract Eastern Fantasy progression updates from the active chapter"
                     >
                       {progressionLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-                      {progressionLoading ? 'Updating...' : 'Update from Chapter'}
+                      <span>{progressionLoading ? 'Updating...' : 'Update Chapter'}</span>
                     </button>
                     <button
                       type="button"
-                      className="btn-ai-sub btn-ai-secondary"
-                      style={{ padding: '0.5rem 0.65rem', fontSize: '0.75rem' }}
+                      className="prog-ai-btn secondary"
                       onClick={handleProgressionBulkUpdate}
                       disabled={progressionBulkUpdating || progressionLoading}
                       title="Scan the 2 most recent chapters for character progression updates"
                     >
                       {progressionBulkUpdating ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
-                      {progressionBulkUpdating ? 'Scanning...' : 'Scan Recent'}
+                      <span>{progressionBulkUpdating ? 'Scanning...' : 'Scan Recent'}</span>
                     </button>
                   </div>
 
-                  {/* Optional Cards Quick Toggle Bar */}
-                  <div style={{
-                    padding: '0.6rem 0.7rem',
-                    borderRadius: '10px',
-                    background: 'rgba(255, 255, 255, 0.025)',
-                    border: '1px solid var(--surface-border)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.45rem'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-dim)' }}>
-                        Optional Cards (Click to Add / Remove)
-                      </span>
-                      <span style={{ fontSize: '0.64rem', color: 'var(--text-dim)' }}>
-                        7 Mandatory Locked
-                      </span>
+                  {/* Optional Cards Compact Toggle Strip */}
+                  <div className="prog-optional-bar">
+                    <div className="prog-optional-bar-head">
+                      <span>Optional Modules</span>
+                      <small>7 Core Locked</small>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    <div className="prog-chip-row">
                       {([
                         { key: 'enableCharisma' as const, label: 'Charisma' },
                         { key: 'enableSpiritStones' as const, label: 'Spirit Stones' },
                         { key: 'enableTechniques' as const, label: 'Techniques' },
-                        { key: 'enableTreasures' as const, label: 'Items (Treasures)' }
+                        { key: 'enableTreasures' as const, label: 'Treasures' }
                       ]).map(opt => {
                         const active = easternFantasyOptions[opt.key]
                         return (
                           <button
                             key={opt.key}
                             type="button"
+                            className={`prog-toggle-chip ${active ? 'active' : ''}`}
                             onClick={() => toggleEasternFantasyOption(opt.key)}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.28rem',
-                              padding: '0.22rem 0.55rem',
-                              borderRadius: '999px',
-                              fontSize: '0.68rem',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              border: active ? '1px solid rgba(167, 139, 250, 0.55)' : '1px dashed var(--surface-border)',
-                              background: active ? 'rgba(139, 92, 246, 0.18)' : 'rgba(255, 255, 255, 0.02)',
-                              color: active ? '#ddd6fe' : 'var(--text-dim)'
-                            }}
                           >
-                            {active ? <Check size={11} /> : <Plus size={11} />}
-                            {opt.label}
+                            {active ? <Check size={10} /> : <Plus size={10} />}
+                            <span>{opt.label}</span>
                           </button>
                         )
                       })}
                     </div>
 
-                    {/* Charisma Sub-Options when Charisma is enabled */}
                     {easternFantasyOptions.enableCharisma && (
-                      <div style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        paddingTop: '0.35rem',
-                        borderTop: '1px dashed rgba(255, 255, 255, 0.08)'
-                      }}>
-                        <span style={{ fontSize: '0.64rem', color: '#f9a8d4', fontWeight: 600 }}>
-                          Charisma Options:
-                        </span>
+                      <div className="prog-subchip-row">
+                        <span className="prog-subchip-label">Charisma:</span>
                         <button
                           type="button"
+                          className={`prog-toggle-chip sub ${easternFantasyOptions.enableCharmProgressBar ? 'active' : ''}`}
                           onClick={() => toggleEasternFantasyOption('enableCharmProgressBar')}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.18rem 0.5rem',
-                            borderRadius: '999px',
-                            fontSize: '0.65rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            border: easternFantasyOptions.enableCharmProgressBar ? '1px solid rgba(244, 114, 182, 0.5)' : '1px dashed var(--surface-border)',
-                            background: easternFantasyOptions.enableCharmProgressBar ? 'rgba(244, 114, 182, 0.16)' : 'transparent',
-                            color: easternFantasyOptions.enableCharmProgressBar ? '#fbcfe8' : 'var(--text-dim)'
-                          }}
                         >
-                          {easternFantasyOptions.enableCharmProgressBar ? <Check size={10} /> : <Plus size={10} />}
-                          Charm Progress Bar
+                          {easternFantasyOptions.enableCharmProgressBar ? <Check size={9} /> : <Plus size={9} />}
+                          <span>Progress Bar</span>
                         </button>
                         <button
                           type="button"
+                          className={`prog-toggle-chip sub ${easternFantasyOptions.enableCharmPoints ? 'active' : ''}`}
                           onClick={() => toggleEasternFantasyOption('enableCharmPoints')}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.18rem 0.5rem',
-                            borderRadius: '999px',
-                            fontSize: '0.65rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            border: easternFantasyOptions.enableCharmPoints ? '1px solid rgba(244, 114, 182, 0.5)' : '1px dashed var(--surface-border)',
-                            background: easternFantasyOptions.enableCharmPoints ? 'rgba(244, 114, 182, 0.16)' : 'transparent',
-                            color: easternFantasyOptions.enableCharmPoints ? '#fbcfe8' : 'var(--text-dim)'
-                          }}
                         >
-                          {easternFantasyOptions.enableCharmPoints ? <Check size={10} /> : <Plus size={10} />}
-                          Charm Points Card
+                          {easternFantasyOptions.enableCharmPoints ? <Check size={9} /> : <Plus size={9} />}
+                          <span>Charm Points</span>
                         </button>
                       </div>
                     )}
                   </div>
 
                   {progressionBulkUpdating && progressionBulkUpdateStatus && (
-                    <div className="progression-notice">{progressionBulkUpdateStatus}</div>
+                    <div className="prog-banner info">{progressionBulkUpdateStatus}</div>
                   )}
-                  {progressionError && <div className="appearance-error">{progressionError}</div>}
-                  {progressionNotice && <div className="progression-notice">{progressionNotice}</div>}
+                  {progressionError && <div className="prog-banner error">{progressionError}</div>}
+                  {progressionNotice && <div className="prog-banner info">{progressionNotice}</div>}
                 </div>
 
                 {/* Character Profile Content or Empty State */}
                 {!selectedProgressionProfile ? (
-                  <div className="progression-empty">
-                    <TrendingUp size={24} className="text-accent" />
-                    <strong>No Eastern Fantasy character selected</strong>
-                    <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-dim)' }}>
-                      Select an existing character profile or create one from your Story Bible characters.
-                    </p>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                  <div className="prog-empty-card">
+                    <div className="prog-empty-icon">
+                      <TrendingUp size={20} />
+                    </div>
+                    <div className="prog-empty-text">
+                      <strong>No Character Selected</strong>
+                      <p>
+                        Select an existing character profile or initialize one from your Story Bible to track their cultivation sheet.
+                      </p>
+                    </div>
+                    <div className="prog-empty-actions">
                       <button
                         type="button"
-                        className="btn-ai-sub btn-ai-primary"
+                        className="prog-ai-btn primary full"
                         onClick={() => setShowProgressionCharactersModal(true)}
                       >
-                        <Plus size={12} />
-                        Select / Create Character
+                        <Plus size={13} />
+                        <span>Select / Create Character</span>
                       </button>
                       <button
                         type="button"
-                        className="btn-ai-sub btn-ai-secondary"
+                        className="prog-ai-btn secondary full"
                         onClick={() => setShowProgressionTemplateModal(true)}
                       >
-                        <Layers size={12} />
-                        Configure Optional Cards
+                        <Layers size={13} />
+                        <span>Configure Cards & Realms</span>
                       </button>
                     </div>
                   </div>
@@ -14085,20 +14002,14 @@ ${navPoints}  </navMap>
                   const treasuresList: EasternFantasyTreasure[] = Array.isArray(p.treasures) ? p.treasures : []
 
                   return (
-                    <div className="progression-sheet">
+                    <div className="prog-sheet">
                       {/* Character Switcher + Edit Action Bar */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '0.5rem',
-                        padding: '0.55rem 0.7rem',
-                        borderRadius: '10px',
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        border: '1px solid var(--surface-border)'
-                      }}>
+                      <div className="prog-char-bar">
+                        <div className="prog-char-avatar">
+                          {(p.name || '?').charAt(0).toUpperCase()}
+                        </div>
                         <select
-                          className="input"
+                          className="prog-char-select"
                           value={p.id}
                           onChange={(e) => {
                             const nextProfile = progressionProfiles.find(item => item.id === e.target.value)
@@ -14106,13 +14017,6 @@ ${navPoints}  </navMap>
                               setSelectedProgressionProfileId(nextProfile.id)
                               setProgressionSelectedEntryId(nextProfile.loreEntryId)
                             }
-                          }}
-                          style={{
-                            flex: 1,
-                            height: '30px',
-                            padding: '0.2rem 0.5rem',
-                            fontSize: '0.78rem',
-                            fontWeight: 700
                           }}
                         >
                           {progressionProfiles.map(prof => (
@@ -14123,223 +14027,118 @@ ${navPoints}  </navMap>
                         </select>
                         <button
                           type="button"
-                          className="btn-ai-sub btn-ai-secondary"
+                          className="prog-char-edit-btn"
                           onClick={() => openProgressionEditModal(p)}
-                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.72rem' }}
                         >
-                          <Edit3 size={12} />
-                          Edit Cards
+                          <Edit3 size={11} />
+                          <span>Edit</span>
                         </button>
                       </div>
 
                       {/* SECTION 1: MANDATORY EASTERN FANTASY CARDS (7 CARDS) */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.15rem' }}>
-                        <span style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-dim)' }}>
-                          Mandatory Cards (Eastern Fantasy)
-                        </span>
-                        <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)' }}>
-                          7 Core Cards
-                        </span>
+                      <div className="prog-section-head">
+                        <span>Core Cultivation Sheet</span>
+                        <small>7 Mandatory</small>
                       </div>
 
-                      <div className="progression-showcase-grid">
+                      <div className="prog-bento-grid">
                         {/* 1. NAME CARD */}
-                        <div className="progression-template-display-card color-rose is-wide">
-                          <div className="progression-template-card-top">
-                            <span>Name</span>
-                            {p.title && <small>{p.title}</small>}
+                        <div className="prog-card span-2 accent-indigo" onClick={() => openProgressionEditModal(p)}>
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Name</span>
+                            {p.title && <span className="prog-card-pill">{p.title}</span>}
                           </div>
-                          <strong>{p.name}</strong>
-                          {p.title && (
-                            <p style={{ marginTop: '0.25rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                              Title / Alias: {p.title}
-                            </p>
-                          )}
+                          <strong className="prog-card-val">{p.name || <span className="prog-unset">—</span>}</strong>
                         </div>
 
                         {/* 2. CULTIVATION CARD */}
-                        <div className="progression-template-display-card color-violet">
-                          <div className="progression-template-card-top">
-                            <span>Cultivation</span>
-                            {cultivationStage && (
-                              <small style={{
-                                padding: '1px 7px',
-                                borderRadius: '999px',
-                                background: 'rgba(139, 92, 246, 0.2)',
-                                color: '#ddd6fe',
-                                border: '1px solid rgba(167, 139, 250, 0.35)'
-                              }}>
-                                {cultivationStage}
-                              </small>
-                            )}
+                        <div className="prog-card accent-violet" onClick={() => openProgressionEditModal(p)}>
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Cultivation</span>
+                            {cultivationStage && <span className="prog-card-pill">{cultivationStage}</span>}
                           </div>
-                          <strong>{cultivationRealm}</strong>
-                          {cultivationStage && (
-                            <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                              Stage: {cultivationStage}
-                            </p>
-                          )}
+                          <strong className="prog-card-val">{cultivationRealm || <span className="prog-unset">—</span>}</strong>
                         </div>
 
                         {/* 3. LEVEL CARD */}
-                        <div className="progression-template-display-card color-lime">
-                          <div className="progression-template-card-top">
-                            <span>Level</span>
-                            <div style={{ display: 'inline-flex', gap: '0.25rem' }}>
+                        <div className="prog-card accent-emerald">
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Level</span>
+                            <div className="prog-stepper">
                               <button
                                 type="button"
                                 onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: Math.max(0, (cur.level || 0) - 1), updatedAt: Date.now() }))}
-                                style={{
-                                  width: '20px',
-                                  height: '20px',
-                                  borderRadius: '4px',
-                                  border: '1px solid var(--surface-border)',
-                                  background: 'rgba(255,255,255,0.04)',
-                                  color: 'var(--text-main)',
-                                  fontSize: '0.72rem',
-                                  cursor: 'pointer'
-                                }}
                                 title="Decrease Level"
                               >
-                                -
+                                −
                               </button>
                               <button
                                 type="button"
                                 onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: (cur.level || 0) + 1, updatedAt: Date.now() }))}
-                                style={{
-                                  width: '20px',
-                                  height: '20px',
-                                  borderRadius: '4px',
-                                  border: '1px solid var(--surface-border)',
-                                  background: 'rgba(255,255,255,0.04)',
-                                  color: 'var(--text-main)',
-                                  fontSize: '0.72rem',
-                                  cursor: 'pointer'
-                                }}
                                 title="Increase Level"
                               >
                                 +
                               </button>
                             </div>
                           </div>
-                          <strong>{p.level ? `Lv. ${p.level}` : ''}</strong>
+                          <strong className="prog-card-val" onClick={() => openProgressionEditModal(p)}>
+                            {p.level > 0 ? `Lv. ${p.level}` : <span className="prog-unset">—</span>}
+                          </strong>
                         </div>
 
                         {/* 4. BLOODLINE CARD */}
-                        <div className="progression-template-display-card color-emerald">
-                          <div className="progression-template-card-top">
-                            <span>Bloodline</span>
-                            {bloodlineRank && (
-                              <small style={{
-                                padding: '1px 7px',
-                                borderRadius: '999px',
-                                background: 'rgba(16, 185, 129, 0.18)',
-                                color: '#a7f3d0',
-                                border: '1px solid rgba(52, 211, 153, 0.35)'
-                              }}>
-                                {bloodlineRank}
-                              </small>
-                            )}
+                        <div className="prog-card accent-rose" onClick={() => openProgressionEditModal(p)}>
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Bloodline</span>
+                            {bloodlineRank && <span className="prog-card-pill">{bloodlineRank}</span>}
                           </div>
-                          <strong>{bloodlineName}</strong>
-                          {bloodlineRank && (
-                            <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                              Rank: {bloodlineRank}
-                            </p>
-                          )}
+                          <strong className="prog-card-val">{bloodlineName || <span className="prog-unset">—</span>}</strong>
                         </div>
 
                         {/* 5. CONSTITUTION CARD */}
-                        <div className="progression-template-display-card color-amber">
-                          <div className="progression-template-card-top">
-                            <span>Constitution</span>
-                            {constitutionRank && (
-                              <small style={{
-                                padding: '1px 7px',
-                                borderRadius: '999px',
-                                background: 'rgba(245, 158, 11, 0.18)',
-                                color: '#fde68a',
-                                border: '1px solid rgba(251, 191, 36, 0.35)'
-                              }}>
-                                {constitutionRank}
-                              </small>
-                            )}
+                        <div className="prog-card accent-amber" onClick={() => openProgressionEditModal(p)}>
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Constitution</span>
+                            {constitutionRank && <span className="prog-card-pill">{constitutionRank}</span>}
                           </div>
-                          <strong>{constitutionName}</strong>
-                          {constitutionRank && (
-                            <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                              Grade: {constitutionRank}
-                            </p>
-                          )}
+                          <strong className="prog-card-val">{constitutionName || <span className="prog-unset">—</span>}</strong>
                         </div>
 
                         {/* 6. CLASS CARD */}
-                        <div className="progression-template-display-card color-fuchsia is-wide">
-                          <div className="progression-template-card-top">
-                            <span>Class</span>
-                            {classRank && (
-                              <small style={{
-                                padding: '1px 7px',
-                                borderRadius: '999px',
-                                background: 'rgba(217, 70, 239, 0.18)',
-                                color: '#f5d0fe',
-                                border: '1px solid rgba(232, 121, 249, 0.35)'
-                              }}>
-                                {classRank}
-                              </small>
-                            )}
+                        <div className="prog-card span-2 accent-fuchsia" onClick={() => openProgressionEditModal(p)}>
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Class</span>
+                            {classRank && <span className="prog-card-pill">{classRank}</span>}
                           </div>
-                          <strong>{mainClass}</strong>
+                          <strong className="prog-card-val">{mainClass || <span className="prog-unset">—</span>}</strong>
                           {secondaryClass && (
-                            <p style={{ marginTop: '0.25rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                              Secondary Class: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{secondaryClass}</span>
-                            </p>
+                            <div className="prog-card-sub">
+                              Secondary: <span>{secondaryClass}</span>
+                            </div>
                           )}
                         </div>
 
                         {/* 7. ELEMENTAL AFFINITY CARD */}
-                        <div className="progression-template-display-card color-cyan is-wide">
-                          <div className="progression-template-card-top">
-                            <span>Elemental Affinity</span>
+                        <div className="prog-card span-2 accent-cyan" onClick={() => openProgressionEditModal(p)}>
+                          <div className="prog-card-top">
+                            <span className="prog-card-label">Elemental Affinity</span>
                             {affinityRanks && parsedAffinities.length <= 1 && (
-                              <small>{affinityRanks}</small>
+                              <span className="prog-card-pill">{affinityRanks}</span>
                             )}
                           </div>
                           {parsedAffinities.length > 0 ? (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.25rem' }}>
+                            <div className="prog-affinity-list">
                               {parsedAffinities.map((aff, idx) => (
-                                <span
-                                  key={idx}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.3rem',
-                                    padding: '0.22rem 0.55rem',
-                                    borderRadius: '8px',
-                                    background: 'rgba(6, 182, 212, 0.14)',
-                                    border: '1px solid rgba(34, 211, 238, 0.3)',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                    color: '#cffafe'
-                                  }}
-                                >
+                                <span key={idx} className="prog-affinity-tag">
                                   <span>{aff.name}</span>
                                   {aff.rank && aff.rank !== 'Not set' && (
-                                    <small style={{
-                                      fontSize: '0.65rem',
-                                      padding: '0 5px',
-                                      borderRadius: '999px',
-                                      background: 'rgba(0,0,0,0.28)',
-                                      color: '#67e8f9'
-                                    }}>
-                                      {aff.rank}
-                                    </small>
+                                    <small>{aff.rank}</small>
                                   )}
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <strong></strong>
+                            <strong className="prog-card-val"><span className="prog-unset">—</span></strong>
                           )}
                         </div>
                       </div>
@@ -14350,95 +14149,51 @@ ${navPoints}  </navMap>
                         easternFantasyOptions.enableTechniques ||
                         easternFantasyOptions.enableTreasures) && (
                         <>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.35rem' }}>
-                            <span style={{ fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-dim)' }}>
-                              Optional Cards
-                            </span>
+                          <div className="prog-section-head">
+                            <span>Optional Cards</span>
                             <button
                               type="button"
+                              className="prog-link-btn"
                               onClick={() => setShowProgressionTemplateModal(true)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--indigo-400)',
-                                fontSize: '0.68rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                padding: 0
-                              }}
                             >
-                              Customize Cards
+                              Customize
                             </button>
                           </div>
 
-                          <div className="progression-showcase-grid">
+                          <div className="prog-bento-grid">
                             {/* CHARISMA MODULE (4 SEPARATE CARDS) */}
                             {easternFantasyOptions.enableCharisma && (
                               <>
                                 {/* Card A: Charisma */}
-                                <div className="progression-template-display-card color-rose">
-                                  <div className="progression-template-card-top">
-                                    <span>Charisma</span>
+                                <div className="prog-card accent-rose" onClick={() => openProgressionEditModal(p)}>
+                                  <div className="prog-card-top">
+                                    <span className="prog-card-label">Charisma</span>
                                     <button
                                       type="button"
-                                      onClick={() => toggleEasternFantasyOption('enableCharisma')}
-                                      style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                      className="prog-card-close"
+                                      onClick={(e) => { e.stopPropagation(); toggleEasternFantasyOption('enableCharisma') }}
                                       title="Remove Charisma cards"
                                     >
                                       <X size={11} />
                                     </button>
                                   </div>
-                                  <strong>{charismaVal}</strong>
-                                  {charismaVal && (
-                                    <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                                      Charisma: {charismaVal}
-                                    </p>
-                                  )}
+                                  <strong className="prog-card-val">{charismaVal || <span className="prog-unset">—</span>}</strong>
                                 </div>
 
                                 {/* Card B: Tier */}
-                                <div className="progression-template-display-card color-violet">
-                                  <div className="progression-template-card-top">
-                                    <span>Tier</span>
-                                    {charismaVal && <small>{charismaVal}</small>}
+                                <div className="prog-card accent-violet" onClick={() => openProgressionEditModal(p)}>
+                                  <div className="prog-card-top">
+                                    <span className="prog-card-label">Tier</span>
                                   </div>
-                                  <strong>{charismaTierVal}</strong>
-                                  {charismaTierVal && (
-                                    <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                                      Tier: {charismaTierVal}
-                                    </p>
-                                  )}
+                                  <strong className="prog-card-val">{charismaTierVal || <span className="prog-unset">—</span>}</strong>
                                 </div>
 
                                 {/* Card C: Charm Progress Bar */}
                                 {easternFantasyOptions.enableCharmProgressBar && (
-                                  <div className="progression-template-display-card color-fuchsia is-wide">
-                                    <div className="progression-template-card-top">
-                                      <span>Charm</span>
-                                      {(charmCurr > 0 || charmMax > 0) && (
-                                        <small style={{ fontWeight: 700, color: '#f5d0fe' }}>
-                                          {charmCurr} / {charmMax} ({charmPct}%)
-                                        </small>
-                                      )}
-                                    </div>
-                                    <strong>{(charmCurr > 0 || charmMax > 0) ? `Charm: ${charmCurr}/${charmMax}` : ''}</strong>
-                                    <div className="progression-template-progress" style={{ marginTop: '0.4rem' }}>
-                                      <div className="progression-exp-bar" style={{ height: '8px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                                        <span style={{
-                                          display: 'block',
-                                          height: '100%',
-                                          width: `${charmPct}%`,
-                                          background: 'linear-gradient(90deg, #ec4899, #a855f7)',
-                                          borderRadius: '999px',
-                                          transition: 'width 0.25s ease'
-                                        }} />
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.4rem', gap: '0.35rem' }}>
-                                      <span style={{ fontSize: '0.67rem', color: 'var(--text-dim)' }}>
-                                        Progress before Charisma levels up
-                                      </span>
-                                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                  <div className="prog-card span-2 accent-fuchsia">
+                                    <div className="prog-card-top">
+                                      <span className="prog-card-label">Charm</span>
+                                      <div className="prog-stepper">
                                         <button
                                           type="button"
                                           onClick={() => updateProgressionProfile(p.id, cur => {
@@ -14447,19 +14202,11 @@ ${navPoints}  </navMap>
                                             return {
                                               ...cur,
                                               charmCurrent: nextCurr,
+                                              charmMax: max,
                                               customFields: { ...(cur.customFields || {}), Charm: `${nextCurr}/${max}` },
                                               updatedAt: Date.now()
                                             }
                                           })}
-                                          style={{
-                                            padding: '1px 6px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.65rem',
-                                            border: '1px solid var(--surface-border)',
-                                            background: 'rgba(255,255,255,0.04)',
-                                            color: 'var(--text-main)',
-                                            cursor: 'pointer'
-                                          }}
                                         >
                                           +10
                                         </button>
@@ -14471,33 +14218,34 @@ ${navPoints}  </navMap>
                                             return {
                                               ...cur,
                                               charmCurrent: nextCurr,
+                                              charmMax: max,
                                               customFields: { ...(cur.customFields || {}), Charm: `${nextCurr}/${max}` },
                                               updatedAt: Date.now()
                                             }
                                           })}
-                                          style={{
-                                            padding: '1px 6px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.65rem',
-                                            border: '1px solid var(--surface-border)',
-                                            background: 'rgba(255,255,255,0.04)',
-                                            color: 'var(--text-main)',
-                                            cursor: 'pointer'
-                                          }}
                                         >
                                           +100
                                         </button>
                                       </div>
                                     </div>
+                                    <div className="prog-charm-row" onClick={() => openProgressionEditModal(p)}>
+                                      <strong className="prog-card-val">
+                                        {(charmCurr > 0 || charmMax > 0) ? `${charmCurr} / ${charmMax}` : <span className="prog-unset">—</span>}
+                                      </strong>
+                                      {(charmCurr > 0 || charmMax > 0) && <small>{charmPct}%</small>}
+                                    </div>
+                                    <div className="prog-progress-track">
+                                      <span style={{ width: `${charmPct}%` }} />
+                                    </div>
                                   </div>
                                 )}
 
-                                {/* Card D: Charm Points Accumulated (e.g. Charm Points: 10) */}
+                                {/* Card D: Charm Points Accumulated */}
                                 {easternFantasyOptions.enableCharmPoints && (
-                                  <div className="progression-template-display-card color-amber is-wide">
-                                    <div className="progression-template-card-top">
-                                      <span>Charm Points</span>
-                                      <div style={{ display: 'inline-flex', gap: '0.25rem' }}>
+                                  <div className="prog-card span-2 accent-amber">
+                                    <div className="prog-card-top">
+                                      <span className="prog-card-label">Charm Points</span>
+                                      <div className="prog-stepper">
                                         <button
                                           type="button"
                                           onClick={() => updateProgressionProfile(p.id, cur => {
@@ -14505,21 +14253,12 @@ ${navPoints}  </navMap>
                                             return {
                                               ...cur,
                                               charmPoints: nextPts,
-                                              customFields: { ...(cur.customFields || {}), "Charm Points": String(nextPts) },
+                                              customFields: { ...(cur.customFields || {}), "Charm Points": nextPts > 0 ? String(nextPts) : "" },
                                               updatedAt: Date.now()
                                             }
                                           })}
-                                          style={{
-                                            padding: '1px 6px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.65rem',
-                                            border: '1px solid var(--surface-border)',
-                                            background: 'rgba(255,255,255,0.04)',
-                                            color: 'var(--text-main)',
-                                            cursor: 'pointer'
-                                          }}
                                         >
-                                          -1
+                                          −1
                                         </button>
                                         <button
                                           type="button"
@@ -14532,21 +14271,14 @@ ${navPoints}  </navMap>
                                               updatedAt: Date.now()
                                             }
                                           })}
-                                          style={{
-                                            padding: '1px 6px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.65rem',
-                                            border: '1px solid var(--surface-border)',
-                                            background: 'rgba(255,255,255,0.04)',
-                                            color: 'var(--text-main)',
-                                            cursor: 'pointer'
-                                          }}
                                         >
                                           +1
                                         </button>
                                       </div>
                                     </div>
-                                    <strong>{charmPts > 0 ? `Charm Points: ${charmPts}` : ''}</strong>
+                                    <strong className="prog-card-val" onClick={() => openProgressionEditModal(p)}>
+                                      {charmPts > 0 ? charmPts : <span className="prog-unset">—</span>}
+                                    </strong>
                                   </div>
                                 )}
                               </>
@@ -14554,81 +14286,61 @@ ${navPoints}  </navMap>
 
                             {/* SPIRIT STONES CARD */}
                             {easternFantasyOptions.enableSpiritStones && (
-                              <div className="progression-template-display-card color-blue is-wide">
-                                <div className="progression-template-card-top">
-                                  <span>Spirit Stones</span>
+                              <div className="prog-card span-2 accent-blue" onClick={() => openProgressionEditModal(p)}>
+                                <div className="prog-card-top">
+                                  <span className="prog-card-label">Spirit Stones</span>
                                   <button
                                     type="button"
-                                    onClick={() => toggleEasternFantasyOption('enableSpiritStones')}
-                                    style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                    className="prog-card-close"
+                                    onClick={(e) => { e.stopPropagation(); toggleEasternFantasyOption('enableSpiritStones') }}
                                     title="Remove Spirit Stones card"
                                   >
                                     <X size={11} />
                                   </button>
                                 </div>
-                                <strong>{spiritStonesVal}</strong>
+                                <strong className="prog-card-val">{spiritStonesVal || <span className="prog-unset">—</span>}</strong>
                               </div>
                             )}
 
                             {/* TECHNIQUES CARD */}
                             {easternFantasyOptions.enableTechniques && (
-                              <div className="progression-template-display-card color-amber is-wide">
-                                <div className="progression-template-card-top">
-                                  <span>Techniques ({techniquesList.length})</span>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <div className="prog-card span-2 accent-amber">
+                                <div className="prog-card-top">
+                                  <span className="prog-card-label">Techniques ({techniquesList.length})</span>
+                                  <div className="prog-card-actions">
                                     <button
                                       type="button"
+                                      className="prog-link-btn"
                                       onClick={() => openProgressionEditModal(p)}
-                                      style={{ background: 'none', border: 'none', color: '#fcd34d', fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
                                     >
                                       + Add
                                     </button>
                                     <button
                                       type="button"
+                                      className="prog-card-close"
                                       onClick={() => toggleEasternFantasyOption('enableTechniques')}
-                                      style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
                                       title="Remove Techniques card"
                                     >
                                       <X size={11} />
                                     </button>
                                   </div>
                                 </div>
-                                {techniquesList.length === 0 ? null : (
-                                  <div className="progression-ability-list" style={{ marginTop: '0.35rem' }}>
+                                {techniquesList.length === 0 ? (
+                                  <strong className="prog-card-val" onClick={() => openProgressionEditModal(p)}>
+                                    <span className="prog-unset">—</span>
+                                  </strong>
+                                ) : (
+                                  <div className="prog-item-list">
                                     {techniquesList.map((tech, idx) => (
-                                      <div key={tech.id || idx} className="progression-ability-card" style={{ padding: '0.5rem 0.65rem' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                                          <strong style={{ fontSize: '0.8rem' }}>{tech.name}</strong>
-                                          <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                            {tech.rank && (
-                                              <span style={{
-                                                fontSize: '0.63rem',
-                                                padding: '1px 6px',
-                                                borderRadius: '999px',
-                                                background: 'rgba(245, 158, 11, 0.18)',
-                                                color: '#fde68a'
-                                              }}>
-                                                {tech.rank}
-                                              </span>
-                                            )}
-                                            {tech.mastery && (
-                                              <span style={{
-                                                fontSize: '0.63rem',
-                                                padding: '1px 6px',
-                                                borderRadius: '999px',
-                                                background: 'rgba(139, 92, 246, 0.18)',
-                                                color: '#ddd6fe'
-                                              }}>
-                                                {tech.mastery}
-                                              </span>
-                                            )}
+                                      <div key={tech.id || idx} className="prog-item-row" onClick={() => openProgressionEditModal(p)}>
+                                        <div className="prog-item-head">
+                                          <strong>{tech.name}</strong>
+                                          <div className="prog-item-badges">
+                                            {tech.rank && <span className="amber">{tech.rank}</span>}
+                                            {tech.mastery && <span className="violet">{tech.mastery}</span>}
                                           </div>
                                         </div>
-                                        {tech.description && (
-                                          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                                            {tech.description}
-                                          </p>
-                                        )}
+                                        {tech.description && <p>{tech.description}</p>}
                                       </div>
                                     ))}
                                   </div>
@@ -14638,63 +14350,43 @@ ${navPoints}  </navMap>
 
                             {/* ITEMS (TREASURES) CARD */}
                             {easternFantasyOptions.enableTreasures && (
-                              <div className="progression-template-display-card color-emerald is-wide">
-                                <div className="progression-template-card-top">
-                                  <span>Items (Treasures) ({treasuresList.length})</span>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <div className="prog-card span-2 accent-emerald">
+                                <div className="prog-card-top">
+                                  <span className="prog-card-label">Items / Treasures ({treasuresList.length})</span>
+                                  <div className="prog-card-actions">
                                     <button
                                       type="button"
+                                      className="prog-link-btn"
                                       onClick={() => openProgressionEditModal(p)}
-                                      style={{ background: 'none', border: 'none', color: '#6ee7b7', fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
                                     >
                                       + Add
                                     </button>
                                     <button
                                       type="button"
+                                      className="prog-card-close"
                                       onClick={() => toggleEasternFantasyOption('enableTreasures')}
-                                      style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
                                       title="Remove Items (Treasures) card"
                                     >
                                       <X size={11} />
                                     </button>
                                   </div>
                                 </div>
-                                {treasuresList.length === 0 ? null : (
-                                  <div className="progression-ability-list" style={{ marginTop: '0.35rem' }}>
+                                {treasuresList.length === 0 ? (
+                                  <strong className="prog-card-val" onClick={() => openProgressionEditModal(p)}>
+                                    <span className="prog-unset">—</span>
+                                  </strong>
+                                ) : (
+                                  <div className="prog-item-list">
                                     {treasuresList.map((item, idx) => (
-                                      <div key={item.id || idx} className="progression-ability-card" style={{ padding: '0.5rem 0.65rem' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                                          <strong style={{ fontSize: '0.8rem' }}>{item.name}</strong>
-                                          <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                            {item.rank && (
-                                              <span style={{
-                                                fontSize: '0.63rem',
-                                                padding: '1px 6px',
-                                                borderRadius: '999px',
-                                                background: 'rgba(16, 185, 129, 0.18)',
-                                                color: '#a7f3d0'
-                                              }}>
-                                                {item.rank}
-                                              </span>
-                                            )}
-                                            {item.category && (
-                                              <span style={{
-                                                fontSize: '0.63rem',
-                                                padding: '1px 6px',
-                                                borderRadius: '999px',
-                                                background: 'rgba(255, 255, 255, 0.08)',
-                                                color: 'var(--text-dim)'
-                                              }}>
-                                                {item.category}
-                                              </span>
-                                            )}
+                                      <div key={item.id || idx} className="prog-item-row" onClick={() => openProgressionEditModal(p)}>
+                                        <div className="prog-item-head">
+                                          <strong>{item.name}</strong>
+                                          <div className="prog-item-badges">
+                                            {item.rank && <span className="emerald">{item.rank}</span>}
+                                            {item.category && <span className="muted">{item.category}</span>}
                                           </div>
                                         </div>
-                                        {item.description && (
-                                          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                                            {item.description}
-                                          </p>
-                                        )}
+                                        {item.description && <p>{item.description}</p>}
                                       </div>
                                     ))}
                                   </div>
@@ -14707,22 +14399,22 @@ ${navPoints}  </navMap>
 
                       {/* RECENT CHAPTER PROGRESSION LOG */}
                       {p.history && p.history.length > 0 && (
-                        <div className="progression-section" style={{ marginTop: '0.35rem' }}>
-                          <div className="progression-section-title">
-                            <span>Chapter Progression Log</span>
+                        <div className="prog-history-section">
+                          <div className="prog-section-head">
+                            <span>Chapter Log</span>
                             <small>{p.history.length} update{p.history.length === 1 ? '' : 's'}</small>
                           </div>
-                          <div className="progression-history-list">
+                          <div className="prog-history-list">
                             {p.history.slice(0, 6).map(entry => (
-                              <div key={entry.id} className="progression-history-card">
-                                <div className="progression-history-top">
+                              <div key={entry.id} className="prog-history-card">
+                                <div className="prog-history-top">
                                   <strong>{entry.chapterNumber ? `Ch. ${entry.chapterNumber}: ` : ''}{entry.chapterTitle}</strong>
                                   <span>{formatProgressionDate(entry.appliedAt)}</span>
                                 </div>
                                 <p>{entry.summary}</p>
                                 {(entry.realmAfter && entry.realmBefore !== entry.realmAfter) && (
-                                  <div className="progression-history-tags">
-                                    <span>Cultivation: {entry.realmBefore || 'Mortal'} &rarr; {entry.realmAfter} {entry.stageAfter ? `(${entry.stageAfter})` : ''}</span>
+                                  <div className="prog-history-tags">
+                                    <span>{entry.realmBefore ? `${entry.realmBefore} → ` : ''}{entry.realmAfter}{entry.stageAfter ? ` (${entry.stageAfter})` : ''}</span>
                                   </div>
                                 )}
                               </div>
@@ -22762,7 +22454,821 @@ ${navPoints}  </navMap>
           color: var(--text-secondary);
         }
 
-        /* Character Progression */
+        /* Character Progression (Eastern Fantasy & Multi-Style Redesign) */
+        .prog-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          overflow-y: auto;
+          padding-bottom: 1.25rem;
+        }
+
+        .prog-top-controls {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+        }
+
+        .prog-style-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+          padding: 0.45rem 0.65rem;
+          border-radius: 9px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--surface-border);
+        }
+
+        .prog-style-title {
+          display: flex;
+          align-items: center;
+          gap: 0.38rem;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          white-space: nowrap;
+        }
+
+        .prog-style-title :global(svg) {
+          color: #a78bfa;
+          flex-shrink: 0;
+        }
+
+        .prog-style-select {
+          background: rgba(139, 92, 246, 0.14);
+          border: 1px solid rgba(167, 139, 250, 0.32);
+          color: #ede9fe;
+          border-radius: 6px;
+          padding: 0.22rem 0.5rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          outline: none;
+          cursor: pointer;
+          transition: var(--transition);
+        }
+
+        .prog-style-select:hover,
+        .prog-style-select:focus {
+          border-color: rgba(167, 139, 250, 0.6);
+          background: rgba(139, 92, 246, 0.22);
+        }
+
+        .prog-tool-strip {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 0.35rem;
+        }
+
+        .prog-tool-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.3rem;
+          min-height: 31px;
+          padding: 0.3rem 0.4rem;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--surface-border);
+          color: var(--text-secondary);
+          font-size: 0.68rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          min-width: 0;
+          overflow: hidden;
+        }
+
+        .prog-tool-btn :global(svg) {
+          flex-shrink: 0;
+          color: var(--text-dim);
+          transition: color 0.18s ease;
+        }
+
+        .prog-tool-btn span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .prog-tool-btn strong {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 16px;
+          height: 15px;
+          padding: 0 0.28rem;
+          border-radius: 999px;
+          background: rgba(139, 92, 246, 0.2);
+          color: #ddd6fe;
+          font-size: 0.62rem;
+          font-weight: 800;
+          line-height: 1;
+          flex-shrink: 0;
+        }
+
+        .prog-tool-btn strong.warn {
+          background: rgba(245, 158, 11, 0.22);
+          color: #fde68a;
+        }
+
+        .prog-tool-btn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.065);
+          border-color: rgba(167, 139, 250, 0.36);
+          color: var(--text-primary);
+        }
+
+        .prog-tool-btn:hover:not(:disabled) :global(svg) {
+          color: #c4b5fd;
+        }
+
+        .prog-tool-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .prog-ai-actions {
+          display: grid;
+          grid-template-columns: 1.15fr 1fr;
+          gap: 0.38rem;
+        }
+
+        .prog-ai-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.36rem;
+          min-height: 33px;
+          padding: 0.38rem 0.6rem;
+          border-radius: 8px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .prog-ai-btn.full {
+          width: 100%;
+        }
+
+        .prog-ai-btn.primary {
+          background: linear-gradient(135deg, rgba(124, 58, 237, 0.32), rgba(79, 70, 229, 0.24));
+          border: 1px solid rgba(167, 139, 250, 0.42);
+          color: #f5f3ff;
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.14);
+        }
+
+        .prog-ai-btn.primary:hover:not(:disabled) {
+          background: linear-gradient(135deg, rgba(124, 58, 237, 0.46), rgba(79, 70, 229, 0.36));
+          border-color: rgba(196, 181, 253, 0.65);
+          transform: translateY(-1px);
+        }
+
+        .prog-ai-btn.secondary {
+          background: rgba(255, 255, 255, 0.035);
+          border: 1px solid var(--surface-border);
+          color: var(--text-secondary);
+        }
+
+        .prog-ai-btn.secondary:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.07);
+          border-color: rgba(255, 255, 255, 0.18);
+          color: var(--text-primary);
+        }
+
+        .prog-ai-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .prog-optional-bar {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+          padding: 0.55rem 0.65rem;
+          border-radius: 9px;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--surface-border);
+        }
+
+        .prog-optional-bar-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.4rem;
+        }
+
+        .prog-optional-bar-head span {
+          font-size: 0.64rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--text-dim);
+        }
+
+        .prog-optional-bar-head small {
+          font-size: 0.62rem;
+          font-weight: 700;
+          color: #a78bfa;
+          background: rgba(139, 92, 246, 0.12);
+          border: 1px solid rgba(139, 92, 246, 0.24);
+          padding: 0.08rem 0.38rem;
+          border-radius: 999px;
+        }
+
+        .prog-chip-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.3rem;
+        }
+
+        .prog-toggle-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0.22rem 0.48rem;
+          border-radius: 999px;
+          font-size: 0.67rem;
+          font-weight: 600;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.09);
+          color: var(--text-dim);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .prog-toggle-chip:hover {
+          border-color: rgba(167, 139, 250, 0.35);
+          color: var(--text-secondary);
+        }
+
+        .prog-toggle-chip.active {
+          background: rgba(139, 92, 246, 0.18);
+          border-color: rgba(167, 139, 250, 0.48);
+          color: #ede9fe;
+        }
+
+        .prog-toggle-chip.sub {
+          font-size: 0.63rem;
+          padding: 0.16rem 0.42rem;
+        }
+
+        .prog-toggle-chip.sub.active {
+          background: rgba(236, 72, 153, 0.16);
+          border-color: rgba(244, 114, 182, 0.45);
+          color: #fce7f3;
+        }
+
+        .prog-subchip-row {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.28rem;
+          padding-top: 0.35rem;
+          border-top: 1px dashed rgba(255, 255, 255, 0.08);
+        }
+
+        .prog-subchip-label {
+          font-size: 0.62rem;
+          font-weight: 700;
+          color: #f472b6;
+          margin-right: 0.1rem;
+        }
+
+        .prog-banner {
+          padding: 0.48rem 0.65rem;
+          border-radius: 8px;
+          font-size: 0.72rem;
+          line-height: 1.38;
+        }
+
+        .prog-banner.info {
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.28);
+          color: #a7f3d0;
+        }
+
+        .prog-banner.error {
+          background: rgba(239, 68, 68, 0.12);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #fecaca;
+        }
+
+        /* Empty State Card */
+        .prog-empty-card {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          gap: 0.75rem;
+          padding: 1.25rem 0.9rem;
+          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+          border: 1px dashed rgba(148, 163, 184, 0.22);
+        }
+
+        .prog-empty-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: rgba(139, 92, 246, 0.14);
+          border: 1px solid rgba(167, 139, 250, 0.28);
+          color: #c4b5fd;
+        }
+
+        .prog-empty-text {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .prog-empty-text strong {
+          font-size: 0.84rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .prog-empty-text p {
+          margin: 0;
+          font-size: 0.72rem;
+          line-height: 1.45;
+          color: var(--text-dim);
+        }
+
+        .prog-empty-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+          width: 100%;
+        }
+
+        /* Active Character Sheet */
+        .prog-sheet {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+        }
+
+        .prog-char-bar {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.42rem 0.5rem;
+          border-radius: 10px;
+          background: rgba(139, 92, 246, 0.08);
+          border: 1px solid rgba(167, 139, 250, 0.24);
+        }
+
+        .prog-char-avatar {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 26px;
+          height: 26px;
+          border-radius: 7px;
+          background: linear-gradient(135deg, #7c3aed, #4f46e5);
+          color: white;
+          font-size: 0.74rem;
+          font-weight: 800;
+          flex-shrink: 0;
+        }
+
+        .prog-char-select {
+          flex: 1;
+          min-width: 0;
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          font-size: 0.78rem;
+          font-weight: 700;
+          outline: none;
+          cursor: pointer;
+          text-overflow: ellipsis;
+        }
+
+        .prog-char-select option {
+          background: #13131a;
+          color: #f8fafc;
+        }
+
+        .prog-char-edit-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0.24rem 0.48rem;
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: var(--text-secondary);
+          font-size: 0.67rem;
+          font-weight: 700;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .prog-char-edit-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: white;
+        }
+
+        .prog-section-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.4rem;
+          padding: 0.15rem 0.1rem 0;
+        }
+
+        .prog-section-head span {
+          font-size: 0.64rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--text-dim);
+        }
+
+        .prog-section-head small {
+          font-size: 0.62rem;
+          font-weight: 600;
+          color: var(--text-dim);
+        }
+
+        .prog-link-btn {
+          background: transparent;
+          border: none;
+          padding: 0;
+          color: #a78bfa;
+          font-size: 0.66rem;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .prog-link-btn:hover {
+          color: #ddd6fe;
+          text-decoration: underline;
+        }
+
+        /* 2-Column Bento Grid */
+        .prog-bento-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.42rem;
+        }
+
+        .prog-card {
+          --prog-accent: #8b5cf6;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 0.3rem;
+          padding: 0.55rem 0.62rem;
+          border-radius: 9px;
+          background: rgba(255, 255, 255, 0.028);
+          border: 1px solid rgba(255, 255, 255, 0.075);
+          border-top: 2px solid color-mix(in srgb, var(--prog-accent) 65%, transparent);
+          cursor: pointer;
+          transition: all 0.16s ease;
+          min-width: 0;
+        }
+
+        .prog-card:hover {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: rgba(255, 255, 255, 0.15);
+          border-top-color: var(--prog-accent);
+        }
+
+        .prog-card.span-2 {
+          grid-column: 1 / -1;
+        }
+
+        .prog-card.accent-indigo { --prog-accent: #6366f1; }
+        .prog-card.accent-violet { --prog-accent: #8b5cf6; }
+        .prog-card.accent-emerald { --prog-accent: #10b981; }
+        .prog-card.accent-rose { --prog-accent: #f43f5e; }
+        .prog-card.accent-amber { --prog-accent: #f59e0b; }
+        .prog-card.accent-fuchsia { --prog-accent: #d946ef; }
+        .prog-card.accent-cyan { --prog-accent: #06b6d4; }
+        .prog-card.accent-blue { --prog-accent: #3b82f6; }
+
+        .prog-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.35rem;
+          min-width: 0;
+        }
+
+        .prog-card-label {
+          font-size: 0.62rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: color-mix(in srgb, var(--prog-accent) 55%, #cbd5e1);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .prog-card-pill {
+          font-size: 0.6rem;
+          font-weight: 700;
+          padding: 0.08rem 0.38rem;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--prog-accent) 18%, transparent);
+          border: 1px solid color-mix(in srgb, var(--prog-accent) 38%, transparent);
+          color: color-mix(in srgb, var(--prog-accent) 35%, white);
+          max-width: 55%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .prog-card-val {
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          line-height: 1.28;
+          overflow-wrap: anywhere;
+        }
+
+        .prog-unset {
+          color: rgba(148, 163, 184, 0.38);
+          font-weight: 500;
+          user-select: none;
+        }
+
+        .prog-card-sub {
+          font-size: 0.68rem;
+          color: var(--text-dim);
+        }
+
+        .prog-card-sub span {
+          color: var(--text-secondary);
+          font-weight: 600;
+        }
+
+        .prog-card-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.38rem;
+          flex-shrink: 0;
+        }
+
+        .prog-card-close {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border-radius: 4px;
+          background: transparent;
+          border: none;
+          color: var(--text-dim);
+          cursor: pointer;
+          padding: 0;
+        }
+
+        .prog-card-close:hover {
+          background: rgba(239, 68, 68, 0.16);
+          color: #fca5a5;
+        }
+
+        .prog-stepper {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.2rem;
+          flex-shrink: 0;
+        }
+
+        .prog-stepper button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 20px;
+          height: 18px;
+          padding: 0 0.28rem;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: var(--text-secondary);
+          font-size: 0.63rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.14s ease;
+        }
+
+        .prog-stepper button:hover {
+          background: rgba(139, 92, 246, 0.24);
+          border-color: rgba(167, 139, 250, 0.45);
+          color: white;
+        }
+
+        .prog-affinity-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.3rem;
+          margin-top: 0.1rem;
+        }
+
+        .prog-affinity-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.28rem;
+          padding: 0.18rem 0.45rem;
+          border-radius: 999px;
+          background: rgba(6, 182, 212, 0.12);
+          border: 1px solid rgba(6, 182, 212, 0.3);
+          color: #cffafe;
+          font-size: 0.68rem;
+          font-weight: 700;
+        }
+
+        .prog-affinity-tag small {
+          color: #67e8f9;
+          font-size: 0.6rem;
+          font-weight: 800;
+          padding-left: 0.22rem;
+          border-left: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .prog-charm-row {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 0.4rem;
+        }
+
+        .prog-charm-row small {
+          font-size: 0.66rem;
+          font-weight: 800;
+          color: #f0abfc;
+        }
+
+        .prog-progress-track {
+          height: 5px;
+          width: 100%;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.08);
+          overflow: hidden;
+          margin-top: 0.12rem;
+        }
+
+        .prog-progress-track span {
+          display: block;
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, #ec4899, #a855f7);
+          transition: width 0.25s ease;
+        }
+
+        .prog-item-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          margin-top: 0.15rem;
+        }
+
+        .prog-item-row {
+          display: flex;
+          flex-direction: column;
+          gap: 0.18rem;
+          padding: 0.42rem 0.5rem;
+          border-radius: 7px;
+          background: rgba(0, 0, 0, 0.22);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .prog-item-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.4rem;
+        }
+
+        .prog-item-head strong {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .prog-item-badges {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          flex-shrink: 0;
+        }
+
+        .prog-item-badges span {
+          font-size: 0.58rem;
+          font-weight: 700;
+          padding: 0.06rem 0.34rem;
+          border-radius: 999px;
+        }
+
+        .prog-item-badges span.amber {
+          background: rgba(245, 158, 11, 0.16);
+          color: #fde68a;
+        }
+
+        .prog-item-badges span.violet {
+          background: rgba(139, 92, 246, 0.18);
+          color: #ddd6fe;
+        }
+
+        .prog-item-badges span.emerald {
+          background: rgba(16, 185, 129, 0.16);
+          color: #a7f3d0;
+        }
+
+        .prog-item-badges span.muted {
+          background: rgba(255, 255, 255, 0.07);
+          color: var(--text-dim);
+        }
+
+        .prog-item-row p {
+          margin: 0;
+          font-size: 0.68rem;
+          line-height: 1.35;
+          color: var(--text-dim);
+        }
+
+        .prog-history-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+          margin-top: 0.2rem;
+        }
+
+        .prog-history-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .prog-history-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.22rem;
+          padding: 0.5rem 0.58rem;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.022);
+          border: 1px solid var(--surface-border);
+        }
+
+        .prog-history-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.4rem;
+        }
+
+        .prog-history-top strong {
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .prog-history-top span {
+          font-size: 0.6rem;
+          color: var(--text-dim);
+          flex-shrink: 0;
+        }
+
+        .prog-history-card p {
+          margin: 0;
+          font-size: 0.68rem;
+          line-height: 1.38;
+          color: var(--text-secondary);
+        }
+
+        .prog-history-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.25rem;
+        }
+
+        .prog-history-tags span {
+          font-size: 0.6rem;
+          font-weight: 700;
+          padding: 0.08rem 0.38rem;
+          border-radius: 999px;
+          background: rgba(139, 92, 246, 0.14);
+          color: #c4b5fd;
+        }
         .progression-panel {
           display: flex;
           flex-direction: column;
