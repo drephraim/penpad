@@ -1960,88 +1960,75 @@ export async function POST(req: NextRequest) {
 
       const realmsList = Array.isArray(progressionSystem?.realms) && progressionSystem.realms.length > 0
         ? progressionSystem.realms.join(" -> ")
-        : "Mortal -> Body Tempering -> Qi Condensation -> Foundation Establishment -> Core Formation -> Nascent Soul -> Soul Formation -> Void Amalgamation -> Tribulation Transcendence -> Mahayana -> Loose Immortal -> True Immortal"
+        : "(None configured yet — extract only if explicitly mentioned in the chapter)"
       const stagesList = Array.isArray(progressionSystem?.stageLabels) && progressionSystem.stageLabels.length > 0
         ? progressionSystem.stageLabels.join(" / ")
-        : "Low / Medium / High / Peak"
+        : "(None configured yet — extract only if explicitly mentioned in the chapter)"
 
       systemInstruction =
         "You are an expert Eastern Fantasy (Xianxia / Xuanhuan / Cultivation) character progression tracker for a novelist.\n" +
         "Your task is to read the active chapter (prioritizing Target Evidence and Highlighted Text) and update the target character's Eastern Fantasy progression profile.\n\n" +
-        "### MANDATORY EASTERN FANTASY CARDS (ALWAYS EXTRACT & MAINTAIN):\n" +
+        "### MANDATORY EASTERN FANTASY CARDS (EXTRACT ONLY WHEN STATED OR ALREADY IN EXISTING PROFILE):\n" +
         "1. **Name (`name` & `title`)**: Character's canonical name and any Dao title/epithet.\n" +
         "2. **Cultivation (`realm` & `stage`)**:\n" +
         `   - Realm ladder reference: ${realmsList}\n` +
         `   - Stage/Tier labels: ${stagesList}\n` +
-        "   - Put the major cultivation realm in `realm` (e.g. 'Qi Condensation', 'Foundation Establishment', 'Mortal') and the sub-stage in `stage` (e.g. 'Low', 'Medium', 'High', 'Peak').\n" +
-        "3. **Level (`level`)**: Numeric level (integer >= 1). Keep existing level unless the chapter shows a breakthrough or level increase.\n" +
-        "4. **Bloodline (`bloodline` & `bloodlineRank`)**: Innate bloodline name (e.g. 'Azure Dragon Bloodline', 'None', 'Mortal') and its grade/rank (e.g. 'Mortal', 'Earth', 'Heaven', 'Divine', 'Primordial').\n" +
-        "5. **Constitution (`constitution` & `constitutionRank`)**: Special physique or body constitution (e.g. 'Chaotic Sacred Body', 'Supreme Yang Physique', 'Mortal Body') and its rank/tier.\n" +
-        "6. **Class (`className`, `secondaryClass`, `classRank`)**: Primary occupation/path (e.g. 'Sword Cultivator', 'Alchemist', 'Formation Master', 'Body Refiner'), optional secondary class, and class rank/tier.\n" +
-        "7. **Elemental Affinity (`elementalAffinity` & `elementalAffinityRank`)**: Elemental affinities (e.g. 'Fire, Lightning') and their ranks/grades (e.g. 'Fire (High), Lightning (Peak)').\n\n" +
-        "### OPTIONAL EASTERN FANTASY CARDS (EXTRACT & UPDATE):\n" +
+        "   - Put the major cultivation realm in `realm` and the sub-stage in `stage` ONLY if stated in the text or existing profile.\n" +
+        "3. **Level (`level`)**: Numeric level (integer). Leave as 0 if no level is mentioned or set.\n" +
+        "4. **Bloodline (`bloodline` & `bloodlineRank`)**: Innate bloodline name and its grade/rank.\n" +
+        "5. **Constitution (`constitution` & `constitutionRank`)**: Special physique or body constitution and its rank/tier.\n" +
+        "6. **Class (`className`, `secondaryClass`, `classRank`)**: Primary occupation/path, optional secondary class, and class rank/tier.\n" +
+        "7. **Elemental Affinity (`elementalAffinity` & `elementalAffinityRank`)**: Elemental affinities and their ranks/grades.\n\n" +
+        "### OPTIONAL EASTERN FANTASY CARDS (EXTRACT ONLY WHEN STATED OR ALREADY IN EXISTING PROFILE):\n" +
         `1. **Charisma System** (Enabled: ${Boolean(efOpts.charisma)}):\n` +
-        "   - `charisma`: Charisma rank/level (e.g. 'Mortal', 'Earth', 'Heaven', 'Immortal', 'Divine').\n" +
-        "   - `charismaTier`: Sub-tier of Charisma (e.g. 'Low', 'Mid', 'High', 'Peak').\n" +
-        "   - `charmCurrent` & `charmMax`: Progress bar values towards next Charisma level up (e.g. `100` and `1000` for 100/1000).\n" +
-        "   - `charmPoints`: Accumulated Charm Points available (integer, e.g. `10`).\n" +
+        "   - `charisma`: Charisma rank/level.\n" +
+        "   - `charismaTier`: Sub-tier of Charisma.\n" +
+        "   - `charmCurrent` & `charmMax`: Progress bar values towards next Charisma level up.\n" +
+        "   - `charmPoints`: Accumulated Charm Points available.\n" +
         `2. **Spirit Stones** (Enabled: ${Boolean(efOpts.spiritStones)}):\n` +
-        "   - `spiritStones`: Current spirit stones wealth/count and grades (e.g. '1,500 Low-Grade Spirit Stones').\n" +
+        "   - `spiritStones`: Current spirit stones wealth/count and grades.\n" +
         `3. **Techniques** (Enabled: ${Boolean(efOpts.techniques)}):\n` +
-        "   - `techniques`: Array of `{ \"name\": \"...\", \"rank\": \"...\", \"stage\": \"...\", \"description\": \"...\" }` for cultivation techniques, martial arts, sword skills, or spells.\n" +
+        "   - `techniques`: Array of `{ \"name\": \"\", \"rank\": \"\", \"stage\": \"\", \"description\": \"\" }` for cultivation techniques, martial arts, sword skills, or spells.\n" +
         `4. **Items (Treasures)** (Enabled: ${Boolean(efOpts.itemsTreasures)}):\n` +
-        "   - `treasures`: Array of `{ \"name\": \"...\", \"rank\": \"...\", \"type\": \"Weapon|Artifact|Pill|Herb|Treasure\", \"quantity\": \"1\", \"description\": \"...\" }` for spiritual treasures, weapons, pills, relics, and items.\n\n" +
-        "### PRESERVATION & EVIDENCE RULES:\n" +
+        "   - `treasures`: Array of `{ \"name\": \"\", \"rank\": \"\", \"type\": \"\", \"quantity\": \"\", \"description\": \"\" }` for spiritual treasures, weapons, pills, relics, and items.\n\n" +
+        "### CRITICAL NO-PLACEHOLDER & PRESERVATION RULES:\n" +
+        "- NEVER invent or assume default placeholder values (such as 'Mortal', 'None', 'Mortal Body', 'Low', 'High', 100, 1000, 10, etc.) for any field that is not explicitly stated in the chapter or already present in the existing profile. Leave any unmentioned string field as an empty string \"\" and any unmentioned numeric field as 0.\n" +
         "- Never erase existing profile fields, techniques, or treasures unless the chapter explicitly states they were lost, consumed, or replaced.\n" +
-        "- Mirror key fields into `customFields` (`Bloodline`, `Bloodline Rank`, `Constitution`, `Constitution Rank`, `Secondary Class`, `Class Rank`, `Elemental Affinity`, `Affinity Names`, `Affinity Rank`, `Charisma`, `Charisma Tier`, `Charm`, `Charm Points`, `Spirit Stones`).\n" +
+        "- Mirror non-empty key fields into `customFields`.\n" +
         "- Return ONLY valid JSON matching this exact structure:\n" +
         "{\n" +
-        "  \"targetLoreEntryId\": \"id of target character if inferred\",\n" +
+        "  \"targetLoreEntryId\": \"\",\n" +
         "  \"profile\": {\n" +
-        "    \"name\": \"...\",\n" +
-        "    \"title\": \"...\",\n" +
-        "    \"realm\": \"...\",\n" +
-        "    \"stage\": \"...\",\n" +
-        "    \"level\": 1,\n" +
-        "    \"bloodline\": \"...\",\n" +
-        "    \"bloodlineRank\": \"...\",\n" +
-        "    \"constitution\": \"...\",\n" +
-        "    \"constitutionRank\": \"...\",\n" +
-        "    \"className\": \"...\",\n" +
-        "    \"secondaryClass\": \"...\",\n" +
-        "    \"classRank\": \"...\",\n" +
-        "    \"elementalAffinity\": \"...\",\n" +
-        "    \"elementalAffinityRank\": \"...\",\n" +
-        "    \"charisma\": \"Mortal\",\n" +
-        "    \"charismaTier\": \"High\",\n" +
-        "    \"charmCurrent\": 100,\n" +
-        "    \"charmMax\": 1000,\n" +
-        "    \"charmPoints\": 10,\n" +
-        "    \"spiritStones\": \"...\",\n" +
-        "    \"techniques\": [{ \"name\": \"...\", \"rank\": \"...\", \"stage\": \"...\", \"description\": \"...\" }],\n" +
-        "    \"treasures\": [{ \"name\": \"...\", \"rank\": \"...\", \"type\": \"...\", \"quantity\": \"1\", \"description\": \"...\" }],\n" +
-        "    \"customFields\": {\n" +
-        "      \"Bloodline\": \"...\",\n" +
-        "      \"Bloodline Rank\": \"...\",\n" +
-        "      \"Constitution\": \"...\",\n" +
-        "      \"Constitution Rank\": \"...\",\n" +
-        "      \"Secondary Class\": \"...\",\n" +
-        "      \"Class Rank\": \"...\",\n" +
-        "      \"Affinity Names\": \"...\",\n" +
-        "      \"Affinity Rank\": \"...\",\n" +
-        "      \"Charisma\": \"...\",\n" +
-        "      \"Charisma Tier\": \"...\",\n" +
-        "      \"Charm\": \"100/1000\",\n" +
-        "      \"Charm Points\": \"10\",\n" +
-        "      \"Spirit Stones\": \"...\"\n" +
-        "    },\n" +
-        "    \"notes\": \"Concise chapter lore note about the character's progression in this chapter.\"\n" +
+        "    \"name\": \"\",\n" +
+        "    \"title\": \"\",\n" +
+        "    \"realm\": \"\",\n" +
+        "    \"stage\": \"\",\n" +
+        "    \"level\": 0,\n" +
+        "    \"bloodline\": \"\",\n" +
+        "    \"bloodlineRank\": \"\",\n" +
+        "    \"constitution\": \"\",\n" +
+        "    \"constitutionRank\": \"\",\n" +
+        "    \"className\": \"\",\n" +
+        "    \"secondaryClass\": \"\",\n" +
+        "    \"classRank\": \"\",\n" +
+        "    \"elementalAffinity\": \"\",\n" +
+        "    \"elementalAffinityRank\": \"\",\n" +
+        "    \"charisma\": \"\",\n" +
+        "    \"charismaTier\": \"\",\n" +
+        "    \"charmCurrent\": 0,\n" +
+        "    \"charmMax\": 0,\n" +
+        "    \"charmPoints\": 0,\n" +
+        "    \"spiritStones\": \"\",\n" +
+        "    \"techniques\": [],\n" +
+        "    \"treasures\": [],\n" +
+        "    \"customFields\": {},\n" +
+        "    \"notes\": \"\"\n" +
         "  },\n" +
         "  \"update\": {\n" +
         "    \"shouldApply\": true,\n" +
-        "    \"summary\": \"Concise summary of what changed or was confirmed in this chapter.\",\n" +
-        "    \"levelBefore\": 1,\n" +
-        "    \"levelAfter\": 1,\n" +
+        "    \"summary\": \"\",\n" +
+        "    \"levelBefore\": 0,\n" +
+        "    \"levelAfter\": 0,\n" +
         "    \"realmBefore\": \"...\",\n" +
         "    \"realmAfter\": \"...\",\n" +
         "    \"stageBefore\": \"...\",\n" +
@@ -2908,13 +2895,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    if (action === "brain_analyze") {
-      const analysis = parseJsonObject<BrainAnalysis>(text)
-      const allowedTypes = new Set(["character", "place", "object", "concept", "event", "foreshadowing", "unknown"])
-      const allowedImportance = new Set(["minor", "major", "critical"])
-
-      if (!analysis) {
-        if (action === "progression_update") {
+    if (action === "progression_update") {
       const parsed = parseJsonObject<any>(text)
       if (!parsed) {
         return NextResponse.json({ error: "AI returned invalid progression JSON." }, { status: 500 })
@@ -2933,7 +2914,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ text })
+    if (action === "brain_analyze") {
+      const analysis = parseJsonObject<BrainAnalysis>(text)
+      const allowedTypes = new Set(["character", "place", "object", "concept", "event", "foreshadowing", "unknown"])
+      const allowedImportance = new Set(["minor", "major", "critical"])
+
+      if (!analysis) {
+        return NextResponse.json({ text })
       }
 
       const entityType = allowedTypes.has(String(analysis.entityType)) ? analysis.entityType : "unknown"

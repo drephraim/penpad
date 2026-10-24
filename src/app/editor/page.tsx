@@ -54,6 +54,8 @@ import {
   deleteArcSeedFromCloud,
   syncProgressionProfilesWithCloud,
   saveProgressionProfileToCloud,
+  deleteProgressionProfileFromCloud,
+  wipeProgressionFromCloud,
   syncProgressionSystemWithCloud,
   saveProgressionSystemToCloud,
   syncReferenceLibraryWithCloud,
@@ -1633,15 +1635,15 @@ const TALENT_TEMPLATE_CARDS: ProgressionTemplateCard[] = [
 ]
 const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
   enabled: true,
-  name: "Simple Character Progression",
+  name: "Eastern Fantasy",
   defaultRealm: "",
   defaultStage: "",
   defaultRank: "",
   defaultClassName: "",
   defaultCultivationPath: "",
-  baseLevel: 1,
+  baseLevel: 0,
   baseExp: 0,
-  nextLevelExp: 100,
+  nextLevelExp: 0,
   defaultStats: DEFAULT_PROGRESSION_STATS,
   defaultTraits: [],
   defaultAbilities: [],
@@ -1652,43 +1654,20 @@ const DEFAULT_PROFILE_TEMPLATE: ProgressionProfileTemplate = {
 const DEFAULT_PROGRESSION_SYSTEM: ProgressionSystemSettings = {
   novelStyle: "eastern_fantasy",
   easternFantasyOptions: DEFAULT_EASTERN_FANTASY_OPTIONS,
-  realms: [
-    "Body Tempering",
-    "Qi Condensation",
-    "Foundation Establishment",
-    "Core Formation",
-    "Nascent Soul",
-    "Soul Transformation",
-    "Void Refinement",
-    "Tribulation Transcendence",
-    "Mahayana",
-    "Immortal Ascension"
-  ],
-  stageLabels: ["Low", "Medium", "High", "Peak"],
+  realms: [],
+  stageLabels: [],
   showLevels: true,
   showExp: false,
   showStats: false,
-  statKeys: Object.keys(DEFAULT_PROGRESSION_STATS) as ProgressionStatKey[],
-  customFields: SIMPLE_PROGRESSION_CUSTOM_FIELDS,
+  statKeys: [],
+  customFields: [],
   profileTemplate: DEFAULT_PROFILE_TEMPLATE,
   useCustomJsonTemplate: false,
-  customJsonTemplate: JSON.stringify({
-    "title": "Mortal",
-    "cultivation": {
-      "realm": "Body Tempering",
-      "stage": "Low"
-    },
-    "class": "None",
-    "race": "Human",
-    "weapon": "Iron Sword",
-    "skills": ["Slash"],
-    "affiliation": "Seven Stars Sect",
-    "relations": []
-  }, null, 2),
-  jsonCardOrder: ["title", "cultivation", "class", "race", "weapon", "skills", "affiliation", "relations"],
+  customJsonTemplate: "{}",
+  jsonCardOrder: [],
   cultivationSourceText: "",
   cultivationGuide: "",
-  notes: "Simple character progression tracks Name, Title, Bloodline, Bloodline Rank, Affinities, Class, Skills, Lore, Race, and Affiliation."
+  notes: ""
 }
 
 const formatSimpleProgressionFieldValue = (value: unknown, canonicalKey: string): string => {
@@ -4791,7 +4770,6 @@ function EditorContent() {
             className="ai-textarea compact progression-realm-import-textarea"
             value={progressionRealmImportText}
             onChange={(e) => setProgressionRealmImportText(e.target.value)}
-            placeholder="Paste cultivation stages weakest to strongest. Example: Mortal Realm, Spirit Realm, Saint Realm, God Realm. Add sub-stages like Low / Medium / High / Peak if your novel uses them."
           />
           <div className="progression-cultivation-import-footer">
             <button
@@ -5115,8 +5093,8 @@ const fillEmptyCustomJsonData = (
     const secondaryClass = String(aiProfile?.secondaryClass || customFields["Secondary Class"] || existingProfile?.secondaryClass || "").trim()
     const elementalAffinity = String(aiProfile?.elementalAffinity || customFields["Affinity Names"] || existingProfile?.elementalAffinity || "").trim()
     const elementalAffinityRank = String(aiProfile?.elementalAffinityRank || customFields["Affinity Rank"] || existingProfile?.elementalAffinityRank || "").trim()
-    const charisma = String(aiProfile?.charisma || customFields["Charisma"] || existingProfile?.charisma || "Mortal").trim()
-    const charismaTier = String(aiProfile?.charismaTier || customFields["Charisma Tier"] || existingProfile?.charismaTier || "Low").trim()
+    const charisma = String(aiProfile?.charisma || customFields["Charisma"] || existingProfile?.charisma || "").trim()
+    const charismaTier = String(aiProfile?.charismaTier || customFields["Charisma Tier"] || existingProfile?.charismaTier || "").trim()
 
     const charmRatioFromCustom = parseProgressionRatio(customFields["Charm"])
     const charmCurrent = Number.isFinite(Number(aiProfile?.charmCurrent))
@@ -5132,7 +5110,7 @@ const fillEmptyCustomJsonData = (
       ? charmRatioFromCustom.max
       : Number.isFinite(Number(existingProfile?.charmMax)) && Number(existingProfile?.charmMax) > 0
       ? Number(existingProfile?.charmMax)
-      : 1000
+      : 0
     const charmPoints = Number.isFinite(Number(aiProfile?.charmPoints))
       ? Number(aiProfile?.charmPoints)
       : Number.isFinite(Number(customFields["Charm Points"])) && String(customFields["Charm Points"] || "").trim() !== ""
@@ -5140,7 +5118,7 @@ const fillEmptyCustomJsonData = (
       : Number.isFinite(Number(existingProfile?.charmPoints))
       ? Number(existingProfile?.charmPoints)
       : 0
-    const spiritStones = String(aiProfile?.spiritStones || customFields["Spirit Stones"] || existingProfile?.spiritStones || "0").trim()
+    const spiritStones = String(aiProfile?.spiritStones || customFields["Spirit Stones"] || existingProfile?.spiritStones || "").trim()
 
     if (bloodline) customFields["Bloodline"] = bloodline
     if (bloodlineRank) customFields["Bloodline Rank"] = bloodlineRank
@@ -5152,18 +5130,18 @@ const fillEmptyCustomJsonData = (
     if (elementalAffinityRank) customFields["Affinity Rank"] = elementalAffinityRank
     if (charisma) customFields["Charisma"] = charisma
     if (charismaTier) customFields["Charisma Tier"] = charismaTier
-    customFields["Charm"] = `${charmCurrent}/${charmMax}`
-    customFields["Charm Points"] = String(charmPoints)
+    if (charmCurrent > 0 || charmMax > 0) customFields["Charm"] = `${charmCurrent}/${charmMax}`
+    if (charmPoints > 0) customFields["Charm Points"] = String(charmPoints)
     if (spiritStones) customFields["Spirit Stones"] = spiritStones
 
     const techniques: EasternFantasyTechnique[] = Array.isArray(aiProfile?.techniques) && aiProfile!.techniques!.length > 0
       ? aiProfile!.techniques!.map((t, idx) => ({
           id: String(t.id || `tech-${idx}-${Date.now()}`),
-          name: String(t.name || `Technique ${idx + 1}`),
+          name: String(t.name || ""),
           rank: String(t.rank || ""),
           mastery: String(t.mastery || ""),
           description: String(t.description || "")
-        }))
+        })).filter(t => t.name.trim())
       : Array.isArray(existingProfile?.techniques) && existingProfile!.techniques!.length > 0
       ? existingProfile!.techniques!
       : abilities.map((a, idx) => ({
@@ -5177,11 +5155,11 @@ const fillEmptyCustomJsonData = (
     const treasures: EasternFantasyTreasure[] = Array.isArray(aiProfile?.treasures) && aiProfile!.treasures!.length > 0
       ? aiProfile!.treasures!.map((item, idx) => ({
           id: String(item.id || `item-${idx}-${Date.now()}`),
-          name: String(item.name || `Treasure ${idx + 1}`),
+          name: String(item.name || ""),
           rank: String(item.rank || ""),
-          category: String(item.category || "Artifact"),
+          category: String(item.category || ""),
           description: String(item.description || "")
-        }))
+        })).filter(item => item.name.trim())
       : Array.isArray(existingProfile?.treasures)
       ? existingProfile!.treasures!
       : []
@@ -5200,9 +5178,9 @@ const fillEmptyCustomJsonData = (
       realm: aiProfile?.realm || existingProfile?.realm || sharedTemplate.defaultRealm || "",
       stage: aiProfile?.stage || existingProfile?.stage || sharedTemplate.defaultStage || "",
       cultivationPath: aiProfile?.cultivationPath || existingProfile?.cultivationPath || sharedTemplate.defaultCultivationPath || "",
-      level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || sharedTemplate.baseLevel || 1,
+      level: Number.isFinite(Number(aiProfile?.level)) ? Number(aiProfile?.level) : existingProfile?.level || sharedTemplate.baseLevel || 0,
       exp: Number.isFinite(Number(aiProfile?.exp)) ? Number(aiProfile?.exp) : existingProfile?.exp || sharedTemplate.baseExp || 0,
-      nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+      nextLevelExp: Number.isFinite(Number(aiProfile?.nextLevelExp)) ? Number(aiProfile?.nextLevelExp) : existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 0,
       bloodline,
       bloodlineRank,
       constitution,
@@ -5279,12 +5257,12 @@ const fillEmptyCustomJsonData = (
       chapterNumber,
       appliedAt: now,
       summary,
-      levelBefore: existingProfile?.level || sharedTemplate.baseLevel || 1,
-      levelAfter: existingProfile?.level || sharedTemplate.baseLevel || 1,
+      levelBefore: existingProfile?.level || 0,
+      levelAfter: existingProfile?.level || 0,
       realmBefore: existingProfile?.realm || "",
-      realmAfter: existingProfile?.realm || sharedTemplate.defaultRealm || "",
+      realmAfter: existingProfile?.realm || "",
       stageBefore: existingProfile?.stage || "",
-      stageAfter: existingProfile?.stage || sharedTemplate.defaultStage || "",
+      stageAfter: existingProfile?.stage || "",
       statChanges: {},
       abilityChanges: [],
       rewards: [],
@@ -5297,30 +5275,30 @@ const fillEmptyCustomJsonData = (
       loreEntryId: sourceEntry.id,
       name: existingProfile?.name || sourceEntry.name,
       title: existingProfile?.title || "",
-      className: existingProfile?.className || sharedTemplate.defaultClassName || "",
+      className: existingProfile?.className || "",
       classRank: existingProfile?.classRank || customFields["Class Rank"] || "",
       secondaryClass: existingProfile?.secondaryClass || customFields["Secondary Class"] || "",
-      rank: existingProfile?.rank || sharedTemplate.defaultRank || "",
+      rank: existingProfile?.rank || "",
       nicknames: existingProfile?.nicknames || [],
       uniqueTrait: existingProfile?.uniqueTrait || "",
-      realm: existingProfile?.realm || sharedTemplate.defaultRealm || "",
-      stage: existingProfile?.stage || sharedTemplate.defaultStage || "",
-      cultivationPath: existingProfile?.cultivationPath || sharedTemplate.defaultCultivationPath || "",
-      level: existingProfile?.level || sharedTemplate.baseLevel || 1,
-      exp: existingProfile?.exp || sharedTemplate.baseExp || 0,
-      nextLevelExp: existingProfile?.nextLevelExp || sharedTemplate.nextLevelExp || 100,
+      realm: existingProfile?.realm || "",
+      stage: existingProfile?.stage || "",
+      cultivationPath: existingProfile?.cultivationPath || "",
+      level: existingProfile?.level ?? 0,
+      exp: existingProfile?.exp ?? 0,
+      nextLevelExp: existingProfile?.nextLevelExp ?? 0,
       bloodline: existingProfile?.bloodline || customFields["Bloodline"] || "",
       bloodlineRank: existingProfile?.bloodlineRank || customFields["Bloodline Rank"] || "",
       constitution: existingProfile?.constitution || customFields["Constitution"] || "",
       constitutionRank: existingProfile?.constitutionRank || customFields["Constitution Rank"] || "",
       elementalAffinity: existingProfile?.elementalAffinity || customFields["Affinity Names"] || "",
       elementalAffinityRank: existingProfile?.elementalAffinityRank || customFields["Affinity Rank"] || "",
-      charisma: existingProfile?.charisma || customFields["Charisma"] || "Mortal",
-      charismaTier: existingProfile?.charismaTier || customFields["Charisma Tier"] || "Low",
+      charisma: existingProfile?.charisma || customFields["Charisma"] || "",
+      charismaTier: existingProfile?.charismaTier || customFields["Charisma Tier"] || "",
       charmCurrent: existingProfile?.charmCurrent ?? 0,
-      charmMax: existingProfile?.charmMax ?? 1000,
+      charmMax: existingProfile?.charmMax ?? 0,
       charmPoints: existingProfile?.charmPoints ?? 0,
-      spiritStones: existingProfile?.spiritStones || customFields["Spirit Stones"] || "0",
+      spiritStones: existingProfile?.spiritStones || customFields["Spirit Stones"] || "",
       techniques: existingProfile?.techniques || [],
       treasures: existingProfile?.treasures || [],
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(sharedTemplate.defaultStats || {}), ...(existingProfile?.stats || {}) },
@@ -5798,11 +5776,31 @@ const fillEmptyCustomJsonData = (
     if (!confirmed) return
     const nextProfiles = progressionProfiles.filter(item => item.id !== profileId)
     persistProgressionProfiles(nextProfiles)
+    if (user && projectId) {
+      void deleteProgressionProfileFromCloud(user.uid, projectId, profileId)
+    }
     const nextSelected = nextProfiles[0] || null
     setSelectedProgressionProfileId(nextSelected?.id || null)
     setProgressionSelectedEntryId(nextSelected?.loreEntryId || null)
     setIsProgressionEditMode(false)
     setProgressionNotice(`Deleted ${profile.name}'s progression profile.`)
+  }
+
+  const wipeAllProgressionData = async () => {
+    if (!projectId) return
+    const confirmed = window.confirm("Wipe all character progression profiles and backups for this project?")
+    if (!confirmed) return
+    localStorage.removeItem(getProgressionStorageKey())
+    localStorage.removeItem(getProgressionSystemStorageKey())
+    setProgressionProfiles([])
+    setSelectedProgressionProfileId(null)
+    setProgressionSelectedEntryId(null)
+    setIsProgressionEditMode(false)
+    updateProjectMetadata({ progressionProfiles: [], progressionSystem: DEFAULT_PROGRESSION_SYSTEM })
+    if (user) {
+      await wipeProgressionFromCloud(user.uid, projectId)
+    }
+    setProgressionNotice("All character progression profiles and backups have been wiped clean.")
   }
 
   const openProgressionEditModal = (profile: CharacterProgressionProfile) => {
@@ -5831,12 +5829,12 @@ const fillEmptyCustomJsonData = (
       constitutionRank: profile.constitutionRank || cf["Constitution Rank"] || "",
       elementalAffinity: profile.elementalAffinity || cf["Affinity Names"] || "",
       elementalAffinityRank: profile.elementalAffinityRank || cf["Affinity Rank"] || "",
-      charisma: profile.charisma || cf["Charisma"] || "Mortal",
-      charismaTier: profile.charismaTier || cf["Charisma Tier"] || "High",
-      charmCurrent: profile.charmCurrent ?? (charmRatio ? charmRatio.current : 100),
-      charmMax: profile.charmMax ?? (charmRatio ? charmRatio.max : 1000),
-      charmPoints: profile.charmPoints ?? (Number.isFinite(Number(cf["Charm Points"])) && cf["Charm Points"] ? Number(cf["Charm Points"]) : 10),
-      spiritStones: profile.spiritStones || cf["Spirit Stones"] || "0",
+      charisma: profile.charisma || cf["Charisma"] || "",
+      charismaTier: profile.charismaTier || cf["Charisma Tier"] || "",
+      charmCurrent: profile.charmCurrent ?? (charmRatio ? charmRatio.current : 0),
+      charmMax: profile.charmMax ?? (charmRatio ? charmRatio.max : 0),
+      charmPoints: profile.charmPoints ?? (Number.isFinite(Number(cf["Charm Points"])) && cf["Charm Points"] ? Number(cf["Charm Points"]) : 0),
+      spiritStones: profile.spiritStones || cf["Spirit Stones"] || "",
       techniques: syncedTechniques,
       treasures: syncedTreasures,
       stats: { ...DEFAULT_PROGRESSION_STATS, ...(profile.stats || {}) },
@@ -6072,12 +6070,12 @@ const fillEmptyCustomJsonData = (
     const secondaryClass = String(progressionEditProfileDraft.secondaryClass ?? draftCf["Secondary Class"] ?? "").trim()
     const elementalAffinity = String(progressionEditProfileDraft.elementalAffinity ?? draftCf["Affinity Names"] ?? "").trim()
     const elementalAffinityRank = String(progressionEditProfileDraft.elementalAffinityRank ?? draftCf["Affinity Rank"] ?? "").trim()
-    const charisma = String(progressionEditProfileDraft.charisma ?? draftCf["Charisma"] ?? "Mortal").trim()
-    const charismaTier = String(progressionEditProfileDraft.charismaTier ?? draftCf["Charisma Tier"] ?? "High").trim()
+    const charisma = String(progressionEditProfileDraft.charisma ?? draftCf["Charisma"] ?? "").trim()
+    const charismaTier = String(progressionEditProfileDraft.charismaTier ?? draftCf["Charisma Tier"] ?? "").trim()
     const charmCurrent = Number.isFinite(Number(progressionEditProfileDraft.charmCurrent)) ? Number(progressionEditProfileDraft.charmCurrent) : 0
-    const charmMax = Number.isFinite(Number(progressionEditProfileDraft.charmMax)) && Number(progressionEditProfileDraft.charmMax) > 0 ? Number(progressionEditProfileDraft.charmMax) : 1000
+    const charmMax = Number.isFinite(Number(progressionEditProfileDraft.charmMax)) && Number(progressionEditProfileDraft.charmMax) > 0 ? Number(progressionEditProfileDraft.charmMax) : 0
     const charmPoints = Number.isFinite(Number(progressionEditProfileDraft.charmPoints)) ? Number(progressionEditProfileDraft.charmPoints) : 0
-    const spiritStones = String(progressionEditProfileDraft.spiritStones ?? draftCf["Spirit Stones"] ?? "0").trim()
+    const spiritStones = String(progressionEditProfileDraft.spiritStones ?? draftCf["Spirit Stones"] ?? "").trim()
 
     draftCf["Bloodline"] = bloodline
     draftCf["Bloodline Rank"] = bloodlineRank
@@ -6089,25 +6087,25 @@ const fillEmptyCustomJsonData = (
     draftCf["Affinity Rank"] = elementalAffinityRank
     draftCf["Charisma"] = charisma
     draftCf["Charisma Tier"] = charismaTier
-    draftCf["Charm"] = `${charmCurrent}/${charmMax}`
-    draftCf["Charm Points"] = String(charmPoints)
+    draftCf["Charm"] = (charmCurrent > 0 || charmMax > 0) ? `${charmCurrent}/${charmMax}` : ""
+    draftCf["Charm Points"] = charmPoints > 0 ? String(charmPoints) : ""
     draftCf["Spirit Stones"] = spiritStones
 
-    const techniques = (progressionEditProfileDraft.techniques || []).map((t, index) => ({
+    const techniques = (progressionEditProfileDraft.techniques || []).map((t) => ({
       id: t.id || crypto.randomUUID(),
-      name: (t.name || `Technique ${index + 1}`).trim(),
+      name: (t.name || "").trim(),
       rank: (t.rank || "").trim(),
       mastery: (t.mastery || "").trim(),
       description: (t.description || "").trim()
-    }))
+    })).filter(t => t.name)
 
-    const treasures = (progressionEditProfileDraft.treasures || []).map((item, index) => ({
+    const treasures = (progressionEditProfileDraft.treasures || []).map((item) => ({
       id: item.id || crypto.randomUUID(),
-      name: (item.name || `Treasure ${index + 1}`).trim(),
+      name: (item.name || "").trim(),
       rank: (item.rank || "").trim(),
-      category: (item.category || "Treasure").trim(),
+      category: (item.category || "").trim(),
       description: (item.description || "").trim()
-    }))
+    })).filter(item => item.name)
 
     const syncedAbilities: ProgressionAbility[] = techniques.map((t, index) => ({
       id: t.id || crypto.randomUUID(),
@@ -7279,6 +7277,30 @@ const fillEmptyCustomJsonData = (
   const fetchProgressionSystem = useCallback(async () => {
     if (!projectId) return
     try {
+      if (!localStorage.getItem("penpad_progression_clean_wipe_global_v3")) {
+        Object.keys(localStorage).forEach(k => {
+          if (k.startsWith("penpad_progression_") || k.startsWith("penpad_progression_system_")) {
+            localStorage.removeItem(k)
+          } else if (k.startsWith("penpad_projects_")) {
+            try {
+              const list = JSON.parse(localStorage.getItem(k) || "[]")
+              if (Array.isArray(list)) {
+                localStorage.setItem(k, JSON.stringify(list.map((p: any) => ({ ...p, progressionProfiles: [], progressionSystem: null }))))
+              }
+            } catch {}
+          }
+        })
+        localStorage.setItem("penpad_progression_clean_wipe_global_v3", "true")
+      }
+      const wipeKey = `penpad_progression_clean_wipe_v3_${projectId}`
+      if (!localStorage.getItem(wipeKey)) {
+        localStorage.removeItem(getProgressionStorageKey())
+        localStorage.removeItem(getProgressionSystemStorageKey())
+        localStorage.setItem(wipeKey, "true")
+        if (user) {
+          await wipeProgressionFromCloud(user.uid, projectId)
+        }
+      }
       let stored = localStorage.getItem(getProgressionSystemStorageKey())
       if (!stored && user) {
         const storedProjs = localStorage.getItem(`penpad_projects_${user.uid}`)
@@ -7311,6 +7333,15 @@ const fillEmptyCustomJsonData = (
   const fetchProgressionProfiles = useCallback(async () => {
     if (!projectId) return
     try {
+      const wipeKey = `penpad_progression_clean_wipe_v3_${projectId}`
+      if (!localStorage.getItem(wipeKey)) {
+        localStorage.removeItem(getProgressionStorageKey())
+        localStorage.removeItem(getProgressionSystemStorageKey())
+        localStorage.setItem(wipeKey, "true")
+        if (user) {
+          await wipeProgressionFromCloud(user.uid, projectId)
+        }
+      }
       let stored = localStorage.getItem(getProgressionStorageKey())
       if (!stored && user) {
         const storedProjs = localStorage.getItem(`penpad_projects_${user.uid}`)
@@ -14020,27 +14051,27 @@ ${navPoints}  </navMap>
                 ) : (() => {
                   const p = selectedProgressionProfile
                   const cf = p.customFields || {}
-                  const cultivationRealm = p.realm || cf["Cultivation Stage"] || "Mortal"
+                  const cultivationRealm = p.realm || cf["Cultivation Stage"] || ""
                   const cultivationStage = p.stage || p.rank || cf["Stage"] || ""
-                  const bloodlineName = p.bloodline || cf["Bloodline"] || "None"
+                  const bloodlineName = p.bloodline || cf["Bloodline"] || ""
                   const bloodlineRank = p.bloodlineRank || cf["Bloodline Rank"] || ""
-                  const constitutionName = p.constitution || cf["Constitution"] || "Mortal Body"
+                  const constitutionName = p.constitution || cf["Constitution"] || ""
                   const constitutionRank = p.constitutionRank || cf["Constitution Rank"] || ""
-                  const mainClass = p.className || cf["Main Class"] || "None"
+                  const mainClass = p.className || cf["Main Class"] || ""
                   const classRank = p.classRank || cf["Class Rank"] || ""
                   const secondaryClass = p.secondaryClass || cf["Secondary Class"] || ""
                   const affinityNames = p.elementalAffinity || cf["Affinity Names"] || ""
                   const affinityRanks = p.elementalAffinityRank || cf["Affinity Rank"] || ""
                   const parsedAffinities = getAffinitiesList(affinityNames, affinityRanks)
 
-                  const charismaVal = p.charisma || cf["Charisma"] || "Mortal"
-                  const charismaTierVal = p.charismaTier || cf["Charisma Tier"] || "High"
+                  const charismaVal = p.charisma || cf["Charisma"] || ""
+                  const charismaTierVal = p.charismaTier || cf["Charisma Tier"] || ""
                   const charmRatio = parseProgressionRatio(cf["Charm"])
-                  const charmCurr = p.charmCurrent ?? (charmRatio ? charmRatio.current : 100)
-                  const charmMax = p.charmMax ?? (charmRatio ? charmRatio.max : 1000)
+                  const charmCurr = p.charmCurrent ?? (charmRatio ? charmRatio.current : 0)
+                  const charmMax = p.charmMax ?? (charmRatio ? charmRatio.max : 0)
                   const charmPct = charmMax > 0 ? Math.min(100, Math.max(0, Math.round((charmCurr / charmMax) * 100))) : 0
-                  const charmPts = p.charmPoints ?? (Number.isFinite(Number(cf["Charm Points"])) && cf["Charm Points"] ? Number(cf["Charm Points"]) : 10)
-                  const spiritStonesVal = p.spiritStones || cf["Spirit Stones"] || "0"
+                  const charmPts = p.charmPoints ?? (Number.isFinite(Number(cf["Charm Points"])) && cf["Charm Points"] ? Number(cf["Charm Points"]) : 0)
+                  const spiritStonesVal = p.spiritStones || cf["Spirit Stones"] || ""
 
                   const techniquesList: EasternFantasyTechnique[] = Array.isArray(p.techniques) && p.techniques.length > 0
                     ? p.techniques
@@ -14143,9 +14174,11 @@ ${navPoints}  </navMap>
                             )}
                           </div>
                           <strong>{cultivationRealm}</strong>
-                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                            {cultivationStage ? `Stage: ${cultivationStage}` : 'Stage: Unspecified'}
-                          </p>
+                          {cultivationStage && (
+                            <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                              Stage: {cultivationStage}
+                            </p>
+                          )}
                         </div>
 
                         {/* 3. LEVEL CARD */}
@@ -14155,7 +14188,7 @@ ${navPoints}  </navMap>
                             <div style={{ display: 'inline-flex', gap: '0.25rem' }}>
                               <button
                                 type="button"
-                                onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: Math.max(1, (cur.level || 1) - 1), updatedAt: Date.now() }))}
+                                onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: Math.max(0, (cur.level || 0) - 1), updatedAt: Date.now() }))}
                                 style={{
                                   width: '20px',
                                   height: '20px',
@@ -14172,7 +14205,7 @@ ${navPoints}  </navMap>
                               </button>
                               <button
                                 type="button"
-                                onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: (cur.level || 1) + 1, updatedAt: Date.now() }))}
+                                onClick={() => updateProgressionProfile(p.id, cur => ({ ...cur, level: (cur.level || 0) + 1, updatedAt: Date.now() }))}
                                 style={{
                                   width: '20px',
                                   height: '20px',
@@ -14189,10 +14222,7 @@ ${navPoints}  </navMap>
                               </button>
                             </div>
                           </div>
-                          <strong>Lv. {p.level || 1}</strong>
-                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                            Character Level
-                          </p>
+                          <strong>{p.level ? `Lv. ${p.level}` : ''}</strong>
                         </div>
 
                         {/* 4. BLOODLINE CARD */}
@@ -14211,10 +14241,12 @@ ${navPoints}  </navMap>
                               </small>
                             )}
                           </div>
-                          <strong>{bloodlineName || 'None'}</strong>
-                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                            {bloodlineRank ? `Rank: ${bloodlineRank}` : 'Rank: Unranked'}
-                          </p>
+                          <strong>{bloodlineName}</strong>
+                          {bloodlineRank && (
+                            <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                              Rank: {bloodlineRank}
+                            </p>
+                          )}
                         </div>
 
                         {/* 5. CONSTITUTION CARD */}
@@ -14233,10 +14265,12 @@ ${navPoints}  </navMap>
                               </small>
                             )}
                           </div>
-                          <strong>{constitutionName || 'Mortal Body'}</strong>
-                          <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                            {constitutionRank ? `Grade: ${constitutionRank}` : 'Innate Physique'}
-                          </p>
+                          <strong>{constitutionName}</strong>
+                          {constitutionRank && (
+                            <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                              Grade: {constitutionRank}
+                            </p>
+                          )}
                         </div>
 
                         {/* 6. CLASS CARD */}
@@ -14255,7 +14289,7 @@ ${navPoints}  </navMap>
                               </small>
                             )}
                           </div>
-                          <strong>{mainClass || 'None'}</strong>
+                          <strong>{mainClass}</strong>
                           {secondaryClass && (
                             <p style={{ marginTop: '0.25rem', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
                               Secondary Class: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{secondaryClass}</span>
@@ -14305,7 +14339,7 @@ ${navPoints}  </navMap>
                               ))}
                             </div>
                           ) : (
-                            <strong>None</strong>
+                            <strong></strong>
                           )}
                         </div>
                       </div>
@@ -14355,33 +14389,39 @@ ${navPoints}  </navMap>
                                     </button>
                                   </div>
                                   <strong>{charismaVal}</strong>
-                                  <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                                    Charisma: {charismaVal}
-                                  </p>
+                                  {charismaVal && (
+                                    <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                                      Charisma: {charismaVal}
+                                    </p>
+                                  )}
                                 </div>
 
                                 {/* Card B: Tier */}
                                 <div className="progression-template-display-card color-violet">
                                   <div className="progression-template-card-top">
                                     <span>Tier</span>
-                                    <small>{charismaVal}</small>
+                                    {charismaVal && <small>{charismaVal}</small>}
                                   </div>
                                   <strong>{charismaTierVal}</strong>
-                                  <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                                    Tier: {charismaTierVal}
-                                  </p>
+                                  {charismaTierVal && (
+                                    <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                                      Tier: {charismaTierVal}
+                                    </p>
+                                  )}
                                 </div>
 
-                                {/* Card C: Charm Progress Bar (e.g. Charm: 100/1000) */}
+                                {/* Card C: Charm Progress Bar */}
                                 {easternFantasyOptions.enableCharmProgressBar && (
                                   <div className="progression-template-display-card color-fuchsia is-wide">
                                     <div className="progression-template-card-top">
                                       <span>Charm</span>
-                                      <small style={{ fontWeight: 700, color: '#f5d0fe' }}>
-                                        {charmCurr} / {charmMax} ({charmPct}%)
-                                      </small>
+                                      {(charmCurr > 0 || charmMax > 0) && (
+                                        <small style={{ fontWeight: 700, color: '#f5d0fe' }}>
+                                          {charmCurr} / {charmMax} ({charmPct}%)
+                                        </small>
+                                      )}
                                     </div>
-                                    <strong>Charm: {charmCurr}/{charmMax}</strong>
+                                    <strong>{(charmCurr > 0 || charmMax > 0) ? `Charm: ${charmCurr}/${charmMax}` : ''}</strong>
                                     <div className="progression-template-progress" style={{ marginTop: '0.4rem' }}>
                                       <div className="progression-exp-bar" style={{ height: '8px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                                         <span style={{
@@ -14506,10 +14546,7 @@ ${navPoints}  </navMap>
                                         </button>
                                       </div>
                                     </div>
-                                    <strong>Charm Points: {charmPts}</strong>
-                                    <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                                      Charm Points accumulated
-                                    </p>
+                                    <strong>{charmPts > 0 ? `Charm Points: ${charmPts}` : ''}</strong>
                                   </div>
                                 )}
                               </>
@@ -14529,10 +14566,7 @@ ${navPoints}  </navMap>
                                     <X size={11} />
                                   </button>
                                 </div>
-                                <strong>{spiritStonesVal || '0'}</strong>
-                                <p style={{ marginTop: '0.2rem', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                                  Cultivation currency & spirit stone reserves
-                                </p>
+                                <strong>{spiritStonesVal}</strong>
                               </div>
                             )}
 
@@ -14559,11 +14593,7 @@ ${navPoints}  </navMap>
                                     </button>
                                   </div>
                                 </div>
-                                {techniquesList.length === 0 ? (
-                                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                                    No techniques recorded yet.
-                                  </p>
-                                ) : (
+                                {techniquesList.length === 0 ? null : (
                                   <div className="progression-ability-list" style={{ marginTop: '0.35rem' }}>
                                     {techniquesList.map((tech, idx) => (
                                       <div key={tech.id || idx} className="progression-ability-card" style={{ padding: '0.5rem 0.65rem' }}>
@@ -14629,11 +14659,7 @@ ${navPoints}  </navMap>
                                     </button>
                                   </div>
                                 </div>
-                                {treasuresList.length === 0 ? (
-                                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                                    No treasures or items recorded yet.
-                                  </p>
-                                ) : (
+                                {treasuresList.length === 0 ? null : (
                                   <div className="progression-ability-list" style={{ marginTop: '0.35rem' }}>
                                     {treasuresList.map((item, idx) => (
                                       <div key={item.id || idx} className="progression-ability-card" style={{ padding: '0.5rem 0.65rem' }}>
@@ -18939,7 +18965,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.name || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, name: e.target.value } : prev)}
-                        placeholder="Character Name"
                       />
                     </div>
                     <div className="ai-form-field">
@@ -18948,7 +18973,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.title || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, title: e.target.value } : prev)}
-                        placeholder="e.g. Sword Sovereign"
                       />
                     </div>
 
@@ -18959,7 +18983,6 @@ ${navPoints}  </navMap>
                         list="ef-cultivation-realms-list"
                         value={progressionEditProfileDraft.realm || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, realm: e.target.value } : prev)}
-                        placeholder="e.g. Qi Condensation"
                       />
                       <datalist id="ef-cultivation-realms-list">
                         {(progressionSystem.realms || []).map(r => (
@@ -18974,7 +18997,6 @@ ${navPoints}  </navMap>
                         list="ef-cultivation-stages-list"
                         value={progressionEditProfileDraft.stage || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, stage: e.target.value, rank: e.target.value } : prev)}
-                        placeholder="e.g. Low / Medium / High / Peak"
                       />
                       <datalist id="ef-cultivation-stages-list">
                         {(progressionSystem.stageLabels || []).map(s => (
@@ -18988,8 +19010,8 @@ ${navPoints}  </navMap>
                       <input
                         type="number"
                         className="input"
-                        value={progressionEditProfileDraft.level ?? 1}
-                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, level: Math.max(1, Number(e.target.value) || 1) } : prev)}
+                        value={progressionEditProfileDraft.level || ''}
+                        onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, level: Math.max(0, Number(e.target.value) || 0) } : prev)}
                       />
                     </div>
                     <div className="ai-form-field">
@@ -18998,7 +19020,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.className || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, className: e.target.value } : prev)}
-                        placeholder="e.g. Sword Cultivator, Alchemist"
                       />
                     </div>
 
@@ -19008,7 +19029,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.classRank || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, classRank: e.target.value } : prev)}
-                        placeholder="e.g. Tier 3 Grandmaster"
                       />
                     </div>
                     <div className="ai-form-field">
@@ -19017,7 +19037,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.secondaryClass || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, secondaryClass: e.target.value } : prev)}
-                        placeholder="e.g. Formation Master"
                       />
                     </div>
 
@@ -19027,7 +19046,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.bloodline || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, bloodline: e.target.value } : prev)}
-                        placeholder="e.g. Ancient Phoenix Bloodline"
                       />
                     </div>
                     <div className="ai-form-field">
@@ -19036,7 +19054,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.bloodlineRank || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, bloodlineRank: e.target.value } : prev)}
-                        placeholder="e.g. Heaven Grade, Supreme"
                       />
                     </div>
 
@@ -19046,7 +19063,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.constitution || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, constitution: e.target.value } : prev)}
-                        placeholder="e.g. Chaotic Immortal Physique"
                       />
                     </div>
                     <div className="ai-form-field">
@@ -19055,7 +19071,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.constitutionRank || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, constitutionRank: e.target.value } : prev)}
-                        placeholder="e.g. Divine Grade, Mortal"
                       />
                     </div>
 
@@ -19065,7 +19080,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.elementalAffinity || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, elementalAffinity: e.target.value } : prev)}
-                        placeholder="e.g. Fire, Lightning, Space"
                       />
                     </div>
                     <div className="ai-form-field">
@@ -19074,7 +19088,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.elementalAffinityRank || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, elementalAffinityRank: e.target.value } : prev)}
-                        placeholder="e.g. Fire (Heaven), Lightning (Supreme)"
                       />
                     </div>
                   </div>
@@ -19093,7 +19106,6 @@ ${navPoints}  </navMap>
                           className="input"
                           value={progressionEditProfileDraft.charisma || ''}
                           onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charisma: e.target.value } : prev)}
-                          placeholder="e.g. Mortal, Earth, Heaven, Immortal"
                         />
                       </div>
                       <div className="ai-form-field">
@@ -19102,7 +19114,6 @@ ${navPoints}  </navMap>
                           className="input"
                           value={progressionEditProfileDraft.charismaTier || ''}
                           onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charismaTier: e.target.value } : prev)}
-                          placeholder="e.g. Low, Medium, High, Peak"
                         />
                       </div>
                       {easternFantasyOptions.enableCharmProgressBar && (
@@ -19112,7 +19123,7 @@ ${navPoints}  </navMap>
                             <input
                               type="number"
                               className="input"
-                              value={progressionEditProfileDraft.charmCurrent ?? 100}
+                              value={progressionEditProfileDraft.charmCurrent || ''}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmCurrent: Math.max(0, Number(e.target.value) || 0) } : prev)}
                             />
                           </div>
@@ -19121,8 +19132,8 @@ ${navPoints}  </navMap>
                             <input
                               type="number"
                               className="input"
-                              value={progressionEditProfileDraft.charmMax ?? 1000}
-                              onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmMax: Math.max(1, Number(e.target.value) || 1000) } : prev)}
+                              value={progressionEditProfileDraft.charmMax || ''}
+                              onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmMax: Math.max(0, Number(e.target.value) || 0) } : prev)}
                             />
                           </div>
                         </>
@@ -19133,7 +19144,7 @@ ${navPoints}  </navMap>
                           <input
                             type="number"
                             className="input"
-                            value={progressionEditProfileDraft.charmPoints ?? 10}
+                            value={progressionEditProfileDraft.charmPoints || ''}
                             onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, charmPoints: Number(e.target.value) || 0 } : prev)}
                           />
                         </div>
@@ -19151,7 +19162,6 @@ ${navPoints}  </navMap>
                         className="input"
                         value={progressionEditProfileDraft.spiritStones || ''}
                         onChange={e => setProgressionEditProfileDraft(prev => prev ? { ...prev, spiritStones: e.target.value } : prev)}
-                        placeholder="e.g. 5,000 Low-Grade, 120 Mid-Grade Spirit Stones"
                       />
                     </div>
                   </div>
@@ -19185,7 +19195,6 @@ ${navPoints}  </navMap>
                           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.4rem', alignItems: 'center' }}>
                             <input
                               className="input"
-                              placeholder="Technique Name"
                               value={tech.name}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                                 ...prev,
@@ -19194,7 +19203,6 @@ ${navPoints}  </navMap>
                             />
                             <input
                               className="input"
-                              placeholder="Rank / Grade"
                               value={tech.rank || ''}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                                 ...prev,
@@ -19203,7 +19211,6 @@ ${navPoints}  </navMap>
                             />
                             <input
                               className="input"
-                              placeholder="Mastery (e.g. Minor)"
                               value={tech.mastery || ''}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                                 ...prev,
@@ -19224,7 +19231,6 @@ ${navPoints}  </navMap>
                           </div>
                           <input
                             className="input"
-                            placeholder="Description / Effect"
                             value={tech.description || ''}
                             onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                               ...prev,
@@ -19251,7 +19257,7 @@ ${navPoints}  </navMap>
                           ...prev,
                           treasures: [
                             ...(prev.treasures || []),
-                            { id: crypto.randomUUID(), name: '', rank: '', category: 'Artifact', description: '' }
+                            { id: crypto.randomUUID(), name: '', rank: '', category: '', description: '' }
                           ]
                         } : prev)}
                       >
@@ -19265,7 +19271,6 @@ ${navPoints}  </navMap>
                           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.4rem', alignItems: 'center' }}>
                             <input
                               className="input"
-                              placeholder="Item / Treasure Name"
                               value={item.name}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                                 ...prev,
@@ -19274,7 +19279,6 @@ ${navPoints}  </navMap>
                             />
                             <input
                               className="input"
-                              placeholder="Rank / Grade"
                               value={item.rank || ''}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                                 ...prev,
@@ -19283,7 +19287,6 @@ ${navPoints}  </navMap>
                             />
                             <input
                               className="input"
-                              placeholder="Category (Weapon, Pill...)"
                               value={item.category || ''}
                               onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                                 ...prev,
@@ -19304,7 +19307,6 @@ ${navPoints}  </navMap>
                           </div>
                           <input
                             className="input"
-                            placeholder="Description / Effect"
                             value={item.description || ''}
                             onChange={e => setProgressionEditProfileDraft(prev => prev ? {
                               ...prev,
@@ -19346,7 +19348,6 @@ ${navPoints}  </navMap>
                   <Search size={14} />
                   <input
                     type="text"
-                    placeholder="Search character profiles..."
                     value={progressionCharacterSearch}
                     onChange={e => setProgressionCharacterSearch(e.target.value)}
                   />
@@ -19354,9 +19355,22 @@ ${navPoints}  </navMap>
 
                 {/* Existing Profiles */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)' }}>
-                    Saved Profiles ({filteredProgressionProfiles.length})
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+                      Saved Profiles ({filteredProgressionProfiles.length})
+                    </span>
+                    {progressionProfiles.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ai-sub btn-ai-secondary"
+                        onClick={wipeAllProgressionData}
+                        style={{ color: '#fca5a5', borderColor: 'rgba(248, 113, 113, 0.35)' }}
+                      >
+                        <Trash2 size={11} />
+                        Wipe All
+                      </button>
+                    )}
+                  </div>
                   {filteredProgressionProfiles.length === 0 ? (
                     <div className="empty-state-text" style={{ padding: '0.75rem' }}>
                       No character profiles match your search. Create one below from your Story Bible characters.
@@ -19388,12 +19402,14 @@ ${navPoints}  </navMap>
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                               <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{prof.name}</strong>
-                              <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '999px', background: 'rgba(139, 92, 246, 0.2)', color: '#ddd6fe' }}>
-                                Lv. {prof.level || 1}
-                              </span>
+                              {prof.level > 0 && (
+                                <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '999px', background: 'rgba(139, 92, 246, 0.2)', color: '#ddd6fe' }}>
+                                  Lv. {prof.level}
+                                </span>
+                              )}
                             </div>
                             <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                              {[prof.realm || 'Mortal', prof.stage, prof.className].filter(Boolean).join(' • ')}
+                              {[prof.realm, prof.stage, prof.className].filter(Boolean).join(' • ')}
                             </span>
                           </div>
                           <div style={{ display: 'flex', gap: '0.35rem' }}>
@@ -19549,7 +19565,7 @@ ${navPoints}  </navMap>
                       <div>
                         <strong style={{ fontSize: '0.84rem', display: 'block', color: 'var(--text-primary)' }}>Charisma System</strong>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                          Displays dedicated cards for Charisma (e.g. Mortal), Tier (e.g. High), Charm progress bar (e.g. 100/1000), and Charm Points (e.g. 10).
+                          Displays dedicated cards for Charisma, Tier, Charm progress bar, and Charm Points.
                         </span>
                       </div>
                       <input
@@ -19564,7 +19580,7 @@ ${navPoints}  </navMap>
                         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
                           <div>
                             <strong style={{ fontSize: '0.78rem', display: 'block' }}>Progress bar for Charm points before Charisma levels up</strong>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Shows Charm card (e.g. Charm: 100/1000) with progress bar</span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Shows Charm card with progress bar</span>
                           </div>
                           <input
                             type="checkbox"
@@ -19575,7 +19591,7 @@ ${navPoints}  </navMap>
                         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
                           <div>
                             <strong style={{ fontSize: '0.78rem', display: 'block' }}>Charm Points accumulated card</strong>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Shows Charm Points card (e.g. Charm Points: 10)</span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Shows Charm Points card</span>
                           </div>
                           <input
                             type="checkbox"

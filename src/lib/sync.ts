@@ -612,6 +612,24 @@ export async function deleteProgressionProfileFromCloud(userId: string, projectI
   }
 }
 
+export async function wipeProgressionFromCloud(userId: string, projectId: string): Promise<void> {
+  if (!userId || !projectId) return
+
+  try {
+    const response = await fetch("/api/sync/delete-progression-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, projectId, wipeAll: true })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error("Failed to wipe progression data from cloud:", error)
+  }
+}
+
 /**
  * Reconciles local progression system settings with PostgreSQL via Next.js API.
  */
