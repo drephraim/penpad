@@ -17054,46 +17054,25 @@ ${navPoints}  </navMap>
                 )}
               </div>
               
-              {/* Bottom-of-Chapter Author Note Toggle & Text Preview */}
-              {!isZenMode && (
-                <div className={`author-note-footer ${authorNoteEnabled ? 'enabled' : ''}`}>
-                  <div className="author-note-header">
-                    <div className="author-note-header-left">
-                      <button
-                        type="button"
-                        className={`author-note-switch ${authorNoteEnabled ? 'on' : 'off'}`}
-                        onClick={() => toggleAuthorNote()}
-                        title="Toggle whether the Author Note is appended when sending this chapter to Buffer"
-                      >
-                        <span className="author-note-switch-dot" />
-                        <span>Author Note: {authorNoteEnabled ? 'ON' : 'OFF'}</span>
-                      </button>
-                      <span className="author-note-hint">
-                        {authorNoteEnabled
-                          ? 'Appended as chapter text when you click Send to Buffer (does not affect editor tools)'
-                          : 'Toggle ON to automatically include your Author Note when sending to Buffer'}
-                      </span>
-                    </div>
-                    <div className="author-note-header-actions">
-                      <button
-                        type="button"
-                        className="author-note-edit-btn"
-                        onClick={() => setIsEditingAuthorNote(prev => !prev)}
-                      >
-                        <Edit3 size={12} />
-                        <span>{isEditingAuthorNote ? 'Done Editing' : 'Edit Note'}</span>
+              {/* Edit Author Note Modal (only opens when user explicitly clicks the Edit icon) */}
+              {isEditingAuthorNote && (
+                <div className="modal-overlay" onClick={() => setIsEditingAuthorNote(false)} style={{ zIndex: 140 }}>
+                  <div className="modal glass" style={{ maxWidth: '520px', width: '92vw' }} onClick={e => e.stopPropagation()}>
+                    <div className="modal-header">
+                      <div>
+                        <h2 className="modal-title">Edit Author Note</h2>
+                        <p className="modal-description">
+                          When Author Note is toggled ON, this text is automatically appended after <code>***</code> / <code>***</code> when you click Send to Buffer.
+                        </p>
+                      </div>
+                      <button className="btn-close-ai" onClick={() => setIsEditingAuthorNote(false)} title="Close">
+                        <X size={16} />
                       </button>
                     </div>
-                  </div>
-
-                  {isEditingAuthorNote && (
-                    <div className="author-note-editor-box">
-                      <label className="author-note-editor-label">
-                        Author Note & Reader Instructions (automatically prefixed with <code>***</code> / <code>***</code> / <code>[Author Note]</code> when buffered):
-                      </label>
+                    <div className="author-note-editor-box" style={{ marginTop: '0.5rem' }}>
                       <textarea
                         className="author-note-editor-textarea"
-                        rows={3}
+                        rows={4}
                         value={authorNoteText}
                         onChange={(e) => updateAuthorNoteText(e.target.value)}
                       />
@@ -17111,17 +17090,11 @@ ${navPoints}  </navMap>
                           onClick={() => setIsEditingAuthorNote(false)}
                         >
                           <Check size={12} />
-                          <span>Save Note</span>
+                          <span>Done</span>
                         </button>
                       </div>
                     </div>
-                  )}
-
-                  {authorNoteEnabled && (
-                    <div className="author-note-text-preview" style={{ fontFamily }}>
-                      {`***\n\n***\n\n${formatAuthorNoteLine(authorNoteText)}`}
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
 
@@ -17145,6 +17118,30 @@ ${navPoints}  </navMap>
                   </div>
 
                   <div className="status-right">
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        type="button"
+                        className={`author-note-switch ${authorNoteEnabled ? 'on' : 'off'}`}
+                        onClick={() => toggleAuthorNote()}
+                        title={
+                          authorNoteEnabled
+                            ? 'Author Note is ON — will be appended when sending to Buffer. Click to turn OFF.'
+                            : 'Author Note is OFF — click to turn ON for Send to Buffer.'
+                        }
+                      >
+                        <span className="author-note-switch-dot" />
+                        <span>Author Note: {authorNoteEnabled ? 'ON' : 'OFF'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="author-note-edit-btn"
+                        onClick={() => setIsEditingAuthorNote(true)}
+                        title="Edit Author Note text"
+                        style={{ padding: '0.22rem 0.4rem' }}
+                      >
+                        <Edit3 size={11} />
+                      </button>
+                    </div>
                     <button className="status-goal-btn" onClick={changeWordGoal} title="Change Word Goal">
                       🎯 Goal: {wordGoal} words
                     </button>
