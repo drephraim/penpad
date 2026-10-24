@@ -2229,6 +2229,73 @@ function EditorContent() {
   const [reconnectError, setReconnectError] = useState<string | null>(null)
 
   const [isBuffering, setIsBuffering] = useState(false)
+  const DEFAULT_AUTHOR_NOTE_TEXT =
+    '[Author Note] Join this Discord channel to keep track of announcements and also to stay engaged in the community.'
+
+  const [authorNoteEnabled, setAuthorNoteEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('penpad_author_note_enabled') === 'true'
+  })
+  const [authorNoteText, setAuthorNoteText] = useState<string>(() => {
+    if (typeof window === 'undefined') return DEFAULT_AUTHOR_NOTE_TEXT
+    const saved = window.localStorage.getItem('penpad_author_note_text')
+    return saved && saved.trim() ? saved : DEFAULT_AUTHOR_NOTE_TEXT
+  })
+  const [isEditingAuthorNote, setIsEditingAuthorNote] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !projectId) return
+    const projEnabled = window.localStorage.getItem(`penpad_author_note_enabled_${projectId}`)
+    if (projEnabled !== null) {
+      setAuthorNoteEnabled(projEnabled === 'true')
+    }
+    const projText = window.localStorage.getItem(`penpad_author_note_text_${projectId}`)
+    if (projText && projText.trim()) {
+      setAuthorNoteText(projText)
+    }
+  }, [projectId])
+
+  const toggleAuthorNote = useCallback((nextValue?: boolean) => {
+    setAuthorNoteEnabled(prev => {
+      const next = typeof nextValue === 'boolean' ? nextValue : !prev
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('penpad_author_note_enabled', String(next))
+        if (projectId) {
+          window.localStorage.setItem(`penpad_author_note_enabled_${projectId}`, String(next))
+        }
+      }
+      return next
+    })
+  }, [projectId])
+
+  const updateAuthorNoteText = useCallback((nextText: string) => {
+    setAuthorNoteText(nextText)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('penpad_author_note_text', nextText)
+      if (projectId) {
+        window.localStorage.setItem(`penpad_author_note_text_${projectId}`, nextText)
+      }
+    }
+  }, [projectId])
+
+  const formatAuthorNoteLine = useCallback((rawNote: string): string => {
+    const trimmed = (rawNote || '').trim() || DEFAULT_AUTHOR_NOTE_TEXT
+    if (/^\[author\s*note\]/i.test(trimmed)) {
+      return trimmed
+    }
+    return `[Author Note] ${trimmed}`
+  }, [DEFAULT_AUTHOR_NOTE_TEXT])
+
+  const appendAuthorNoteToContent = useCallback((rawContent: string): string => {
+    const baseContent = (rawContent || '').replace(/\s+$/, '')
+    if (!authorNoteEnabled) return rawContent || ''
+    const formattedNote = formatAuthorNoteLine(authorNoteText)
+    const authorNoteSuffix = `***\n\n***\n\n${formattedNote}`
+    if (baseContent.endsWith(authorNoteSuffix) || baseContent.endsWith(formattedNote)) {
+      return baseContent
+    }
+    return baseContent ? `${baseContent}\n${authorNoteSuffix}` : authorNoteSuffix
+  }, [authorNoteEnabled, authorNoteText, formatAuthorNoteLine])
   const [bufferStatus, setBufferStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
   const handleSendToBuffer = async () => {
@@ -2246,7 +2313,7 @@ function EditorContent() {
         body: JSON.stringify({
           novelName: projectName,
           chapterTitle: activeNote.title || 'Untitled Chapter',
-          chapterContent: activeNote.content || '',
+          chapterContent: appendAuthorNoteToContent(lastEditorContentRef.current || activeNote.content || ''),
         }),
       })
 
@@ -11924,6 +11991,36 @@ ${navPoints}  </navMap>
         <div className="header-right">
           {activeNote && (
             <button
+              className={`btn-author-note-toggle ${authorNoteEnabled ? 'active' : ''}`}
+              onClick={() => toggleAuthorNote()}
+              title={
+                authorNoteEnabled
+                  ? 'Author Note is ON — will be appended when sending to Buffer. Click to toggle off.'
+                  : 'Author Note is OFF — click to toggle on for Send to Buffer.'
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '0 9px',
+                height: '32px',
+                borderRadius: '6px',
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                color: authorNoteEnabled ? '#c4b5fd' : 'var(--text-dim)',
+                border: authorNoteEnabled
+                  ? '1px solid rgba(167, 139, 250, 0.45)'
+                  : '1px solid var(--border-light, rgba(255, 255, 255, 0.1))',
+                backgroundColor: authorNoteEnabled ? 'rgba(139, 92, 246, 0.16)' : 'rgba(255, 255, 255, 0.03)',
+                transition: 'all 0.2s',
+                cursor: 'pointer'
+              }}
+            >
+              <span>Author Note: {authorNoteEnabled ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+          {activeNote && (
+            <button
               className={`btn-buffer ${bufferStatus}`}
               onClick={handleSendToBuffer}
               disabled={isBuffering}
@@ -16951,12 +17048,83 @@ ${navPoints}  </navMap>
                         blockquote: ({ children }) => <blockquote>{React.Children.map(children, child => injectLoreChips(child))}</blockquote>,
                       }}
                     >
-                      {activeNote.content || "_Start writing to see preview..."}
+                      {activeNote.content ? appendAuthorNoteToContent(activeNote.content) : "_Start writing to see preview..."}
                     </ReactMarkdown>
                   </div>
                 )}
               </div>
               
+              {/* Bottom-of-Chapter Author Note Toggle & Text Preview */}
+              {!isZenMode && (
+                <div className={`author-note-footer ${authorNoteEnabled ? 'enabled' : ''}`}>
+                  <div className="author-note-header">
+                    <div className="author-note-header-left">
+                      <button
+                        type="button"
+                        className={`author-note-switch ${authorNoteEnabled ? 'on' : 'off'}`}
+                        onClick={() => toggleAuthorNote()}
+                        title="Toggle whether the Author Note is appended when sending this chapter to Buffer"
+                      >
+                        <span className="author-note-switch-dot" />
+                        <span>Author Note: {authorNoteEnabled ? 'ON' : 'OFF'}</span>
+                      </button>
+                      <span className="author-note-hint">
+                        {authorNoteEnabled
+                          ? 'Appended as chapter text when you click Send to Buffer (does not affect editor tools)'
+                          : 'Toggle ON to automatically include your Author Note when sending to Buffer'}
+                      </span>
+                    </div>
+                    <div className="author-note-header-actions">
+                      <button
+                        type="button"
+                        className="author-note-edit-btn"
+                        onClick={() => setIsEditingAuthorNote(prev => !prev)}
+                      >
+                        <Edit3 size={12} />
+                        <span>{isEditingAuthorNote ? 'Done Editing' : 'Edit Note'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {isEditingAuthorNote && (
+                    <div className="author-note-editor-box">
+                      <label className="author-note-editor-label">
+                        Author Note & Reader Instructions (automatically prefixed with <code>***</code> / <code>***</code> / <code>[Author Note]</code> when buffered):
+                      </label>
+                      <textarea
+                        className="author-note-editor-textarea"
+                        rows={3}
+                        value={authorNoteText}
+                        onChange={(e) => updateAuthorNoteText(e.target.value)}
+                      />
+                      <div className="author-note-editor-footer">
+                        <button
+                          type="button"
+                          className="author-note-reset-btn"
+                          onClick={() => updateAuthorNoteText(DEFAULT_AUTHOR_NOTE_TEXT)}
+                        >
+                          Reset to Default Discord Note
+                        </button>
+                        <button
+                          type="button"
+                          className="author-note-save-btn"
+                          onClick={() => setIsEditingAuthorNote(false)}
+                        >
+                          <Check size={12} />
+                          <span>Save Note</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {authorNoteEnabled && (
+                    <div className="author-note-text-preview" style={{ fontFamily }}>
+                      {`***\n\n***\n\n${formatAuthorNoteLine(authorNoteText)}`}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Status Bar: Hide in Zen Mode */}
               {!isZenMode && (
                 <div className="editor-status-bar">
@@ -28395,6 +28563,199 @@ ${navPoints}  </navMap>
           border: 1px solid var(--surface-border);
           line-height: 1.55;
           color: var(--text-secondary);
+          overflow-y: auto;
+        }
+
+        .author-note-footer {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          padding: 0.55rem 0.75rem;
+          margin-top: 0.35rem;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--surface-border);
+          flex-shrink: 0;
+          transition: all 0.18s ease;
+        }
+
+        .author-note-footer.enabled {
+          background: rgba(139, 92, 246, 0.06);
+          border-color: rgba(167, 139, 250, 0.28);
+        }
+
+        .author-note-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.65rem;
+          flex-wrap: wrap;
+        }
+
+        .author-note-header-left {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+          min-width: 0;
+          flex-wrap: wrap;
+        }
+
+        .author-note-switch {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.25rem 0.6rem;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-dim);
+          transition: all 0.18s ease;
+        }
+
+        .author-note-switch.on {
+          background: rgba(139, 92, 246, 0.2);
+          border-color: rgba(167, 139, 250, 0.5);
+          color: #ede9fe;
+        }
+
+        .author-note-switch-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: rgba(148, 163, 184, 0.5);
+          transition: all 0.18s ease;
+        }
+
+        .author-note-switch.on .author-note-switch-dot {
+          background: #10b981;
+          box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+        }
+
+        .author-note-hint {
+          font-size: 0.7rem;
+          color: var(--text-dim);
+        }
+
+        .author-note-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+
+        .author-note-edit-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          padding: 0.24rem 0.55rem;
+          border-radius: 6px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--surface-border);
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .author-note-edit-btn:hover {
+          background: rgba(255, 255, 255, 0.09);
+          color: var(--text-primary);
+        }
+
+        .author-note-editor-box {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+          padding: 0.6rem;
+          border-radius: 8px;
+          background: rgba(0, 0, 0, 0.24);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .author-note-editor-label {
+          font-size: 0.7rem;
+          color: var(--text-secondary);
+          font-weight: 600;
+        }
+
+        .author-note-editor-label code {
+          padding: 0.08rem 0.3rem;
+          border-radius: 4px;
+          background: rgba(139, 92, 246, 0.16);
+          color: #ddd6fe;
+          font-size: 0.66rem;
+        }
+
+        .author-note-editor-textarea {
+          width: 100%;
+          border-radius: 7px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(0, 0, 0, 0.3);
+          color: var(--text-primary);
+          padding: 0.5rem 0.65rem;
+          font-size: 0.78rem;
+          line-height: 1.45;
+          resize: vertical;
+          outline: none;
+        }
+
+        .author-note-editor-textarea:focus {
+          border-color: rgba(167, 139, 250, 0.55);
+        }
+
+        .author-note-editor-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+
+        .author-note-reset-btn {
+          background: transparent;
+          border: none;
+          padding: 0;
+          color: var(--text-dim);
+          font-size: 0.68rem;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .author-note-reset-btn:hover {
+          color: var(--text-secondary);
+          text-decoration: underline;
+        }
+
+        .author-note-save-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          padding: 0.26rem 0.65rem;
+          border-radius: 6px;
+          background: rgba(139, 92, 246, 0.28);
+          border: 1px solid rgba(167, 139, 250, 0.48);
+          color: #f5f3ff;
+          font-size: 0.7rem;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .author-note-save-btn:hover {
+          background: rgba(139, 92, 246, 0.4);
+        }
+
+        .author-note-text-preview {
+          white-space: pre-wrap;
+          padding: 0.55rem 0.7rem;
+          border-radius: 7px;
+          background: rgba(0, 0, 0, 0.18);
+          border-left: 2px solid rgba(167, 139, 250, 0.55);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          line-height: 1.45;
+          max-height: 120px;
           overflow-y: auto;
         }
 
