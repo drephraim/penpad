@@ -2232,37 +2232,36 @@ function EditorContent() {
   const DEFAULT_AUTHOR_NOTE_TEXT =
     '[Author Note] Join this Discord channel to keep track of announcements and also to stay engaged in the community.'
 
-  const [authorNoteEnabled, setAuthorNoteEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem('penpad_author_note_enabled') === 'true'
-  })
-  const [authorNoteText, setAuthorNoteText] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_AUTHOR_NOTE_TEXT
-    const saved = window.localStorage.getItem('penpad_author_note_text')
-    return saved && saved.trim() ? saved : DEFAULT_AUTHOR_NOTE_TEXT
-  })
+  const [authorNoteEnabled, setAuthorNoteEnabled] = useState<boolean>(false)
+  const [authorNoteText, setAuthorNoteText] = useState<string>(DEFAULT_AUTHOR_NOTE_TEXT)
   const [isEditingAuthorNote, setIsEditingAuthorNote] = useState(false)
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !projectId) return
+    if (typeof window === 'undefined') return
+    // Clean up any legacy global keys so novels never share Author Notes
+    window.localStorage.removeItem('penpad_author_note_enabled')
+    window.localStorage.removeItem('penpad_author_note_text')
+
+    if (!projectId) {
+      setAuthorNoteEnabled(false)
+      setAuthorNoteText(DEFAULT_AUTHOR_NOTE_TEXT)
+      setIsEditingAuthorNote(false)
+      return
+    }
+
     const projEnabled = window.localStorage.getItem(`penpad_author_note_enabled_${projectId}`)
-    if (projEnabled !== null) {
-      setAuthorNoteEnabled(projEnabled === 'true')
-    }
+    setAuthorNoteEnabled(projEnabled === 'true')
+
     const projText = window.localStorage.getItem(`penpad_author_note_text_${projectId}`)
-    if (projText && projText.trim()) {
-      setAuthorNoteText(projText)
-    }
-  }, [projectId])
+    setAuthorNoteText(projText && projText.trim() ? projText : DEFAULT_AUTHOR_NOTE_TEXT)
+    setIsEditingAuthorNote(false)
+  }, [projectId, DEFAULT_AUTHOR_NOTE_TEXT])
 
   const toggleAuthorNote = useCallback((nextValue?: boolean) => {
     setAuthorNoteEnabled(prev => {
       const next = typeof nextValue === 'boolean' ? nextValue : !prev
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('penpad_author_note_enabled', String(next))
-        if (projectId) {
-          window.localStorage.setItem(`penpad_author_note_enabled_${projectId}`, String(next))
-        }
+      if (typeof window !== 'undefined' && projectId) {
+        window.localStorage.setItem(`penpad_author_note_enabled_${projectId}`, String(next))
       }
       return next
     })
@@ -2270,11 +2269,8 @@ function EditorContent() {
 
   const updateAuthorNoteText = useCallback((nextText: string) => {
     setAuthorNoteText(nextText)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('penpad_author_note_text', nextText)
-      if (projectId) {
-        window.localStorage.setItem(`penpad_author_note_text_${projectId}`, nextText)
-      }
+    if (typeof window !== 'undefined' && projectId) {
+      window.localStorage.setItem(`penpad_author_note_text_${projectId}`, nextText)
     }
   }, [projectId])
 
