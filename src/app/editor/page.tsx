@@ -2290,11 +2290,11 @@ function EditorContent() {
     const baseContent = (rawContent || '').replace(/\s+$/, '')
     if (!authorNoteEnabled) return rawContent || ''
     const formattedNote = formatAuthorNoteLine(authorNoteText)
-    const authorNoteSuffix = `***\n\n***\n\n${formattedNote}`
-    if (baseContent.endsWith(authorNoteSuffix) || baseContent.endsWith(formattedNote)) {
+    const authorNoteSuffix = `***\n\n${formattedNote}\n\n***`
+    if (baseContent.endsWith(authorNoteSuffix) || baseContent.includes(formattedNote)) {
       return baseContent
     }
-    return baseContent ? `${baseContent}\n${authorNoteSuffix}` : authorNoteSuffix
+    return baseContent ? `${baseContent}\n\n${authorNoteSuffix}` : authorNoteSuffix
   }, [authorNoteEnabled, authorNoteText, formatAuthorNoteLine])
   const [bufferStatus, setBufferStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
@@ -17062,7 +17062,7 @@ ${navPoints}  </navMap>
                       <div>
                         <h2 className="modal-title">Edit Author Note</h2>
                         <p className="modal-description">
-                          When Author Note is toggled ON, this text is automatically appended after <code>***</code> / <code>***</code> when you click Send to Buffer.
+                          When Author Note is toggled ON, this text is automatically placed between <code>***</code> and <code>***</code> at the end of the chapter when you click Send to Buffer.
                         </p>
                       </div>
                       <button className="btn-close-ai" onClick={() => setIsEditingAuthorNote(false)} title="Close">
