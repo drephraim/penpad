@@ -49,7 +49,7 @@ export interface PenPadDB {
       updatedAt: number;
     };
   };
-  'arc_seeds': {
+  'reminders': {
     key: string;
     value: {
       projectId: string;
@@ -95,7 +95,7 @@ export interface PenPadDB {
 }
 
 const DB_NAME = 'penpad_engine_db';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 export async function getDB(): Promise<IDBPDatabase<any>> {
   return openDB<any>(DB_NAME, DB_VERSION, {
@@ -118,8 +118,11 @@ export async function getDB(): Promise<IDBPDatabase<any>> {
       if (!db.objectStoreNames.contains('story_brain')) {
         db.createObjectStore('story_brain', { keyPath: 'projectId' });
       }
-      if (!db.objectStoreNames.contains('arc_seeds')) {
-        db.createObjectStore('arc_seeds', { keyPath: 'projectId' });
+      if (db.objectStoreNames.contains('arc_seeds')) {
+        db.deleteObjectStore('arc_seeds');
+      }
+      if (!db.objectStoreNames.contains('reminders')) {
+        db.createObjectStore('reminders', { keyPath: 'projectId' });
       }
       if (!db.objectStoreNames.contains('version_history')) {
         db.createObjectStore('version_history', { keyPath: 'noteId' });
@@ -177,7 +180,7 @@ export async function restoreDirectoryHandleForProject(projectId: string): Promi
   return null;
 }
 
-// IndexedDB Helper CRUD functions for Manuscripts, Bible, Brain, and Versions
+// IndexedDB Helper CRUD functions for Manuscripts, Bible, Brain, Reminders, and Versions
 export async function saveManuscriptLocal(projectId: string, data: any[]) {
   const db = await getDB();
   await db.put('manuscripts', { projectId, data, updatedAt: Date.now() });
@@ -211,14 +214,14 @@ export async function getStoryBrainLocal(projectId: string): Promise<any[] | nul
   return res ? res.data : null;
 }
 
-export async function saveArcSeedsLocal(projectId: string, data: any[]) {
+export async function saveRemindersLocal(projectId: string, data: any[]) {
   const db = await getDB();
-  await db.put('arc_seeds', { projectId, data, updatedAt: Date.now() });
+  await db.put('reminders', { projectId, data, updatedAt: Date.now() });
 }
 
-export async function getArcSeedsLocal(projectId: string): Promise<any[] | null> {
+export async function getRemindersLocal(projectId: string): Promise<any[] | null> {
   const db = await getDB();
-  const res = await db.get('arc_seeds', projectId);
+  const res = await db.get('reminders', projectId);
   return res ? res.data : null;
 }
 

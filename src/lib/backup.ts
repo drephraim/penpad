@@ -1,8 +1,8 @@
 import {
   getManuscriptLocal, getStoryBibleLocal, getStoryBrainLocal,
-  getArcSeedsLocal, getReferenceLibraryLocal, getNameForgeDataLocal,
+  getRemindersLocal, getReferenceLibraryLocal, getNameForgeDataLocal,
   saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal,
-  saveArcSeedsLocal, saveReferenceLibraryLocal, saveNameForgeDataLocal,
+  saveRemindersLocal, saveReferenceLibraryLocal, saveNameForgeDataLocal,
   getExportHistoryLocal, saveExportHistoryLocal
 } from './db'
 
@@ -16,7 +16,7 @@ export interface BackupData {
       manuscript: unknown[] | null
       storyBible: unknown[] | null
       storyBrain: unknown[] | null
-      arcSeeds: unknown[] | null
+      reminders: unknown[] | null
       referenceLibrary: unknown[] | null
       nameForgeData: unknown[] | Record<string, unknown> | null
       exportHistory: Record<string, unknown> | null
@@ -36,11 +36,11 @@ export async function createBackup(projectIds: string[], userId?: string): Promi
   const projects: BackupData['projects'] = {}
 
   for (const projectId of projectIds) {
-    const [manuscript, bible, brain, arcs, refs, names, exports] = await Promise.all([
+    const [manuscript, bible, brain, reminders, refs, names, exports] = await Promise.all([
       getManuscriptLocal(projectId),
       getStoryBibleLocal(projectId),
       getStoryBrainLocal(projectId),
-      getArcSeedsLocal(projectId),
+      getRemindersLocal(projectId),
       getReferenceLibraryLocal(projectId),
       getNameForgeDataLocal(projectId),
       getExportHistoryLocal(projectId)
@@ -85,7 +85,7 @@ export async function createBackup(projectIds: string[], userId?: string): Promi
       manuscript,
       storyBible: bible,
       storyBrain: brain,
-      arcSeeds: arcs,
+      reminders,
       referenceLibrary: refs,
       nameForgeData: names ? [names] : null,
       exportHistory: exports,
@@ -132,8 +132,8 @@ export async function restoreBackup(data: BackupData, userId?: string): Promise<
     if (projectData.storyBrain) {
       ops.push(saveStoryBrainLocal(projectId, projectData.storyBrain))
     }
-    if (projectData.arcSeeds) {
-      ops.push(saveArcSeedsLocal(projectId, projectData.arcSeeds))
+    if (projectData.reminders) {
+      ops.push(saveRemindersLocal(projectId, projectData.reminders))
     }
     if (projectData.referenceLibrary) {
       ops.push(saveReferenceLibraryLocal(projectId, projectData.referenceLibrary))

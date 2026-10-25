@@ -17,7 +17,8 @@ import {
   User, PawPrint, MapPin, Globe, Package, BrainCircuit, Link2, MessageSquare, Star, History, FileDown, Layers, TrendingUp, GripVertical,
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, Circle,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
-  Upload, HardDrive, BarChart3, Gem, Award, Zap, Shield, Key, Compass
+  Upload, HardDrive, BarChart3, Gem, Award, Zap, Shield, Key, Compass,
+  Bell, BellOff, Clock
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -28,8 +29,8 @@ import {
   getStoryBibleLocal,
   saveStoryBrainLocal,
   getStoryBrainLocal,
-  saveArcSeedsLocal,
-  getArcSeedsLocal,
+  saveRemindersLocal,
+  getRemindersLocal,
   saveChapterVersionsLocal,
   getChapterVersionsLocal,
   saveExportHistoryLocal,
@@ -49,9 +50,9 @@ import {
   syncBrainWithCloud,
   saveBrainEntryToCloud,
   deleteBrainEntryFromCloud,
-  syncArcSeedsWithCloud,
-  saveArcSeedToCloud,
-  deleteArcSeedFromCloud,
+  syncRemindersWithCloud,
+  saveReminderToCloud,
+  deleteReminderFromCloud,
   syncProgressionProfilesWithCloud,
   saveProgressionProfileToCloud,
   deleteProgressionProfileFromCloud,
@@ -65,8 +66,8 @@ import {
   importProjectDataFromCloud,
   BibleEntry,
   BrainEntry,
-  ArcSeed,
-  ArcSeedStatus,
+  Reminder,
+  ReminderStatus,
   Project,
   saveProjectToCloud
 } from '@/lib/sync'
@@ -125,7 +126,7 @@ const MILESTONES: Milestone[] = [
 ]
 
 type ViewMode = 'edit' | 'preview'
-type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'arcs' | 'references' | 'wordreport'
+type SidebarTab = 'manuscript' | 'insights' | 'appearance' | 'progression' | 'bible' | 'names' | 'sounds' | 'brain' | 'reminders' | 'references' | 'wordreport'
 type BrainEntityType = NonNullable<BrainEntry['entityType']>
 type BrainImportance = NonNullable<BrainEntry['importance']>
 type BrainTypeFilter = 'all' | BrainEntityType
@@ -141,7 +142,7 @@ type BrainSuggestion = {
   mentionCount?: number
 }
 type ExportFormat = 'folder' | 'txt' | 'md' | 'html' | 'doc' | 'pdf' | 'epub'
-type SearchSource = 'chapter' | 'brain' | 'arc' | 'lore'
+type SearchSource = 'chapter' | 'brain' | 'reminder' | 'lore'
 
 type ProgressionStatKey = 'strength' | 'agility' | 'endurance' | 'vitality' | 'intelligence' | 'sense' | 'mana'
 export type ArcMapStatus = 'open' | 'closed'
@@ -2468,12 +2469,21 @@ function EditorContent() {
   const [brainScanUpdatesLoading, setBrainScanUpdatesLoading] = useState(false)
   const [brainScanUpdateResults, setBrainScanUpdateResults] = useState<{entityName: string; updatedSummary: string}[]>([])
   const [activeBrainPopup, setActiveBrainPopup] = useState<'ask' | 'suggestions' | 'continuity' | null>(null)
-  const [arcSeeds, setArcSeeds] = useState<ArcSeed[]>([])
-  const [arcSeedLoading, setArcSeedLoading] = useState(false)
-  const [arcSeedError, setArcSeedError] = useState("")
-  const [selectedArcSeedId, setSelectedArcSeedId] = useState<string | null>(null)
-  const [arcSeedSearchQuery, setArcSeedSearchQuery] = useState("")
-  const [arcSeedStatusFilter, setArcSeedStatusFilter] = useState<ArcSeedStatus | 'all'>('all')
+  const REMINDER_POPUP_INTERVAL_MS = 48 * 60 * 60 * 1000
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [remindersLoaded, setRemindersLoaded] = useState(false)
+  const [selectedReminderId, setSelectedReminderId] = useState<string | null>(null)
+  const [reminderSearchQuery, setReminderSearchQuery] = useState("")
+  const [reminderStatusFilter, setReminderStatusFilter] = useState<ReminderStatus | 'all'>('all')
+  const [showReminderPopup, setShowReminderPopup] = useState(false)
+  const [reminderPopupSessionIds, setReminderPopupSessionIds] = useState<string[]>([])
+  const [reminderPopupScheduled, setReminderPopupScheduled] = useState(false)
+  const [lastReminderPopupAt, setLastReminderPopupAt] = useState<number | null>(null)
+  const [reminderAddedFeedback, setReminderAddedFeedback] = useState(false)
+  const reminderFeedbackTimerRef = useRef<number | null>(null)
+  const [showNewReminderComposer, setShowNewReminderComposer] = useState(false)
+  const [newReminderContent, setNewReminderContent] = useState("")
+  const [newReminderNote, setNewReminderNote] = useState("")
 
   // Focus Sprints & Gamified Focus Tracker States
   const [sprintDuration, setSprintDuration] = useState(1500)
@@ -6930,7 +6940,7 @@ const fillEmptyCustomJsonData = (
   const handleImportFromDatabase = useCallback(async () => {
     if (!user || !projectId || databaseImporting) return
 
-    const confirmed = window.confirm("Import this project from the database? This replaces the local cached manuscript, Brain Map, World Bible, progression data, references, arc seeds, and Name Forge data for this project.")
+    const confirmed = window.confirm("Import this project from the database? This replaces the local cached manuscript, Brain Map, World Bible, progression data, references, reminders, and Name Forge data for this project.")
     if (!confirmed) return
 
     setDatabaseImporting(true)
@@ -6953,7 +6963,7 @@ const fillEmptyCustomJsonData = (
       })
       const importedBible = (data.bibleEntries || []).sort((a, b) => b.updatedAt - a.updatedAt)
       const importedBrain = (data.brainEntries || []).sort((a, b) => b.updatedAt - a.updatedAt)
-      const importedArcSeeds = (data.arcSeeds || []).sort((a, b) => b.updatedAt - a.updatedAt)
+      const importedReminders = (data.reminders || []).sort((a, b) => b.updatedAt - a.updatedAt)
       const importedReferences = (Array.isArray(data.referenceLibrary) ? data.referenceLibrary : []) as ReferenceCategory[]
       const importedNameForge = data.nameForgeData || {}
       const nameForgeShortlist = Array.isArray(importedNameForge.shortlist) ? importedNameForge.shortlist as GeneratedNameOption[] : []
@@ -6967,7 +6977,7 @@ const fillEmptyCustomJsonData = (
         saveManuscriptLocal(projectId, importedNotes),
         saveStoryBibleLocal(projectId, importedBible),
         saveStoryBrainLocal(projectId, importedBrain),
-        saveArcSeedsLocal(projectId, importedArcSeeds),
+        saveRemindersLocal(projectId, importedReminders),
         saveReferenceLibraryLocal(projectId, importedReferences),
         saveNameForgeDataLocal(projectId, {
           shortlist: nameForgeShortlist,
@@ -6989,7 +6999,7 @@ const fillEmptyCustomJsonData = (
       setNotes(importedNotes)
       setBibleEntries(importedBible)
       setBrainEntries(importedBrain)
-      setArcSeeds(importedArcSeeds)
+      setReminders(importedReminders)
       setProgressionSystem(importedSystem)
       setProgressionProfiles(importedProfiles)
       setReferenceCategories(importedReferences.sort((a, b) => b.updatedAt - a.updatedAt))
@@ -7008,8 +7018,8 @@ const fillEmptyCustomJsonData = (
       if (selectedBrainEntryId && !importedBrain.some(entry => entry.id === selectedBrainEntryId)) {
         setSelectedBrainEntryId(null)
       }
-      if (selectedArcSeedId && !importedArcSeeds.some(seed => seed.id === selectedArcSeedId)) {
-        setSelectedArcSeedId(null)
+      if (selectedReminderId && !importedReminders.some(item => item.id === selectedReminderId)) {
+        setSelectedReminderId(null)
       }
       if (importedProfiles.length > 0) {
         setSelectedProgressionProfileId(importedProfiles[0].id)
@@ -7021,7 +7031,7 @@ const fillEmptyCustomJsonData = (
 
       setLastSavedAt(data.importedAt)
       setSyncStatus("saved")
-      setDatabaseImportMessage(`Imported ${importedNotes.length} chapters, ${importedBible.length} Bible entries, ${importedBrain.length} Brain Map cards, ${importedProfiles.length} progression profiles, ${importedArcSeeds.length} arc seeds, and ${importedReferences.length} reference groups.`)
+      setDatabaseImportMessage(`Imported ${importedNotes.length} chapters, ${importedBible.length} Bible entries, ${importedBrain.length} Brain Map cards, ${importedProfiles.length} progression profiles, ${importedReminders.length} reminders, and ${importedReferences.length} reference groups.`)
     } catch (err) {
       console.error("Database import failed:", err)
       setSyncStatus("error")
@@ -7041,7 +7051,7 @@ const fillEmptyCustomJsonData = (
     normalizeImportedProgressionProfiles,
     normalizeProgressionSystem,
     projectId,
-    selectedArcSeedId,
+    selectedReminderId,
     selectedBrainEntryId,
     user
   ])
@@ -8800,109 +8810,172 @@ const fillEmptyCustomJsonData = (
     }
   }, [user, projectId])
 
-  const fetchArcSeeds = useCallback(async () => {
+  const getReminderPopupStorageKey = useCallback((pid: string) => `penpad_reminder_last_popup_${pid}`, [])
+
+  const openReminderPopupModal = useCallback((isScheduled: boolean, listOverride?: Reminder[]) => {
+    const source = listOverride ?? reminders
+    const openIds = source.filter(item => item.status === "open").map(item => item.id)
+    setReminderPopupSessionIds(openIds)
+    setReminderPopupScheduled(isScheduled)
+    setShowReminderPopup(true)
+  }, [reminders])
+
+  const closeReminderPopupModal = useCallback(() => {
+    setShowReminderPopup(false)
+    if (projectId) {
+      const now = Date.now()
+      const storedRaw = localStorage.getItem(getReminderPopupStorageKey(projectId))
+      const storedTs = storedRaw ? Number(storedRaw) : NaN
+      const isDue = Number.isFinite(storedTs) && storedTs > 0 && (now - storedTs >= REMINDER_POPUP_INTERVAL_MS)
+      if (reminderPopupScheduled || isDue) {
+        localStorage.setItem(getReminderPopupStorageKey(projectId), String(now))
+        setLastReminderPopupAt(now)
+      }
+    }
+    setReminderPopupScheduled(false)
+  }, [projectId, reminderPopupScheduled, REMINDER_POPUP_INTERVAL_MS, getReminderPopupStorageKey])
+
+  useEffect(() => {
+    if (!projectId) return
+    setShowReminderPopup(false)
+    setReminderPopupScheduled(false)
+    setReminderPopupSessionIds([])
+    setSelectedReminderId(null)
+    const stored = localStorage.getItem(getReminderPopupStorageKey(projectId))
+    const parsed = stored ? Number(stored) : NaN
+    setLastReminderPopupAt(Number.isFinite(parsed) && parsed > 0 ? parsed : null)
+  }, [projectId, getReminderPopupStorageKey])
+
+  useEffect(() => {
+    if (!showReminderPopup) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeReminderPopupModal()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [showReminderPopup, closeReminderPopupModal])
+
+  const fetchReminders = useCallback(async () => {
     if (!user || !projectId) return
+    setRemindersLoaded(false)
     try {
-      let seedList: ArcSeed[] = (await getArcSeedsLocal(projectId)) || []
-      if (seedList.length === 0) {
-        const stored = localStorage.getItem(`penpad_arc_seeds_${projectId}`)
+      let reminderList: Reminder[] = (await getRemindersLocal(projectId)) || []
+      if (reminderList.length === 0) {
+        const stored = localStorage.getItem(`penpad_reminders_${projectId}`)
         if (stored) {
           const parsed = JSON.parse(stored)
-          seedList = parsed
-          await saveArcSeedsLocal(projectId, parsed)
-          localStorage.removeItem(`penpad_arc_seeds_${projectId}`)
+          reminderList = parsed
+          await saveRemindersLocal(projectId, parsed)
+          localStorage.removeItem(`penpad_reminders_${projectId}`)
         }
       }
-      setArcSeeds(seedList)
+      setReminders(reminderList)
 
-      const synced = await syncArcSeedsWithCloud(user.uid, projectId, seedList)
-      setArcSeeds(synced)
-      await saveArcSeedsLocal(projectId, synced)
+      const synced = await syncRemindersWithCloud(user.uid, projectId, reminderList)
+      setReminders(synced)
+      await saveRemindersLocal(projectId, synced)
     } catch {
-      console.error("Fetch/Sync arc seeds failed")
+      console.error("Fetch/Sync reminders failed")
+    } finally {
+      setRemindersLoaded(true)
     }
   }, [user, projectId])
 
-  const getArcSeedChapterLabel = (seed: ArcSeed) => {
-    if (seed.chapterNumber) return `Chapter ${seed.chapterNumber}`
-    return seed.chapterTitle || "Unknown chapter"
-  }
+  useEffect(() => {
+    if (!projectId || !remindersLoaded) return
+    const openList = reminders.filter(item => item.status === "open")
+    if (openList.length === 0) return
 
-  const generateArcSeedFromChapter = async () => {
-    if (!activeNote || !projectId || !user || arcSeedLoading) return
-    setArcSeedLoading(true)
-    setArcSeedError("")
+    const checkSchedule = () => {
+      if (showReminderPopup) return
+      const storedRaw = localStorage.getItem(getReminderPopupStorageKey(projectId))
+      const storedTs = storedRaw ? Number(storedRaw) : NaN
+      const earliestOpenCreated = Math.min(...openList.map(item => item.createdAt || Date.now()))
+      const baseline = (Number.isFinite(storedTs) && storedTs > 0)
+        ? storedTs
+        : (lastReminderPopupAt || earliestOpenCreated)
 
-    try {
-      const chapterNumber = getNoteChapterNumber(activeNote)
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "arc_seed_extract",
-          chapterContent: activeNote.content,
-          chapterTitle: activeNote.title,
-          chapterNumber,
-          existingArcSeeds: arcSeeds,
-          bibleEntries,
-          brainEntries: brainEntries.filter(entry => entry.aiSummary !== "Analyzing...")
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to extract an Arc Seed")
-
-      const seedData = data.seed || {}
-      const now = Date.now()
-      const nextSeed: ArcSeed = {
-        id: crypto.randomUUID(),
-        title: String(seedData.title || "Future thread").trim(),
-        summary: String(seedData.summary || "").trim(),
-        whyItMatters: String(seedData.whyItMatters || "").trim(),
-        futurePayoff: String(seedData.futurePayoff || "").trim(),
-        evidence: String(seedData.evidence || "").trim(),
-        chapterTitle: activeNote.title || "Untitled",
-        chapterId: activeNote.id,
-        chapterNumber,
-        relatedCharacters: Array.isArray(seedData.relatedCharacters) ? seedData.relatedCharacters : [],
-        relatedEntities: Array.isArray(seedData.relatedEntities) ? seedData.relatedEntities : [],
-        status: "open",
-        createdAt: now,
-        updatedAt: now
+      if (!Number.isFinite(storedTs) || storedTs <= 0) {
+        localStorage.setItem(getReminderPopupStorageKey(projectId), String(baseline))
+        setLastReminderPopupAt(baseline)
       }
 
-      const existingSameChapter = arcSeeds.find(seed => seed.chapterId === activeNote.id)
-      const nextList = existingSameChapter
-        ? arcSeeds.map(seed => seed.id === existingSameChapter.id ? { ...nextSeed, id: existingSameChapter.id, createdAt: existingSameChapter.createdAt } : seed)
-        : [nextSeed, ...arcSeeds]
-      setArcSeeds(nextList)
-      await saveArcSeedsLocal(projectId, nextList)
-      await saveArcSeedToCloud(user.uid, projectId, existingSameChapter ? { ...nextSeed, id: existingSameChapter.id, createdAt: existingSameChapter.createdAt } : nextSeed)
-      setSelectedArcSeedId(existingSameChapter?.id || nextSeed.id)
-    } catch (err) {
-      setArcSeedError(err instanceof Error ? err.message : "Failed to extract an Arc Seed")
-    } finally {
-      setArcSeedLoading(false)
+      if (Date.now() - baseline >= REMINDER_POPUP_INTERVAL_MS) {
+        openReminderPopupModal(true, reminders)
+      }
+    }
+
+    checkSchedule()
+    const timerId = window.setInterval(checkSchedule, 60_000)
+    return () => window.clearInterval(timerId)
+  }, [
+    projectId,
+    remindersLoaded,
+    reminders,
+    showReminderPopup,
+    lastReminderPopupAt,
+    REMINDER_POPUP_INTERVAL_MS,
+    getReminderPopupStorageKey,
+    openReminderPopupModal
+  ])
+
+  const getReminderChapterLabel = (item: Reminder) => {
+    if (item.chapterNumber) return `Chapter ${item.chapterNumber}`
+    return item.chapterTitle || "General Note"
+  }
+
+  const buildReminderTitle = (rawText: string) => {
+    const firstLine = rawText
+      .split(/\r?\n/)
+      .map(line => line.replace(/^[#>*\-\s]+/, "").trim())
+      .find(Boolean) || "Reminder"
+    return firstLine.length > 72 ? `${firstLine.slice(0, 72).trimEnd()}…` : firstLine
+  }
+
+  const updateReminder = async (reminderId: string, updates: Partial<Reminder>) => {
+    if (!projectId) return
+    const current = reminders.find(item => item.id === reminderId)
+    if (!current) return
+
+    const now = Date.now()
+    const wasAllClosed = !reminders.some(item => item.status === "open")
+    if (updates.status === "open" && wasAllClosed) {
+      const storedRaw = localStorage.getItem(getReminderPopupStorageKey(projectId))
+      const storedTs = storedRaw ? Number(storedRaw) : NaN
+      if (!Number.isFinite(storedTs) || storedTs <= 0 || now - storedTs >= REMINDER_POPUP_INTERVAL_MS) {
+        localStorage.setItem(getReminderPopupStorageKey(projectId), String(now))
+        setLastReminderPopupAt(now)
+      }
+    }
+
+    const updatedItem: Reminder = { ...current, ...updates, updatedAt: now }
+    const nextList = reminders.map(item => item.id === reminderId ? updatedItem : item)
+    setReminders(nextList)
+    await saveRemindersLocal(projectId, nextList)
+    if (user) {
+      await saveReminderToCloud(user.uid, projectId, updatedItem)
     }
   }
 
-  const updateArcSeed = async (seedId: string, updates: Partial<ArcSeed>) => {
-    if (!projectId || !user) return
-    const current = arcSeeds.find(seed => seed.id === seedId)
+  const toggleReminderStatus = async (reminderId: string) => {
+    const current = reminders.find(item => item.id === reminderId)
     if (!current) return
-    const updatedSeed: ArcSeed = { ...current, ...updates, updatedAt: Date.now() }
-    const nextList = arcSeeds.map(seed => seed.id === seedId ? updatedSeed : seed)
-    setArcSeeds(nextList)
-    await saveArcSeedsLocal(projectId, nextList)
-    await saveArcSeedToCloud(user.uid, projectId, updatedSeed)
+    const nextStatus: ReminderStatus = current.status === "open" ? "closed" : "open"
+    await updateReminder(reminderId, { status: nextStatus })
   }
 
-  const deleteArcSeed = async (seedId: string) => {
-    if (!projectId || !user) return
-    const nextList = arcSeeds.filter(seed => seed.id !== seedId)
-    setArcSeeds(nextList)
-    setSelectedArcSeedId(current => current === seedId ? null : current)
-    await saveArcSeedsLocal(projectId, nextList)
-    await deleteArcSeedFromCloud(user.uid, projectId, seedId)
+  const deleteReminder = async (reminderId: string) => {
+    if (!projectId) return
+    const nextList = reminders.filter(item => item.id !== reminderId)
+    setReminders(nextList)
+    setSelectedReminderId(current => current === reminderId ? null : current)
+    setReminderPopupSessionIds(prev => prev.filter(id => id !== reminderId))
+    await saveRemindersLocal(projectId, nextList)
+    if (user) {
+      await deleteReminderFromCloud(user.uid, projectId, reminderId)
+    }
   }
 
   const getChapterNumberFromTitle = useCallback((title?: string) => {
@@ -9769,7 +9842,7 @@ const fillEmptyCustomJsonData = (
       fetchNotes()
       fetchBible()
       fetchBrain()
-      fetchArcSeeds()
+      fetchReminders()
       fetchProgressionSystem()
       fetchProgressionProfiles()
       fetchReferenceCategories()
@@ -10380,7 +10453,7 @@ ${navPoints}  </navMap>
     { name: "Open World Bible", cmd: "/bible", desc: "Toggle World Bible Panel", action: () => { setActiveSidebarTab('bible'); setIsLeftSidebarOpen(true) } },
     { name: "Appearance Lab", cmd: "/appearance", desc: "Open Appearance Prompt Lab", action: () => { setActiveSidebarTab('appearance'); setIsLeftSidebarOpen(true) } },
     { name: "Progression", cmd: "/progress", desc: "Open Character Progression Profiles", action: () => { setActiveSidebarTab('progression'); setIsLeftSidebarOpen(true) } },
-    { name: "Arc Seeds", cmd: "/arcs", desc: "Open Future Arc Seeds", action: () => { setActiveSidebarTab('arcs'); setIsLeftSidebarOpen(true) } },
+    { name: "Reminders", cmd: "/reminders", desc: "Open Novel Reminders", action: () => { setActiveSidebarTab('reminders'); setIsLeftSidebarOpen(true) } },
     { name: "Name Forge", cmd: "/names", desc: "Generate fresh fantasy names", action: () => { setActiveSidebarTab('names'); setIsLeftSidebarOpen(true) } },
     { name: "Ambient Sounds", cmd: "/sound", desc: "Toggle Ambient Audio Settings", action: () => { setActiveSidebarTab('sounds'); setIsLeftSidebarOpen(true) } },
     { name: "Arc Map", cmd: "/arcmap", desc: "Open Arc Map for future chapters", action: () => { setActiveSidebarTab('references'); setIsLeftSidebarOpen(true) } },
@@ -10575,6 +10648,94 @@ ${navPoints}  </navMap>
     setAiSelectionText("")
     setAiSelectionStart(0)
     setAiSelectionEnd(0)
+  }
+
+  const handleAddToReminder = async () => {
+    const trimmed = aiSelectionText.trim()
+    if (!trimmed || !projectId || !activeNote) return
+
+    const now = Date.now()
+    const hadOpenReminders = reminders.some(item => item.status === "open")
+    const chapterNumber = getNoteChapterNumber(activeNote)
+
+    const nextReminder: Reminder = {
+      id: crypto.randomUUID(),
+      title: buildReminderTitle(trimmed),
+      content: trimmed,
+      note: "",
+      chapterTitle: activeNote.title || "Untitled",
+      chapterId: activeNote.id,
+      chapterNumber,
+      status: "open",
+      createdAt: now,
+      updatedAt: now
+    }
+
+    if (!hadOpenReminders) {
+      localStorage.setItem(getReminderPopupStorageKey(projectId), String(now))
+      setLastReminderPopupAt(now)
+    }
+
+    const updated = [nextReminder, ...reminders]
+    setReminders(updated)
+    await saveRemindersLocal(projectId, updated)
+    if (user) {
+      await saveReminderToCloud(user.uid, projectId, nextReminder)
+    }
+
+    // Clear highlighted selection immediately (1-click flow)
+    if (textareaRef.current && aiSelectionEnd > 0) {
+      textareaRef.current.setSelectionRange(aiSelectionEnd, aiSelectionEnd)
+    }
+    setAiSelectionText("")
+    setAiSelectionStart(0)
+    setAiSelectionEnd(0)
+
+    if (reminderFeedbackTimerRef.current) {
+      window.clearTimeout(reminderFeedbackTimerRef.current)
+    }
+    setReminderAddedFeedback(true)
+    reminderFeedbackTimerRef.current = window.setTimeout(() => {
+      setReminderAddedFeedback(false)
+    }, 1800)
+  }
+
+  const handleCreateManualReminder = async () => {
+    const trimmed = newReminderContent.trim()
+    if (!trimmed || !projectId) return
+
+    const now = Date.now()
+    const hadOpenReminders = reminders.some(item => item.status === "open")
+    const chapterNumber = activeNote ? getNoteChapterNumber(activeNote) : null
+
+    const nextReminder: Reminder = {
+      id: crypto.randomUUID(),
+      title: buildReminderTitle(trimmed),
+      content: trimmed,
+      note: newReminderNote.trim(),
+      chapterTitle: activeNote?.title || "General Note",
+      chapterId: activeNote?.id || "",
+      chapterNumber,
+      status: "open",
+      createdAt: now,
+      updatedAt: now
+    }
+
+    if (!hadOpenReminders) {
+      localStorage.setItem(getReminderPopupStorageKey(projectId), String(now))
+      setLastReminderPopupAt(now)
+    }
+
+    const updated = [nextReminder, ...reminders]
+    setReminders(updated)
+    await saveRemindersLocal(projectId, updated)
+    if (user) {
+      await saveReminderToCloud(user.uid, projectId, nextReminder)
+    }
+
+    setNewReminderContent("")
+    setNewReminderNote("")
+    setShowNewReminderComposer(false)
   }
 
   // Handle textarea keyboard listener
@@ -11391,14 +11552,14 @@ ${navPoints}  </navMap>
       chapters: notes.length,
       words: totalWords,
       brainEntries: brainEntries.length,
-      arcSeeds: arcSeeds.length,
+      reminders: reminders.length,
       loreEntries: bibleEntries.length,
       criticalBrainEntries: brainEntries.filter(entry => entry.importance === 'critical').length,
       averageChapterWords: notes.length > 0
         ? Math.round(totalWords / notes.length)
         : 0
     }
-  }, [notes, currentTotalWords, brainEntries, arcSeeds, bibleEntries])
+  }, [notes, currentTotalWords, brainEntries, reminders, bibleEntries])
 
   const globalSearchResults: GlobalSearchResult[] = useMemo(() => {
     if (!showGlobalSearch) return []
@@ -11450,27 +11611,26 @@ ${navPoints}  </navMap>
         preview: entry.content.slice(0, 180)
       }))
 
-    const arcResults = arcSeeds
-      .filter(seed =>
-        seed.title.toLowerCase().includes(query) ||
-        seed.summary.toLowerCase().includes(query) ||
-        seed.whyItMatters.toLowerCase().includes(query) ||
-        seed.futurePayoff.toLowerCase().includes(query) ||
-        seed.evidence.toLowerCase().includes(query)
+    const reminderResults = reminders
+      .filter(item =>
+        item.title.toLowerCase().includes(query) ||
+        item.content.toLowerCase().includes(query) ||
+        item.note.toLowerCase().includes(query) ||
+        item.chapterTitle.toLowerCase().includes(query)
       )
       .slice(0, 6)
-      .map(seed => ({
-        id: `arc-${seed.id}`,
-        source: 'arc' as SearchSource,
-        title: seed.title,
-        subtitle: `${getArcSeedChapterLabel(seed)} - Arc Seed`,
-        preview: seed.summary || seed.futurePayoff,
-        chapterId: seed.chapterId
+      .map(item => ({
+        id: `reminder-${item.id}`,
+        source: 'reminder' as SearchSource,
+        title: item.title,
+        subtitle: `${getReminderChapterLabel(item)} - Reminder (${item.status})`,
+        preview: item.note || item.content,
+        chapterId: item.chapterId
       }))
 
-    return [...chapterResults, ...brainResults, ...arcResults, ...loreResults].slice(0, 18)
+    return [...chapterResults, ...brainResults, ...reminderResults, ...loreResults].slice(0, 18)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showGlobalSearch, globalSearchQuery, notes, brainEntries, bibleEntries, arcSeeds])
+  }, [showGlobalSearch, globalSearchQuery, notes, brainEntries, bibleEntries, reminders])
 
   const openGlobalSearchResult = (result: GlobalSearchResult) => {
     if (result.source === 'chapter' && result.chapterId) {
@@ -11482,12 +11642,12 @@ ${navPoints}  </navMap>
       setIsLeftSidebarOpen(true)
       setBrainSearchQuery(result.title)
       setShowGlobalSearch(false)
-    } else if (result.source === 'arc') {
-      const seedId = result.id.replace(/^arc-/, "")
-      setActiveSidebarTab('arcs')
+    } else if (result.source === 'reminder') {
+      const reminderId = result.id.replace(/^reminder-/, "")
+      setActiveSidebarTab('reminders')
       setIsLeftSidebarOpen(true)
-      setArcSeedSearchQuery(result.title)
-      setSelectedArcSeedId(seedId)
+      setReminderSearchQuery(result.title)
+      setSelectedReminderId(reminderId)
       setShowGlobalSearch(false)
     } else if (result.source === 'lore') {
       const entry = bibleEntries.find(item => item.name === result.title)
@@ -11567,32 +11727,51 @@ ${navPoints}  </navMap>
       : null
   }, [brainEntries, selectedBrainEntryId])
 
-  const selectedArcSeed = useMemo(() => {
-    return selectedArcSeedId
-      ? arcSeeds.find(seed => seed.id === selectedArcSeedId) || null
+  const selectedReminder = useMemo(() => {
+    return selectedReminderId
+      ? reminders.find(item => item.id === selectedReminderId) || null
       : null
-  }, [arcSeeds, selectedArcSeedId])
+  }, [reminders, selectedReminderId])
 
-  const openArcSeedCount = useMemo(() => {
-    return arcSeeds.filter(seed => seed.status === "open").length
-  }, [arcSeeds])
+  const openReminderCount = useMemo(() => {
+    return reminders.filter(item => item.status === "open").length
+  }, [reminders])
 
-  const filteredArcSeeds = useMemo(() => {
-    const query = arcSeedSearchQuery.trim().toLowerCase()
-    return arcSeeds.filter(seed => {
-      const matchesStatus = arcSeedStatusFilter === 'all' || seed.status === arcSeedStatusFilter
+  const closedReminderCount = useMemo(() => {
+    return reminders.filter(item => item.status === "closed").length
+  }, [reminders])
+
+  const filteredReminders = useMemo(() => {
+    const query = reminderSearchQuery.trim().toLowerCase()
+    return reminders.filter(item => {
+      const matchesStatus = reminderStatusFilter === 'all' || item.status === reminderStatusFilter
       const matchesSearch = !query ||
-        seed.title.toLowerCase().includes(query) ||
-        seed.summary.toLowerCase().includes(query) ||
-        seed.whyItMatters.toLowerCase().includes(query) ||
-        seed.futurePayoff.toLowerCase().includes(query) ||
-        seed.evidence.toLowerCase().includes(query) ||
-        seed.chapterTitle.toLowerCase().includes(query) ||
-        (seed.relatedCharacters || []).some(name => name.toLowerCase().includes(query)) ||
-        (seed.relatedEntities || []).some(name => name.toLowerCase().includes(query))
+        item.title.toLowerCase().includes(query) ||
+        item.content.toLowerCase().includes(query) ||
+        item.note.toLowerCase().includes(query) ||
+        item.chapterTitle.toLowerCase().includes(query)
       return matchesStatus && matchesSearch
     })
-  }, [arcSeeds, arcSeedSearchQuery, arcSeedStatusFilter])
+  }, [reminders, reminderSearchQuery, reminderStatusFilter])
+
+  const reminderPopupItems = useMemo(() => {
+    const sessionSet = new Set(reminderPopupSessionIds)
+    return reminders.filter(item => sessionSet.has(item.id) || item.status === "open")
+  }, [reminders, reminderPopupSessionIds])
+
+  const nextReminderCountdownLabel = useMemo(() => {
+    const openList = reminders.filter(item => item.status === "open")
+    if (openList.length === 0) {
+      return "Paused — no open reminders"
+    }
+    const earliestOpenCreated = Math.min(...openList.map(item => item.createdAt || Date.now()))
+    const baseline = lastReminderPopupAt || earliestOpenCreated
+    const remainingMs = Math.max(0, (baseline + REMINDER_POPUP_INTERVAL_MS) - Date.now())
+    if (remainingMs <= 0) return "Every 48h • Pop-up due now"
+    const hours = Math.floor(remainingMs / (60 * 60 * 1000))
+    const mins = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000))
+    return `Every 48h • Next pop-up in ${hours}h ${mins}m`
+  }, [reminders, lastReminderPopupAt, REMINDER_POPUP_INTERVAL_MS])
 
   const getBrainEntryChapterNumber = (entry: BrainEntry) => {
     if (entry.chapterNumber) return entry.chapterNumber
@@ -11872,7 +12051,7 @@ ${navPoints}  </navMap>
               <Search size={15} className="glow-icon" />
               <input
                 type="text"
-                placeholder="Search chapters, Brain Map, Arc Seeds, and lore..."
+                placeholder="Search chapters, Brain Map, Reminders, and lore..."
                 value={globalSearchQuery}
                 onChange={(e) => setGlobalSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -11890,7 +12069,7 @@ ${navPoints}  </navMap>
               {!globalSearchQuery.trim() && (
                 <div className="global-search-empty">
                   <Search size={22} />
-                  <span>Search across chapters, Brain Map entries, Arc Seeds, and story bible lore.</span>
+                  <span>Search across chapters, Brain Map entries, Reminders, and story bible lore.</span>
                 </div>
               )}
               {globalSearchResults.map(result => (
@@ -11900,7 +12079,7 @@ ${navPoints}  </navMap>
                   onClick={() => openGlobalSearchResult(result)}
                 >
                   <span className="global-result-source">
-                    {result.source === 'chapter' ? <FileText size={13} /> : result.source === 'brain' ? <BrainCircuit size={13} /> : <BookOpen size={13} />}
+                    {result.source === 'chapter' ? <FileText size={13} /> : result.source === 'brain' ? <BrainCircuit size={13} /> : result.source === 'reminder' ? <Bell size={13} /> : <BookOpen size={13} />}
                     {result.source}
                   </span>
                   <strong>{result.title}</strong>
@@ -12069,7 +12248,7 @@ ${navPoints}  </navMap>
           <button
             className="btn-icon"
             onClick={() => setShowGlobalSearch(true)}
-            title="Search manuscript, Brain Map, Arc Seeds, and lore"
+            title="Search manuscript, Brain Map, Reminders, and lore"
           >
             <Search size={18} />
           </button>
@@ -12312,18 +12491,22 @@ ${navPoints}  </navMap>
               </button>
 
               <button
-                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'arcs' ? 'active' : ''}`}
+                className={`activity-btn ${isLeftSidebarOpen && activeSidebarTab === 'reminders' ? 'active' : ''}`}
                 onClick={() => {
-                  if (activeSidebarTab === 'arcs' && isLeftSidebarOpen) {
+                  if (activeSidebarTab === 'reminders' && isLeftSidebarOpen) {
                     setIsLeftSidebarOpen(false)
                   } else {
-                    setActiveSidebarTab('arcs')
+                    setActiveSidebarTab('reminders')
                     setIsLeftSidebarOpen(true)
                   }
                 }}
-                title="Arc Seeds"
+                title={openReminderCount > 0 ? `Reminders (${openReminderCount} open)` : "Reminders"}
+                style={{ position: 'relative' }}
               >
-                <History size={20} />
+                <Bell size={20} />
+                {openReminderCount > 0 && (
+                  <span className="reminder-activity-badge">{openReminderCount > 99 ? '99+' : openReminderCount}</span>
+                )}
               </button>
             </div>
             
@@ -15088,7 +15271,7 @@ ${navPoints}  </navMap>
                   )}
                 </div>
 
-                {nameGenerateError && <div className="arc-seed-error">{nameGenerateError}</div>}
+                {nameGenerateError && <div className="inline-error-banner">{nameGenerateError}</div>}
 
                 {/* Search / filter */}
                 {generatedNames.length > 0 && (
@@ -16252,210 +16435,278 @@ ${navPoints}  </navMap>
               </div>
             )}
 
-            {/* TAB: ARC SEEDS */}
-            {activeSidebarTab === 'arcs' && (
-              <div className="sidebar-tab-content arc-seeds-page fade-in">
-                {selectedArcSeed ? (
-                  <div className="arc-seed-detail-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+            {/* TAB: REMINDERS */}
+            {activeSidebarTab === 'reminders' && (
+              <div className="sidebar-tab-content reminders-page fade-in">
+                {selectedReminder ? (
+                  <div className="reminder-detail-inline" style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--surface-border)', paddingBottom: '0.75rem', flexShrink: 0 }}>
-                      <button className="btn-ai-sub btn-ai-secondary" onClick={() => setSelectedArcSeedId(null)} style={{ padding: '0.35rem 0.6rem', fontSize: '0.72rem' }}>
+                      <button className="btn-ai-sub btn-ai-secondary" onClick={() => setSelectedReminderId(null)} style={{ padding: '0.35rem 0.6rem', fontSize: '0.72rem' }}>
                         ← Back
                       </button>
-                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginLeft: 'auto' }}>Arc Seed Detail</strong>
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginLeft: 'auto' }}>Reminder Detail</strong>
                     </div>
 
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                      {getArcSeedChapterLabel(selectedArcSeed)} - {selectedArcSeed.chapterTitle || "Untitled"}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                      <span>{getReminderChapterLabel(selectedReminder)}{selectedReminder.chapterTitle ? ` — ${selectedReminder.chapterTitle}` : ""}</span>
+                      {selectedReminder.chapterId && notes.some(n => n.id === selectedReminder.chapterId) && (
+                        <button
+                          type="button"
+                          className="reminder-link-btn"
+                          onClick={() => {
+                            setActiveNoteId(selectedReminder.chapterId)
+                            setViewMode('edit')
+                          }}
+                        >
+                          Open Chapter
+                        </button>
+                      )}
                     </div>
 
                     <div className="ai-form-field">
-                      <label>Seed Title</label>
+                      <label>Reminder Status</label>
+                      <div className="reminder-status-switch-row">
+                        <button
+                          type="button"
+                          className={`reminder-status-toggle-btn ${selectedReminder.status === 'open' ? 'is-open active' : ''}`}
+                          onClick={() => updateReminder(selectedReminder.id, { status: 'open' })}
+                        >
+                          <Bell size={13} />
+                          Open (Reminding)
+                        </button>
+                        <button
+                          type="button"
+                          className={`reminder-status-toggle-btn ${selectedReminder.status === 'closed' ? 'is-closed active' : ''}`}
+                          onClick={() => updateReminder(selectedReminder.id, { status: 'closed' })}
+                        >
+                          <BellOff size={13} />
+                          Closed (Off)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="ai-form-field">
+                      <label>Title</label>
                       <input
                         className="ai-input"
-                        value={selectedArcSeed.title}
-                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { title: e.target.value })}
+                        value={selectedReminder.title}
+                        onChange={(e) => updateReminder(selectedReminder.id, { title: e.target.value })}
+                        placeholder="Reminder title..."
                         style={{ padding: '0.45rem 0.6rem' }}
                       />
                     </div>
 
                     <div className="ai-form-field">
-                      <label>Status</label>
-                      <select
-                        className="ai-select"
-                        value={selectedArcSeed.status}
-                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { status: e.target.value as ArcSeedStatus })}
-                        style={{ padding: '0.45rem' }}
-                      >
-                        <option value="open">Open</option>
-                        <option value="developing">Developing</option>
-                        <option value="paid_off">Paid Off</option>
-                        <option value="dropped">Dropped</option>
-                      </select>
-                    </div>
-
-                    <div className="ai-form-field">
-                      <label>What Happened</label>
+                      <label>Highlighted Content / Case</label>
                       <textarea
                         className="ai-textarea compact"
-                        value={selectedArcSeed.summary}
-                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { summary: e.target.value })}
-                        rows={3}
+                        value={selectedReminder.content}
+                        onChange={(e) => updateReminder(selectedReminder.id, { content: e.target.value })}
+                        rows={5}
+                        placeholder="Highlighted excerpt or reminder content..."
                       />
                     </div>
 
                     <div className="ai-form-field">
-                      <label>Why It Matters</label>
+                      <label>Note (Optional)</label>
                       <textarea
                         className="ai-textarea compact"
-                        value={selectedArcSeed.whyItMatters}
-                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { whyItMatters: e.target.value })}
+                        value={selectedReminder.note}
+                        onChange={(e) => updateReminder(selectedReminder.id, { note: e.target.value })}
                         rows={3}
+                        placeholder="Add extra context on what to remember..."
                       />
-                    </div>
-
-                    <div className="ai-form-field">
-                      <label>Possible Future Payoff</label>
-                      <textarea
-                        className="ai-textarea compact"
-                        value={selectedArcSeed.futurePayoff}
-                        onChange={(e) => updateArcSeed(selectedArcSeed.id, { futurePayoff: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
-
-                    {((selectedArcSeed.relatedCharacters || []).length > 0 || (selectedArcSeed.relatedEntities || []).length > 0) && (
-                      <div className="ai-form-field">
-                        <label>Related Entities</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                          {[...(selectedArcSeed.relatedCharacters || []), ...(selectedArcSeed.relatedEntities || [])].slice(0, 10).map(item => (
-                            <span key={item} style={{
-                              padding: '0.2rem 0.45rem',
-                              background: 'rgba(255,255,255,0.04)',
-                              border: '1px solid var(--surface-border)',
-                              borderRadius: 'var(--radius-sm)',
-                              fontSize: '0.68rem',
-                              color: 'var(--text-secondary)'
-                            }}>{item}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="ai-form-field">
-                      <label>Chapter Evidence</label>
-                      <div style={{
-                        padding: '0.6rem',
-                        background: 'rgba(0,0,0,0.15)',
-                        border: '1px solid var(--surface-border)',
-                        borderRadius: 'var(--radius-md)',
-                        fontSize: '0.74rem',
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.4
-                      }}>
-                        {selectedArcSeed.evidence || "No direct evidence saved."}
-                      </div>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--surface-border)', paddingTop: '1rem', marginTop: 'auto', flexShrink: 0 }}>
                       <button
                         className="btn-ai-sub btn-ai-secondary danger-text"
-                        onClick={() => {
-                          const confirmed = window.confirm("Delete this Arc Seed? This cannot be undone.")
-                          if (confirmed) deleteArcSeed(selectedArcSeed.id)
-                        }}
+                        onClick={() => deleteReminder(selectedReminder.id)}
                         style={{ width: '100%', justifyContent: 'center' }}
                       >
-                        Delete Arc Seed
+                        <Trash2 size={13} />
+                        Delete Reminder
                       </button>
                     </div>
                   </div>
                 ) : (
                   <>
-                    <div className="arc-seeds-page-header">
+                    <div className="reminders-page-header">
                       <div>
-                        <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Arc Seeds</span>
-                        <p>Future threads captured from completed chapters.</p>
+                        <span className="section-title text-xs font-bold uppercase tracking-wider text-dim">Reminders</span>
+                        <p>Highlight text in any chapter and click Reminder. Open cases pop up every 48 hours.</p>
                       </div>
-                      <button
-                        className="btn-new arc-seed-generate-btn"
-                        onClick={generateArcSeedFromChapter}
-                        disabled={arcSeedLoading || !activeNote}
-                        title="Extract one future arc seed from the active chapter"
-                      >
-                        {arcSeedLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-                        {arcSeedLoading ? "Scanning..." : "Scan Chapter"}
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          className="btn-ai-sub btn-ai-secondary"
+                          onClick={() => openReminderPopupModal(false)}
+                          title="Open the novel reminders pop-up page"
+                          style={{ padding: '0.35rem 0.55rem', fontSize: '0.72rem' }}
+                        >
+                          <Bell size={13} />
+                          Pop-up
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-new reminder-add-btn"
+                          onClick={() => setShowNewReminderComposer(prev => !prev)}
+                          title="Add a reminder manually"
+                        >
+                          <Plus size={14} />
+                          Add
+                        </button>
+                      </div>
                     </div>
 
-                    {arcSeedError && <div className="arc-seed-error">{arcSeedError}</div>}
-
-                    <div className="arc-seed-stat-grid">
-                      <div className="arc-seed-stat-card">
-                        <small>All Seeds</small>
-                        <strong>{arcSeeds.length}</strong>
+                    {showNewReminderComposer && (
+                      <div className="reminder-composer-box">
+                        <textarea
+                          className="ai-textarea compact"
+                          rows={3}
+                          placeholder="What case or detail should PenPad remind you about?"
+                          value={newReminderContent}
+                          onChange={(e) => setNewReminderContent(e.target.value)}
+                          autoFocus
+                        />
+                        <input
+                          className="ai-input"
+                          placeholder="Optional note..."
+                          value={newReminderNote}
+                          onChange={(e) => setNewReminderNote(e.target.value)}
+                          style={{ padding: '0.4rem 0.55rem', fontSize: '0.75rem' }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                          <button
+                            type="button"
+                            className="btn-ai-sub btn-ai-secondary"
+                            onClick={() => {
+                              setShowNewReminderComposer(false)
+                              setNewReminderContent("")
+                              setNewReminderNote("")
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-new"
+                            disabled={!newReminderContent.trim()}
+                            onClick={handleCreateManualReminder}
+                            style={{ padding: '0.35rem 0.7rem', fontSize: '0.74rem' }}
+                          >
+                            Add to Reminder
+                          </button>
+                        </div>
                       </div>
-                      <div className="arc-seed-stat-card active">
+                    )}
+
+                    <div className={`reminder-schedule-banner ${openReminderCount > 0 ? 'active' : 'paused'}`}>
+                      <Clock size={13} />
+                      <span>{nextReminderCountdownLabel}</span>
+                    </div>
+
+                    <div className="reminder-stat-grid">
+                      <div className="reminder-stat-card">
+                        <small>Total</small>
+                        <strong>{reminders.length}</strong>
+                      </div>
+                      <div className="reminder-stat-card active">
                         <small>Open</small>
-                        <strong>{openArcSeedCount}</strong>
+                        <strong>{openReminderCount}</strong>
                       </div>
-                      <div className="arc-seed-stat-card">
-                        <small>Developing</small>
-                        <strong>{arcSeeds.filter(seed => seed.status === "developing").length}</strong>
+                      <div className="reminder-stat-card">
+                        <small>Closed</small>
+                        <strong>{closedReminderCount}</strong>
                       </div>
                     </div>
 
-                    <div className="arc-seed-toolbar">
+                    <div className="reminder-toolbar">
                       <div className="search-bar">
                         <Search size={14} className="search-icon" />
                         <input
                           type="text"
-                          placeholder="Search arc seeds..."
-                          value={arcSeedSearchQuery}
-                          onChange={(e) => setArcSeedSearchQuery(e.target.value)}
+                          placeholder="Search reminders..."
+                          value={reminderSearchQuery}
+                          onChange={(e) => setReminderSearchQuery(e.target.value)}
                           className="search-input"
                         />
                       </div>
-                      <select
-                        value={arcSeedStatusFilter}
-                        onChange={(e) => setArcSeedStatusFilter(e.target.value as ArcSeedStatus | 'all')}
-                        className="brain-type-filter"
-                      >
-                        <option value="all">All Statuses</option>
-                        <option value="open">Open</option>
-                        <option value="developing">Developing</option>
-                        <option value="paid_off">Paid Off</option>
-                        <option value="dropped">Dropped</option>
-                      </select>
+                      <div className="arc-map-filter-tabs">
+                        <button
+                          type="button"
+                          className={`arc-filter-btn ${reminderStatusFilter === 'all' ? 'active' : ''}`}
+                          onClick={() => setReminderStatusFilter('all')}
+                        >
+                          All ({reminders.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`arc-filter-btn open ${reminderStatusFilter === 'open' ? 'active' : ''}`}
+                          onClick={() => setReminderStatusFilter('open')}
+                        >
+                          Open ({openReminderCount})
+                        </button>
+                        <button
+                          type="button"
+                          className={`arc-filter-btn closed ${reminderStatusFilter === 'closed' ? 'active' : ''}`}
+                          onClick={() => setReminderStatusFilter('closed')}
+                        >
+                          Closed ({closedReminderCount})
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="arc-seeds-panel">
-                      <div className="arc-seeds-header">
+                    <div className="reminders-panel">
+                      <div className="reminders-header">
                         <div>
-                          <strong>Saved Arc Seeds</strong>
-                          <span>{filteredArcSeeds.length} shown</span>
+                          <strong>Novel Reminders</strong>
+                          <span>{filteredReminders.length} shown</span>
                         </div>
-                        <em>{openArcSeedCount} open</em>
+                        <em>{openReminderCount} reminding</em>
                       </div>
-                      <div className="arc-seeds-list arc-seeds-page-list">
-                        {filteredArcSeeds.length === 0 ? (
+                      <div className="reminders-list reminders-page-list">
+                        {filteredReminders.length === 0 ? (
                           <div className="empty-state-text compact">
-                            {arcSeeds.length === 0 ? "No Arc Seeds yet." : "No Arc Seeds match this filter."}
+                            {reminders.length === 0
+                              ? "No reminders yet. Highlight content in a chapter and click Reminder in the toolbar!"
+                              : "No reminders match this filter."}
                           </div>
-                        ) : filteredArcSeeds.map(seed => (
-                          <button
-                            key={seed.id}
-                            type="button"
-                            className={`arc-seed-card status-${seed.status}`}
-                            onClick={() => setSelectedArcSeedId(seed.id)}
-                          >
-                            <div>
-                              <small>{getArcSeedChapterLabel(seed)}</small>
-                              <strong>{seed.title}</strong>
-                              <p>{seed.summary || seed.futurePayoff}</p>
+                        ) : filteredReminders.map(item => {
+                          const isOpen = item.status === "open"
+                          return (
+                            <div
+                              key={item.id}
+                              className={`reminder-card status-${item.status}`}
+                              onClick={() => setSelectedReminderId(item.id)}
+                            >
+                              <div className="reminder-card-main">
+                                <small>{getReminderChapterLabel(item)}</small>
+                                <strong>{item.title}</strong>
+                                <p>{item.note ? `${item.note} — "${item.content}"` : item.content}</p>
+                              </div>
+                              <div className="reminder-card-actions" onClick={e => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className={`reminder-pill-toggle ${isOpen ? 'open' : 'closed'}`}
+                                  onClick={() => toggleReminderStatus(item.id)}
+                                  title={isOpen ? "Open (reminding every 48h) — click to close/turn off" : "Closed (won't remind) — click to re-open"}
+                                >
+                                  {isOpen ? <Bell size={11} /> : <BellOff size={11} />}
+                                  <span>{isOpen ? "Open" : "Closed"}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="reminder-delete-icon-btn"
+                                  onClick={() => deleteReminder(item.id)}
+                                  title="Delete reminder"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
                             </div>
-                            <span>{seed.status.replace("_", " ")}</span>
-                          </button>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   </>
@@ -16895,6 +17146,26 @@ ${navPoints}  </navMap>
                     >
                       <Compass size={13} style={{ marginRight: '4px' }} />
                       <span style={{ fontSize: '11px', fontWeight: 600 }}>Arc Map</span>
+                    </button>
+                    <button
+                      className={`fmt-btn-action fmt-btn-reminder ${!aiSelectionText.trim() && !reminderAddedFeedback ? 'disabled' : ''} ${reminderAddedFeedback ? 'is-added' : ''}`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleAddToReminder}
+                      title="Highlight content in the chapter, then click to add it to Reminders"
+                      style={{ marginLeft: '4px' }}
+                      disabled={!aiSelectionText.trim() && !reminderAddedFeedback}
+                    >
+                      {reminderAddedFeedback ? (
+                        <>
+                          <Check size={13} style={{ marginRight: '4px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Added!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bell size={13} style={{ marginRight: '4px' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 600 }}>Reminder</span>
+                        </>
+                      )}
                     </button>
                     <div className="fmt-divider"></div>
                     <button 
@@ -19965,6 +20236,135 @@ ${navPoints}  </navMap>
               </div>
               <div className="modal-actions">
                 <button className="btn btn-ghost" onClick={() => setShowRefViewModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showReminderPopup && (
+          <div className="modal-overlay" onClick={closeReminderPopupModal} style={{ zIndex: 145 }}>
+            <div className="modal reminder-popup-modal" onClick={e => e.stopPropagation()}>
+              <div className="reminder-popup-header">
+                <div className="reminder-popup-title-wrap">
+                  <div className="reminder-popup-icon">
+                    <Bell size={20} />
+                  </div>
+                  <div>
+                    <div className="reminder-popup-eyebrow">
+                      <span>{projectName || "Novel"}</span>
+                      <span className="reminder-popup-cadence-badge">48-Hour Reminder</span>
+                    </div>
+                    <h2 className="modal-title" style={{ marginBottom: '0.2rem' }}>Novel Reminders</h2>
+                    <p className="modal-description" style={{ fontSize: '0.82rem' }}>
+                      {openReminderCount === 0
+                        ? "You have no open reminders active for this novel right now."
+                        : `Showing ${openReminderCount} open reminder${openReminderCount === 1 ? '' : 's'} for "${projectName || 'this novel'}". Closed reminders stay silent.`}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="reminder-popup-close-x"
+                  onClick={closeReminderPopupModal}
+                  title="Close pop-up"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="reminder-popup-body">
+                {reminderPopupItems.length === 0 ? (
+                  <div className="reminder-popup-empty">
+                    <BellOff size={28} />
+                    <strong>No Open Reminders</strong>
+                    <p>Highlight any passage in a chapter and click <strong>Reminder</strong> in the toolbar to be reminded every 48 hours.</p>
+                  </div>
+                ) : (
+                  <div className="reminder-popup-list">
+                    {reminderPopupItems.map((item, idx) => {
+                      const isOpen = item.status === "open"
+                      const canOpenChapter = Boolean(item.chapterId && notes.some(n => n.id === item.chapterId))
+                      return (
+                        <div key={item.id} className={`reminder-popup-card ${!isOpen ? 'is-closed' : ''}`}>
+                          <div className="reminder-popup-card-top">
+                            <div className="reminder-popup-meta">
+                              <span className="reminder-popup-index">#{idx + 1}</span>
+                              {canOpenChapter ? (
+                                <button
+                                  type="button"
+                                  className="reminder-popup-chapter-btn"
+                                  onClick={() => {
+                                    setActiveNoteId(item.chapterId)
+                                    setViewMode('edit')
+                                    closeReminderPopupModal()
+                                  }}
+                                  title="Jump to this chapter"
+                                >
+                                  {getReminderChapterLabel(item)}{item.chapterTitle ? ` — ${item.chapterTitle}` : ""}
+                                </button>
+                              ) : (
+                                <span className="reminder-popup-chapter-label">
+                                  {getReminderChapterLabel(item)}{item.chapterTitle && item.chapterTitle !== getReminderChapterLabel(item) ? ` — ${item.chapterTitle}` : ""}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="reminder-popup-item-controls">
+                              <button
+                                type="button"
+                                className={`reminder-pill-toggle ${isOpen ? 'open' : 'closed'}`}
+                                onClick={() => toggleReminderStatus(item.id)}
+                                title={isOpen ? "Turn off (mark Closed so it stops reminding you)" : "Turn back on (mark Open)"}
+                              >
+                                {isOpen ? <Bell size={12} /> : <BellOff size={12} />}
+                                <span>{isOpen ? "Open" : "Closed"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="reminder-delete-icon-btn"
+                                onClick={() => deleteReminder(item.id)}
+                                title="Delete reminder"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="reminder-popup-quote">
+                            {item.content}
+                          </div>
+
+                          {item.note && (
+                            <div className="reminder-popup-note">
+                              <strong>Note:</strong> {item.note}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-actions reminder-popup-footer">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    closeReminderPopupModal()
+                    setActiveSidebarTab('reminders')
+                    setIsLeftSidebarOpen(true)
+                  }}
+                >
+                  Manage in Sidebar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={closeReminderPopupModal}
+                >
+                  Close Pop-up
+                </button>
               </div>
             </div>
           </div>
@@ -25403,57 +25803,116 @@ ${navPoints}  </navMap>
           border-top: 1px solid var(--surface-border);
         }
 
-        /* Brain Map Styles */
-        .arc-seeds-page {
-          display: flex;
-          flex-direction: column;
-          gap: 0.85rem;
+        /* Reminders Styles */
+        .reminder-activity-badge {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          min-width: 15px;
+          height: 15px;
+          padding: 0 3px;
+          border-radius: 999px;
+          background: #f59e0b;
+          color: #111827;
+          font-size: 0.58rem;
+          font-weight: 800;
+          line-height: 15px;
+          text-align: center;
+          pointer-events: none;
         }
 
-        .arc-seeds-page-header {
+        .fmt-btn-reminder.is-added {
+          border-color: rgba(16, 185, 129, 0.45) !important;
+          background: rgba(16, 185, 129, 0.16) !important;
+          color: #34d399 !important;
+        }
+
+        .reminders-page {
+          display: flex;
+          flex-direction: column;
+          gap: 0.8rem;
+        }
+
+        .reminders-page-header {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 0.8rem;
+          gap: 0.65rem;
           flex-shrink: 0;
         }
 
-        .arc-seeds-page-header p {
+        .reminders-page-header p {
           margin: 0.15rem 0 0;
           color: var(--text-dim);
-          font-size: 0.74rem;
+          font-size: 0.72rem;
           line-height: 1.35;
         }
 
-        .arc-seed-generate-btn {
+        .reminder-add-btn {
           flex-shrink: 0;
-          min-height: 34px;
+          min-height: 30px;
+          padding: 0.35rem 0.65rem;
+          font-size: 0.73rem;
           white-space: nowrap;
         }
 
-        .arc-seed-stat-grid {
+        .reminder-composer-box {
+          display: flex;
+          flex-direction: column;
+          gap: 0.45rem;
+          padding: 0.65rem;
+          border: 1px solid rgba(245, 158, 11, 0.28);
+          border-radius: var(--radius-md);
+          background: rgba(245, 158, 11, 0.06);
+          flex-shrink: 0;
+        }
+
+        .reminder-schedule-banner {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.45rem 0.6rem;
+          border-radius: var(--radius-sm);
+          font-size: 0.7rem;
+          font-weight: 600;
+          flex-shrink: 0;
+        }
+
+        .reminder-schedule-banner.active {
+          border: 1px solid rgba(245, 158, 11, 0.28);
+          background: rgba(245, 158, 11, 0.08);
+          color: #fcd34d;
+        }
+
+        .reminder-schedule-banner.paused {
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-dim);
+        }
+
+        .reminder-stat-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 0.55rem;
           flex-shrink: 0;
         }
 
-        .arc-seed-stat-card {
+        .reminder-stat-card {
           display: flex;
           flex-direction: column;
           gap: 0.2rem;
-          padding: 0.65rem;
+          padding: 0.6rem;
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-md);
           background: rgba(255, 255, 255, 0.035);
         }
 
-        .arc-seed-stat-card.active {
-          border-color: rgba(20, 184, 166, 0.28);
-          background: rgba(20, 184, 166, 0.065);
+        .reminder-stat-card.active {
+          border-color: rgba(245, 158, 11, 0.32);
+          background: rgba(245, 158, 11, 0.075);
         }
 
-        .arc-seed-stat-card small {
+        .reminder-stat-card small {
           color: var(--text-dim);
           font-size: 0.62rem;
           font-weight: 800;
@@ -25461,57 +25920,57 @@ ${navPoints}  </navMap>
           letter-spacing: 0.04em;
         }
 
-        .arc-seed-stat-card strong {
+        .reminder-stat-card strong {
           color: var(--text-primary);
-          font-size: 1.12rem;
+          font-size: 1.1rem;
           line-height: 1;
           font-variant-numeric: tabular-nums;
         }
 
-        .arc-seed-toolbar {
+        .reminder-toolbar {
           display: flex;
           flex-direction: column;
-          gap: 0.55rem;
+          gap: 0.5rem;
           flex-shrink: 0;
         }
 
-        .arc-seeds-panel {
+        .reminders-panel {
           display: flex;
           flex-direction: column;
           gap: 0.55rem;
           margin-bottom: 0.8rem;
           padding: 0.7rem;
-          border: 1px solid rgba(20, 184, 166, 0.22);
+          border: 1px solid rgba(245, 158, 11, 0.22);
           border-radius: var(--radius-md);
-          background: rgba(20, 184, 166, 0.045);
+          background: rgba(245, 158, 11, 0.04);
         }
 
-        .arc-seeds-header {
+        .reminders-header {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
           gap: 0.55rem;
         }
 
-        .arc-seeds-header div {
+        .reminders-header div {
           display: flex;
           flex-direction: column;
-          gap: 0.16rem;
+          gap: 0.14rem;
         }
 
-        .arc-seeds-header strong {
+        .reminders-header strong {
           color: var(--text-primary);
           font-size: 0.78rem;
         }
 
-        .arc-seeds-header span,
-        .arc-seeds-header em {
+        .reminders-header span,
+        .reminders-header em {
           color: var(--text-dim);
           font-size: 0.68rem;
           font-style: normal;
         }
 
-        .arc-seed-error {
+        .inline-error-banner {
           padding: 0.45rem 0.5rem;
           border: 1px solid rgba(239, 68, 68, 0.25);
           border-radius: var(--radius-sm);
@@ -25520,49 +25979,64 @@ ${navPoints}  </navMap>
           font-size: 0.72rem;
         }
 
-        .arc-seeds-list {
+        .reminders-list {
           display: flex;
           flex-direction: column;
-          gap: 0.4rem;
+          gap: 0.45rem;
         }
 
-        .arc-seed-card {
+        .reminders-page-list {
+          overflow-y: auto;
+          padding-right: 0.1rem;
+        }
+
+        .reminder-card {
           width: 100%;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
-          gap: 0.6rem;
-          padding: 0.55rem 0.6rem;
-          border: 1px solid rgba(20, 184, 166, 0.18);
+          gap: 0.55rem;
+          padding: 0.6rem;
+          border: 1px solid rgba(245, 158, 11, 0.2);
           border-radius: var(--radius-sm);
-          background: rgba(0, 0, 0, 0.14);
+          background: rgba(0, 0, 0, 0.16);
           color: var(--text-secondary);
           text-align: left;
           cursor: pointer;
           transition: var(--transition);
         }
 
-        .arc-seed-card:hover {
-          border-color: rgba(20, 184, 166, 0.42);
-          background: rgba(20, 184, 166, 0.08);
+        .reminder-card:hover {
+          border-color: rgba(245, 158, 11, 0.45);
+          background: rgba(245, 158, 11, 0.08);
         }
 
-        .arc-seed-card div {
+        .reminder-card.status-closed {
+          opacity: 0.62;
+          border-color: var(--surface-border);
+        }
+
+        .reminder-card-main {
           min-width: 0;
+          flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 0.16rem;
+          gap: 0.18rem;
         }
 
-        .arc-seed-card small {
-          color: #5eead4;
-          font-size: 0.64rem;
+        .reminder-card-main small {
+          color: #fbbf24;
+          font-size: 0.62rem;
           font-weight: 800;
           text-transform: uppercase;
           letter-spacing: 0.06em;
         }
 
-        .arc-seed-card strong {
+        .reminder-card.status-closed .reminder-card-main small {
+          color: var(--text-dim);
+        }
+
+        .reminder-card-main strong {
           color: var(--text-primary);
           font-size: 0.78rem;
           overflow: hidden;
@@ -25570,67 +26044,337 @@ ${navPoints}  </navMap>
           white-space: nowrap;
         }
 
-        .arc-seed-card p {
+        .reminder-card.status-closed .reminder-card-main strong {
+          text-decoration: line-through;
+        }
+
+        .reminder-card-main p {
           margin: 0;
           color: var(--text-dim);
           font-size: 0.7rem;
-          line-height: 1.35;
+          line-height: 1.38;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
 
-        .arc-seed-card > span {
+        .reminder-card-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
           flex-shrink: 0;
-          padding: 0.22rem 0.38rem;
+        }
+
+        .reminder-pill-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.28rem;
+          padding: 0.22rem 0.48rem;
           border-radius: 999px;
-          border: 1px solid rgba(255, 255, 255, 0.12);
+          font-size: 0.64rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .reminder-pill-toggle.open {
+          border: 1px solid rgba(245, 158, 11, 0.45);
+          background: rgba(245, 158, 11, 0.15);
+          color: #fcd34d;
+        }
+
+        .reminder-pill-toggle.open:hover {
+          background: rgba(245, 158, 11, 0.25);
+        }
+
+        .reminder-pill-toggle.closed {
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.05);
           color: var(--text-dim);
-          font-size: 0.62rem;
+        }
+
+        .reminder-pill-toggle.closed:hover {
+          border-color: rgba(255, 255, 255, 0.25);
+          color: var(--text-primary);
+        }
+
+        .reminder-delete-icon-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: var(--radius-sm);
+          border: 1px solid transparent;
+          background: transparent;
+          color: var(--text-dim);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .reminder-delete-icon-btn:hover {
+          border-color: rgba(239, 68, 68, 0.35);
+          background: rgba(239, 68, 68, 0.12);
+          color: #f87171;
+        }
+
+        .reminder-status-switch-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0.45rem;
+        }
+
+        .reminder-status-toggle-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+          padding: 0.45rem 0.5rem;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-dim);
+          font-size: 0.72rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .reminder-status-toggle-btn.is-open.active {
+          border-color: rgba(245, 158, 11, 0.45);
+          background: rgba(245, 158, 11, 0.15);
+          color: #fcd34d;
+        }
+
+        .reminder-status-toggle-btn.is-closed.active {
+          border-color: rgba(148, 163, 184, 0.4);
+          background: rgba(148, 163, 184, 0.14);
+          color: var(--text-primary);
+        }
+
+        .reminder-link-btn {
+          border: none;
+          background: transparent;
+          color: #fbbf24;
+          font-size: 0.7rem;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 0;
+          text-decoration: underline;
+        }
+
+        .reminder-popup-modal {
+          max-width: 640px;
+          width: 94%;
+          padding: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.1rem;
+        }
+
+        .reminder-popup-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 1rem;
+          padding-bottom: 0.9rem;
+          border-bottom: 1px solid var(--surface-border);
+        }
+
+        .reminder-popup-title-wrap {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.85rem;
+        }
+
+        .reminder-popup-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: var(--radius-md);
+          background: rgba(245, 158, 11, 0.15);
+          border: 1px solid rgba(245, 158, 11, 0.35);
+          color: #fbbf24;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .reminder-popup-eyebrow {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.45rem;
+          margin-bottom: 0.25rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: var(--text-secondary);
+        }
+
+        .reminder-popup-cadence-badge {
+          padding: 0.12rem 0.45rem;
+          border-radius: 999px;
+          background: rgba(245, 158, 11, 0.14);
+          border: 1px solid rgba(245, 158, 11, 0.3);
+          color: #fcd34d;
+          font-size: 0.64rem;
           font-weight: 800;
           text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
-        .arc-seed-card.status-paid_off {
-          opacity: 0.72;
+        .reminder-popup-close-x {
+          width: 32px;
+          height: 32px;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-secondary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
         }
 
-        .arc-seed-card.status-dropped {
-          opacity: 0.55;
+        .reminder-popup-close-x:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: var(--text-primary);
         }
 
-        .arc-seed-detail-modal {
-          max-width: 560px;
-          max-height: calc(100vh - 4rem);
+        .reminder-popup-body {
+          max-height: 58vh;
           overflow-y: auto;
+          padding-right: 0.25rem;
         }
 
-        .arc-seed-detail-body {
+        .reminder-popup-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          gap: 0.5rem;
+          padding: 2rem 1rem;
+          color: var(--text-dim);
+        }
+
+        .reminder-popup-empty strong {
+          color: var(--text-primary);
+          font-size: 0.95rem;
+        }
+
+        .reminder-popup-empty p {
+          margin: 0;
+          max-width: 380px;
+          font-size: 0.82rem;
+          line-height: 1.5;
+        }
+
+        .reminder-popup-list {
           display: flex;
           flex-direction: column;
           gap: 0.75rem;
         }
 
-        .arc-seed-chip-row {
+        .reminder-popup-card {
           display: flex;
-          flex-wrap: wrap;
-          gap: 0.35rem;
+          flex-direction: column;
+          gap: 0.55rem;
+          padding: 0.9rem 1rem;
+          border-radius: var(--radius-md);
+          border: 1px solid rgba(245, 158, 11, 0.25);
+          background: rgba(245, 158, 11, 0.05);
+          transition: opacity 0.18s ease, border-color 0.18s ease;
         }
 
-        .arc-seed-chip-row span {
-          padding: 0.3rem 0.45rem;
-          border: 1px solid rgba(20, 184, 166, 0.24);
+        .reminder-popup-card.is-closed {
+          opacity: 0.58;
+          border-color: var(--surface-border);
+          background: rgba(255, 255, 255, 0.025);
+        }
+
+        .reminder-popup-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.65rem;
+          flex-wrap: wrap;
+        }
+
+        .reminder-popup-meta {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          min-width: 0;
+        }
+
+        .reminder-popup-index {
+          padding: 0.12rem 0.42rem;
           border-radius: var(--radius-sm);
-          background: rgba(20, 184, 166, 0.08);
-          color: #99f6e4;
-          font-size: 0.7rem;
+          background: rgba(245, 158, 11, 0.18);
+          color: #fcd34d;
+          font-size: 0.68rem;
           font-weight: 800;
         }
 
-        .arc-seeds-page-list {
-          overflow-y: auto;
-          padding-right: 0.1rem;
+        .reminder-popup-chapter-btn {
+          border: none;
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 0;
+          text-align: left;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+
+        .reminder-popup-chapter-btn:hover {
+          color: #fbbf24;
+        }
+
+        .reminder-popup-chapter-label {
+          color: var(--text-dim);
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .reminder-popup-item-controls {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+
+        .reminder-popup-quote {
+          padding: 0.65rem 0.8rem;
+          border-left: 3px solid #f59e0b;
+          border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+          background: rgba(0, 0, 0, 0.2);
+          color: var(--text-primary);
+          font-size: 0.86rem;
+          line-height: 1.55;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .reminder-popup-card.is-closed .reminder-popup-quote {
+          border-left-color: var(--surface-border);
+          text-decoration: line-through;
+        }
+
+        .reminder-popup-note {
+          font-size: 0.78rem;
+          color: var(--text-secondary);
+          line-height: 1.45;
+        }
+
+        .reminder-popup-footer {
+          padding-top: 0.75rem;
+          border-top: 1px solid var(--surface-border);
+          justify-content: space-between;
         }
 
         .brain-markdown-view,

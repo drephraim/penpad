@@ -6,20 +6,20 @@ export async function POST(req: NextRequest) {
     await bootstrapDb()
 
     const body = await req.json()
-    const { userId, projectId, seedId } = body
+    const { userId, projectId, reminderId } = body
 
-    if (!userId || !projectId || !seedId) {
+    if (!userId || !projectId || !reminderId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
     await pool.query(
-      "DELETE FROM arc_seeds WHERE id = $1 AND user_id = $2 AND project_id = $3",
-      [seedId, userId, projectId]
+      "DELETE FROM reminders WHERE id = $1 AND user_id = $2 AND project_id = $3",
+      [reminderId, userId, projectId]
     )
 
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
-    console.error("Error deleting arc seed:", error)
+    console.error("Error deleting reminder:", error)
     const message = error instanceof Error ? error.message : "Internal server error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

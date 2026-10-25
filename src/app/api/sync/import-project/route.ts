@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       chaptersRes,
       bibleRes,
       brainRes,
-      arcSeedsRes,
+      remindersRes,
       progressionProfilesRes,
       progressionSystemRes,
       referenceLibraryRes,
@@ -46,9 +46,8 @@ export async function POST(req: NextRequest) {
         [userId, projectId]
       ),
       pool.query(
-        `SELECT id, title, summary, why_it_matters, future_payoff, evidence, chapter_title, chapter_id, chapter_number,
-                related_characters, related_entities, status, created_at, updated_at
-         FROM arc_seeds
+        `SELECT id, title, content, note, chapter_title, chapter_id, chapter_number, status, created_at, updated_at
+         FROM reminders
          WHERE user_id = $1 AND project_id = $2`,
         [userId, projectId]
       ),
@@ -119,19 +118,15 @@ export async function POST(req: NextRequest) {
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now()
     }))
 
-    const arcSeeds = arcSeedsRes.rows.map(row => ({
+    const reminders = remindersRes.rows.map(row => ({
       id: row.id,
-      title: row.title || "Untitled Arc Seed",
-      summary: row.summary || "",
-      whyItMatters: row.why_it_matters || "",
-      futurePayoff: row.future_payoff || "",
-      evidence: row.evidence || "",
+      title: row.title || "Untitled Reminder",
+      content: row.content || "",
+      note: row.note || "",
       chapterTitle: row.chapter_title || "",
       chapterId: row.chapter_id || "",
       chapterNumber: row.chapter_number != null ? Number(row.chapter_number) : null,
-      relatedCharacters: jsonArray(row.related_characters).filter((item): item is string => typeof item === "string"),
-      relatedEntities: jsonArray(row.related_entities).filter((item): item is string => typeof item === "string"),
-      status: ["open", "developing", "paid_off", "dropped"].includes(String(row.status)) ? row.status : "open",
+      status: ["open", "closed"].includes(String(row.status)) ? row.status : "open",
       createdAt: row.created_at ? Number(row.created_at) : Date.now(),
       updatedAt: row.updated_at ? Number(row.updated_at) : Date.now()
     }))
@@ -148,7 +143,7 @@ export async function POST(req: NextRequest) {
       chapters,
       bibleEntries,
       brainEntries,
-      arcSeeds,
+      reminders,
       progressionProfiles,
       progressionSystem: progressionSystemRes.rows[0]?.system_data || project?.progressionSystem || null,
       referenceLibrary: referenceLibraryRes.rows[0]?.data || [],

@@ -1,4 +1,4 @@
-import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal, saveReferenceLibraryLocal, saveNameForgeDataLocal, type NameForgeData } from "./db"
+import { saveManuscriptLocal, saveStoryBibleLocal, saveStoryBrainLocal, saveRemindersLocal, saveReferenceLibraryLocal, saveNameForgeDataLocal, type NameForgeData } from "./db"
 
 export interface Project {
   id: string
@@ -39,7 +39,7 @@ export interface ProjectDatabaseImport {
   chapters: Note[]
   bibleEntries: BibleEntry[]
   brainEntries: BrainEntry[]
-  arcSeeds: ArcSeed[]
+  reminders: Reminder[]
   progressionProfiles: unknown[]
   progressionSystem: unknown | null
   referenceLibrary: unknown[]
@@ -106,21 +106,17 @@ export interface BrainEntry {
   updatedAt: number
 }
 
-export type ArcSeedStatus = "open" | "developing" | "paid_off" | "dropped"
+export type ReminderStatus = "open" | "closed"
 
-export interface ArcSeed {
+export interface Reminder {
   id: string
   title: string
-  summary: string
-  whyItMatters: string
-  futurePayoff: string
-  evidence: string
+  content: string
+  note: string
   chapterTitle: string
   chapterId: string
   chapterNumber?: number | null
-  relatedCharacters?: string[]
-  relatedEntities?: string[]
-  status: ArcSeedStatus
+  status: ReminderStatus
   createdAt: number
   updatedAt: number
 }
@@ -479,18 +475,18 @@ export async function deleteBrainEntryFromCloud(userId: string, projectId: strin
 }
 
 /**
- * Reconciles local Arc Seeds with PostgreSQL via Next.js API.
+ * Reconciles local Reminders with PostgreSQL via Next.js API.
  */
-export async function syncArcSeedsWithCloud(userId: string, projectId: string, localSeeds: ArcSeed[]): Promise<ArcSeed[]> {
-  if (!userId || !projectId) return localSeeds
+export async function syncRemindersWithCloud(userId: string, projectId: string, localReminders: Reminder[]): Promise<Reminder[]> {
+  if (!userId || !projectId) return localReminders
 
   try {
-    const response = await fetchWithTimeout("/api/sync/arc-seeds", {
+    const response = await fetchWithTimeout("/api/sync/reminders", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ userId, projectId, localSeeds }),
+      body: JSON.stringify({ userId, projectId, localReminders }),
     })
 
     if (!response.ok) {
@@ -498,50 +494,52 @@ export async function syncArcSeedsWithCloud(userId: string, projectId: string, l
     }
 
     const data = await response.json()
-    return (data.seeds || []) as ArcSeed[]
+    const merged = (data.reminders || []) as Reminder[]
+    await saveRemindersLocal(projectId, merged)
+    return merged
   } catch (error) {
-    console.error("Failed to sync arc seeds with cloud, falling back to local:", error)
-    return localSeeds
+    console.error("Failed to sync reminders with cloud, falling back to local:", error)
+    return localReminders
   }
 }
 
-export async function saveArcSeedToCloud(userId: string, projectId: string, seed: ArcSeed): Promise<void> {
-  if (!userId || !projectId || !seed || !seed.id) return
+export async function saveReminderToCloud(userId: string, projectId: string, reminder: Reminder): Promise<void> {
+  if (!userId || !projectId || !reminder || !reminder.id) return
 
   try {
-    const response = await fetch("/api/sync/save-arc-seed", {
+    const response = await fetch("/api/sync/save-reminder", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ userId, projectId, seed })
+      body: JSON.stringify({ userId, projectId, reminder })
     })
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
   } catch (error) {
-    console.error("Failed to save arc seed to cloud:", error)
+    console.error("Failed to save reminder to cloud:", error)
   }
 }
 
-export async function deleteArcSeedFromCloud(userId: string, projectId: string, seedId: string): Promise<void> {
-  if (!userId || !projectId || !seedId) return
+export async function deleteReminderFromCloud(userId: string, projectId: string, reminderId: string): Promise<void> {
+  if (!userId || !projectId || !reminderId) return
 
   try {
-    const response = await fetch("/api/sync/delete-arc-seed", {
+    const response = await fetch("/api/sync/delete-reminder", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ userId, projectId, seedId })
+      body: JSON.stringify({ userId, projectId, reminderId })
     })
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
   } catch (error) {
-    console.error("Failed to delete arc seed from cloud:", error)
+    console.error("Failed to delete reminder from cloud:", error)
   }
 }
 
