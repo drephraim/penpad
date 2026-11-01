@@ -2083,10 +2083,37 @@ function EditorContent() {
 
   const activeNote = notes.find(n => n && n.id === activeNoteId)
 
-  const [editorContent, setEditorContent] = useState("")
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lastEditorContentRef = useRef("")
   const lastPushedContentRef = useRef("")
   const debounceSyncRef = useRef<NodeJS.Timeout | null>(null)
+  const wordCountDisplayRef = useRef<HTMLSpanElement | null>(null)
+  const progressFillRef = useRef<HTMLDivElement | null>(null)
+  const progressTextRef = useRef<HTMLSpanElement | null>(null)
+  const wordCountRafRef = useRef<number | null>(null)
+
+  const wordGoal = activeNote?.wordGoal || 1200
+  const wordGoalRef = useRef(wordGoal)
+  wordGoalRef.current = wordGoal
+
+  const updateWordCountDisplay = useCallback((text: string) => {
+    if (wordCountRafRef.current) cancelAnimationFrame(wordCountRafRef.current)
+    wordCountRafRef.current = requestAnimationFrame(() => {
+      const goal = wordGoalRef.current || 1200
+      const count = text ? countWords(text) : 0
+      const percent = Math.min(100, Math.round((count / goal) * 100))
+      if (wordCountDisplayRef.current) {
+        wordCountDisplayRef.current.textContent = `${count}/${goal} words`
+      }
+      if (progressFillRef.current) {
+        progressFillRef.current.style.width = `${percent}%`
+        progressFillRef.current.style.backgroundColor = percent >= 100 ? 'var(--success)' : 'var(--primary)'
+      }
+      if (progressTextRef.current) {
+        progressTextRef.current.textContent = `${percent}%`
+      }
+    })
+  }, [])
 
   const flushEditorContentSync = useCallback(() => {
     if (debounceSyncRef.current) {
@@ -2109,8 +2136,11 @@ function EditorContent() {
   }, [])
 
   const handleEditorContentChange = useCallback((newContent: string, immediate: boolean = false) => {
-    setEditorContent(newContent)
     lastEditorContentRef.current = newContent
+    if (textareaRef.current && textareaRef.current.value !== newContent) {
+      textareaRef.current.value = newContent
+    }
+    updateWordCountDisplay(newContent)
 
     if (debounceSyncRef.current) {
       clearTimeout(debounceSyncRef.current)
@@ -2142,22 +2172,28 @@ function EditorContent() {
             )
           )
         }
-      }, 800)
+      }, 1500)
     }
-  }, [])
+  }, [updateWordCountDisplay])
 
   // Sync editorContent when activeNoteId changes (switching chapters)
   useEffect(() => {
     if (activeNoteId) {
       const currentNote = notes.find(n => n && n.id === activeNoteId)
       const content = currentNote?.content || ""
-      setEditorContent(content)
+      if (textareaRef.current) {
+        textareaRef.current.value = content
+      }
       lastEditorContentRef.current = content
       lastPushedContentRef.current = content
+      updateWordCountDisplay(content)
     } else {
-      setEditorContent("")
+      if (textareaRef.current) {
+        textareaRef.current.value = ""
+      }
       lastEditorContentRef.current = ""
       lastPushedContentRef.current = ""
+      updateWordCountDisplay("")
     }
 
     return () => {
@@ -2178,7 +2214,7 @@ function EditorContent() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNoteId])
+  }, [activeNoteId, updateWordCountDisplay])
 
   // Persist activeNoteId in localStorage per project so refreshed page stays on focused chapter
   useEffect(() => {
@@ -2195,13 +2231,26 @@ function EditorContent() {
   useEffect(() => {
     if (activeNote && activeNote.id === activeNoteId) {
       if (activeNote.content !== lastPushedContentRef.current) {
-        setEditorContent(activeNote.content || "")
-        lastEditorContentRef.current = activeNote.content || ""
-        lastPushedContentRef.current = activeNote.content || ""
+        const content = activeNote.content || ""
+        if (textareaRef.current) {
+          textareaRef.current.value = content
+        }
+        lastEditorContentRef.current = content
+        lastPushedContentRef.current = content
+        updateWordCountDisplay(content)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNote?.content, activeNoteId])
+  }, [activeNote?.content, activeNoteId, updateWordCountDisplay])
+
+  // Save pending changes before tab close / refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushEditorContentSync()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [flushEditorContentSync])
 
   const [searchQuery, setSearchQuery] = useState('')
   const sessionTimeRef = useRef(0)
@@ -6483,7 +6532,6 @@ const fillEmptyCustomJsonData = (
     }
   }, [])
   const [showChapterDrawer, setShowChapterDrawer] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveBibleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastAutoSavedNoteFingerprintRef = useRef<Record<string, string>>({})
@@ -6524,31 +6572,33 @@ const fillEmptyCustomJsonData = (
     })
   }, [projectId])
 
+  const centerActiveLineRafRef = useRef<number | null>(null)
   const centerActiveLine = useCallback(() => {
     if (!isTypewriterMode) return
-    const textarea = textareaRef.current
-    if (!textarea) return
+    if (centerActiveLineRafRef.current) cancelAnimationFrame(centerActiveLineRafRef.current)
+    centerActiveLineRafRef.current = requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea) return
 
-    const start = textarea.selectionStart
-    const val = textarea.value
-    let lines = 0
-    for (let i = 0; i < start; i++) {
-      if (val.charCodeAt(i) === 10) lines++
-    }
-    
-    const computedStyle = window.getComputedStyle(textarea)
-    const lineHeight = parseInt(computedStyle.lineHeight) || 28
-    const paddingTop = parseInt(computedStyle.paddingTop) || 0
-    
-    const activeLineTop = lines * lineHeight + paddingTop
-    const textareaHeight = textarea.clientHeight
-    const targetScrollTop = activeLineTop - (textareaHeight / 2) + (lineHeight / 2)
-    
-    textarea.scrollTo({
-      top: Math.max(0, targetScrollTop),
-      behavior: 'smooth'
+      const start = textarea.selectionStart
+      const val = textarea.value
+      let lines = 0
+      let pos = 0
+      while ((pos = val.indexOf('\n', pos)) !== -1 && pos < start) {
+        lines++
+        pos++
+      }
+      
+      const lineHeight = Math.round(fontSize * 1.6)
+      const paddingTop = 32
+      
+      const activeLineTop = lines * lineHeight + paddingTop
+      const textareaHeight = textarea.clientHeight
+      const targetScrollTop = activeLineTop - (textareaHeight / 2) + (lineHeight / 2)
+      
+      textarea.scrollTop = Math.max(0, targetScrollTop)
     })
-  }, [isTypewriterMode])
+  }, [isTypewriterMode, fontSize])
 
   useEffect(() => {
     if (isTypewriterMode) {
@@ -10096,6 +10146,7 @@ const fillEmptyCustomJsonData = (
     }
   }, [getExportHistoryStorageKey, projectId])
   const saveCurrentChapterToFolder = useCallback(async () => {
+    flushEditorContentSync()
     if (!activeNote) return
     
     if (!window.showDirectoryPicker) {
@@ -10144,6 +10195,7 @@ const fillEmptyCustomJsonData = (
   }, [activeNote, dirHandle, saveSingleChapterToFolder, saveFolderHandleToProject, projectId, verifyPermission])
 
   const exportManuscriptToFolder = async () => {
+    flushEditorContentSync()
     if (notes.length === 0) {
       alert("No chapters to export")
       return
@@ -10281,6 +10333,7 @@ const fillEmptyCustomJsonData = (
   }
 
   const exportManuscript = async () => {
+    flushEditorContentSync()
     if (exportFormat === 'folder') {
       await exportManuscriptToFolder()
       return
@@ -10780,6 +10833,8 @@ ${navPoints}  </navMap>
     }
   }
 
+  const autocompleteDebounceRef = useRef<NodeJS.Timeout | null>(null)
+
   // Listen to typing slash
   const handleEditorInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     const target = e.currentTarget
@@ -10793,6 +10848,10 @@ ${navPoints}  </navMap>
     const lastWord = textBeforeCursor.substring(lastWordIdx + 1)
 
     if (lastWord.startsWith("/")) {
+      if (autocompleteDebounceRef.current) {
+        clearTimeout(autocompleteDebounceRef.current)
+        autocompleteDebounceRef.current = null
+      }
       setShowSlashMenu(true)
       setSlashMenuQuery(lastWord.substring(1))
       setSlashMenuIndex(0)
@@ -10801,6 +10860,11 @@ ${navPoints}  </navMap>
       if (showSlashMenu) {
         setShowSlashMenu(false)
         setSlashMenuQuery("")
+      }
+
+      if (autocompleteDebounceRef.current) {
+        clearTimeout(autocompleteDebounceRef.current)
+        autocompleteDebounceRef.current = null
       }
 
       if (indexedBibleEntries.length === 0) {
@@ -10827,66 +10891,45 @@ ${navPoints}  </navMap>
       
       const cleanWord = currentWord.replace(/[^A-Za-z]/g, "")
       if (cleanWord.length >= 2) {
-        const lowerClean = cleanWord.toLowerCase()
+        autocompleteDebounceRef.current = setTimeout(() => {
+          const lowerClean = cleanWord.toLowerCase()
 
-        // 1. Filter matching entries from pre-indexed Story Bible
-        const matchingItems = indexedBibleEntries.filter(item =>
-          item.lowerName.startsWith(lowerClean) || item.words.some(w => w.startsWith(lowerClean))
-        )
+          // 1. Filter matching entries from pre-indexed Story Bible
+          const matchingItems = indexedBibleEntries.filter(item =>
+            item.lowerName.startsWith(lowerClean) || item.words.some(w => w.startsWith(lowerClean))
+          )
 
-        let matches: string[] = []
+          let matches: string[] = []
 
-        if (matchingItems.length > 0) {
-          // Pre-rank candidate pool before calculating manuscript mentions
-          matchingItems.sort((a, b) => {
-            const aExactPrefix = a.lowerName.startsWith(lowerClean) ? 1 : 0
-            const bExactPrefix = b.lowerName.startsWith(lowerClean) ? 1 : 0
-            if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
+          if (matchingItems.length > 0) {
+            // Pre-rank candidate pool by exact prefix, selection count, and freshness
+            matchingItems.sort((a, b) => {
+              const aExactPrefix = a.lowerName.startsWith(lowerClean) ? 1 : 0
+              const bExactPrefix = b.lowerName.startsWith(lowerClean) ? 1 : 0
+              if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
 
-            const aSelects = (bibleSelectCounts[a.entry.id] || 0) + (bibleSelectCounts[a.lowerName] || 0)
-            const bSelects = (bibleSelectCounts[b.entry.id] || 0) + (bibleSelectCounts[b.lowerName] || 0)
-            if (aSelects !== bSelects) return bSelects - aSelects
+              const aSelects = (bibleSelectCounts[a.entry.id] || 0) + (bibleSelectCounts[a.lowerName] || 0)
+              const bSelects = (bibleSelectCounts[b.entry.id] || 0) + (bibleSelectCounts[b.lowerName] || 0)
+              if (aSelects !== bSelects) return bSelects - aSelects
 
-            return (b.entry.updatedAt || 0) - (a.entry.updatedAt || 0)
-          })
+              return (b.entry.updatedAt || 0) - (a.entry.updatedAt || 0)
+            })
 
-          const topCandidates = matchingItems.slice(0, 10)
-
-          // 2. Compute scores ONCE only for top candidates
-          const entryScores = new Map<string, number>()
-          topCandidates.forEach(item => {
-            const selects = (bibleSelectCounts[item.entry.id] || 0) + (bibleSelectCounts[item.lowerName] || 0)
-            const mentions = getEntryManuscriptMentions(item.entry.name)
-            entryScores.set(item.entry.id, (selects * 100) + mentions)
-          })
-
-          // 3. Final rank top candidates
-          topCandidates.sort((a, b) => {
-            const aScore = entryScores.get(a.entry.id) || 0
-            const bScore = entryScores.get(b.entry.id) || 0
-            if (aScore !== bScore) return bScore - aScore
-
-            const aExactPrefix = a.lowerName.startsWith(lowerClean) ? 1 : 0
-            const bExactPrefix = b.lowerName.startsWith(lowerClean) ? 1 : 0
-            if (aExactPrefix !== bExactPrefix) return bExactPrefix - aExactPrefix
-
-            return (b.entry.updatedAt || 0) - (a.entry.updatedAt || 0)
-          })
-
-          matches = topCandidates.map(item => item.entry.name)
-        }
-
-        if (matches.length > 0) {
-          setAutocompleteSuggestions(matches)
-          setAutocompleteTriggerPos(cursor - cleanWord.length)
-          setShowAutocomplete(true)
-          setAutocompleteIndex(0)
-        } else {
-          if (showAutocomplete) {
-            setShowAutocomplete(false)
-            setAutocompleteSuggestions([])
+            matches = matchingItems.slice(0, 5).map(item => item.entry.name)
           }
-        }
+
+          if (matches.length > 0) {
+            setAutocompleteSuggestions(matches)
+            setAutocompleteTriggerPos(cursor - cleanWord.length)
+            setShowAutocomplete(true)
+            setAutocompleteIndex(0)
+          } else {
+            if (showAutocomplete) {
+              setShowAutocomplete(false)
+              setAutocompleteSuggestions([])
+            }
+          }
+        }, 75)
       } else {
         if (showAutocomplete) {
           setShowAutocomplete(false)
@@ -11957,11 +12000,8 @@ ${navPoints}  </navMap>
     }
   }
 
-  const wordCount = useMemo(() => {
-    return editorContent ? countWords(editorContent) : 0
-  }, [editorContent])
-  const wordGoal = activeNote?.wordGoal || 1200
-  const progressPercent = Math.min(100, Math.round((wordCount / wordGoal) * 100))
+  const initialWordCount = activeNote?.content ? countWords(activeNote.content) : 0
+  const initialProgressPercent = Math.min(100, Math.round((initialWordCount / wordGoal) * 100))
 
   if (loading) return (
     <div className="loading-screen">
@@ -12115,7 +12155,10 @@ ${navPoints}  </navMap>
             </button>
             <button 
               className={`view-btn ${viewMode === 'preview' ? 'active' : ''}`}
-              onClick={() => setViewMode('preview')}
+              onClick={() => {
+                flushEditorContentSync()
+                setViewMode('preview')
+              }}
             >
               <Eye size={14} />
               Preview
@@ -17222,8 +17265,9 @@ ${navPoints}  </navMap>
                   <div className={`textarea-wrapper ${isTypewriterMode ? 'typewriter' : ''}`}>
                     <textarea 
                       ref={textareaRef}
+                      key={activeNoteId}
                       className="editor-textarea"
-                      value={editorContent}
+                      defaultValue={activeNote?.content || ""}
                       onChange={(e) => {
                         handleEditorContentChange(e.target.value)
                         if (isTypewriterMode) centerActiveLine()
@@ -17233,6 +17277,7 @@ ${navPoints}  </navMap>
                       onFocus={() => isTypewriterMode && centerActiveLine()}
                       onKeyDown={handleEditorKeyDown}
                       onInput={handleEditorInput}
+                      onBlur={flushEditorContentSync}
                       onSelect={(e) => {
                         const target = e.currentTarget
                         const start = target.selectionStart
@@ -17371,16 +17416,17 @@ ${navPoints}  </navMap>
                   <div className="status-left">
                     <span className="word-count">
                       <FileText size={14} />
-                      {wordCount}/{wordGoal} words
+                      <span ref={wordCountDisplayRef}>{initialWordCount}/{wordGoal} words</span>
                     </span>
                     <div className="word-progress">
                       <div className="word-progress-bar">
                         <div 
+                          ref={progressFillRef}
                           className="word-progress-fill" 
-                          style={{ width: `${progressPercent}%`, backgroundColor: progressPercent >= 100 ? 'var(--success)' : 'var(--primary)' }}
+                          style={{ width: `${initialProgressPercent}%`, backgroundColor: initialProgressPercent >= 100 ? 'var(--success)' : 'var(--primary)' }}
                         ></div>
                       </div>
-                      <span className="word-progress-text">{progressPercent}%</span>
+                      <span ref={progressTextRef} className="word-progress-text">{initialProgressPercent}%</span>
                     </div>
                   </div>
 
