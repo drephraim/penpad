@@ -6718,29 +6718,71 @@ const fillEmptyCustomJsonData = (
     }
   }, [projectId, getReferenceStorageKey, user])
 
+  const normalizeChapterVolumeId = useCallback((volumeId?: string | null) => {
+    if (!volumeId || volumeId === UNASSIGNED_VOLUME_ID) return null
+    return volumeId
+  }, [])
+
+  const sanitizeVolumesList = useCallback((rawVolumes: ManuscriptVolume[]) => {
+    const seenIds = new Set<string>()
+    let changed = false
+    const sanitized = rawVolumes
+      .filter((volume): volume is ManuscriptVolume => Boolean(volume && typeof volume === "object"))
+      .map((volume, index) => {
+        const rawId = typeof volume.id === "string" ? volume.id.trim() : ""
+        const needsNewId = !rawId || rawId === UNASSIGNED_VOLUME_ID || seenIds.has(rawId)
+        const id = needsNewId ? crypto.randomUUID() : rawId
+        if (needsNewId) changed = true
+        seenIds.add(id)
+
+        const isOpen = volume.isOpen !== false
+        if (volume.isOpen !== isOpen) changed = true
+
+        const sortOrder = Number.isFinite(volume.sortOrder) ? volume.sortOrder : index + 1
+        if (volume.sortOrder !== sortOrder) changed = true
+
+        const title = typeof volume.title === "string" && volume.title.trim() ? volume.title : `Volume ${index + 1}`
+        if (volume.title !== title) changed = true
+
+        return {
+          ...volume,
+          id,
+          title,
+          isOpen,
+          sortOrder
+        }
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+
+    return { volumes: sanitized, changed }
+  }, [])
+
   const updateProjectMetadata = useCallback(async (updates: Partial<Project>) => {
     if (!user || !projectId) return
     try {
-      const stored = localStorage.getItem(`penpad_projects_${user.uid}`)
-      if (stored) {
-        const projects = JSON.parse(stored)
-        const idx = projects.findIndex((p: any) => p.id === projectId)
-        if (idx >= 0) {
-          const updatedProject = {
-            ...projects[idx],
-            ...updates,
-            lastUpdated: Date.now()
-          }
-          projects[idx] = updatedProject
-          localStorage.setItem(`penpad_projects_${user.uid}`, JSON.stringify(projects))
-          
-          await saveProjectToCloud(user.uid, updatedProject)
-        }
+      const storageKey = `penpad_projects_${user.uid}`
+      const stored = localStorage.getItem(storageKey)
+      const projects: Project[] = stored ? JSON.parse(stored) : []
+      const idx = projects.findIndex((p: any) => p.id === projectId)
+      const existingProject: Project = idx >= 0
+        ? projects[idx]
+        : { id: projectId, name: projectName || "Untitled" }
+      const updatedProject: Project = {
+        ...existingProject,
+        ...updates,
+        lastUpdated: Date.now()
       }
+      if (idx >= 0) {
+        projects[idx] = updatedProject
+      } else {
+        projects.unshift(updatedProject)
+      }
+      localStorage.setItem(storageKey, JSON.stringify(projects))
+      await saveProjectToCloud(user.uid, updatedProject)
     } catch (e) {
       console.error("Failed to update project metadata:", e)
     }
-  }, [user, projectId])
+  }, [user, projectId, projectName])
 
   const persistVolumes = useCallback((nextVolumes: ManuscriptVolume[]) => {
     const key = getVolumesStorageKey()
@@ -6766,10 +6808,14 @@ const fillEmptyCustomJsonData = (
         }
       }
 
-      const volumeList: ManuscriptVolume[] = storedVolumes
-        ? JSON.parse(storedVolumes).map((volume: ManuscriptVolume) => ({ ...volume, isOpen: volume.isOpen !== false }))
-        : []
-      setVolumes(volumeList.sort((a, b) => a.sortOrder - b.sortOrder))
+      const rawVolumeList: ManuscriptVolume[] = storedVolumes ? JSON.parse(storedVolumes) : []
+      const { volumes: sanitizedVolumes, changed } = sanitizeVolumesList(Array.isArray(rawVolumeList) ? rawVolumeList : [])
+      setVolumes(sanitizedVolumes)
+      if (changed) {
+        const key = getVolumesStorageKey()
+        if (key) localStorage.setItem(key, JSON.stringify(sanitizedVolumes))
+        updateProjectMetadata({ volumes: sanitizedVolumes })
+      }
 
       const storedCollapsed = localStorage.getItem(getCollapsedVolumesStorageKey())
       const collapsedList: string[] = storedCollapsed ? JSON.parse(storedCollapsed) : []
@@ -6803,7 +6849,7 @@ const fillEmptyCustomJsonData = (
       setCollapsedVolumeIds(new Set())
       setExportHistory({})
     }
-  }, [user, projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey])
+  }, [user, projectId, getVolumesStorageKey, getCollapsedVolumesStorageKey, getExportHistoryStorageKey, sanitizeVolumesList, updateProjectMetadata])
 
   const persistProgressionProfiles = useCallback(async (nextProfiles: CharacterProgressionProfile[]) => {
     if (!projectId) return
@@ -7010,9 +7056,9 @@ const fillEmptyCustomJsonData = (
     setSyncStatus("saving")
     try {
       const data = await importProjectDataFromCloud(user.uid, projectId)
-      const importedVolumes = (Array.isArray(data.project?.volumes) ? data.project?.volumes : [])
-        .map(volume => ({ ...(volume as ManuscriptVolume), isOpen: (volume as ManuscriptVolume).isOpen !== false }))
-        .sort((a, b) => a.sortOrder - b.sortOrder)
+      const { volumes: importedVolumes } = sanitizeVolumesList(
+        (Array.isArray(data.project?.volumes) ? data.project?.volumes : []) as ManuscriptVolume[]
+      )
       const importedBibleGroups = (Array.isArray(data.project?.bibleGroups) ? data.project?.bibleGroups : [])
         .map(group => group as StoryBibleGroup)
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -7113,6 +7159,7 @@ const fillEmptyCustomJsonData = (
     normalizeImportedProgressionProfiles,
     normalizeProgressionSystem,
     projectId,
+    sanitizeVolumesList,
     selectedReminderId,
     selectedBrainEntryId,
     user
@@ -11343,10 +11390,10 @@ ${navPoints}  </navMap>
 
   const moveNotesListToVolume = async (noteIdsToMove: Set<string>, targetVolumeId: string | null) => {
     if (!projectId || noteIdsToMove.size === 0) return
-    const normalizedVolumeId = targetVolumeId === UNASSIGNED_VOLUME_ID ? null : targetVolumeId
+    const normalizedVolumeId = normalizeChapterVolumeId(targetVolumeId)
 
     const remainingNotes = notes.filter(n => n && !noteIdsToMove.has(n.id))
-    const existingInVolume = remainingNotes.filter(n => (n.volumeId || null) === normalizedVolumeId)
+    const existingInVolume = remainingNotes.filter(n => normalizeChapterVolumeId(n.volumeId) === normalizedVolumeId)
 
     let baseSortOrder = existingInVolume.length > 0
       ? Math.max(...existingInVolume.map(n => getNoteSortValue(n)))
@@ -11412,15 +11459,15 @@ ${navPoints}  </navMap>
 
   const moveAllVolumeChapters = async (sourceVolumeId: string, targetVolumeId: string | null) => {
     if (!projectId) return
-    const normalizedSourceId = sourceVolumeId === UNASSIGNED_VOLUME_ID ? null : sourceVolumeId
-    const normalizedTargetId = targetVolumeId === UNASSIGNED_VOLUME_ID ? null : targetVolumeId
+    const normalizedSourceId = normalizeChapterVolumeId(sourceVolumeId)
+    const normalizedTargetId = normalizeChapterVolumeId(targetVolumeId)
     if (normalizedSourceId === normalizedTargetId) {
       setVolumeMoveModal(null)
       return
     }
     const chapterIds = new Set(
       notes
-        .filter(n => n && (n.volumeId || null) === normalizedSourceId)
+        .filter(n => n && normalizeChapterVolumeId(n.volumeId) === normalizedSourceId)
         .map(n => n.id)
     )
     await moveNotesListToVolume(chapterIds, normalizedTargetId)
@@ -11622,13 +11669,13 @@ ${navPoints}  </navMap>
 
   const orphanVolumeIds = useMemo(() => {
     return Array.from(new Set(orderedFilteredNotes
-      .map(note => note.volumeId)
+      .map(note => normalizeChapterVolumeId(note.volumeId))
       .filter((volumeId): volumeId is string => typeof volumeId === "string" && volumeId.length > 0 && !knownVolumeIds.has(volumeId))))
-  }, [orderedFilteredNotes, knownVolumeIds])
+  }, [orderedFilteredNotes, knownVolumeIds, normalizeChapterVolumeId])
 
   const unassignedFilteredNotes = useMemo(() => {
-    return orderedFilteredNotes.filter(note => !note.volumeId)
-  }, [orderedFilteredNotes])
+    return orderedFilteredNotes.filter(note => !normalizeChapterVolumeId(note.volumeId))
+  }, [orderedFilteredNotes, normalizeChapterVolumeId])
 
   const manuscriptVolumeGroups = useMemo(() => {
     return [
@@ -12814,9 +12861,9 @@ ${navPoints}  </navMap>
                 <div className="chapter-list">
                   {manuscriptVolumeGroups.map(group => {
                     const isCollapsed = collapsedVolumeIds.has(group.id)
-                    const isUnassignedGroup = group.id === UNASSIGNED_VOLUME_ID
-                    const normalizedGroupId = isUnassignedGroup ? null : group.id
-                    const totalGroupChaptersCount = notes.filter(n => n && (n.volumeId || null) === normalizedGroupId).length
+                    const isUnassignedGroup = group.isSystem && group.id === UNASSIGNED_VOLUME_ID
+                    const normalizedGroupId = normalizeChapterVolumeId(group.id)
+                    const totalGroupChaptersCount = notes.filter(n => n && normalizeChapterVolumeId(n.volumeId) === normalizedGroupId).length
                     return (
                       <div
                         key={group.id}
@@ -19260,8 +19307,8 @@ ${navPoints}  </navMap>
         )}
 
         {volumeMoveModal?.show && (() => {
-          const sourceNormalizedId = volumeMoveModal.sourceVolumeId === UNASSIGNED_VOLUME_ID ? null : volumeMoveModal.sourceVolumeId
-          const sourceChaptersCount = notes.filter(n => n && (n.volumeId || null) === sourceNormalizedId).length
+          const sourceNormalizedId = normalizeChapterVolumeId(volumeMoveModal.sourceVolumeId)
+          const sourceChaptersCount = notes.filter(n => n && normalizeChapterVolumeId(n.volumeId) === sourceNormalizedId).length
           const targetGroups = manuscriptVolumeGroups.filter(g => g.id !== volumeMoveModal.sourceVolumeId)
           const showUnassignedFallback = volumeMoveModal.sourceVolumeId !== UNASSIGNED_VOLUME_ID
             && !manuscriptVolumeGroups.some(g => g.id === UNASSIGNED_VOLUME_ID)
@@ -19278,8 +19325,8 @@ ${navPoints}  </navMap>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", margin: "1rem 0", maxHeight: "260px", overflowY: "auto" }}>
                   {targetGroups.map(group => {
-                    const targetNormalizedId = group.id === UNASSIGNED_VOLUME_ID ? null : group.id
-                    const targetCount = notes.filter(n => n && (n.volumeId || null) === targetNormalizedId).length
+                    const targetNormalizedId = normalizeChapterVolumeId(group.id)
+                    const targetCount = notes.filter(n => n && normalizeChapterVolumeId(n.volumeId) === targetNormalizedId).length
                     return (
                       <button
                         key={group.id}
@@ -29502,7 +29549,7 @@ ${navPoints}  </navMap>
           justify-content: center;
           overflow-y: auto;
           padding: 2rem 1rem;
-          z-index: 100;
+          z-index: 500;
         }
 
         .modal {
