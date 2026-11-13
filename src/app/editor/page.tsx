@@ -18,7 +18,7 @@ import {
   Network, ShieldAlert, AlertTriangle, CheckCircle2, Bookmark, Image as ImageIcon, Circle,
   ThumbsUp, ThumbsDown, Shuffle, Undo2, Users,
   Upload, HardDrive, BarChart3, Gem, Award, Zap, Shield, Key, Compass,
-  Bell, BellOff, Clock
+  Bell, BellOff, Clock, FolderInput
 } from "lucide-react"
 import { 
   saveDirectoryHandleForProject, 
@@ -2077,6 +2077,18 @@ function EditorContent() {
   const [showVolumeCreateModal, setShowVolumeCreateModal] = useState(false)
   const [newVolumeName, setNewVolumeName] = useState("")
   const [newVolumeIsOpen, setNewVolumeIsOpen] = useState(true)
+  const [volumeDeleteModal, setVolumeDeleteModal] = useState<{
+    show: boolean
+    volumeId: string
+    volumeTitle: string
+  } | null>(null)
+  const [deleteVolumeTargetId, setDeleteVolumeTargetId] = useState<string>(UNASSIGNED_VOLUME_ID)
+  const [volumeMoveModal, setVolumeMoveModal] = useState<{
+    show: boolean
+    sourceVolumeId: string
+    sourceVolumeTitle: string
+  } | null>(null)
+  const [volumeMoveNewVolumeName, setVolumeMoveNewVolumeName] = useState("")
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const activeNoteIdRef = useRef<string | null>(null)
   activeNoteIdRef.current = activeNoteId
@@ -11146,6 +11158,8 @@ ${navPoints}  </navMap>
         setShowSlashMenu(false)
         setSelectedBrainEntryId(null)
         setChapterMoveMenu(null)
+        setVolumeDeleteModal(null)
+        setVolumeMoveModal(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -11202,10 +11216,9 @@ ${navPoints}  </navMap>
     setShowVolumeCreateModal(true)
   }
 
-  const confirmCreateNewVolume = () => {
-    if (!projectId) return
+  const createVolumeRecord = (rawTitle: string, isOpen: boolean): ManuscriptVolume => {
     const defaultName = `Volume ${volumes.length + 1}`
-    const trimmedTitle = newVolumeName.trim() || defaultName
+    const trimmedTitle = rawTitle.trim() || defaultName
     const now = Date.now()
     const newVolume: ManuscriptVolume = {
       id: crypto.randomUUID(),
@@ -11213,17 +11226,24 @@ ${navPoints}  </navMap>
       createdAt: now,
       updatedAt: now,
       sortOrder: volumes.length > 0 ? Math.min(...volumes.map(volume => volume.sortOrder)) - 1 : 1,
-      isOpen: newVolumeIsOpen
+      isOpen
     }
     persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
-    setShowVolumeCreateModal(false)
-    setNewVolumeName("")
     setCollapsedVolumeIds(prev => {
       const next = new Set(prev)
       next.delete(newVolume.id)
-      localStorage.setItem(getCollapsedVolumesStorageKey(), JSON.stringify(Array.from(next)))
+      const key = getCollapsedVolumesStorageKey()
+      if (key) localStorage.setItem(key, JSON.stringify(Array.from(next)))
       return next
     })
+    return newVolume
+  }
+
+  const confirmCreateNewVolume = () => {
+    if (!projectId) return
+    createVolumeRecord(newVolumeName, newVolumeIsOpen)
+    setShowVolumeCreateModal(false)
+    setNewVolumeName("")
   }
 
   const toggleVolumeOpen = (volumeId: string) => {
@@ -11258,6 +11278,7 @@ ${navPoints}  </navMap>
   }
 
   const renameVolume = (volumeId: string) => {
+    if (volumeId === UNASSIGNED_VOLUME_ID) return
     const volume = volumes.find(item => item.id === volumeId)
     const currentTitle = volume ? volume.title : "Recovered Volume"
     const title = prompt("Rename volume:", currentTitle)
@@ -11317,51 +11338,28 @@ ${navPoints}  </navMap>
   }
 
   const moveChapterToVolume = async (noteId: string, volumeId: string | null) => {
-    if (!projectId) return
-    const normalizedVolumeId = volumeId === UNASSIGNED_VOLUME_ID ? null : volumeId
-    const movingNote = notes.find(note => note.id === noteId)
-    if (!movingNote) return
-
-    const targetVolumeNotes = notes.filter(note => (note.volumeId || null) === normalizedVolumeId && note.id !== noteId)
-    const nextSortOrder = targetVolumeNotes.length > 0
-      ? Math.max(...targetVolumeNotes.map(note => getNoteSortValue(note))) + 0.01
-      : getNextChapterSortOrder(notes)
-    const updatedNote: Note = {
-      ...movingNote,
-      volumeId: normalizedVolumeId,
-      sortOrder: nextSortOrder,
-      updatedAt: Date.now()
-    }
-    const updatedNotes = getOrderedNotesList(notes.map(note => note.id === noteId ? updatedNote : note))
-    setNotes(updatedNotes)
-    await saveManuscriptLocal(projectId, updatedNotes)
-    setChapterMoveMenu(null)
-    setDraggedChapterId(null)
-
-    if (user) {
-      await saveChapterToCloud(user.uid, projectId, updatedNote)
-    }
+    await moveNotesListToVolume(new Set([noteId]), volumeId)
   }
 
-  const moveSelectedChaptersToVolume = async (targetVolumeId: string | null) => {
-    if (!projectId || selectedNoteIds.size === 0) return
+  const moveNotesListToVolume = async (noteIdsToMove: Set<string>, targetVolumeId: string | null) => {
+    if (!projectId || noteIdsToMove.size === 0) return
     const normalizedVolumeId = targetVolumeId === UNASSIGNED_VOLUME_ID ? null : targetVolumeId
 
-    const unselectedNotes = notes.filter(n => n && !selectedNoteIds.has(n.id))
-    const existingInVolume = unselectedNotes.filter(n => (n.volumeId || null) === normalizedVolumeId)
+    const remainingNotes = notes.filter(n => n && !noteIdsToMove.has(n.id))
+    const existingInVolume = remainingNotes.filter(n => (n.volumeId || null) === normalizedVolumeId)
 
     let baseSortOrder = existingInVolume.length > 0
       ? Math.max(...existingInVolume.map(n => getNoteSortValue(n)))
-      : getNextChapterSortOrder(unselectedNotes)
+      : getNextChapterSortOrder(remainingNotes)
 
-    const selectedNotes = notes.filter(n => n && selectedNoteIds.has(n.id))
-    selectedNotes.sort((a, b) => (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt))
+    const notesToMove = notes.filter(n => n && noteIdsToMove.has(n.id))
+    notesToMove.sort((a, b) => getNoteSortValue(a) - getNoteSortValue(b))
 
     const updatedNotesMap = new Map<string, Note>()
     notes.forEach(n => { if (n) updatedNotesMap.set(n.id, n) })
 
-    const updatedSelectedList: Note[] = []
-    selectedNotes.forEach(note => {
+    const updatedList: Note[] = []
+    notesToMove.forEach(note => {
       baseSortOrder += 0.01
       const updated: Note = {
         ...note,
@@ -11370,7 +11368,7 @@ ${navPoints}  </navMap>
         updatedAt: Date.now()
       }
       updatedNotesMap.set(note.id, updated)
-      updatedSelectedList.push(updated)
+      updatedList.push(updated)
     })
 
     const updatedNotes = getOrderedNotesList(Array.from(updatedNotesMap.values()))
@@ -11380,7 +11378,7 @@ ${navPoints}  </navMap>
     setDraggedChapterId(null)
 
     if (user?.uid) {
-      for (const note of updatedSelectedList) {
+      for (const note of updatedList) {
         saveChapterToCloud(user.uid, projectId, note).catch(err => console.error("Cloud sync move error:", err))
       }
     }
@@ -11390,32 +11388,112 @@ ${navPoints}  </navMap>
         if (prev.has(normalizedVolumeId)) {
           const next = new Set(prev)
           next.delete(normalizedVolumeId)
-          localStorage.setItem(getCollapsedVolumesStorageKey(), JSON.stringify(Array.from(next)))
+          const key = getCollapsedVolumesStorageKey()
+          if (key) localStorage.setItem(key, JSON.stringify(Array.from(next)))
           return next
         }
         return prev
       })
     }
+  }
 
+  const moveSelectedChaptersToVolume = async (targetVolumeId: string | null) => {
+    if (!projectId || selectedNoteIds.size === 0) return
+    await moveNotesListToVolume(selectedNoteIds, targetVolumeId)
     setShowBatchMoveVolumeModal(false)
   }
 
   const confirmCreateVolumeAndMoveSelected = async () => {
     if (!projectId || selectedNoteIds.size === 0) return
-    const defaultName = `Volume ${volumes.length + 1}`
-    const trimmedTitle = batchMoveNewVolumeName.trim() || defaultName
-    const now = Date.now()
-    const newVolume: ManuscriptVolume = {
-      id: crypto.randomUUID(),
-      title: trimmedTitle,
-      createdAt: now,
-      updatedAt: now,
-      sortOrder: volumes.length > 0 ? Math.min(...volumes.map(v => v.sortOrder)) - 1 : 1,
-      isOpen: true
-    }
-    persistVolumes([...volumes, newVolume].sort((a, b) => a.sortOrder - b.sortOrder))
+    const newVolume = createVolumeRecord(batchMoveNewVolumeName, true)
     setBatchMoveNewVolumeName("")
     await moveSelectedChaptersToVolume(newVolume.id)
+  }
+
+  const moveAllVolumeChapters = async (sourceVolumeId: string, targetVolumeId: string | null) => {
+    if (!projectId) return
+    const normalizedSourceId = sourceVolumeId === UNASSIGNED_VOLUME_ID ? null : sourceVolumeId
+    const normalizedTargetId = targetVolumeId === UNASSIGNED_VOLUME_ID ? null : targetVolumeId
+    if (normalizedSourceId === normalizedTargetId) {
+      setVolumeMoveModal(null)
+      return
+    }
+    const chapterIds = new Set(
+      notes
+        .filter(n => n && (n.volumeId || null) === normalizedSourceId)
+        .map(n => n.id)
+    )
+    await moveNotesListToVolume(chapterIds, normalizedTargetId)
+    setVolumeMoveModal(null)
+    setVolumeMoveNewVolumeName("")
+  }
+
+  const confirmCreateVolumeAndMoveVolumeChapters = async () => {
+    if (!projectId || !volumeMoveModal) return
+    const newVolume = createVolumeRecord(volumeMoveNewVolumeName, true)
+    setVolumeMoveNewVolumeName("")
+    await moveAllVolumeChapters(volumeMoveModal.sourceVolumeId, newVolume.id)
+  }
+
+  const openDeleteVolumeModal = (volumeId: string, volumeTitle: string) => {
+    if (volumeId === UNASSIGNED_VOLUME_ID) return
+    setDeleteVolumeTargetId(UNASSIGNED_VOLUME_ID)
+    setVolumeDeleteModal({ show: true, volumeId, volumeTitle })
+  }
+
+  const confirmDeleteVolume = async (mode: 'move' | 'delete-chapters') => {
+    if (!projectId || !volumeDeleteModal) return
+    const { volumeId } = volumeDeleteModal
+    if (volumeId === UNASSIGNED_VOLUME_ID) return
+
+    if (volumes.some(v => v.id === volumeId)) {
+      const nextVolumes = volumes.filter(v => v.id !== volumeId)
+      persistVolumes(nextVolumes)
+    }
+
+    setCollapsedVolumeIds(prev => {
+      if (!prev.has(volumeId)) return prev
+      const next = new Set(prev)
+      next.delete(volumeId)
+      const key = getCollapsedVolumesStorageKey()
+      if (key) localStorage.setItem(key, JSON.stringify(Array.from(next)))
+      return next
+    })
+
+    const volumeChapterIds = new Set(
+      notes
+        .filter(n => n && n.volumeId === volumeId)
+        .map(n => n.id)
+    )
+
+    if (volumeChapterIds.size > 0) {
+      if (mode === 'move') {
+        const safeTargetId = deleteVolumeTargetId === volumeId ? UNASSIGNED_VOLUME_ID : deleteVolumeTargetId
+        await moveNotesListToVolume(volumeChapterIds, safeTargetId)
+      } else {
+        const remainingNotes = notes.filter(n => n && !volumeChapterIds.has(n.id))
+        await saveManuscriptLocal(projectId, remainingNotes)
+        setNotes(remainingNotes)
+
+        if (user?.uid) {
+          volumeChapterIds.forEach(noteId => {
+            deleteChapterFromCloud(user.uid, projectId, noteId)
+          })
+        }
+
+        if (activeNoteId && volumeChapterIds.has(activeNoteId)) {
+          setActiveNoteId(remainingNotes.length > 0 ? remainingNotes[0].id : null)
+        }
+
+        setSelectedNoteIds(prev => {
+          const next = new Set(prev)
+          volumeChapterIds.forEach(id => next.delete(id))
+          return next
+        })
+      }
+    }
+
+    setVolumeDeleteModal(null)
   }
 
   const deleteNote = async () => {
@@ -12736,6 +12814,9 @@ ${navPoints}  </navMap>
                 <div className="chapter-list">
                   {manuscriptVolumeGroups.map(group => {
                     const isCollapsed = collapsedVolumeIds.has(group.id)
+                    const isUnassignedGroup = group.id === UNASSIGNED_VOLUME_ID
+                    const normalizedGroupId = isUnassignedGroup ? null : group.id
+                    const totalGroupChaptersCount = notes.filter(n => n && (n.volumeId || null) === normalizedGroupId).length
                     return (
                       <div
                         key={group.id}
@@ -12766,8 +12847,11 @@ ${navPoints}  </navMap>
                           <button
                             type="button"
                             className="volume-title"
-                            onClick={() => renameVolume(group.id)}
-                            title="Rename volume"
+                            onClick={() => {
+                              if (!isUnassignedGroup) renameVolume(group.id)
+                            }}
+                            title={isUnassignedGroup ? group.title : "Rename volume"}
+                            style={isUnassignedGroup ? { cursor: "default" } : undefined}
                           >
                             {group.title}
                           </button>
@@ -12798,22 +12882,55 @@ ${navPoints}  </navMap>
                             </button>
                           )}
 
-                          <button
-                            type="button"
-                            className="volume-add-chapter"
-                            onClick={() => renameVolume(group.id)}
-                            title="Rename volume"
-                          >
-                            <Edit3 size={12} />
-                          </button>
+                          {totalGroupChaptersCount > 0 && (
+                            <button
+                              type="button"
+                              className="volume-add-chapter"
+                              onClick={() => {
+                                setVolumeMoveNewVolumeName("")
+                                setVolumeMoveModal({
+                                  show: true,
+                                  sourceVolumeId: group.id,
+                                  sourceVolumeTitle: group.title
+                                })
+                              }}
+                              title={`Move all chapters from ${group.title} to another volume`}
+                              aria-label={`Move all chapters from ${group.title}`}
+                            >
+                              <FolderInput size={12} />
+                            </button>
+                          )}
+                          {!isUnassignedGroup && (
+                            <button
+                              type="button"
+                              className="volume-add-chapter"
+                              onClick={() => renameVolume(group.id)}
+                              title="Rename volume"
+                              aria-label={`Rename ${group.title}`}
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="volume-add-chapter"
                             onClick={() => createNewNote(group.id)}
                             title={`Add chapter to ${group.title}`}
+                            aria-label={`Add chapter to ${group.title}`}
                           >
                             <Plus size={13} />
                           </button>
+                          {!isUnassignedGroup && (
+                            <button
+                              type="button"
+                              className="volume-add-chapter volume-delete-btn"
+                              onClick={() => openDeleteVolumeModal(group.id, group.title)}
+                              title={`Delete ${group.title}`}
+                              aria-label={`Delete ${group.title}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </div>
 
                         {!isCollapsed && (
@@ -12868,6 +12985,18 @@ ${navPoints}  </navMap>
                                   
                                   {!isSelectionMode && (
                                     <div className="chapter-actions">
+                                      <button
+                                        className="btn-save-chapter"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          const rect = e.currentTarget.getBoundingClientRect()
+                                          setChapterMoveMenu({ noteId: note.id, x: rect.left, y: rect.bottom + 4 })
+                                        }}
+                                        title="Move chapter to volume"
+                                        aria-label={`Move ${chapterDisplay.title} to another volume`}
+                                      >
+                                        <FolderInput size={12} />
+                                      </button>
                                       <button 
                                         className={`btn-save-chapter ${savedChapters.has(note.id) && !needsExport ? 'saved' : ''}`}
                                         onClick={async (e) => { 
@@ -19009,8 +19138,8 @@ ${navPoints}  </navMap>
             <div
               className="chapter-move-menu glass"
               style={{
-                top: chapterMoveMenu.y,
-                left: chapterMoveMenu.x
+                top: typeof window !== "undefined" ? Math.min(chapterMoveMenu.y, Math.max(12, window.innerHeight - 240)) : chapterMoveMenu.y,
+                left: typeof window !== "undefined" ? Math.min(chapterMoveMenu.x, Math.max(12, window.innerWidth - 220)) : chapterMoveMenu.x
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -19076,6 +19205,26 @@ ${navPoints}  </navMap>
                     </span>
                   </button>
                 ))}
+                {!manuscriptVolumeGroups.some(g => g.id === UNASSIGNED_VOLUME_ID) && (
+                  <button
+                    className="btn-ai-sub btn-ai-secondary"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "0.6rem 0.8rem",
+                      borderRadius: "6px",
+                      textAlign: "left",
+                      width: "100%"
+                    }}
+                    onClick={() => moveSelectedChaptersToVolume(UNASSIGNED_VOLUME_ID)}
+                  >
+                    <span style={{ fontWeight: 600, color: "var(--text-main)" }}>Unassigned Chapters</span>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+                      Move Here
+                    </span>
+                  </button>
+                )}
               </div>
 
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "0.8rem", marginTop: "0.5rem" }}>
@@ -19109,6 +19258,104 @@ ${navPoints}  </navMap>
             </div>
           </div>
         )}
+
+        {volumeMoveModal?.show && (() => {
+          const sourceNormalizedId = volumeMoveModal.sourceVolumeId === UNASSIGNED_VOLUME_ID ? null : volumeMoveModal.sourceVolumeId
+          const sourceChaptersCount = notes.filter(n => n && (n.volumeId || null) === sourceNormalizedId).length
+          const targetGroups = manuscriptVolumeGroups.filter(g => g.id !== volumeMoveModal.sourceVolumeId)
+          const showUnassignedFallback = volumeMoveModal.sourceVolumeId !== UNASSIGNED_VOLUME_ID
+            && !manuscriptVolumeGroups.some(g => g.id === UNASSIGNED_VOLUME_ID)
+
+          return (
+            <div className="modal-overlay" onClick={() => setVolumeMoveModal(null)}>
+              <div className="modal" style={{ maxWidth: "480px" }} onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h2 className="modal-title">Move All Chapters from &ldquo;{volumeMoveModal.sourceVolumeTitle}&rdquo;</h2>
+                  <p className="modal-description">
+                    Move all {sourceChaptersCount} chapter(s) from this volume into another volume while keeping their chapter order:
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", margin: "1rem 0", maxHeight: "260px", overflowY: "auto" }}>
+                  {targetGroups.map(group => {
+                    const targetNormalizedId = group.id === UNASSIGNED_VOLUME_ID ? null : group.id
+                    const targetCount = notes.filter(n => n && (n.volumeId || null) === targetNormalizedId).length
+                    return (
+                      <button
+                        key={group.id}
+                        className="btn-ai-sub btn-ai-secondary"
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "0.6rem 0.8rem",
+                          borderRadius: "6px",
+                          textAlign: "left",
+                          width: "100%"
+                        }}
+                        onClick={() => moveAllVolumeChapters(volumeMoveModal.sourceVolumeId, group.id)}
+                      >
+                        <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{group.title}</span>
+                        <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+                          {targetCount} chapter(s) &rarr; Move All Here
+                        </span>
+                      </button>
+                    )
+                  })}
+                  {showUnassignedFallback && (
+                    <button
+                      className="btn-ai-sub btn-ai-secondary"
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "0.6rem 0.8rem",
+                        borderRadius: "6px",
+                        textAlign: "left",
+                        width: "100%"
+                      }}
+                      onClick={() => moveAllVolumeChapters(volumeMoveModal.sourceVolumeId, UNASSIGNED_VOLUME_ID)}
+                    >
+                      <span style={{ fontWeight: 600, color: "var(--text-main)" }}>Unassigned Chapters</span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+                        0 chapter(s) &rarr; Move All Here
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "0.8rem", marginTop: "0.5rem" }}>
+                  <label style={{ fontSize: "0.75rem", color: "var(--text-dim)", display: "block", marginBottom: "0.35rem" }}>
+                    Or create a new volume & move all chapters here:
+                  </label>
+                  <div style={{ display: "flex", gap: "0.4rem" }}>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder={`Volume ${volumes.length + 1}`}
+                      value={volumeMoveNewVolumeName}
+                      onChange={(e) => setVolumeMoveNewVolumeName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") confirmCreateVolumeAndMoveVolumeChapters()
+                      }}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      onClick={confirmCreateVolumeAndMoveVolumeChapters}
+                    >
+                      Create & Move
+                    </button>
+                  </div>
+                </div>
+
+                <div className="modal-actions" style={{ marginTop: "1rem" }}>
+                  <button className="btn btn-ghost" onClick={() => setVolumeMoveModal(null)}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* EASTERN FANTASY: EDIT CHARACTER PROGRESSION MODAL */}
         {isProgressionEditMode && progressionEditProfileDraft && (
@@ -19863,6 +20110,66 @@ ${navPoints}  </navMap>
             </div>
           </div>
         )}
+
+        {volumeDeleteModal?.show && (() => {
+          const chaptersInVolume = notes.filter(n => n && n.volumeId === volumeDeleteModal.volumeId)
+          const otherVolumeTargets = manuscriptVolumeGroups.filter(
+            g => g.id !== volumeDeleteModal.volumeId && g.id !== UNASSIGNED_VOLUME_ID
+          )
+
+          return (
+            <div className="modal-overlay" onClick={() => setVolumeDeleteModal(null)}>
+              <div className="modal" style={{ maxWidth: "460px" }} onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h2 className="modal-title">Delete Volume</h2>
+                  {chaptersInVolume.length === 0 ? (
+                    <p className="modal-description">
+                      Are you sure you want to delete &ldquo;{volumeDeleteModal.volumeTitle}&rdquo;? This volume currently has no chapters.
+                    </p>
+                  ) : (
+                    <p className="modal-description">
+                      &ldquo;{volumeDeleteModal.volumeTitle}&rdquo; contains {chaptersInVolume.length} chapter(s). Move them to another volume before deleting, or delete the volume and all its chapters permanently.
+                    </p>
+                  )}
+                </div>
+
+                {chaptersInVolume.length > 0 && (
+                  <div className="ai-form-field" style={{ marginBottom: "1.15rem" }}>
+                    <label>Move chapters to</label>
+                    <select
+                      className="input"
+                      value={deleteVolumeTargetId}
+                      onChange={(e) => setDeleteVolumeTargetId(e.target.value)}
+                    >
+                      <option value={UNASSIGNED_VOLUME_ID}>Unassigned Chapters</option>
+                      {otherVolumeTargets.map(group => (
+                        <option key={group.id} value={group.id}>{group.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="modal-actions" style={{ flexWrap: "wrap" }}>
+                  <button className="btn btn-ghost" onClick={() => setVolumeDeleteModal(null)}>Cancel</button>
+                  {chaptersInVolume.length === 0 ? (
+                    <button className="btn btn-danger" onClick={() => confirmDeleteVolume('move')}>
+                      Delete Volume
+                    </button>
+                  ) : (
+                    <>
+                      <button className="btn btn-primary" onClick={() => confirmDeleteVolume('move')}>
+                        Delete Volume &amp; Move Chapters
+                      </button>
+                      <button className="btn btn-danger" onClick={() => confirmDeleteVolume('delete-chapters')}>
+                        Delete All ({chaptersInVolume.length})
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {deleteModal.show && (
           <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, noteId: '', noteTitle: '' })}>
@@ -22355,9 +22662,9 @@ ${navPoints}  </navMap>
         .volume-header {
           display: flex;
           align-items: center;
-          gap: 0.4rem;
+          gap: 0.28rem;
           min-height: 34px;
-          padding: 0.35rem 0.5rem;
+          padding: 0.35rem 0.45rem;
           border-radius: var(--radius-sm);
           background: rgba(255, 255, 255, 0.04);
           border: 1px solid var(--surface-border);
@@ -22379,8 +22686,8 @@ ${navPoints}  </navMap>
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 24px;
-          height: 24px;
+          width: 22px;
+          height: 22px;
           border-radius: var(--radius-sm);
           flex-shrink: 0;
         }
@@ -22389,6 +22696,11 @@ ${navPoints}  </navMap>
         .volume-add-chapter:hover {
           background: var(--surface-hover);
           color: var(--text-primary);
+        }
+
+        .volume-delete-btn:hover {
+          background: rgba(239, 68, 68, 0.14);
+          color: var(--error, #ef4444);
         }
 
         .volume-title {
@@ -22612,13 +22924,16 @@ ${navPoints}  </navMap>
         }
 
         .chapter-actions {
-          display: flex;
+          display: none;
           gap: 4px;
           opacity: 0;
           transition: var(--transition);
+          flex-shrink: 0;
         }
 
-        .chapter-item:hover .chapter-actions {
+        .chapter-item:hover .chapter-actions,
+        .chapter-item:focus-within .chapter-actions {
+          display: flex;
           opacity: 1;
         }
 
@@ -22684,6 +22999,8 @@ ${navPoints}  </navMap>
           flex-direction: column;
           min-width: 190px;
           max-width: min(260px, calc(100vw - 1rem));
+          max-height: 60vh;
+          overflow-y: auto;
           padding: 0.4rem;
           border: 1px solid var(--surface-border);
           border-radius: var(--radius-md);
